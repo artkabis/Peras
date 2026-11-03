@@ -1,0 +1,6 @@
+// E0113: an assignment has no value.
+fn f(): void {
+  let ok = (count = 0);
+  let sum = (total += 1);
+  call(x = 2);
+}

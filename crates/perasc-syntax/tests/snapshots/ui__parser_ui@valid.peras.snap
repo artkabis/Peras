@@ -1,0 +1,20 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/valid.peras
+---
+ast:
+  (fn fib @frame export (params (n i32)) -> i32
+    (const a (call fib (- n 1)))
+    (let b: i64 (+ a (% (* (call fib (- n 2)) (neg 3)) 4)))
+    (+= b 1)
+    (++ b)
+    (return (| (<< (paren (+ a b)) 2) (& 255 mask)))
+  )
+  (fn gain (params (buf inout Buffer) (factor f32) (out sink Array<Option<f32>>)) -> void
+    (= (index (. buf samples) 0) (* (index (. buf samples) 0) factor))
+    (call consume (& buf) (? (call peak buf)) "done\n" true (! ready))
+  )
+  (const LIMIT: u64 18446744073709551615)
+diagnostics:
+  none

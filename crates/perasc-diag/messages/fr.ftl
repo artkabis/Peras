@@ -130,6 +130,135 @@ lex-source-too-large-label = ce fichier fait { $size } octets
 lex-source-too-large-why = Les positions dans le source sont des nombres sur 32 bits : un fichier source doit faire moins de 4 Gio.
 lex-source-too-large-fix = découpe ce fichier en plusieurs modules
 
+## Parser (E0100–E0199)
+
+# E0100
+parse-expected-expression = valeur attendue, trouvé { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-expected-expression-label = une valeur est attendue ici
+parse-expected-expression-why = Une expression est attendue à cet endroit : un nombre, une chaîne, un nom, un appel comme `f(x)` ou un calcul comme `a + 1`.
+parse-expected-expression-fix = écris la valeur manquante, ou supprime ce qui précède cet endroit
+
+# E0101
+parse-missing-semicolon = `;` manquant
+parse-missing-semicolon-label = l’instruction se termine ici
+parse-missing-semicolon-why = Chaque instruction se termine par `;`. Peras ne devine pas où une instruction s’arrête, contrairement à l’insertion automatique de JavaScript, qui peut fusionner deux lignes en une seule instruction.
+parse-missing-semicolon-fix = ajoute `;`
+
+# E0102
+parse-expected-name = { $what ->
+    [function] nom de fonction attendu
+    [variable] nom de variable attendu
+    [parameter] nom de paramètre attendu
+    [field] nom de champ attendu
+    [attribute] nom d’attribut attendu
+   *[other] nom attendu
+}, trouvé { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-expected-name-label = un nom est attendu ici
+parse-expected-name-why = Un nom commence par une lettre ou `_`, suivie de lettres, de chiffres ou de `_`. Les mots-clés comme `fn`, `let` ou `match` sont réservés.
+parse-expected-name-fix = écris un nom ici
+parse-expected-name-fix-keyword = `{ $keyword }` est un mot-clé : choisis un autre nom, par exemple `{ $keyword }_`
+
+# E0103
+parse-unclosed = `{ $open }` non fermé
+parse-unclosed-open-label = `{ $open }` ouvert ici
+parse-unclosed-label = `{ $close }` attendu ici, avant { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-unclosed-why = Chaque `(`, `[`, `{"{"}` et `<` a besoin de son `)`, `]`, `{"}"}` ou `>` fermant ; l’analyse a atteint la fin de la construction avant.
+parse-unclosed-fix = ferme-le avec `{ $close }`
+
+# E0104
+parse-unexpected = symbole inattendu : { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-unexpected-label = ceci ne peut pas apparaître ici
+parse-unexpected-expected-label = `{ $expected }` attendu
+parse-unexpected-separator-label = `,` ou `{ $close }` attendu
+parse-unexpected-why = Chaque construction a une forme fixe, comme `fn nom(paramètre: Type): Type {"{"} … {"}"}` ou `let nom = valeur;`, et ce symbole n’y a pas sa place à cet endroit.
+parse-unexpected-fix = vérifie s’il manque un opérateur, un séparateur ou une parenthèse sur cette ligne
+
+# E0105
+parse-expected-type = type attendu, trouvé { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-expected-type-label = un type est attendu ici, par exemple `i32`
+parse-expected-type-why = Un type suit `:` dans un paramètre, un type de retour ou une variable annotée : `i32`, `f64`, `bool`, `Array<f32>`, `Option<i32>`…
+parse-expected-type-fix = écris un type, par exemple `i32`
+
+# E0106
+parse-removed-keyword = `{ $keyword }` n’existe pas en Peras
+parse-removed-keyword-label = écris `{ $replacement }`
+parse-removed-keyword-why = { $keyword ->
+    [var] `var` porte sur toute la fonction et peut être déclaré deux fois ; Peras n’a que `let` et `const`, limités à leur bloc.
+   *[other] Peras déclare les fonctions avec `fn`, qui n’a jamais de `this` dynamique.
+}
+parse-removed-keyword-fix = remplace `{ $keyword }` par `{ $replacement }`
+
+# E0107
+parse-number-too-large = le nombre `{ $literal }` est trop grand
+parse-number-too-large-int-label = ne tient pas sur 64 bits
+parse-number-too-large-float-label = est infini en flottant 64 bits
+parse-number-too-large-why = Les entiers les plus larges font 64 bits (`i64` jusqu’à 9223372036854775807, `u64` jusqu’à 18446744073709551615), et un `f64` ne peut dépasser environ 1.8e308.
+parse-number-too-large-fix = utilise une valeur plus petite
+
+# E0108
+parse-chained-comparison = les comparaisons ne peuvent pas s’enchaîner
+parse-chained-comparison-first-label = première comparaison
+parse-chained-comparison-label = deuxième comparaison
+parse-chained-comparison-why = En JavaScript, `a < b < c` compare le booléen `a < b` à `c`, ce qui n’est presque jamais voulu ; Peras le refuse.
+parse-chained-comparison-fix = compare chaque paire et relie-les avec `&&` : `{ $suggestion }`
+parse-chained-comparison-fix-mixed = découpe l’expression avec `&&`, ou ajoute des parenthèses pour montrer ce qui est comparé
+
+# E0109
+parse-bitwise-mix = `{ $bitwise }` et `{ $comparison }` demandent des parenthèses
+parse-bitwise-mix-label = opérateur bit à bit
+parse-bitwise-mix-comparison-label = comparaison
+parse-bitwise-mix-why = JavaScript lit `a & b == c` comme `a & (b == c)`, car `&`, `|` et `^` sont moins prioritaires que les comparaisons ; c’est rarement voulu, donc Peras demande d’écrire l’ordre.
+parse-bitwise-mix-fix = ajoute des parenthèses : `{ $suggestion }`
+
+# E0110
+parse-expected-item = déclaration attendue, trouvé { $eof ->
+    [1] la fin du fichier
+   *[other] `{ $found }`
+}
+parse-expected-item-label = seules des déclarations peuvent apparaître au niveau du module
+parse-expected-item-why = Un module contient des déclarations : `fn`, `let` et `const`, éventuellement précédées de `export` ou d’un attribut comme `@frame`. Les instructions vont dans le corps d’une fonction.
+parse-expected-item-fix = déplace ce code dans une fonction
+
+# E0111
+parse-too-deep = imbrication trop profonde
+parse-too-deep-label = plus de { $limit } niveaux de profondeur
+parse-too-deep-why = L’analyse s’arrête à { $limit } niveaux d’expressions ou de types imbriqués, pour qu’aucun fichier, même hostile ou généré, ne puisse épuiser la pile du compilateur.
+parse-too-deep-fix = découpe l’expression en variables intermédiaires nommées
+
+# E0112
+parse-const-without-value = `{ $keyword }` sans valeur
+parse-const-without-value-label = `{ $name }` a besoin d’une valeur
+parse-const-without-value-why = Un `const` reçoit sa valeur une seule fois, là où il est déclaré, et ne change jamais.
+parse-const-without-value-fix = donne-lui une valeur avec `= …`, ou déclare-le avec `let` pour l’affecter plus tard
+
+# E0113
+parse-assignment-in-expression = une affectation n’est pas une expression
+parse-assignment-in-expression-label = `{ $operator }` affecte ici
+parse-assignment-in-expression-why = En Peras, une affectation est une instruction à part entière et n’a pas de valeur : `if (a = b)` ou `x = y = 0` ne peuvent donc pas cacher une erreur.
+parse-assignment-in-expression-fix-compare = pour comparer, écris `==`
+parse-assignment-in-expression-fix = fais de l’affectation une instruction à part, sur sa propre ligne
+
+# E0114
+parse-invalid-target = impossible d’affecter cette expression
+parse-invalid-target-label = ni une variable, ni un champ, ni un élément
+parse-invalid-target-why = Seuls une variable (`x`), un champ (`p.x`) ou un élément (`a[i]`) peuvent être affectés, incrémentés ou décrémentés.
+parse-invalid-target-fix = affecte plutôt une variable, un champ ou un élément
+
 ## Rendu des diagnostics
 
 diag-error = erreur

@@ -1,0 +1,26 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0114-invalid-assignment-target.peras
+---
+ast:
+  (fn f (params) -> void
+    (= (call width) 10)
+    (++ (paren (+ a b)))
+    (+= 1 2)
+    (= (. size width) 10)
+    (= (index items 0) 1)
+  )
+diagnostics:
+  error[E0114] parse-invalid-target
+    primary 3:3-3:10: parse-invalid-target-label
+    cause: parse-invalid-target-why
+    fix: parse-invalid-target-fix
+  error[E0114] parse-invalid-target
+    primary 4:3-4:10: parse-invalid-target-label
+    cause: parse-invalid-target-why
+    fix: parse-invalid-target-fix
+  error[E0114] parse-invalid-target
+    primary 5:3-5:4: parse-invalid-target-label
+    cause: parse-invalid-target-why
+    fix: parse-invalid-target-fix

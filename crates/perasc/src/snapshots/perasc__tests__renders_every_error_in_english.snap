@@ -3,16 +3,16 @@ source: crates/perasc/src/tests.rs
 expression: err
 ---
 error[E0006]: `===` does not exist in Peras
-  --> tests/fixtures/demo.peras:3:8
+  --> tests/fixtures/demo.peras:3:17
    |
- 3 |     if (b === 0.0) { return 0.0; }
-   |           ^^^ write `==`
+ 3 |     const zero = b === 0.0;
+   |                    ^^^ write `==`
    |
    = why: Peras never converts types implicitly, so `==` and `!=` already compare strictly, like `===` and `!==` in JavaScript.
    = fix: replace `===` with `==`
    |
- 3 -     if (b === 0.0) { return 0.0; }
- 3 +     if (b == 0.0) { return 0.0; }
+ 3 -     const zero = b === 0.0;
+ 3 +     const zero = b == 0.0;
    |
    = details: perasc explain E0006
 

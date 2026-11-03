@@ -1,0 +1,6 @@
+// E0101: Peras does not insert semicolons.
+fn f(): void {
+  let a = 1
+  let b = 2;
+  return a + b
+}

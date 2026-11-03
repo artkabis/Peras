@@ -1,0 +1,26 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0113-assignment-in-expression.peras
+---
+ast:
+  (fn f (params) -> void
+    (let ok (paren count))
+    (let sum (paren total))
+    <error>
+  )
+diagnostics:
+  error[E0113] parse-assignment-in-expression
+    primary 3:19-3:20: parse-assignment-in-expression-label { operator: "=" }
+    cause: parse-assignment-in-expression-why
+    fix: parse-assignment-in-expression-fix-compare
+      3:19-3:20 -> "=="
+  error[E0113] parse-assignment-in-expression
+    primary 4:20-4:22: parse-assignment-in-expression-label { operator: "+=" }
+    cause: parse-assignment-in-expression-why
+    fix: parse-assignment-in-expression-fix
+  error[E0113] parse-assignment-in-expression
+    primary 5:10-5:11: parse-assignment-in-expression-label { operator: "=" }
+    cause: parse-assignment-in-expression-why
+    fix: parse-assignment-in-expression-fix-compare
+      5:10-5:11 -> "=="

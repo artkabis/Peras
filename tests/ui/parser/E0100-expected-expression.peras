@@ -1,0 +1,5 @@
+// E0100: a value is missing.
+fn f(): void {
+  let total = price * ;
+  let next = 1;
+}

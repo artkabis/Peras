@@ -1,0 +1,5 @@
+// E0112: a const needs a value.
+fn f(): void {
+  const limit: i32;
+  let later: i32;
+}

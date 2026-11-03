@@ -1,0 +1,17 @@
+// Every construct of day 4, which must parse without error.
+@frame
+export fn fib(n: i32): i32 {
+  const a = fib(n - 1);
+  let b: i64 = a + fib(n - 2) * -3 % 4;
+  b += 1;
+  b++;
+  return (a + b) << 2 | 0xFF & mask;
+}
+
+fn gain(buf: inout Buffer, factor: f32, out: sink Array<Option<f32>>): void {
+  buf.samples[0] = buf.samples[0] * factor;
+  consume(&buf, peak(buf)?, "done\n", true, !ready);
+  ;
+}
+
+export const LIMIT: u64 = 18_446_744_073_709_551_615;

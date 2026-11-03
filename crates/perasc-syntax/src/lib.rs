@@ -1,14 +1,17 @@
 //! Lexer, parser and AST for Peras source files.
 //!
-//! The lexer ([`lex`]) turns a file into [`Token`]s and reports every lexical error
-//! in one pass. The hand-written parser arrives on days 4 and 5.
+//! The lexer ([`lex`]) turns a file into [`Token`]s, and the parser ([`parse`])
+//! turns them into an [`ast::Ast`]. Both report every error of a file in one pass.
 
 use std::path::Path;
 
+pub mod ast;
 pub mod lexer;
+pub mod parser;
 pub mod token;
 
 pub use lexer::{Lexed, lex, source_too_large, string_value};
+pub use parser::{MAX_DEPTH, Parsed, parse};
 pub use token::{Token, TokenKind};
 
 /// The mode of a source module, set by its file extension.

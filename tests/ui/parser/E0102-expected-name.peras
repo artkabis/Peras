@@ -1,0 +1,5 @@
+// E0102: a keyword is not a name; a name is missing.
+fn f(match: i32): void {
+  let = 2;
+}
+fn (): void {}

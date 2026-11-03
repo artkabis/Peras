@@ -1,0 +1,15 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0111-nesting-too-deep.peras
+---
+ast:
+  (fn f (params) -> void
+    (let x (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren (paren <error>)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+    (let y 2)
+  )
+diagnostics:
+  error[E0111] parse-too-deep
+    primary 3:139-3:140: parse-too-deep-label { limit: 128 }
+    cause: parse-too-deep-why { limit: 128 }
+    fix: parse-too-deep-fix

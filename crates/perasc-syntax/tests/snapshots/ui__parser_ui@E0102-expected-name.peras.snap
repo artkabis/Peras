@@ -1,0 +1,22 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0102-expected-name.peras
+---
+ast:
+  (fn f (params) -> void
+    <error>
+  )
+diagnostics:
+  error[E0102] parse-expected-name { what: "parameter", found: "match", eof: 0 }
+    primary 2:6-2:11: parse-expected-name-label
+    cause: parse-expected-name-why
+    fix: parse-expected-name-fix-keyword { keyword: "match" }
+  error[E0102] parse-expected-name { what: "variable", found: "=", eof: 0 }
+    primary 3:7-3:8: parse-expected-name-label
+    cause: parse-expected-name-why
+    fix: parse-expected-name-fix
+  error[E0102] parse-expected-name { what: "function", found: "(", eof: 0 }
+    primary 5:4-5:5: parse-expected-name-label
+    cause: parse-expected-name-why
+    fix: parse-expected-name-fix

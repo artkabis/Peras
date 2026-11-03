@@ -1,0 +1,26 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0109-ambiguous-precedence.peras
+---
+ast:
+  (fn f (params) -> void
+    (let even (& flags (== 1 0)))
+    (let left (| (== a b) c))
+    (let fine (== (paren (& flags 1)) 0))
+  )
+diagnostics:
+  error[E0109] parse-bitwise-mix { bitwise: "&", comparison: "==" }
+    primary 3:20-3:21: parse-bitwise-mix-label
+    secondary 3:24-3:26: parse-bitwise-mix-comparison-label
+    cause: parse-bitwise-mix-why
+    fix: parse-bitwise-mix-fix { suggestion: "(flags & 1) == 0" }
+      3:14-3:14 -> "("
+      3:23-3:23 -> ")"
+  error[E0109] parse-bitwise-mix { bitwise: "|", comparison: "==" }
+    primary 4:21-4:22: parse-bitwise-mix-label
+    secondary 4:16-4:18: parse-bitwise-mix-comparison-label
+    cause: parse-bitwise-mix-why
+    fix: parse-bitwise-mix-fix { suggestion: "a == (b | c)" }
+      4:19-4:19 -> "("
+      4:24-4:24 -> ")"

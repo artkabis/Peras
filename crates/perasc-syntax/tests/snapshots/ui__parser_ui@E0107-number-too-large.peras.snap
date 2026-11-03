@@ -1,0 +1,25 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0107-number-too-large.peras
+---
+ast:
+  (fn f (params) -> void
+    (let max 18446744073709551615)
+    (let over <error>)
+    (let huge <error>)
+    (let hex <error>)
+  )
+diagnostics:
+  error[E0107] parse-number-too-large { literal: "18446744073709551616" }
+    primary 4:14-4:34: parse-number-too-large-int-label
+    cause: parse-number-too-large-why
+    fix: parse-number-too-large-fix
+  error[E0107] parse-number-too-large { literal: "1e999" }
+    primary 5:14-5:19: parse-number-too-large-float-label
+    cause: parse-number-too-large-why
+    fix: parse-number-too-large-fix
+  error[E0107] parse-number-too-large { literal: "0x1_0000_0000_0000_0000" }
+    primary 6:13-6:36: parse-number-too-large-int-label
+    cause: parse-number-too-large-why
+    fix: parse-number-too-large-fix

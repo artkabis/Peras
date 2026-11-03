@@ -1,0 +1,5 @@
+// E0110: statements outside a function.
+log("ready");
+let ok = 1;
+return ok;
+fn f(): void {}

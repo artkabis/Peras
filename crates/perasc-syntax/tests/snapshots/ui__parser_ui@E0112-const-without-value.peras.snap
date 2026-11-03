@@ -1,0 +1,15 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0112-const-without-value.peras
+---
+ast:
+  (fn f (params) -> void
+    (const limit: i32)
+    (let later: i32)
+  )
+diagnostics:
+  error[E0112] parse-const-without-value { keyword: "const" }
+    primary 3:9-3:14: parse-const-without-value-label { name: "limit" }
+    cause: parse-const-without-value-why
+    fix: parse-const-without-value-fix

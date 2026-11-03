@@ -1,0 +1,6 @@
+// E0106: JavaScript keywords Peras replaces.
+function twice(x: i32): i32 {
+  var y = x * 2;
+  return y;
+}
+var global = 1;

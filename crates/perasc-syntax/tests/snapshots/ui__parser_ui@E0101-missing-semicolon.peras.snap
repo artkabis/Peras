@@ -1,0 +1,22 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0101-missing-semicolon.peras
+---
+ast:
+  (fn f (params) -> void
+    (let a 1)
+    (let b 2)
+    (return (+ a b))
+  )
+diagnostics:
+  error[E0101] parse-missing-semicolon
+    primary 3:12-3:12: parse-missing-semicolon-label
+    cause: parse-missing-semicolon-why
+    fix: parse-missing-semicolon-fix
+      3:12-3:12 -> ";"
+  error[E0101] parse-missing-semicolon
+    primary 5:15-5:15: parse-missing-semicolon-label
+    cause: parse-missing-semicolon-why
+    fix: parse-missing-semicolon-fix
+      5:15-5:15 -> ";"

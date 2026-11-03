@@ -1,0 +1,15 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0100-expected-expression.peras
+---
+ast:
+  (fn f (params) -> void
+    (let total (* price <error>))
+    (let next 1)
+  )
+diagnostics:
+  error[E0100] parse-expected-expression { found: ";", eof: 0 }
+    primary 3:23-3:24: parse-expected-expression-label
+    cause: parse-expected-expression-why
+    fix: parse-expected-expression-fix

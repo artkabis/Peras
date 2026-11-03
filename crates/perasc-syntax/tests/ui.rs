@@ -1,5 +1,6 @@
 //! UI tests: every `.peras` and `.apeiron` file under `tests/ui/lexer` is lexed, and
-//! its tokens and diagnostics are compared with an `insta` snapshot.
+//! every file under `tests/ui/parser` is parsed; the tokens or the syntax tree, and
+//! the diagnostics, are compared with an `insta` snapshot.
 //!
 //! Diagnostics are shown as message IDs and arguments, independent of the language.
 //! Review new or changed snapshots with `cargo insta review`; in CI an unreviewed
@@ -11,7 +12,7 @@ use std::fs;
 use std::path::Path;
 
 use perasc_diag::{Arg, Message, Span, codes};
-use perasc_syntax::lex;
+use perasc_syntax::{lex, parse};
 
 /// `line:column`, both starting at 1, columns counted in characters.
 fn position(source: &str, offset: u32) -> String {
@@ -60,11 +61,27 @@ fn render(source: &str) -> String {
             token.text(source)
         );
     }
+    diagnostics(&mut out, source, &lexed.diagnostics);
+    out
+}
+
+/// Renders the syntax tree and diagnostics of a source as stable text.
+fn render_parsed(source: &str) -> String {
+    let parsed = parse(source);
+    let mut out = String::from("ast:\n");
+    for line in parsed.ast.dump().lines() {
+        let _ = writeln!(out, "  {line}");
+    }
+    diagnostics(&mut out, source, &parsed.diagnostics);
+    out
+}
+
+fn diagnostics(out: &mut String, source: &str, diagnostics: &[perasc_diag::Diagnostic]) {
     out.push_str("diagnostics:\n");
-    if lexed.diagnostics.is_empty() {
+    if diagnostics.is_empty() {
         out.push_str("  none\n");
     }
-    for d in &lexed.diagnostics {
+    for d in diagnostics {
         let _ = writeln!(out, "  error[{}] {}", d.code, message(&d.message));
         for label in &d.labels {
             let kind = if label.primary {
@@ -90,7 +107,6 @@ fn render(source: &str) -> String {
             );
         }
     }
-    out
 }
 
 #[test]
@@ -101,14 +117,26 @@ fn lexer_ui() {
     });
 }
 
-/// Every lexical error code has at least one UI test.
 #[test]
-fn every_lexer_code_has_a_ui_test() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/ui/lexer");
+fn parser_ui() {
+    insta::glob!("../../../tests/ui", "parser/*.{peras,apeiron}", |path| {
+        let source = fs::read_to_string(path).unwrap_or_default();
+        insta::assert_snapshot!(render_parsed(&source));
+    });
+}
+
+/// Every error code has at least one UI test.
+#[test]
+fn every_code_has_a_ui_test() {
     let mut seen = BTreeSet::new();
-    for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
-        let source = fs::read_to_string(entry.path()).unwrap_or_default();
-        seen.extend(lex(&source).diagnostics.iter().map(|d| d.code));
+    for stage in ["lexer", "parser"] {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/ui")
+            .join(stage);
+        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let source = fs::read_to_string(entry.path()).unwrap_or_default();
+            seen.extend(parse(&source).diagnostics.iter().map(|d| d.code));
+        }
     }
     for entry in codes::REGISTRY {
         // E0008 needs a 4 GiB file: covered by a unit test with a lowered limit instead.

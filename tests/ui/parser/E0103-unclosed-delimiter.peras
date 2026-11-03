@@ -1,0 +1,8 @@
+// E0103: delimiters left open.
+fn f(): void {
+  let n = max(a, b;
+  let m = (n + 1;
+  let o = items[0;
+}
+fn g(): void {
+  let p = 1;

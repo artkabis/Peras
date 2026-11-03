@@ -1,0 +1,6 @@
+// E0109: bitwise operators and comparisons need parentheses.
+fn f(): void {
+  let even = flags & 1 == 0;
+  let left = a == b | c;
+  let fine = (flags & 1) == 0;
+}

@@ -1,0 +1,7 @@
+// E0107: numbers beyond 64 bits.
+fn f(): void {
+  let max = 18446744073709551615;
+  let over = 18446744073709551616;
+  let huge = 1e999;
+  let hex = 0x1_0000_0000_0000_0000;
+}

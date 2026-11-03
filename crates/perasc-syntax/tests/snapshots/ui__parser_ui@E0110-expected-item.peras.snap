@@ -1,0 +1,18 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0110-expected-item.peras
+---
+ast:
+  (let ok 1)
+  (fn f (params) -> void
+  )
+diagnostics:
+  error[E0110] parse-expected-item { found: "log", eof: 0 }
+    primary 2:1-2:4: parse-expected-item-label
+    cause: parse-expected-item-why
+    fix: parse-expected-item-fix
+  error[E0110] parse-expected-item { found: "return", eof: 0 }
+    primary 4:1-4:7: parse-expected-item-label
+    cause: parse-expected-item-why
+    fix: parse-expected-item-fix

@@ -1,0 +1,12 @@
+// One error per mistake, and parsing goes on after each one.
+fn f(): void {
+  let a = ;
+  let b = 1 +;
+  let c = (;
+  let d = 4 # 5;
+  let e = 5;
+}
+log("between");
+fn g(): i32 {
+  return 1;
+}

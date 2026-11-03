@@ -1,0 +1,8 @@
+// E0114: only variables, fields and elements can be assigned.
+fn f(): void {
+  width() = 10;
+  (a + b)++;
+  1 += 2;
+  size.width = 10;
+  items[0] = 1;
+}

@@ -1,0 +1,39 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0103-unclosed-delimiter.peras
+---
+ast:
+  (fn f (params) -> void
+    (let n (call max a b))
+    (let m (paren (+ n 1)))
+    (let o (index items 0))
+  )
+  (fn g (params) -> void
+    (let p 1)
+  )
+diagnostics:
+  error[E0103] parse-unclosed { open: "(" }
+    secondary 3:14-3:15: parse-unclosed-open-label { open: "(" }
+    primary 3:19-3:19: parse-unclosed-label { close: ")", found: ";", eof: 0 }
+    cause: parse-unclosed-why
+    fix: parse-unclosed-fix { close: ")" }
+      3:19-3:19 -> ")"
+  error[E0103] parse-unclosed { open: "(" }
+    secondary 4:11-4:12: parse-unclosed-open-label { open: "(" }
+    primary 4:17-4:17: parse-unclosed-label { close: ")", found: ";", eof: 0 }
+    cause: parse-unclosed-why
+    fix: parse-unclosed-fix { close: ")" }
+      4:17-4:17 -> ")"
+  error[E0103] parse-unclosed { open: "[" }
+    secondary 5:16-5:17: parse-unclosed-open-label { open: "[" }
+    primary 5:18-5:18: parse-unclosed-label { close: "]", found: ";", eof: 0 }
+    cause: parse-unclosed-why
+    fix: parse-unclosed-fix { close: "]" }
+      5:18-5:18 -> "]"
+  error[E0103] parse-unclosed { open: "{" }
+    secondary 7:14-7:15: parse-unclosed-open-label { open: "{" }
+    primary 9:1-9:1: parse-unclosed-label { close: "}", found: "", eof: 1 }
+    cause: parse-unclosed-why
+    fix: parse-unclosed-fix { close: "}" }
+      9:1-9:1 -> "}\n"

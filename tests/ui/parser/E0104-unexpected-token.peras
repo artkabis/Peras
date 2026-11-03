@@ -1,0 +1,8 @@
+// E0104: a token that does not fit.
+fn area(width f32): f32 {
+  return width * width;
+}
+fn g(): void {
+  let n = max(a b);
+  let m = 1 2;
+}

@@ -1,0 +1,26 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0104-unexpected-token.peras
+---
+ast:
+  (fn area (params) -> f32
+    (return (* width width))
+  )
+  (fn g (params) -> void
+    (let n (call max a))
+    (let m 1)
+  )
+diagnostics:
+  error[E0104] parse-unexpected { found: "f32", eof: 0 }
+    primary 2:15-2:18: parse-unexpected-expected-label { expected: ":" }
+    cause: parse-unexpected-why
+    fix: parse-unexpected-fix
+  error[E0104] parse-unexpected { found: "b", eof: 0 }
+    primary 6:17-6:18: parse-unexpected-separator-label { close: ")" }
+    cause: parse-unexpected-why
+    fix: parse-unexpected-fix
+  error[E0104] parse-unexpected { found: "2", eof: 0 }
+    primary 7:13-7:14: parse-unexpected-expected-label { expected: ";" }
+    cause: parse-unexpected-why
+    fix: parse-unexpected-fix

@@ -1,0 +1,5 @@
+// E0105: a type is missing.
+fn half(x: ): f64 {
+  let y: = x;
+  let z: Array<> = y;
+}

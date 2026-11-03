@@ -1,0 +1,23 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0105-expected-type.peras
+---
+ast:
+  (fn half (params (x <error>)) -> f64
+    (let y: <error> x)
+    (let z: Array<<error>> y)
+  )
+diagnostics:
+  error[E0105] parse-expected-type { found: ")", eof: 0 }
+    primary 2:12-2:13: parse-expected-type-label
+    cause: parse-expected-type-why
+    fix: parse-expected-type-fix
+  error[E0105] parse-expected-type { found: "=", eof: 0 }
+    primary 3:10-3:11: parse-expected-type-label
+    cause: parse-expected-type-why
+    fix: parse-expected-type-fix
+  error[E0105] parse-expected-type { found: ">", eof: 0 }
+    primary 4:16-4:17: parse-expected-type-label
+    cause: parse-expected-type-why
+    fix: parse-expected-type-fix

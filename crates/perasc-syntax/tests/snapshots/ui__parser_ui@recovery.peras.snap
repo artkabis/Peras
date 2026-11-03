@@ -1,0 +1,38 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/recovery.peras
+---
+ast:
+  (fn f (params) -> void
+    (let a <error>)
+    (let b (+ 1 <error>))
+    (let c (paren <error>))
+    (let d 4)
+    (let e 5)
+  )
+  (fn g (params) -> i32
+    (return 1)
+  )
+diagnostics:
+  error[E0100] parse-expected-expression { found: ";", eof: 0 }
+    primary 3:11-3:12: parse-expected-expression-label
+    cause: parse-expected-expression-why
+    fix: parse-expected-expression-fix
+  error[E0100] parse-expected-expression { found: ";", eof: 0 }
+    primary 4:14-4:15: parse-expected-expression-label
+    cause: parse-expected-expression-why
+    fix: parse-expected-expression-fix
+  error[E0100] parse-expected-expression { found: ";", eof: 0 }
+    primary 5:12-5:13: parse-expected-expression-label
+    cause: parse-expected-expression-why
+    fix: parse-expected-expression-fix
+  error[E0001] lex-invalid-character { character: "#", codepoint: "U+0023", count: 1 }
+    primary 6:13-6:14: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-remove { count: 1 }
+      6:13-6:14 -> ""
+  error[E0110] parse-expected-item { found: "log", eof: 0 }
+    primary 9:1-9:4: parse-expected-item-label
+    cause: parse-expected-item-why
+    fix: parse-expected-item-fix

@@ -2,7 +2,7 @@
 //!
 //! Codes are permanent. A retired code stays here and keeps its documentation
 //! pages (`docs/en/errors/Exxxx.md`, `docs/fr/errors/Exxxx.md`), marked as retired.
-//! Lexical errors use `E0001` to `E0099`.
+//! Lexical errors use `E0001` to `E0099`, syntax errors `E0100` to `E0199`.
 
 use crate::ErrorCode;
 use crate::messages::Language;
@@ -23,6 +23,36 @@ pub const STRICT_EQUALITY: ErrorCode = ErrorCode::new(6);
 pub const BIDI_CONTROL_CHARACTER: ErrorCode = ErrorCode::new(7);
 /// A source file of 4 GiB or more.
 pub const SOURCE_TOO_LARGE: ErrorCode = ErrorCode::new(8);
+/// A value was expected: a literal, a name, a call, a calculation.
+pub const EXPECTED_EXPRESSION: ErrorCode = ErrorCode::new(100);
+/// A statement does not end with `;`.
+pub const MISSING_SEMICOLON: ErrorCode = ErrorCode::new(101);
+/// A name was expected: of a function, variable, parameter, field or attribute.
+pub const EXPECTED_NAME: ErrorCode = ErrorCode::new(102);
+/// A `(`, `[`, `{` or `<` without its closing delimiter.
+pub const UNCLOSED_DELIMITER: ErrorCode = ErrorCode::new(103);
+/// A token that does not fit the construct being parsed.
+pub const UNEXPECTED_TOKEN: ErrorCode = ErrorCode::new(104);
+/// A type was expected after `:` or in `<…>`.
+pub const EXPECTED_TYPE: ErrorCode = ErrorCode::new(105);
+/// `var` or `function`, which Peras replaces with `let` and `fn`.
+pub const REMOVED_KEYWORD: ErrorCode = ErrorCode::new(106);
+/// A number literal that does not fit in 64 bits.
+pub const NUMBER_TOO_LARGE: ErrorCode = ErrorCode::new(107);
+/// `a < b < c`: comparisons cannot be chained.
+pub const CHAINED_COMPARISON: ErrorCode = ErrorCode::new(108);
+/// `a & b == c`: bitwise operators and comparisons need parentheses.
+pub const AMBIGUOUS_PRECEDENCE: ErrorCode = ErrorCode::new(109);
+/// Something other than a declaration at the top level of a module.
+pub const EXPECTED_ITEM: ErrorCode = ErrorCode::new(110);
+/// Expressions or types nested deeper than the parser allows.
+pub const NESTING_TOO_DEEP: ErrorCode = ErrorCode::new(111);
+/// A `const` declared without a value.
+pub const CONST_WITHOUT_VALUE: ErrorCode = ErrorCode::new(112);
+/// `=` or `+=` used inside an expression.
+pub const ASSIGNMENT_IN_EXPRESSION: ErrorCode = ErrorCode::new(113);
+/// An assignment to something that is not a variable, field or element.
+pub const INVALID_ASSIGNMENT_TARGET: ErrorCode = ErrorCode::new(114);
 
 /// One entry of the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +108,25 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(STRICT_EQUALITY, "lex-strict-equality", "E0006"),
     active!(BIDI_CONTROL_CHARACTER, "lex-bidi-control", "E0007"),
     active!(SOURCE_TOO_LARGE, "lex-source-too-large", "E0008"),
+    active!(EXPECTED_EXPRESSION, "parse-expected-expression", "E0100"),
+    active!(MISSING_SEMICOLON, "parse-missing-semicolon", "E0101"),
+    active!(EXPECTED_NAME, "parse-expected-name", "E0102"),
+    active!(UNCLOSED_DELIMITER, "parse-unclosed", "E0103"),
+    active!(UNEXPECTED_TOKEN, "parse-unexpected", "E0104"),
+    active!(EXPECTED_TYPE, "parse-expected-type", "E0105"),
+    active!(REMOVED_KEYWORD, "parse-removed-keyword", "E0106"),
+    active!(NUMBER_TOO_LARGE, "parse-number-too-large", "E0107"),
+    active!(CHAINED_COMPARISON, "parse-chained-comparison", "E0108"),
+    active!(AMBIGUOUS_PRECEDENCE, "parse-bitwise-mix", "E0109"),
+    active!(EXPECTED_ITEM, "parse-expected-item", "E0110"),
+    active!(NESTING_TOO_DEEP, "parse-too-deep", "E0111"),
+    active!(CONST_WITHOUT_VALUE, "parse-const-without-value", "E0112"),
+    active!(
+        ASSIGNMENT_IN_EXPRESSION,
+        "parse-assignment-in-expression",
+        "E0113"
+    ),
+    active!(INVALID_ASSIGNMENT_TARGET, "parse-invalid-target", "E0114"),
 ];
 
 /// Looks up a code in the registry.

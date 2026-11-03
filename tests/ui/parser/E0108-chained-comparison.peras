@@ -1,0 +1,7 @@
+// E0108: comparisons cannot be chained.
+fn f(): void {
+  let inside = 0 < x < 10;
+  let same = a == b != c;
+  let mixed = a == b < c;
+  let fine = (0 < x) == ok;
+}

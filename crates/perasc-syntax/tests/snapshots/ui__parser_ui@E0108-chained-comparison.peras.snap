@@ -1,0 +1,25 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0108-chained-comparison.peras
+---
+ast:
+  (fn f (params) -> void
+    (let inside (< (< 0 x) 10))
+    (let same (!= (== a b) c))
+    (let mixed (== a (< b c)))
+    (let fine (== (paren (< 0 x)) ok))
+  )
+diagnostics:
+  error[E0108] parse-chained-comparison
+    secondary 3:18-3:19: parse-chained-comparison-first-label
+    primary 3:22-3:23: parse-chained-comparison-label
+    cause: parse-chained-comparison-why
+    fix: parse-chained-comparison-fix { suggestion: "0 < x && x < 10" }
+      3:21-3:21 -> " && x"
+  error[E0108] parse-chained-comparison
+    secondary 4:16-4:18: parse-chained-comparison-first-label
+    primary 4:21-4:23: parse-chained-comparison-label
+    cause: parse-chained-comparison-why
+    fix: parse-chained-comparison-fix { suggestion: "a == b && b != c" }
+      4:20-4:20 -> " && b"

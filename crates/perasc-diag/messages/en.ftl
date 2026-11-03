@@ -130,6 +130,135 @@ lex-source-too-large-label = this file is { $size } bytes long
 lex-source-too-large-why = Source positions are 32-bit numbers, so a source file must be smaller than 4 GiB.
 lex-source-too-large-fix = split this file into several modules
 
+## Parser (E0100–E0199)
+
+# E0100
+parse-expected-expression = expected a value, found { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-expected-expression-label = a value is needed here
+parse-expected-expression-why = An expression is needed at this point: a number, a string, a name, a call such as `f(x)`, or a calculation such as `a + 1`.
+parse-expected-expression-fix = write the missing value, or remove what precedes this point
+
+# E0101
+parse-missing-semicolon = missing `;`
+parse-missing-semicolon-label = the statement ends here
+parse-missing-semicolon-why = Every statement ends with `;`. Peras does not guess where a statement ends, unlike JavaScript's automatic semicolon insertion, which can join two lines into one statement.
+parse-missing-semicolon-fix = add `;`
+
+# E0102
+parse-expected-name = expected { $what ->
+    [function] a function name
+    [variable] a variable name
+    [parameter] a parameter name
+    [field] a field name
+    [attribute] an attribute name
+   *[other] a name
+}, found { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-expected-name-label = a name is needed here
+parse-expected-name-why = A name starts with a letter or `_`, followed by letters, digits or `_`. Keywords such as `fn`, `let` or `match` are reserved.
+parse-expected-name-fix = write a name here
+parse-expected-name-fix-keyword = `{ $keyword }` is a keyword: choose another name, e.g. `{ $keyword }_`
+
+# E0103
+parse-unclosed = unclosed `{ $open }`
+parse-unclosed-open-label = `{ $open }` opened here
+parse-unclosed-label = `{ $close }` expected here, before { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-unclosed-why = Every `(`, `[`, `{"{"}` and `<` needs its closing `)`, `]`, `{"}"}` or `>`; the parser reached the end of the construct first.
+parse-unclosed-fix = close it with `{ $close }`
+
+# E0104
+parse-unexpected = unexpected { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-unexpected-label = this cannot appear here
+parse-unexpected-expected-label = expected `{ $expected }`
+parse-unexpected-separator-label = expected `,` or `{ $close }`
+parse-unexpected-why = Each construct has a fixed shape, such as `fn name(parameter: Type): Type {"{"} … {"}"}` or `let name = value;`, and this token does not fit at this point.
+parse-unexpected-fix = check this line for a missing operator, separator or bracket
+
+# E0105
+parse-expected-type = expected a type, found { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-expected-type-label = a type is needed here, e.g. `i32`
+parse-expected-type-why = A type follows `:` in a parameter, a return type or an annotated variable: `i32`, `f64`, `bool`, `Array<f32>`, `Option<i32>`…
+parse-expected-type-fix = write a type, e.g. `i32`
+
+# E0106
+parse-removed-keyword = `{ $keyword }` does not exist in Peras
+parse-removed-keyword-label = write `{ $replacement }`
+parse-removed-keyword-why = { $keyword ->
+    [var] `var` is scoped to the whole function and can be declared twice; Peras only has `let` and `const`, scoped to their block.
+   *[other] Peras declares functions with `fn`, which never has a dynamic `this`.
+}
+parse-removed-keyword-fix = replace `{ $keyword }` with `{ $replacement }`
+
+# E0107
+parse-number-too-large = number `{ $literal }` is too large
+parse-number-too-large-int-label = does not fit in 64 bits
+parse-number-too-large-float-label = is infinite as a 64-bit float
+parse-number-too-large-why = The widest integers have 64 bits (`i64` up to 9223372036854775807, `u64` up to 18446744073709551615), and an `f64` cannot exceed about 1.8e308.
+parse-number-too-large-fix = use a smaller value
+
+# E0108
+parse-chained-comparison = comparisons cannot be chained
+parse-chained-comparison-first-label = first comparison
+parse-chained-comparison-label = second comparison
+parse-chained-comparison-why = In JavaScript, `a < b < c` compares the boolean result of `a < b` with `c`, which is almost never intended; Peras refuses it.
+parse-chained-comparison-fix = compare each pair and join them with `&&`: `{ $suggestion }`
+parse-chained-comparison-fix-mixed = split the expression with `&&`, or add parentheses to show what is compared
+
+# E0109
+parse-bitwise-mix = `{ $bitwise }` and `{ $comparison }` need parentheses
+parse-bitwise-mix-label = bitwise operator
+parse-bitwise-mix-comparison-label = comparison
+parse-bitwise-mix-why = JavaScript reads `a & b == c` as `a & (b == c)`, because `&`, `|` and `^` bind more loosely than comparisons; that is rarely intended, so Peras makes you write the order.
+parse-bitwise-mix-fix = add parentheses: `{ $suggestion }`
+
+# E0110
+parse-expected-item = expected a declaration, found { $eof ->
+    [1] the end of the file
+   *[other] `{ $found }`
+}
+parse-expected-item-label = only declarations can appear at the top level
+parse-expected-item-why = A module holds declarations: `fn`, `let` and `const`, optionally preceded by `export` or an attribute such as `@frame`. Statements go inside a function body.
+parse-expected-item-fix = move this code into a function
+
+# E0111
+parse-too-deep = nesting is too deep
+parse-too-deep-label = more than { $limit } levels deep
+parse-too-deep-why = The parser stops at { $limit } levels of nested expressions or types, so that no file, even a hostile or generated one, can exhaust the compiler's stack.
+parse-too-deep-fix = split the expression into named intermediate variables
+
+# E0112
+parse-const-without-value = `{ $keyword }` without a value
+parse-const-without-value-label = `{ $name }` needs a value
+parse-const-without-value-why = A `const` is given its value once, where it is declared, and never changes.
+parse-const-without-value-fix = give it a value with `= …`, or declare it with `let` to assign it later
+
+# E0113
+parse-assignment-in-expression = an assignment is not an expression
+parse-assignment-in-expression-label = `{ $operator }` assigns here
+parse-assignment-in-expression-why = In Peras, an assignment is a statement of its own and has no value, so `if (a = b)` or `x = y = 0` cannot hide a mistake.
+parse-assignment-in-expression-fix-compare = to compare, write `==`
+parse-assignment-in-expression-fix = make the assignment a statement of its own, on its own line
+
+# E0114
+parse-invalid-target = cannot assign to this expression
+parse-invalid-target-label = not a variable, a field or an element
+parse-invalid-target-why = Only a variable (`x`), a field (`p.x`) or an element (`a[i]`) can be assigned, incremented or decremented.
+parse-invalid-target-fix = assign to a variable, a field or an element instead
+
 ## Diagnostic rendering
 
 diag-error = error

@@ -1,0 +1,27 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0106-removed-keyword.peras
+---
+ast:
+  (fn twice (params (x i32)) -> i32
+    (let y (* x 2))
+    (return y)
+  )
+  (let global 1)
+diagnostics:
+  error[E0106] parse-removed-keyword { keyword: "function" }
+    primary 2:1-2:9: parse-removed-keyword-label { replacement: "fn" }
+    cause: parse-removed-keyword-why { keyword: "function" }
+    fix: parse-removed-keyword-fix { keyword: "function", replacement: "fn" }
+      2:1-2:9 -> "fn"
+  error[E0106] parse-removed-keyword { keyword: "var" }
+    primary 3:3-3:6: parse-removed-keyword-label { replacement: "let" }
+    cause: parse-removed-keyword-why { keyword: "var" }
+    fix: parse-removed-keyword-fix { keyword: "var", replacement: "let" }
+      3:3-3:6 -> "let"
+  error[E0106] parse-removed-keyword { keyword: "var" }
+    primary 6:1-6:4: parse-removed-keyword-label { replacement: "let" }
+    cause: parse-removed-keyword-why { keyword: "var" }
+    fix: parse-removed-keyword-fix { keyword: "var", replacement: "let" }
+      6:1-6:4 -> "let"
