@@ -1,0 +1,98 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render(&source)
+input_file: tests/ui/lexer/E0001-invalid-character.peras
+---
+tokens:
+  2:1     Let "let"
+  2:5     Ident "a"
+  2:7     Eq "="
+  2:9     Int "1"
+  2:11    Error "#"
+  2:13    Int "2"
+  2:14    Semicolon ";"
+  3:1     Let "let"
+  3:5     Ident "b"
+  3:7     Eq "="
+  3:9     Error "“"
+  3:10    Ident "hello"
+  3:15    Error "”"
+  3:16    Semicolon ";"
+  4:1     Let "let"
+  4:5     Ident "c"
+  4:7     Eq "="
+  4:9     Int "4"
+  4:11    Error "−"
+  4:13    Int "1"
+  4:14    Semicolon ";"
+  5:1     Let "let"
+  5:5     Ident "d"
+  5:6     Error "\u{a0}"
+  5:7     Eq "="
+  5:9     Int "2"
+  5:10    Semicolon ";"
+  6:1     Let "let"
+  6:5     Ident "caf"
+  6:8     Error "é"
+  6:10    Eq "="
+  6:12    Int "3"
+  6:13    Semicolon ";"
+  7:1     Let "let"
+  7:5     Ident "e"
+  7:7     Eq "="
+  7:9     Error "`"
+  7:10    Ident "template"
+  7:18    Error "`"
+  7:19    Semicolon ";"
+  8:1     Let "let"
+  8:5     Ident "f"
+  8:7     Eq "="
+  8:9     Int "1"
+  8:11    Error "€"
+  8:12    Error "£"
+  8:14    Int "2"
+  8:15    Semicolon ";"
+  9:1     Eof ""
+diagnostics:
+  error[E0001] lex-invalid-character { character: "#", codepoint: "U+0023", count: 1 }
+    primary 2:11-2:12: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-remove { count: 1 }
+      2:11-2:12 -> ""
+  error[E0001] lex-invalid-character { character: "“", codepoint: "U+201C", count: 1 }
+    primary 3:9-3:10: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-replace { character: "“", replacement: "\"" }
+      3:9-3:10 -> "\""
+  error[E0001] lex-invalid-character { character: "”", codepoint: "U+201D", count: 1 }
+    primary 3:15-3:16: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-replace { character: "”", replacement: "\"" }
+      3:15-3:16 -> "\""
+  error[E0001] lex-invalid-character { character: "−", codepoint: "U+2212", count: 1 }
+    primary 4:11-4:12: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-replace { character: "−", replacement: "-" }
+      4:11-4:12 -> "-"
+  error[E0001] lex-invalid-character { character: "\\u{a0}", codepoint: "U+00A0", count: 1 }
+    primary 5:6-5:7: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-replace { character: "\\u{a0}", replacement: " " }
+      5:6-5:7 -> " "
+  error[E0001] lex-invalid-character { character: "é", codepoint: "U+00E9", count: 1 }
+    primary 6:8-6:9: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-identifier
+  error[E0001] lex-invalid-character { character: "`", codepoint: "U+0060", count: 1 }
+    primary 7:9-7:10: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-template
+  error[E0001] lex-invalid-character { character: "`", codepoint: "U+0060", count: 1 }
+    primary 7:18-7:19: lex-invalid-character-label { count: 1 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-template
+  error[E0001] lex-invalid-character { character: "€", codepoint: "U+20AC", count: 2 }
+    primary 8:11-8:13: lex-invalid-character-label { count: 2 }
+    cause: lex-invalid-character-why
+    fix: lex-invalid-character-fix-remove { count: 2 }
+      8:11-8:13 -> ""

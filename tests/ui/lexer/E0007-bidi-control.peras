@@ -1,0 +1,5 @@
+// E0007: Trojan Source. The access check below looks commented out, but the
+// bidirectional overrides reorder how it is displayed, not how it compiles.
+let isAdmin = false;
+/*‮ } ⁦if (isAdmin)⁩ ⁦ begin admins only */
+let label = "user⁧";

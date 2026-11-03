@@ -1,0 +1,40 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render(&source)
+input_file: tests/ui/lexer/E0006-strict-equality.peras
+---
+tokens:
+  2:1     If "if"
+  2:4     LParen "("
+  2:5     Ident "a"
+  2:7     EqEq "==="
+  2:11    Ident "b"
+  2:12    RParen ")"
+  2:14    LBrace "{"
+  2:16    Return "return"
+  2:23    Int "1"
+  2:24    Semicolon ";"
+  2:26    RBrace "}"
+  3:1     If "if"
+  3:4     LParen "("
+  3:5     Ident "a"
+  3:7     BangEq "!=="
+  3:11    Ident "b"
+  3:12    RParen ")"
+  3:14    LBrace "{"
+  3:16    Return "return"
+  3:23    Int "2"
+  3:24    Semicolon ";"
+  3:26    RBrace "}"
+  4:1     Eof ""
+diagnostics:
+  error[E0006] lex-strict-equality { operator: "===" }
+    primary 2:7-2:10: lex-strict-equality-label { replacement: "==" }
+    cause: lex-strict-equality-why
+    fix: lex-strict-equality-fix { operator: "===", replacement: "==" }
+      2:7-2:10 -> "=="
+  error[E0006] lex-strict-equality { operator: "!==" }
+    primary 3:7-3:10: lex-strict-equality-label { replacement: "!=" }
+    cause: lex-strict-equality-why
+    fix: lex-strict-equality-fix { operator: "!==", replacement: "!=" }
+      3:7-3:10 -> "!="

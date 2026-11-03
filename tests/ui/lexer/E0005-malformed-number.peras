@@ -1,0 +1,9 @@
+// E0005: numbers that break the number syntax.
+let a = 0x;
+let b = 0b102;
+let c = 0755;
+let d = 1__000;
+let e = 1e;
+let f = 10px;
+let g = 0x1.8;
+let h = 3_;

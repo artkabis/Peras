@@ -1,0 +1,84 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+assertion_line: 80
+expression: render(&source)
+input_file: tests/ui/lexer/E0005-malformed-number.peras
+---
+tokens:
+  2:1     Let "let"
+  2:5     Ident "a"
+  2:7     Eq "="
+  2:9     Error "0x"
+  2:11    Semicolon ";"
+  3:1     Let "let"
+  3:5     Ident "b"
+  3:7     Eq "="
+  3:9     Error "0b102"
+  3:14    Semicolon ";"
+  4:1     Let "let"
+  4:5     Ident "c"
+  4:7     Eq "="
+  4:9     Error "0755"
+  4:13    Semicolon ";"
+  5:1     Let "let"
+  5:5     Ident "d"
+  5:7     Eq "="
+  5:9     Error "1__000"
+  5:15    Semicolon ";"
+  6:1     Let "let"
+  6:5     Ident "e"
+  6:7     Eq "="
+  6:9     Error "1e"
+  6:11    Semicolon ";"
+  7:1     Let "let"
+  7:5     Ident "f"
+  7:7     Eq "="
+  7:9     Error "10px"
+  7:13    Semicolon ";"
+  8:1     Let "let"
+  8:5     Ident "g"
+  8:7     Eq "="
+  8:9     Error "0x1.8"
+  8:14    Semicolon ";"
+  9:1     Let "let"
+  9:5     Ident "h"
+  9:7     Eq "="
+  9:9     Error "3_"
+  9:11    Semicolon ";"
+  10:1    Eof ""
+diagnostics:
+  error[E0005] lex-malformed-number { literal: "0x" }
+    primary 2:9-2:11: lex-number-no-digits-label { prefix: "0x" }
+    cause: lex-number-no-digits-why
+    fix: lex-number-no-digits-fix
+  error[E0005] lex-malformed-number { literal: "0b102" }
+    primary 3:13-3:14: lex-number-invalid-digit-label { digit: "2", base: 2 }
+    cause: lex-number-invalid-digit-why
+    fix: lex-number-invalid-digit-fix
+  error[E0005] lex-malformed-number { literal: "0755" }
+    primary 4:9-4:13: lex-number-leading-zero-label
+    cause: lex-number-leading-zero-why
+    fix: lex-number-leading-zero-fix-ambiguous { decimal: "755", octal: "0o755" }
+  error[E0005] lex-malformed-number { literal: "1__000" }
+    primary 5:10-5:11: lex-number-underscore-label
+    cause: lex-number-underscore-why
+    fix: lex-number-underscore-fix
+      5:10-5:11 -> ""
+  error[E0005] lex-malformed-number { literal: "1e" }
+    primary 6:10-6:11: lex-number-exponent-label
+    cause: lex-number-exponent-why
+    fix: lex-number-exponent-fix
+  error[E0005] lex-malformed-number { literal: "10px" }
+    primary 7:11-7:13: lex-number-suffix-label { suffix: "px" }
+    cause: lex-number-suffix-why
+    fix: lex-number-suffix-fix { suffix: "px" }
+      7:11-7:13 -> ""
+  error[E0005] lex-malformed-number { literal: "0x1.8" }
+    primary 8:9-8:14: lex-number-radix-fraction-label
+    cause: lex-number-radix-fraction-why
+    fix: lex-number-radix-fraction-fix
+  error[E0005] lex-malformed-number { literal: "3_" }
+    primary 9:10-9:11: lex-number-underscore-label
+    cause: lex-number-underscore-why
+    fix: lex-number-underscore-fix
+      9:10-9:11 -> ""

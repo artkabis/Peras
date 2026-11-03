@@ -1,0 +1,27 @@
+// dsp.peras: the owned-mode example from the spec, which must lex without error.
+export struct Buffer {
+  samples: Array<f32>;
+}
+
+export fn gain(buf: inout Buffer, factor: f32): void {
+  for (let i: i32 = 0; i < buf.samples.length; i++) {
+    buf.samples[i] = buf.samples[i] * factor;
+  }
+}
+
+export fn peak(buf: Buffer): Option<f32> {
+  if (buf.samples.length == 0) return None;
+  let max: f32 = 0.0;
+  for (const s of buf.samples) { if (s.abs() > max) max = s.abs(); }
+  return Some(max);
+}
+
+/* `sink` consumes the buffer. */
+export fn consume(buf: sink Buffer): i32 {
+  return buf.samples.length; // buf is released here
+}
+
+@frame
+export fn mask(): i32 {
+  return 0xFF_00 | 0b1010 | 0o17 + 1_000 * 2.5e-3;
+}

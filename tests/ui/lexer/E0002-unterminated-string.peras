@@ -1,0 +1,4 @@
+// E0002: a string must close on its own line.
+let greeting = "hello;
+let next = 'still lexed';
+let last = 'no closing quote

@@ -1,0 +1,6 @@
+// E0004: escapes Peras does not accept, and the ones it does.
+let ok = "line\n\ttab \\ \" \' \0 \u{1F600}";
+let regex = "\d+";
+let js = "\u00e9 \x41";
+let big = "\u{110000}";
+let surrogate = "\u{D800}";

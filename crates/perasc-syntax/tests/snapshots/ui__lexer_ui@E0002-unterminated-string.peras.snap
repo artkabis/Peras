@@ -1,0 +1,34 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+assertion_line: 80
+expression: render(&source)
+input_file: tests/ui/lexer/E0002-unterminated-string.peras
+---
+tokens:
+  2:1     Let "let"
+  2:5     Ident "greeting"
+  2:14    Eq "="
+  2:16    String "\"hello;"
+  3:1     Let "let"
+  3:5     Ident "next"
+  3:10    Eq "="
+  3:12    String "'still lexed'"
+  3:25    Semicolon ";"
+  4:1     Let "let"
+  4:5     Ident "last"
+  4:10    Eq "="
+  4:12    String "'no closing quote"
+  4:29    Eof ""
+diagnostics:
+  error[E0002] lex-unterminated-string
+    primary 2:16-2:17: lex-unterminated-string-label
+    secondary 2:23-2:23: lex-unterminated-string-end-label { quote: "\"" }
+    cause: lex-unterminated-string-why
+    fix: lex-unterminated-string-fix { quote: "\"" }
+      2:22-2:22 -> "\""
+  error[E0002] lex-unterminated-string
+    primary 4:12-4:13: lex-unterminated-string-label
+    secondary 4:29-4:29: lex-unterminated-string-end-label { quote: "'" }
+    cause: lex-unterminated-string-why
+    fix: lex-unterminated-string-fix { quote: "'" }
+      4:29-4:29 -> "'"

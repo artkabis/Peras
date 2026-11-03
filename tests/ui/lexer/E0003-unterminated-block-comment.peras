@@ -1,0 +1,4 @@
+// E0003: everything after an unclosed /* is a comment.
+let a = 1;
+/* this comment never ends
+let b = 2;

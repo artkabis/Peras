@@ -1,0 +1,56 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render(&source)
+input_file: tests/ui/lexer/E0004-invalid-escape.peras
+---
+tokens:
+  2:1     Let "let"
+  2:5     Ident "ok"
+  2:8     Eq "="
+  2:10    String "\"line\\n\\ttab \\\\ \\\" \\' \\0 \\u{1F600}\""
+  2:45    Semicolon ";"
+  3:1     Let "let"
+  3:5     Ident "regex"
+  3:11    Eq "="
+  3:13    String "\"\\d+\""
+  3:18    Semicolon ";"
+  4:1     Let "let"
+  4:5     Ident "js"
+  4:8     Eq "="
+  4:10    String "\"\\u00e9 \\x41\""
+  4:23    Semicolon ";"
+  5:1     Let "let"
+  5:5     Ident "big"
+  5:9     Eq "="
+  5:11    String "\"\\u{110000}\""
+  5:23    Semicolon ";"
+  6:1     Let "let"
+  6:5     Ident "surrogate"
+  6:15    Eq "="
+  6:17    String "\"\\u{D800}\""
+  6:27    Semicolon ";"
+  7:1     Eof ""
+diagnostics:
+  error[E0004] lex-invalid-escape { escape: "\\d" }
+    primary 3:14-3:16: lex-invalid-escape-unknown-label { character: "d" }
+    cause: lex-invalid-escape-why
+    fix: lex-invalid-escape-fix-backslash
+      3:14-3:15 -> "\\\\"
+  error[E0004] lex-invalid-escape { escape: "\\u00e9" }
+    primary 4:11-4:17: lex-invalid-escape-braces-label
+    cause: lex-invalid-escape-why
+    fix: lex-invalid-escape-fix-braces { replacement: "\\u{00e9}" }
+      4:11-4:17 -> "\\u{00e9}"
+  error[E0004] lex-invalid-escape { escape: "\\x41" }
+    primary 4:18-4:22: lex-invalid-escape-braces-label
+    cause: lex-invalid-escape-why
+    fix: lex-invalid-escape-fix-braces { replacement: "\\u{41}" }
+      4:18-4:22 -> "\\u{41}"
+  error[E0004] lex-invalid-escape { escape: "\\u{110000}" }
+    primary 5:12-5:22: lex-invalid-escape-unicode-label
+    cause: lex-invalid-escape-why
+    fix: lex-invalid-escape-fix-unicode
+  error[E0004] lex-invalid-escape { escape: "\\u{D800}" }
+    primary 6:18-6:26: lex-invalid-escape-unicode-label
+    cause: lex-invalid-escape-why
+    fix: lex-invalid-escape-fix-unicode

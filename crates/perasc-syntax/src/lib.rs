@@ -1,9 +1,15 @@
 //! Lexer, parser and AST for Peras source files.
 //!
-//! Day 1 only defines how a file's extension sets its mode.
-//! The lexer (`logos`) and the hand-written parser arrive on days 3 to 5.
+//! The lexer ([`lex`]) turns a file into [`Token`]s and reports every lexical error
+//! in one pass. The hand-written parser arrives on days 4 and 5.
 
 use std::path::Path;
+
+pub mod lexer;
+pub mod token;
+
+pub use lexer::{Lexed, lex, string_value};
+pub use token::{Token, TokenKind};
 
 /// The mode of a source module, set by its file extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

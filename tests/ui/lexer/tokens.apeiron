@@ -1,0 +1,11 @@
+// ui.apeiron: the managed-mode example from the spec, which must lex without error.
+import { Buffer, gain, peak } from "./dsp.peras";
+
+export async fn onRecord(data: Float32Array): Promise<void> {
+  let buf = Buffer.from(data)?;   // validated conversion
+  gain(&buf, 0.8);                // visible exclusive borrow
+  match (peak(buf)) {
+    Some(p) => document.querySelector('#peak')!.textContent = p.toString(),
+    None => console.warn("empty buffer\n"),
+  }
+}

@@ -20,6 +20,10 @@ perasc-codegen-rs = { path = "crates/perasc-codegen-rs" }
 perasc-codegen-js = { path = "crates/perasc-codegen-js" }
 perasc-driver = { path = "crates/perasc-driver" }
 
+# External crates. Latest stable releases, audited by cargo deny in CI.
+logos = "0.16.1"
+insta = { version = "1.49.0", features = ["glob"] }
+
 # The compiler holds itself to the rules it enforces: no unsafe, no warnings.
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -1,0 +1,43 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render(&source)
+input_file: tests/ui/lexer/E0007-bidi-control.peras
+---
+tokens:
+  3:1     Let "let"
+  3:5     Ident "isAdmin"
+  3:13    Eq "="
+  3:15    False "false"
+  3:20    Semicolon ";"
+  5:1     Let "let"
+  5:5     Ident "label"
+  5:11    Eq "="
+  5:13    String "\"user\u{2067}\""
+  5:20    Semicolon ";"
+  6:1     Eof ""
+diagnostics:
+  error[E0007] lex-bidi-control { codepoint: "U+202E", name: "RIGHT-TO-LEFT OVERRIDE" }
+    primary 4:3-4:4: lex-bidi-control-label
+    cause: lex-bidi-control-why
+    fix: lex-bidi-control-fix-remove
+      4:3-4:4 -> ""
+  error[E0007] lex-bidi-control { codepoint: "U+2066", name: "LEFT-TO-RIGHT ISOLATE" }
+    primary 4:7-4:8: lex-bidi-control-label
+    cause: lex-bidi-control-why
+    fix: lex-bidi-control-fix-remove
+      4:7-4:8 -> ""
+  error[E0007] lex-bidi-control { codepoint: "U+2069", name: "POP DIRECTIONAL ISOLATE" }
+    primary 4:20-4:21: lex-bidi-control-label
+    cause: lex-bidi-control-why
+    fix: lex-bidi-control-fix-remove
+      4:20-4:21 -> ""
+  error[E0007] lex-bidi-control { codepoint: "U+2066", name: "LEFT-TO-RIGHT ISOLATE" }
+    primary 4:22-4:23: lex-bidi-control-label
+    cause: lex-bidi-control-why
+    fix: lex-bidi-control-fix-remove
+      4:22-4:23 -> ""
+  error[E0007] lex-bidi-control { codepoint: "U+2067", name: "RIGHT-TO-LEFT ISOLATE" }
+    primary 5:18-5:19: lex-bidi-control-label
+    cause: lex-bidi-control-why
+    fix: lex-bidi-control-fix-escape { escape: "\\u{2067}" }
+      5:18-5:19 -> "\\u{2067}"
