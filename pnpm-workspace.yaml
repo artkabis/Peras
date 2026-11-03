@@ -1,6 +1,11 @@
 packages:
   - "packages/*"
 
+# Supply-chain protection: never install a version published less than 24 hours ago.
+# Most compromised releases are caught and unpublished within that window.
+# Do not add a minimumReleaseAgeExclude entry; bootstrap.sh fails if one appears.
+minimumReleaseAge: 1440
+
 # Security overrides: force patched versions of transitive dependencies.
 # Remove an entry once every dependent ships the fix on its own.
 overrides:

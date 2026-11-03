@@ -16,7 +16,7 @@ L'anglais fait foi pour les commentaires de code, la documentation, les messages
 
 - Aucun avertissement : `cargo clippy -- -D warnings`, `eslint --max-warnings 0`.
 - Aucun `unsafe` : chaque crate hérite de `unsafe_code = "forbid"`.
-- Aucune CVE connue : `cargo deny`, `cargo audit` et `pnpm audit` bloquent la fusion.
+- Aucune CVE connue : `cargo deny` (avis RustSec) et `pnpm audit` bloquent la fusion.
 - Aucun snapshot non relu : `cargo insta review` avant de pousser.
 
 Tout lancer en local avant de pousser :
@@ -42,4 +42,4 @@ Les titres de pull request suivent [Conventional Commits](https://www.convention
 
 ## Dépendances
 
-Les dépendances restent à leur dernière version. Renovate ouvre les pull requests de mise à jour ; la CI tranche. Une montée de version du toolchain (`rust-toolchain.toml`) a sa propre pull request.
+Les dépendances restent à leur dernière version stable, dès qu'une version a au moins 24 heures (`minimumReleaseAge`) : les paquets compromis sont en général retirés dans ce délai. N'ajoute jamais d'entrée `minimumReleaseAgeExclude` ; un correctif de sécurité arrive tout de même immédiatement via les alertes de vulnérabilité de Renovate. Les GitHub Actions sont épinglées sur un SHA de commit. Renovate ouvre les pull requests de mise à jour ; la CI tranche. Une montée de version du toolchain (`rust-toolchain.toml`) a sa propre pull request.

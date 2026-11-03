@@ -16,7 +16,7 @@ English is the source of truth for code comments, documentation, compiler messag
 
 - No warning: `cargo clippy -- -D warnings`, `eslint --max-warnings 0`.
 - No `unsafe`: every crate inherits `unsafe_code = "forbid"`.
-- No known CVE: `cargo deny`, `cargo audit` and `pnpm audit` block the merge.
+- No known CVE: `cargo deny` (RustSec advisories) and `pnpm audit` block the merge.
 - No unreviewed snapshot: `cargo insta review` before pushing.
 
 Run everything locally before pushing:
@@ -42,4 +42,4 @@ Pull request titles follow [Conventional Commits](https://www.conventionalcommit
 
 ## Dependencies
 
-Dependencies stay on their latest versions. Renovate opens the update pull requests; CI decides. A toolchain bump (`rust-toolchain.toml`) gets its own pull request.
+Dependencies stay on their latest stable versions, once a release is at least 24 hours old (`minimumReleaseAge`): freshly compromised packages are usually pulled within that window. Never add a `minimumReleaseAgeExclude` entry; a security fix still arrives right away through Renovate vulnerability alerts. GitHub Actions are pinned to a commit SHA. Renovate opens the update pull requests; CI decides. A toolchain bump (`rust-toolchain.toml`) gets its own pull request.

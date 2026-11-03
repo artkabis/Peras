@@ -42,14 +42,14 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 
 ## Démarrer
 
-Prérequis : [rustup](https://rustup.rs), Node 24+, pnpm 10+.
+Prérequis : [rustup](https://rustup.rs), Node 26 LTS (26.13.0+), pnpm 12+.
 
 ```sh
 # Rust : rustup installe le toolchain épinglé dans rust-toolchain.toml
 cargo test --workspace
 cargo run -p perasc -- --version
 
-# JS : une fois, installe les dernières dépendances de dev, les audite et lance tous les contrôles
+# JS : une fois, installe les dernières dépendances de dev stables et mûres (publiées depuis plus de 24 h), les audite et lance tous les contrôles
 pnpm run bootstrap
 ```
 

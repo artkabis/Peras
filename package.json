@@ -5,7 +5,7 @@
   "description": "JS tooling for the Peras language: Vite plugin, Vitest adapter, project scaffolding.",
   "license": "MIT OR Apache-2.0",
   "engines": {
-    "node": ">=24"
+    "node": ">=26.13.0"
   },
   "scripts": {
     "bootstrap": "sh scripts/bootstrap.sh",
@@ -18,15 +18,15 @@
     "audit": "pnpm audit --audit-level low",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:i18n && pnpm run audit"
   },
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@12.16.1",
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^26.6.6",
-    "eslint": "^10.14.0",
-    "prettier": "^3.9.10",
-    "typescript": "~6.0",
-    "typescript-eslint": "^8.72.1",
-    "vite": "^8.3.5",
-    "vitest": "^5.1.0"
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.6",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   }
 }
