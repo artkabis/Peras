@@ -10,8 +10,9 @@ echo "==> Pinning the package manager"
 pnpm pkg set "packageManager=pnpm@$(pnpm --version)"
 
 echo "==> Installing the latest dev dependencies (workspace root)"
+# typescript stays on 6.0.x until typescript-eslint supports 7 (its peer range is <6.1.0).
 pnpm add --save-dev --workspace-root \
-  typescript \
+  typescript@~6.0 \
   vitest \
   vite \
   eslint \

@@ -1,2 +1,8 @@
 packages:
   - "packages/*"
+
+# Security overrides: force patched versions of transitive dependencies.
+# Remove an entry once every dependent ships the fix on its own.
+overrides:
+  # GHSA-g3hv-75wg-m249 (ReDoS via globparts amplification), pulled in by eslint.
+  minimatch@<11.0.1: ">=11.0.1"
