@@ -1,0 +1,9 @@
+// E0119: a `;` right after the header empties the body.
+fn f(user: User): void {
+  if (user.isAdmin);
+  {
+    grantAccess();
+  }
+  for (let i = 0; i < 3; i++);
+  while (waiting());
+}

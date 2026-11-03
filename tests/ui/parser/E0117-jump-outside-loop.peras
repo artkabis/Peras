@@ -1,0 +1,8 @@
+// E0117: break and continue need a loop.
+fn check(x: i32): void {
+  if (x < 0) {
+    break;
+  }
+  continue;
+  while (true) { break; }
+}

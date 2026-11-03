@@ -386,3 +386,95 @@ pub(super) fn invalid_target(span: Span) -> Diagnostic {
         fix: fix(Message::new("parse-invalid-target-fix"), Vec::new()),
     }
 }
+
+/// `E0115`
+pub(super) fn condition_without_parentheses(span: Span, keyword: &str) -> Diagnostic {
+    Diagnostic {
+        code: codes::CONDITION_WITHOUT_PARENTHESES,
+        message: Message::new("parse-condition-parentheses").text("keyword", keyword),
+        labels: vec![primary(
+            span,
+            Message::new("parse-condition-parentheses-label"),
+        )],
+        cause: Message::new("parse-condition-parentheses-why"),
+        fix: fix(
+            Message::new("parse-condition-parentheses-fix"),
+            vec![insert(span.start, "("), insert(span.end, ")")],
+        ),
+    }
+}
+
+/// `E0116`
+pub(super) fn for_in(span: Span) -> Diagnostic {
+    Diagnostic {
+        code: codes::FOR_IN,
+        message: Message::new("parse-for-in"),
+        labels: vec![primary(span, Message::new("parse-for-in-label"))],
+        cause: Message::new("parse-for-in-why"),
+        fix: fix(
+            Message::new("parse-for-in-fix"),
+            vec![Edit {
+                span,
+                replacement: "of".to_owned(),
+            }],
+        ),
+    }
+}
+
+/// `E0117`
+pub(super) fn jump_outside_loop(span: Span, keyword: &str) -> Diagnostic {
+    Diagnostic {
+        code: codes::JUMP_OUTSIDE_LOOP,
+        message: Message::new("parse-jump-outside-loop").text("keyword", keyword),
+        labels: vec![primary(
+            span,
+            Message::new("parse-jump-outside-loop-label").text("keyword", keyword),
+        )],
+        cause: Message::new("parse-jump-outside-loop-why").text("keyword", keyword),
+        fix: fix(
+            Message::new("parse-jump-outside-loop-fix").text("keyword", keyword),
+            Vec::new(),
+        ),
+    }
+}
+
+/// `E0118`: `name?: T` becomes `name: Option<T>`.
+pub(super) fn optional_marker(marker: Span, ty: Span, type_text: &str) -> Diagnostic {
+    Diagnostic {
+        code: codes::OPTIONAL_MARKER,
+        message: Message::new("parse-optional-marker"),
+        labels: vec![primary(marker, Message::new("parse-optional-marker-label"))],
+        cause: Message::new("parse-optional-marker-why"),
+        fix: fix(
+            Message::new("parse-optional-marker-fix").text("type", type_text),
+            vec![
+                Edit {
+                    span: marker,
+                    replacement: String::new(),
+                },
+                insert(ty.start, "Option<"),
+                insert(ty.end, ">"),
+            ],
+        ),
+    }
+}
+
+/// `E0119`
+pub(super) fn empty_body(semicolon: Span, keyword: &str, replacement: &str) -> Diagnostic {
+    Diagnostic {
+        code: codes::EMPTY_BODY,
+        message: Message::new("parse-empty-body").text("keyword", keyword),
+        labels: vec![primary(
+            semicolon,
+            Message::new("parse-empty-body-label").text("keyword", keyword),
+        )],
+        cause: Message::new("parse-empty-body-why"),
+        fix: fix(
+            Message::new("parse-empty-body-fix"),
+            vec![Edit {
+                span: semicolon,
+                replacement: replacement.to_owned(),
+            }],
+        ),
+    }
+}

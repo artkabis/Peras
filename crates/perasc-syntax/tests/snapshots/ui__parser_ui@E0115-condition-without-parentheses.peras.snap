@@ -1,0 +1,31 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0115-condition-without-parentheses.peras
+---
+ast:
+  (fn f (params (count i32)) -> void
+    (if (> count 0)
+      (block
+        (call log "ready")
+      )
+    )
+    (while (call busy)
+      (block
+        (call wait)
+      )
+    )
+  )
+diagnostics:
+  error[E0115] parse-condition-parentheses { keyword: "if" }
+    primary 3:6-3:15: parse-condition-parentheses-label
+    cause: parse-condition-parentheses-why
+    fix: parse-condition-parentheses-fix
+      3:6-3:6 -> "("
+      3:15-3:15 -> ")"
+  error[E0115] parse-condition-parentheses { keyword: "while" }
+    primary 6:9-6:15: parse-condition-parentheses-label
+    cause: parse-condition-parentheses-why
+    fix: parse-condition-parentheses-fix
+      6:9-6:9 -> "("
+      6:15-6:15 -> ")"

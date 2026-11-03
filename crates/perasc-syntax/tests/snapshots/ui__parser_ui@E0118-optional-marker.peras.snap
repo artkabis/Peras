@@ -1,0 +1,31 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0118-optional-marker.peras
+---
+ast:
+  (struct User (name String) (email String) (tags Array<String>))
+  (fn greet (params (name String)) -> void
+  )
+diagnostics:
+  error[E0118] parse-optional-marker
+    primary 4:8-4:9: parse-optional-marker-label
+    cause: parse-optional-marker-why
+    fix: parse-optional-marker-fix { type: "String" }
+      4:8-4:9 -> ""
+      4:11-4:11 -> "Option<"
+      4:17-4:17 -> ">"
+  error[E0118] parse-optional-marker
+    primary 5:7-5:8: parse-optional-marker-label
+    cause: parse-optional-marker-why
+    fix: parse-optional-marker-fix { type: "Array<String>" }
+      5:7-5:8 -> ""
+      5:10-5:10 -> "Option<"
+      5:23-5:23 -> ">"
+  error[E0118] parse-optional-marker
+    primary 7:14-7:15: parse-optional-marker-label
+    cause: parse-optional-marker-why
+    fix: parse-optional-marker-fix { type: "String" }
+      7:14-7:15 -> ""
+      7:17-7:17 -> "Option<"
+      7:23-7:23 -> ">"

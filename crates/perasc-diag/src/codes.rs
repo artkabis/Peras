@@ -53,6 +53,16 @@ pub const CONST_WITHOUT_VALUE: ErrorCode = ErrorCode::new(112);
 pub const ASSIGNMENT_IN_EXPRESSION: ErrorCode = ErrorCode::new(113);
 /// An assignment to something that is not a variable, field or element.
 pub const INVALID_ASSIGNMENT_TARGET: ErrorCode = ErrorCode::new(114);
+/// `if x {`: a condition without parentheses.
+pub const CONDITION_WITHOUT_PARENTHESES: ErrorCode = ErrorCode::new(115);
+/// `for (k in obj)`: Peras iterates values with `for…of`.
+pub const FOR_IN: ErrorCode = ErrorCode::new(116);
+/// `break` or `continue` outside a loop.
+pub const JUMP_OUTSIDE_LOOP: ErrorCode = ErrorCode::new(117);
+/// `name?: T`: optional values are written `Option<T>`.
+pub const OPTIONAL_MARKER: ErrorCode = ErrorCode::new(118);
+/// `if (c);`: a `;` that empties the body of an `if` or a loop.
+pub const EMPTY_BODY: ErrorCode = ErrorCode::new(119);
 
 /// One entry of the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +137,15 @@ pub const REGISTRY: &[CodeInfo] = &[
         "E0113"
     ),
     active!(INVALID_ASSIGNMENT_TARGET, "parse-invalid-target", "E0114"),
+    active!(
+        CONDITION_WITHOUT_PARENTHESES,
+        "parse-condition-parentheses",
+        "E0115"
+    ),
+    active!(FOR_IN, "parse-for-in", "E0116"),
+    active!(JUMP_OUTSIDE_LOOP, "parse-jump-outside-loop", "E0117"),
+    active!(OPTIONAL_MARKER, "parse-optional-marker", "E0118"),
+    active!(EMPTY_BODY, "parse-empty-body", "E0119"),
 ];
 
 /// Looks up a code in the registry.

@@ -1,0 +1,21 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0116-for-in.peras
+---
+ast:
+  (fn f (params (samples Array<f32>)) -> f32
+    (let total: f32 0.0)
+    (for-of (const sample) samples
+      (block
+        (+= total sample)
+      )
+    )
+    (return total)
+  )
+diagnostics:
+  error[E0116] parse-for-in
+    primary 4:21-4:23: parse-for-in-label
+    cause: parse-for-in-why
+    fix: parse-for-in-fix
+      4:21-4:23 -> "of"

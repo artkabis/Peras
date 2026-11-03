@@ -1,0 +1,20 @@
+// Day 5: structures, with the spec's own example.
+export struct Buffer {
+  samples: Array<f32>;
+}
+
+struct Point {
+  x: f64,
+  y: f64,
+}
+
+struct Pixel { r: u8; g: u8; b: u8; a: u8 }
+
+struct Empty {}
+
+export fn peak(buf: Buffer): Option<f32> {
+  if (buf.samples.length == 0) return None;
+  let max: f32 = 0.0;
+  for (const s of buf.samples) { if (s.abs() > max) max = s.abs(); }
+  return Some(max);
+}

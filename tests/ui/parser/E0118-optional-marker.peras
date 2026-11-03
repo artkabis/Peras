@@ -1,0 +1,7 @@
+// E0118: optional values have the type Option<T>.
+struct User {
+  name: String;
+  email?: String;
+  tags?: Array<String>;
+}
+fn greet(name?: String): void {}

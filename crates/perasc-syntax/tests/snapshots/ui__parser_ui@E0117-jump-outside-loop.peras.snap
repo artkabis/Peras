@@ -1,0 +1,28 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0117-jump-outside-loop.peras
+---
+ast:
+  (fn check (params (x i32)) -> void
+    (if (< x 0)
+      (block
+        (break)
+      )
+    )
+    (continue)
+    (while true
+      (block
+        (break)
+      )
+    )
+  )
+diagnostics:
+  error[E0117] parse-jump-outside-loop { keyword: "break" }
+    primary 4:5-4:10: parse-jump-outside-loop-label { keyword: "break" }
+    cause: parse-jump-outside-loop-why { keyword: "break" }
+    fix: parse-jump-outside-loop-fix { keyword: "break" }
+  error[E0117] parse-jump-outside-loop { keyword: "continue" }
+    primary 6:3-6:11: parse-jump-outside-loop-label { keyword: "continue" }
+    cause: parse-jump-outside-loop-why { keyword: "continue" }
+    fix: parse-jump-outside-loop-fix { keyword: "continue" }

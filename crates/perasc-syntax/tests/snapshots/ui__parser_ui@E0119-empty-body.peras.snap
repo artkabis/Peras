@@ -1,0 +1,39 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/E0119-empty-body.peras
+---
+ast:
+  (fn f (params (user User)) -> void
+    (if (. user isAdmin)
+      (block
+      )
+    )
+    (block
+      (call grantAccess)
+    )
+    (for (let i 0) (< i 3) (++ i)
+      (block
+      )
+    )
+    (while (call waiting)
+      (block
+      )
+    )
+  )
+diagnostics:
+  error[E0119] parse-empty-body { keyword: "if" }
+    primary 3:20-3:21: parse-empty-body-label { keyword: "if" }
+    cause: parse-empty-body-why
+    fix: parse-empty-body-fix
+      3:20-3:21 -> ""
+  error[E0119] parse-empty-body { keyword: "for" }
+    primary 7:30-7:31: parse-empty-body-label { keyword: "for" }
+    cause: parse-empty-body-why
+    fix: parse-empty-body-fix
+      7:30-7:31 -> " {}"
+  error[E0119] parse-empty-body { keyword: "while" }
+    primary 8:20-8:21: parse-empty-body-label { keyword: "while" }
+    cause: parse-empty-body-why
+    fix: parse-empty-body-fix
+      8:20-8:21 -> " {}"

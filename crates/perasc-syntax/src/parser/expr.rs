@@ -140,6 +140,21 @@ impl Parser<'_> {
                 let span = self.since(token.span.start);
                 self.alloc(ExprKind::Paren(inner), span)
             }
+            TokenKind::LBracket => {
+                self.bump();
+                let mut items = Vec::new();
+                while !self.at(TokenKind::RBracket) && !self.at_eof() {
+                    items.push(self.expr());
+                    if self.recovering || self.eat(TokenKind::Comma).is_none() {
+                        break;
+                    }
+                }
+                if !self.recovering {
+                    self.expect_close(token, TokenKind::RBracket, "]");
+                }
+                let span = self.since(token.span.start);
+                self.alloc(ExprKind::Array(items), span)
+            }
             TokenKind::Error => {
                 // Already reported by the lexer: an error node, without a second error.
                 self.bump();

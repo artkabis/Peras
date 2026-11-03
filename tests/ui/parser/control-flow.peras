@@ -1,0 +1,22 @@
+// Day 5: every control-flow form, which must parse without error.
+export fn stats(xs: Array<f32>, limit: i32): f32 {
+  let total: f32 = 0.0;
+  for (let i: i32 = 0; i < xs.length; i++) {
+    if (i >= limit) break;
+    if (xs[i] < 0.0) continue;
+    total += xs[i];
+  }
+  for (const x of xs) total = total + x;
+  let n = 0;
+  while (n < 3) {
+    n += 1;
+  }
+  for (;;) {
+    if (n == 0) break; else if (n < 0) { return 0.0; } else n--;
+  }
+  {
+    const steps = [1, 2, 3,];
+    const grid = [[0, 1], [1, 0]];
+  }
+  return total;
+}

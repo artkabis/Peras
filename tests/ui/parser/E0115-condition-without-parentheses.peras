@@ -1,0 +1,7 @@
+// E0115: conditions are written in parentheses.
+fn f(count: i32): void {
+  if count > 0 {
+    log("ready");
+  }
+  while busy() { wait(); }
+}

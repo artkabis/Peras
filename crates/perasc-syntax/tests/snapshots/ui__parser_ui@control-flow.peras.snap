@@ -1,0 +1,49 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/control-flow.peras
+---
+ast:
+  (fn stats export (params (xs Array<f32>) (limit i32)) -> f32
+    (let total: f32 0.0)
+    (for (let i: i32 0) (< i (. xs length)) (++ i)
+      (block
+        (if (>= i limit)
+          (break)
+        )
+        (if (< (index xs i) 0.0)
+          (continue)
+        )
+        (+= total (index xs i))
+      )
+    )
+    (for-of (const x) xs
+      (= total (+ total x))
+    )
+    (let n 0)
+    (while (< n 3)
+      (block
+        (+= n 1)
+      )
+    )
+    (for _ _ _
+      (block
+        (if-else (== n 0)
+          (break)
+          (if-else (< n 0)
+            (block
+              (return 0.0)
+            )
+            (-- n)
+          )
+        )
+      )
+    )
+    (block
+      (const steps [1 2 3])
+      (const grid [[0 1] [1 0]])
+    )
+    (return total)
+  )
+diagnostics:
+  none

@@ -106,10 +106,22 @@ fn every_parser_error_has_its_case() {
         ("const k;", codes::CONST_WITHOUT_VALUE),
         ("let q = (a = b);", codes::ASSIGNMENT_IN_EXPRESSION),
         ("f() = 1;", codes::INVALID_ASSIGNMENT_TARGET),
+        ("if x > 0 { run(); }", codes::CONDITION_WITHOUT_PARENTHESES),
+        (
+            "while busy { wait(); }",
+            codes::CONDITION_WITHOUT_PARENTHESES,
+        ),
+        ("for (const k in xs) {}", codes::FOR_IN),
+        ("break;", codes::JUMP_OUTSIDE_LOOP),
+        ("if (ok) { continue; }", codes::JUMP_OUTSIDE_LOOP),
+        ("if (ok);\n{ run(); }", codes::EMPTY_BODY),
+        ("for (;;);", codes::EMPTY_BODY),
     ] {
         assert_eq!(codes_of(&in_fn(body)), [code], "{body}");
     }
     assert_eq!(codes_of("log(1);"), [codes::EXPECTED_ITEM]);
+    assert_eq!(codes_of("struct P { x?: f32; }"), [codes::OPTIONAL_MARKER]);
+    assert_eq!(codes_of("fn f(x?: f32): void {}"), [codes::OPTIONAL_MARKER]);
     assert_eq!(codes_of("function f(): void {}"), [codes::REMOVED_KEYWORD]);
 }
 
@@ -227,6 +239,7 @@ const CORPUS: &[&str] = &[
     "fn f(): void { let z = a | b != c; }",
     "fn f(): void { const k; let q = (a = b); let r = (a += b); f() = 1; 2++; }",
     "log(1);\nfn f(): void {",
+    "struct U { a?: f32; }\nfn f(): void { if x { } for (const k in xs) {} break; if (a); for (;;);\n}",
 ];
 
 #[test]
@@ -297,4 +310,109 @@ fn random_token_soup_never_panics_and_stays_in_bounds() {
             assert!(e.span.start <= e.span.end, "{source:?}");
         }
     }
+}
+
+#[test]
+fn control_flow() {
+    let source = in_fn(
+        "if (a) b(); else if (c) { d(); } else e();\nwhile (x < 10) x++;\nfor (let i: i32 = 0; i < n; i += 1) { if (i == 3) continue; if (i == 7) break; }\nfor (;;) {}\nfor (const s of xs) total += s;\nfor (let p: Array<f32> of rows) {}\n{ let inner = [1, 2.5, [x],]; }",
+    );
+    let parsed = parse(&source);
+    assert_eq!(parsed.diagnostics, []);
+    insta::assert_snapshot!(parsed.ast.dump(), @r"
+    (fn f (params) -> void
+      (if-else a
+        (call b)
+        (if-else c
+          (block
+            (call d)
+          )
+          (call e)
+        )
+      )
+      (while (< x 10)
+        (++ x)
+      )
+      (for (let i: i32 0) (< i n) (+= i 1)
+        (block
+          (if (== i 3)
+            (continue)
+          )
+          (if (== i 7)
+            (break)
+          )
+        )
+      )
+      (for _ _ _
+        (block
+        )
+      )
+      (for-of (const s) xs
+        (+= total s)
+      )
+      (for-of (let p: Array<f32>) rows
+        (block
+        )
+      )
+      (block
+        (let inner [1 2.5 [x]])
+      )
+    )
+    ");
+}
+
+#[test]
+fn a_dangling_else_belongs_to_the_nearest_if() {
+    let parsed = parse(&in_fn("if (a) if (b) x(); else y();"));
+    assert_eq!(parsed.diagnostics, []);
+    assert!(
+        parsed.ast.dump().contains("(if a\n    (if-else b"),
+        "{}",
+        parsed.ast.dump()
+    );
+}
+
+#[test]
+fn structs() {
+    let parsed = parse(
+        "export struct Buffer {\n  samples: Array<f32>;\n  rate: i32,\n  tag: String\n}\nstruct Empty {}\n",
+    );
+    assert_eq!(parsed.diagnostics, []);
+    insta::assert_snapshot!(parsed.ast.dump(), @r"
+    (struct Buffer export (samples Array<f32>) (rate i32) (tag String))
+    (struct Empty)
+    ");
+}
+
+#[test]
+fn the_empty_body_fix_attaches_what_follows() {
+    let source = in_fn("if (ok);\n{ run(); }");
+    let parsed = parse(&source);
+    let fixed = apply_fix(&source, &parsed.diagnostics[0]);
+    let reparsed = parse(&fixed);
+    assert_eq!(reparsed.diagnostics, []);
+    assert!(
+        reparsed.ast.dump().contains("(if ok\n    (block"),
+        "{}",
+        reparsed.ast.dump()
+    );
+}
+
+#[test]
+fn statement_nesting_is_bounded_too() {
+    let deep = format!(
+        "fn f(): void {{ {}{} if (x) {} {}; }}",
+        "{".repeat(50_000),
+        "}".repeat(50_000),
+        "if (x) ".repeat(50_000),
+        "y()"
+    );
+    let handle = std::thread::Builder::new()
+        .stack_size(1 << 20)
+        .spawn(move || codes_of(&deep));
+    let result = handle.ok().and_then(|h| h.join().ok());
+    assert_eq!(
+        result,
+        Some(vec![codes::NESTING_TOO_DEEP, codes::NESTING_TOO_DEEP])
+    );
 }

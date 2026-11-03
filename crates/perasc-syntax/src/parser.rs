@@ -6,14 +6,15 @@
 //! Tokens the lexer already reported ([`TokenKind::Error`]) never cause a second
 //! error. Nesting is bounded ([`MAX_DEPTH`]) so no input can exhaust the stack.
 
+mod control;
 mod errors;
 mod expr;
 
 use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
-    Ast, Block, Convention, FnDecl, Ident, Item, ItemKind, Local, Param, Stmt, StmtKind, Type,
-    TypeKind,
+    Ast, Block, Convention, Field, FnDecl, Ident, Item, ItemKind, Local, Param, Stmt, StmtKind,
+    StructDecl, Type, TypeKind,
 };
 use crate::lexer::lex;
 use crate::token::{Token, TokenKind};
@@ -60,6 +61,7 @@ enum NameOf {
     Parameter,
     Field,
     Attribute,
+    Struct,
 }
 
 impl NameOf {
@@ -70,6 +72,7 @@ impl NameOf {
             Self::Parameter => "parameter",
             Self::Field => "field",
             Self::Attribute => "attribute",
+            Self::Struct => "struct",
         }
     }
 }
@@ -86,6 +89,8 @@ struct Parser<'src> {
     recovering: bool,
     /// End offsets of the strings the lexer reported unterminated.
     unterminated: Vec<u32>,
+    /// Number of loops around the current statement, for `break` and `continue`.
+    loop_depth: usize,
 }
 
 const EOF: Token = Token {
@@ -104,6 +109,7 @@ impl<'src> Parser<'src> {
             depth: 0,
             recovering: false,
             unterminated: Vec::new(),
+            loop_depth: 0,
         }
     }
 
@@ -299,7 +305,15 @@ impl<'src> Parser<'src> {
                     self.bump();
                     break;
                 }
-                TokenKind::Let | TokenKind::Const | TokenKind::Return | TokenKind::Fn
+                TokenKind::Let
+                | TokenKind::Const
+                | TokenKind::Return
+                | TokenKind::Fn
+                | TokenKind::If
+                | TokenKind::For
+                | TokenKind::While
+                | TokenKind::Break
+                | TokenKind::Continue
                     if depth == 0 && self.starts_line(token) =>
                 {
                     break;
@@ -326,6 +340,7 @@ impl<'src> Parser<'src> {
                     depth = depth.saturating_sub(1);
                 }
                 TokenKind::Fn
+                | TokenKind::Struct
                 | TokenKind::Export
                 | TokenKind::Async
                 | TokenKind::At
@@ -463,6 +478,13 @@ impl<'src> Parser<'src> {
         match self.peek().kind {
             TokenKind::Fn => {}
             TokenKind::Ident if self.at_word("function") => {}
+            TokenKind::Struct => {
+                let decl = self.struct_decl(exported)?;
+                return Some(Item {
+                    kind: ItemKind::Struct(decl),
+                    span: self.since(start),
+                });
+            }
             TokenKind::Let | TokenKind::Const => {
                 let local = self.local()?;
                 self.expect_semicolon();
@@ -485,7 +507,10 @@ impl<'src> Parser<'src> {
         let name = self.ident(NameOf::Function)?;
         let params = self.params()?;
         let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
-        let body = self.block()?;
+        let outer_loops = std::mem::take(&mut self.loop_depth);
+        let body = self.block();
+        self.loop_depth = outer_loops;
+        let body = body?;
         Some(Item {
             kind: ItemKind::Fn(FnDecl {
                 attributes,
@@ -524,6 +549,7 @@ impl<'src> Parser<'src> {
     /// `name: [inout|sink] Type`
     fn param(&mut self) -> Option<Param> {
         let name = self.ident(NameOf::Parameter)?;
+        let optional = self.eat(TokenKind::Question);
         self.expect(TokenKind::Colon, ":")?;
         let convention = if self.eat(TokenKind::Inout).is_some() {
             Convention::Inout
@@ -533,11 +559,77 @@ impl<'src> Parser<'src> {
             Convention::Let
         };
         let ty = self.ty();
+        self.check_optional(optional, &ty);
         Some(Param {
             name,
             convention,
             ty,
         })
+    }
+
+    /// `E0118`: `name?: T` is written `name: Option<T>`.
+    fn check_optional(&mut self, marker: Option<Token>, ty: &Type) {
+        if let Some(marker) = marker {
+            let type_text = self.slice(ty.span).to_owned();
+            self.soft_error(errors::optional_marker(marker.span, ty.span, &type_text));
+        }
+    }
+
+    /// `struct Name { field: Type; … }`, fields separated by `;` or `,`.
+    fn struct_decl(&mut self, exported: bool) -> Option<StructDecl> {
+        self.bump(); // `struct`
+        let name = self.ident(NameOf::Struct)?;
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let mut fields = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at_eof() {
+            self.recovering = false;
+            let Some(field_name) = self.ident(NameOf::Field) else {
+                self.recover_field();
+                continue;
+            };
+            let optional = self.eat(TokenKind::Question);
+            if self.expect(TokenKind::Colon, ":").is_none() {
+                self.recover_field();
+                continue;
+            }
+            let ty = self.ty();
+            self.check_optional(optional, &ty);
+            fields.push(Field {
+                name: field_name,
+                ty,
+            });
+            if self.eat(TokenKind::Semicolon).is_none()
+                && self.eat(TokenKind::Comma).is_none()
+                && !self.at(TokenKind::RBrace)
+            {
+                self.expect_semicolon();
+            }
+        }
+        if self.at_eof() {
+            self.recovering = false;
+        }
+        self.expect_close(open, TokenKind::RBrace, "}");
+        Some(StructDecl {
+            exported,
+            name,
+            fields,
+        })
+    }
+
+    /// Skips past the end of a broken field: after `;` or `,`, or before `}`.
+    fn recover_field(&mut self) {
+        loop {
+            match self.peek().kind {
+                TokenKind::Eof | TokenKind::RBrace => break,
+                TokenKind::Semicolon | TokenKind::Comma => {
+                    self.bump();
+                    break;
+                }
+                _ => {
+                    self.bump();
+                }
+            }
+        }
     }
 
     /// Skips to the `,` or `)` ending a parameter, without consuming it.
@@ -585,8 +677,20 @@ impl<'src> Parser<'src> {
     /// A statement; `None` for an empty statement (`;`).
     fn stmt(&mut self) -> Option<Stmt> {
         let start = self.peek().span.start;
+        if !self.enter() {
+            self.recover_statement();
+            return Some(Stmt {
+                kind: StmtKind::Error,
+                span: self.since(start),
+            });
+        }
         let kind = match self.peek().kind {
             TokenKind::Let | TokenKind::Const => self.local_stmt(),
+            TokenKind::LBrace => self.block_stmt(),
+            TokenKind::If => self.if_stmt(),
+            TokenKind::While => self.while_stmt(),
+            TokenKind::For => self.for_stmt(),
+            TokenKind::Break | TokenKind::Continue => self.jump_stmt(),
             TokenKind::Ident if self.at_word("var") && self.nth(1).kind == TokenKind::Ident => {
                 let token = self.peek();
                 self.soft_error(errors::removed_keyword(token.span, "var", "let"));
@@ -604,10 +708,12 @@ impl<'src> Parser<'src> {
             }
             TokenKind::Semicolon => {
                 self.bump(); // An empty statement.
+                self.leave();
                 return None;
             }
             _ => self.expr_stmt(),
         };
+        self.leave();
         Some(Stmt {
             kind,
             span: self.since(start),
@@ -645,8 +751,17 @@ impl<'src> Parser<'src> {
         })
     }
 
-    /// An expression statement, an assignment or an increment.
+    /// An expression statement, an assignment or an increment, `;` included.
     fn expr_stmt(&mut self) -> StmtKind {
+        let kind = self.simple_stmt();
+        if !matches!(kind, StmtKind::Error) {
+            self.expect_semicolon();
+        }
+        kind
+    }
+
+    /// An expression, an assignment or an increment, without its `;`.
+    fn simple_stmt(&mut self) -> StmtKind {
         let target = self.expr();
         if self.recovering {
             // The expression already failed: what follows is not an assignment.
@@ -658,16 +773,13 @@ impl<'src> Parser<'src> {
             self.bump();
             self.check_target(target);
             let value = self.expr();
-            self.expect_semicolon();
             return StmtKind::Assign { target, op, value };
         }
         if let Some(op) = errors::step_op(token.kind) {
             self.bump();
             self.check_target(target);
-            self.expect_semicolon();
             return StmtKind::Step { target, op };
         }
-        self.expect_semicolon();
         StmtKind::Expr(target)
     }
 

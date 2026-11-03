@@ -110,6 +110,28 @@ pub enum ItemKind {
     Fn(FnDecl),
     /// A module-level `let` or `const`.
     Global(Local),
+    /// `struct Name { field: Type; … }`
+    Struct(StructDecl),
+}
+
+/// A structure declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDecl {
+    /// Preceded by `export`.
+    pub exported: bool,
+    /// The structure name.
+    pub name: Ident,
+    /// Fields, in order.
+    pub fields: Vec<Field>,
+}
+
+/// A structure field: `name: Type`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    /// Its name.
+    pub name: Ident,
+    /// Its type.
+    pub ty: Type,
 }
 
 /// A function declaration.
@@ -219,6 +241,52 @@ pub enum StmtKind {
         /// `++` or `--`.
         op: StepOp,
     },
+    /// `{ statements }`
+    Block(Block),
+    /// `if (cond) then else otherwise`
+    If {
+        /// The condition.
+        cond: ExprId,
+        /// Run when it holds; a block or a single statement.
+        then: Box<Stmt>,
+        /// Run otherwise, if written; another `if` for `else if`.
+        otherwise: Option<Box<Stmt>>,
+    },
+    /// `while (cond) body`
+    While {
+        /// The condition, checked before each iteration.
+        cond: ExprId,
+        /// The loop body.
+        body: Box<Stmt>,
+    },
+    /// `for (init; cond; update) body`
+    For {
+        /// Run once before the loop: `let i = 0` or an assignment.
+        init: Option<Box<Stmt>>,
+        /// Checked before each iteration; none means forever.
+        cond: Option<ExprId>,
+        /// Run after each iteration: `i++`.
+        update: Option<Box<Stmt>>,
+        /// The loop body.
+        body: Box<Stmt>,
+    },
+    /// `for (const item of items) body`
+    ForOf {
+        /// `let` (true) or `const` (false).
+        mutable: bool,
+        /// The loop variable.
+        name: Ident,
+        /// Its annotation, if written.
+        ty: Option<Type>,
+        /// What is iterated.
+        iterable: ExprId,
+        /// The loop body.
+        body: Box<Stmt>,
+    },
+    /// `break;`
+    Break,
+    /// `continue;`
+    Continue,
     /// A statement that failed to parse, already reported.
     Error,
 }
@@ -282,6 +350,8 @@ pub enum ExprKind {
     String(String),
     /// `true` or `false`.
     Bool(bool),
+    /// `[a, b, c]`.
+    Array(Vec<ExprId>),
     /// A variable or function name.
     Name(Symbol),
     /// `( inner )`, kept so that later passes and fixes see the parentheses.
@@ -449,6 +519,22 @@ impl Ast {
                 ItemKind::Global(local) => {
                     let _ = writeln!(out, "{}", self.local(local));
                 }
+                ItemKind::Struct(st) => {
+                    let mut line = format!("(struct {}", self.name(st.name.symbol));
+                    if st.exported {
+                        line.push_str(" export");
+                    }
+                    for field in &st.fields {
+                        let _ = write!(
+                            line,
+                            " ({} {})",
+                            self.name(field.name.symbol),
+                            self.ty(&field.ty)
+                        );
+                    }
+                    line.push(')');
+                    let _ = writeln!(out, "{line}");
+                }
             }
         }
         out
@@ -486,7 +572,7 @@ impl Ast {
         }
         let _ = writeln!(out, "{head}");
         for stmt in &f.body.stmts {
-            let _ = writeln!(out, "  {}", self.stmt(stmt));
+            self.dump_stmt(out, stmt, 1);
         }
         let _ = writeln!(out, ")");
     }
@@ -515,8 +601,89 @@ impl Ast {
         s
     }
 
+    /// One statement per line; nested statements are indented one more level.
+    fn dump_stmt(&self, out: &mut String, stmt: &Stmt, level: usize) {
+        let pad = "  ".repeat(level);
+        let nested = |out: &mut String, head: String, children: &[&Stmt]| {
+            let _ = writeln!(out, "{pad}{head}");
+            for child in children {
+                self.dump_stmt(out, child, level + 1);
+            }
+            let _ = writeln!(out, "{pad})");
+        };
+        match &stmt.kind {
+            StmtKind::Block(block) => {
+                let children: Vec<&Stmt> = block.stmts.iter().collect();
+                nested(out, "(block".to_owned(), &children);
+            }
+            StmtKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                let mut children = vec![then.as_ref()];
+                let head = if let Some(other) = otherwise {
+                    children.push(other.as_ref());
+                    format!("(if-else {}", self.sexpr(*cond))
+                } else {
+                    format!("(if {}", self.sexpr(*cond))
+                };
+                nested(out, head, &children);
+            }
+            StmtKind::While { cond, body } => {
+                nested(
+                    out,
+                    format!("(while {}", self.sexpr(*cond)),
+                    &[body.as_ref()],
+                );
+            }
+            StmtKind::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
+                let part =
+                    |s: &Option<Box<Stmt>>| s.as_ref().map_or("_".to_owned(), |s| self.stmt(s));
+                let cond = cond.map_or("_".to_owned(), |c| self.sexpr(c));
+                let head = format!("(for {} {cond} {}", part(init), part(update));
+                nested(out, head, &[body.as_ref()]);
+            }
+            StmtKind::ForOf {
+                mutable,
+                name,
+                ty,
+                iterable,
+                body,
+            } => {
+                let keyword = if *mutable { "let" } else { "const" };
+                let ty = ty
+                    .as_ref()
+                    .map(|t| format!(": {}", self.ty(t)))
+                    .unwrap_or_default();
+                let head = format!(
+                    "(for-of ({keyword} {}{ty}) {}",
+                    self.name(name.symbol),
+                    self.sexpr(*iterable)
+                );
+                nested(out, head, &[body.as_ref()]);
+            }
+            _ => {
+                let _ = writeln!(out, "{pad}{}", self.stmt(stmt));
+            }
+        }
+    }
+
+    /// A simple statement on one line.
     fn stmt(&self, stmt: &Stmt) -> String {
         match &stmt.kind {
+            StmtKind::Break => "(break)".to_owned(),
+            StmtKind::Continue => "(continue)".to_owned(),
+            StmtKind::Block(_)
+            | StmtKind::If { .. }
+            | StmtKind::While { .. }
+            | StmtKind::For { .. }
+            | StmtKind::ForOf { .. } => "(…)".to_owned(),
             StmtKind::Local(local) => self.local(local),
             StmtKind::Return(None) => "(return)".to_owned(),
             StmtKind::Return(Some(value)) => format!("(return {})", self.sexpr(*value)),
@@ -551,6 +718,10 @@ impl Ast {
             ExprKind::Float(x) => format!("{x:?}"),
             ExprKind::String(s) => format!("{s:?}"),
             ExprKind::Bool(b) => b.to_string(),
+            ExprKind::Array(items) => {
+                let items: Vec<String> = items.iter().map(|i| self.sexpr(*i)).collect();
+                format!("[{}]", items.join(" "))
+            }
             ExprKind::Name(s) => self.name(*s).to_owned(),
             ExprKind::Paren(inner) => format!("(paren {})", self.sexpr(*inner)),
             ExprKind::Unary { op, operand } => {

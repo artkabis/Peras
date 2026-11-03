@@ -154,6 +154,7 @@ parse-expected-name = { $what ->
     [parameter] nom de paramètre attendu
     [field] nom de champ attendu
     [attribute] nom d’attribut attendu
+    [struct] nom de structure attendu
    *[other] nom attendu
 }, trouvé { $eof ->
     [1] la fin du fichier
@@ -231,7 +232,7 @@ parse-expected-item = déclaration attendue, trouvé { $eof ->
    *[other] `{ $found }`
 }
 parse-expected-item-label = seules des déclarations peuvent apparaître au niveau du module
-parse-expected-item-why = Un module contient des déclarations : `fn`, `let` et `const`, éventuellement précédées de `export` ou d’un attribut comme `@frame`. Les instructions vont dans le corps d’une fonction.
+parse-expected-item-why = Un module contient des déclarations : `fn`, `struct`, `let` et `const`, éventuellement précédées de `export` ou d’un attribut comme `@frame`. Les instructions vont dans le corps d’une fonction.
 parse-expected-item-fix = déplace ce code dans une fonction
 
 # E0111
@@ -258,6 +259,36 @@ parse-invalid-target = impossible d’affecter cette expression
 parse-invalid-target-label = ni une variable, ni un champ, ni un élément
 parse-invalid-target-why = Seuls une variable (`x`), un champ (`p.x`) ou un élément (`a[i]`) peuvent être affectés, incrémentés ou décrémentés.
 parse-invalid-target-fix = affecte plutôt une variable, un champ ou un élément
+
+# E0115
+parse-condition-parentheses = la condition de `{ $keyword }` demande des parenthèses
+parse-condition-parentheses-label = cette condition
+parse-condition-parentheses-why = Comme en TypeScript, la condition de `if` et de `while` s’écrit entre parenthèses : `if (x > 0)`.
+parse-condition-parentheses-fix = mets la condition entre parenthèses
+
+# E0116
+parse-for-in = `for…in` n’existe pas en Peras
+parse-for-in-label = écris `of`
+parse-for-in-why = En JavaScript, `for…in` parcourt les clés d’un objet, héritées comprises, sous forme de chaînes ; Peras n’a que `for…of`, qui parcourt les valeurs d’une collection.
+parse-for-in-fix = remplace `in` par `of`
+
+# E0117
+parse-jump-outside-loop = `{ $keyword }` hors d’une boucle
+parse-jump-outside-loop-label = aucune boucle autour de ce `{ $keyword }`
+parse-jump-outside-loop-why = `{ $keyword }` ne fonctionne qu’à l’intérieur d’un `for` ou d’un `while`, dans la même fonction.
+parse-jump-outside-loop-fix = supprime `{ $keyword }`, ou utilise `return` pour quitter la fonction
+
+# E0118
+parse-optional-marker = `?:` n’existe pas en Peras
+parse-optional-marker-label = marqueur optionnel
+parse-optional-marker-why = Peras n’a pas de `undefined` ni de `null` implicites : une valeur qui peut manquer a le type `Option<T>`, et le compilateur oblige à traiter les deux cas.
+parse-optional-marker-fix = écris le type `Option<{ $type }>`
+
+# E0119
+parse-empty-body = `;` juste après `{ $keyword }` le laisse vide
+parse-empty-body-label = ce `;` termine le `{ $keyword }`
+parse-empty-body-why = En JavaScript, `if (c); {"{"} … {"}"}` exécute le bloc à chaque fois : le `;` est tout le corps. Peras refuse cette erreur silencieuse ; un corps volontairement vide s’écrit `{"{"}{"}"}`.
+parse-empty-body-fix = supprime le `;`, ou écris `{"{"}{"}"}` pour un corps vide
 
 ## Rendu des diagnostics
 

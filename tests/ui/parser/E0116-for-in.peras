@@ -1,0 +1,8 @@
+// E0116: Peras iterates values with for…of.
+fn f(samples: Array<f32>): f32 {
+  let total: f32 = 0.0;
+  for (const sample in samples) {
+    total += sample;
+  }
+  return total;
+}

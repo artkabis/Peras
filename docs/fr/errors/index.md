@@ -29,3 +29,8 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0112](E0112.md) | Const sans valeur                             | parser |
 | [E0113](E0113.md) | Affectation utilisée comme expression         | parser |
 | [E0114](E0114.md) | Cible d’affectation invalide                  | parser |
+| [E0115](E0115.md) | Condition sans parenthèses                    | parser |
+| [E0116](E0116.md) | Boucle `for…in`                               | parser |
+| [E0117](E0117.md) | `break` ou `continue` hors d’une boucle       | parser |
+| [E0118](E0118.md) | Marqueur optionnel `?:`                       | parser |
+| [E0119](E0119.md) | Corps vide après `;`                          | parser |

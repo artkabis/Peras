@@ -29,3 +29,8 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0112](E0112.md) | Const without a value                    | parser |
 | [E0113](E0113.md) | Assignment used as an expression         | parser |
 | [E0114](E0114.md) | Invalid assignment target                | parser |
+| [E0115](E0115.md) | Condition without parentheses            | parser |
+| [E0116](E0116.md) | `for…in` loop                            | parser |
+| [E0117](E0117.md) | `break` or `continue` outside a loop     | parser |
+| [E0118](E0118.md) | Optional marker `?:`                     | parser |
+| [E0119](E0119.md) | Empty body after `;`                     | parser |
