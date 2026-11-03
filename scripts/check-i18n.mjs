@@ -5,22 +5,34 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = join(import.meta.dirname, "..");
+/** @type {string[]} */
 const problems = [];
 
-/** Message ids declared in a Fluent file (`key = value` at the start of a line). */
+/**
+ * Message ids declared in a Fluent file (`key = value` at the start of a line).
+ * @param {string} file
+ * @returns {Set<string>}
+ */
 function fluentKeys(file) {
+  /** @type {Set<string>} */
   const keys = new Set();
   for (const line of readFileSync(file, "utf8").split("\n")) {
     const match = /^([a-zA-Z][\w-]*)\s*=/.exec(line);
-    if (match) keys.add(match[1]);
+    if (match?.[1]) keys.add(match[1]);
   }
   return keys;
 }
 
-/** All files under a directory, as paths relative to it. */
+/**
+ * All files under a directory, as paths relative to it.
+ * @param {string} dir
+ * @returns {string[]}
+ */
 function filesUnder(dir) {
   if (!existsSync(dir)) return [];
+  /** @type {string[]} */
   const out = [];
+  /** @param {string} current */
   const walk = (current) => {
     for (const name of readdirSync(current)) {
       const full = join(current, name);
@@ -29,7 +41,7 @@ function filesUnder(dir) {
     }
   };
   walk(dir);
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 // 1. Fluent messages: every crates/*/messages/en.ftl key must be in fr.ftl.
@@ -51,14 +63,15 @@ for (const crate of readdirSync(cratesDir)) {
 // 2. Documentation: every page in docs/en must exist in docs/fr.
 const frDocs = new Set(filesUnder(join(root, "docs", "fr")));
 for (const page of filesUnder(join(root, "docs", "en"))) {
-  if (!frDocs.has(page)) problems.push(`docs/fr/${page} is missing (translation of docs/en/${page})`);
+  if (!frDocs.has(page))
+    problems.push(`docs/fr/${page} is missing (translation of docs/en/${page})`);
 }
 
 // 3. Root files with a French twin.
-for (const [en, fr] of [
+for (const [en, fr] of /** @type {[string, string][]} */ ([
   ["README.md", "README.fr.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.fr.md"],
-]) {
+])) {
   if (existsSync(join(root, en)) && !existsSync(join(root, fr))) {
     problems.push(`${fr} is missing (translation of ${en})`);
   }
