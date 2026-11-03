@@ -290,6 +290,155 @@ parse-empty-body-label = ce `;` termine le `{ $keyword }`
 parse-empty-body-why = En JavaScript, `if (c); {"{"} … {"}"}` exécute le bloc à chaque fois : le `;` est tout le corps. Peras refuse cette erreur silencieuse ; un corps volontairement vide s’écrit `{"{"}{"}"}`.
 parse-empty-body-fix = supprime le `;`, ou écris `{"{"}{"}"}` pour un corps vide
 
+## Noms et types (E0200–E0299)
+
+check-did-you-mean = voulais-tu dire `{ $name }` ?
+
+# E0200
+check-undefined = `{ $name }` n’est pas défini
+check-undefined-label = introuvable dans cette portée
+check-undefined-why = Un nom doit être déclaré avant d’être utilisé, dans cette portée ou une portée englobante : avec `let`, `const`, `fn` ou `struct`, ou comme paramètre.
+check-undefined-fix = déclare-le, ou vérifie son orthographe
+
+# E0201
+check-shadowing = `{ $name }` masque une autre déclaration
+check-shadowing-label = ce `{ $name }` masque l’autre
+check-shadowing-previous-label = déclaré d’abord ici
+check-shadowing-why = Peras refuse le masquage : deux variables de même nom dans des portées imbriquées rendent facile de lire ou de modifier la mauvaise.
+check-shadowing-fix = donne un autre nom à ce `{ $name }`
+
+# E0202
+check-duplicate = `{ $name }` est déclaré deux fois
+check-duplicate-label = déclaré à nouveau ici
+check-duplicate-previous-label = déclaré d’abord ici
+check-duplicate-why = Un nom se déclare une fois par portée : fonctions, structures et constantes du module partagent un même espace de noms, comme les champs d’une structure et les paramètres d’une fonction.
+check-duplicate-fix = renomme ou supprime l’un des deux `{ $name }`
+
+# E0203
+check-unused = { $what ->
+    [parameter] le paramètre
+   *[other] la variable
+} `{ $name }` n’est jamais lu
+check-unused-label = jamais lu
+check-unused-why = Une valeur jamais lue est du code mort, et souvent un bug : une faute de frappe, ou un usage oublié. Un nom qui commence par `_` marque un paramètre comme volontairement inutilisé.
+check-unused-fix-parameter = s’il est inutilisé volontairement, nomme-le `_{ $name }`
+check-unused-fix-variable = supprime-la, ou utilise sa valeur
+
+# E0205
+check-immutable = impossible de modifier { $kind ->
+    [parameter] le paramètre
+   *[other] la constante
+} `{ $name }`
+check-immutable-label = modifié ici
+check-immutable-declared-label = { $kind ->
+    [parameter] paramètre en lecture seule
+   *[other] déclaré avec `const`
+}
+check-immutable-why = Un `const` ne change jamais, et un paramètre est en lecture seule sauf s’il est passé `inout`, ce qui montre à l’appelant que la fonction le modifie.
+check-immutable-fix-const = déclare `{ $name }` avec `let`
+check-immutable-fix-parameter = passe `{ $name }` en `inout`
+
+# E0210
+check-mismatch = types incompatibles : `{ $expected }` attendu, `{ $found }` trouvé
+check-mismatch-label = ceci est `{ $found }`
+check-mismatch-why = Peras ne convertit jamais une valeur implicitement, pas même entre nombres : `i32 + f64` est une erreur, car une conversion silencieuse peut perdre de la précision ou déborder.
+check-mismatch-fix-convert = convertis-le explicitement avec `.{ $method }()`
+check-mismatch-fix = utilise une valeur de type `{ $expected }`
+
+# E0211
+check-integer-for-float = entier littéral là où `{ $expected }` est attendu
+check-integer-for-float-label = `{ $literal }` est un entier
+check-integer-for-float-why = Un entier littéral ne devient jamais un flottant implicitement ; le point décimal rend l’intention visible.
+check-integer-for-float-fix = écris `{ $literal }`
+
+# E0212
+check-out-of-range = `{ $literal }` ne tient pas dans `{ $type }`
+check-out-of-range-label = `{ $type }` contient les valeurs de { $min } à { $max }
+check-out-of-range-why = Un littéral est vérifié par rapport à son type dès la compilation, pour qu’il ne déborde ni ne boucle jamais silencieusement.
+check-out-of-range-fix = utilise une valeur dans les bornes, ou un type plus large
+
+# E0213
+check-unknown-type = type `{ $name }` inconnu
+check-unknown-type-label = n’est pas un type
+check-unknown-type-why = Un type est soit intégré (`i32`, `f64`, `bool`, `String`, `Array<T>`, `Option<T>`…), soit une `struct` déclarée dans le module.
+check-unknown-type-fix = déclare une `struct` de ce nom, ou utilise un type intégré
+
+# E0214
+check-argument-count = `{ $name }` prend { $expected ->
+    [one] 1 argument
+   *[other] { $expected } arguments
+}, { $found } trouvé(s)
+check-argument-count-label = { $found ->
+    [one] 1 argument donné
+   *[other] { $found } arguments donnés
+}
+check-argument-count-declared-label = { $expected ->
+    [one] prend 1 argument
+   *[other] prend { $expected } arguments
+}
+check-argument-count-why = Chaque paramètre reçoit exactement un argument, dans l’ordre : Peras n’a ni paramètres optionnels ni `undefined` implicite.
+check-argument-count-fix = passe exactement { $expected ->
+    [one] 1 argument
+   *[other] { $expected } arguments
+}
+
+# E0215
+check-unknown-member = `{ $type }` n’a ni champ ni méthode `{ $member }`
+check-unknown-member-label = n’est pas un membre de `{ $type }`
+check-unknown-member-why = Les champs d’une structure viennent de sa déclaration ; les types intégrés ont un ensemble fixe de membres, comme `length` ou `toF64()`.
+check-unknown-member-fix = vérifie le nom du champ ou de la méthode
+
+# E0216
+check-type-argument-count = `{ $name }` prend { $expected } argument(s) de type, { $found } trouvé(s)
+check-type-argument-count-label = { $expected } attendu(s)
+check-type-argument-count-why = `Array` et `Option` prennent exactement un argument de type, comme dans `Array<f32>` ; les autres types n’en prennent aucun.
+check-type-argument-count-fix = écris `{ $name }` avec { $expected } argument(s) de type
+
+# E0217
+check-condition = condition de type `{ $found }`, `bool` attendu
+check-condition-label = ceci est `{ $found }`, pas `bool`
+check-condition-why = Peras n’a pas de « truthiness » : `0`, `""` et `None` ne valent pas faux. Une condition est un `bool`, pour que son sens soit toujours explicite.
+check-condition-fix-compare = compare explicitement : `{ $comparison }`
+check-condition-fix = écris une comparaison qui donne un `bool`
+
+# E0218
+check-return = { $kind ->
+    [value] cette fonction ne renvoie pas de valeur
+   *[other] valeur de retour de type `{ $expected }` manquante
+}
+check-return-label = { $kind ->
+    [value] valeur renvoyée ici
+   *[other] `return` sans valeur
+}
+check-return-declared-label = la fonction renvoie `{ $expected }`
+check-return-why = Une fonction renvoie exactement ce que dit son type de retour : une valeur de ce type à chaque `return`, ou rien quand il est `void`.
+check-return-fix = { $kind ->
+    [value] supprime la valeur, ou déclare un type de retour
+   *[other] renvoie une valeur du type déclaré
+}
+
+# E0219
+check-missing-return = `{ $name }` peut se terminer sans renvoyer de valeur
+check-missing-return-label = la fin de la fonction peut être atteinte ici
+check-missing-return-declared-label = renvoie `{ $expected }`
+check-missing-return-why = Une fonction avec un type de retour renvoie une valeur sur chaque chemin ; atteindre la fin de son corps ne renverrait rien.
+check-missing-return-fix = termine chaque chemin par un `return` de type `{ $expected }`
+
+# E0220
+check-missing-return-type = `{ $name }` n’a pas de type de retour
+check-missing-return-type-label = { $reason ->
+    [exported] une fonction exportée déclare son type de retour
+   *[other] renvoie une valeur sans déclarer son type
+}
+check-missing-return-type-why = Les signatures publiques sont toujours écrites, pour que l’interface d’un module ne dépende jamais de ce que son corps renvoie ; une fonction qui renvoie une valeur déclare son type.
+check-missing-return-type-fix = ajoute le type de retour `{ $type }`
+
+# E0221
+check-operator = `{ $operator }` ne s’applique pas à `{ $type }`
+check-operator-label = ceci est `{ $type }`
+check-operator-why = Chaque opérateur s’applique à des types précis : l’arithmétique aux nombres, `+` aussi aux chaînes, `&`, `|`, `^`, `~`, `<<` et `>>` aux entiers, `!`, `&&` et `||` aux `bool`, le `-` unaire aux nombres signés, `[]` aux tableaux.
+check-operator-fix = convertis la valeur, ou utilise une autre opération
+
 ## Rendu des diagnostics
 
 diag-error = erreur

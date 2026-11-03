@@ -1,0 +1,10 @@
+// E0210: no implicit conversion, not even between numbers.
+fn mean(total: f64, count: i32): f64 {
+  return total / count;
+}
+fn mix(a: i32, b: i64, c: f32): i64 {
+  let wide = a + b;
+  let label: String = c;
+  let _l = label;
+  return wide * (a + 1);
+}

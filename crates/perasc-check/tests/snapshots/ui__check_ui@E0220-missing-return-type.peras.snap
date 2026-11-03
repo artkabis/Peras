@@ -1,0 +1,21 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0220-missing-return-type.peras
+---
+diagnostics:
+  error[E0220] check-missing-return-type { name: "double" }
+    primary 2:11-2:17: check-missing-return-type-label { reason: "exported" }
+    cause: check-missing-return-type-why
+    fix: check-missing-return-type-fix { type: "i32" }
+      2:25-2:25 -> ": i32"
+  error[E0220] check-missing-return-type { name: "reset" }
+    primary 5:11-5:16: check-missing-return-type-label { reason: "exported" }
+    cause: check-missing-return-type-why
+    fix: check-missing-return-type-fix { type: "void" }
+      5:18-5:18 -> ": void"
+  error[E0220] check-missing-return-type { name: "ratio" }
+    primary 7:4-7:9: check-missing-return-type-label { reason: "value" }
+    cause: check-missing-return-type-why
+    fix: check-missing-return-type-fix { type: "f64" }
+      7:17-7:17 -> ": f64"

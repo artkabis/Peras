@@ -1,0 +1,27 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0217-condition-not-bool.peras
+---
+diagnostics:
+  error[E0217] check-condition { found: "i32" }
+    primary 3:7-3:12: check-condition-label { found: "i32" }
+    cause: check-condition-why
+    fix: check-condition-fix-compare { comparison: "!= 0" }
+      3:12-3:12 -> " != 0"
+  error[E0217] check-condition { found: "String" }
+    primary 4:10-4:14: check-condition-label { found: "String" }
+    cause: check-condition-why
+    fix: check-condition-fix-compare { comparison: ".length != 0" }
+      4:14-4:14 -> ".length != 0"
+  error[E0217] check-condition { found: "Option<i32>" }
+    primary 5:7-5:12: check-condition-label { found: "Option<i32>" }
+    cause: check-condition-why
+    fix: check-condition-fix-compare { comparison: ".isSome()" }
+      5:12-5:12 -> ".isSome()"
+  error[E0217] check-condition { found: "i32" }
+    primary 6:19-6:28: check-condition-label { found: "i32" }
+    cause: check-condition-why
+    fix: check-condition-fix-compare { comparison: "!= 0" }
+      6:19-6:19 -> "("
+      6:28-6:28 -> ") != 0"

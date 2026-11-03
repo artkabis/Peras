@@ -1,0 +1,12 @@
+// E0205: constants and read-only parameters.
+struct Buffer { samples: Array<f32>; }
+fn gain(buf: Buffer, factor: f32): void {
+  buf.samples[0] = buf.samples[0] * factor;
+  const limit = 3;
+  limit = 4;
+  for (const s of buf.samples) {
+    s = 0.0;
+    let _seen = s;
+  }
+  let _l = limit;
+}

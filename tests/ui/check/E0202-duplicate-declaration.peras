@@ -1,0 +1,9 @@
+// E0202: the same name twice in one scope.
+struct Point {
+  x: f64;
+  x: f64;
+}
+fn area(w: f64, w: f64): f64 {
+  return w * w;
+}
+fn area(): void {}

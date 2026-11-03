@@ -1,0 +1,20 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0214-argument-count.peras
+---
+diagnostics:
+  error[E0214] check-argument-count { name: "Point", expected: 2, found: 1 }
+    primary 7:18-7:28: check-argument-count-label { found: 1 }
+    secondary 2:8-2:13: check-argument-count-declared-label { expected: 2 }
+    cause: check-argument-count-why
+    fix: check-argument-count-fix { expected: 2 }
+  error[E0214] check-argument-count { name: "dist", expected: 2, found: 1 }
+    primary 8:10-8:22: check-argument-count-label { found: 1 }
+    secondary 3:4-3:8: check-argument-count-declared-label { expected: 2 }
+    cause: check-argument-count-why
+    fix: check-argument-count-fix { expected: 2 }
+  error[E0214] check-argument-count { name: "sqrt", expected: 0, found: 1 }
+    primary 8:25-8:38: check-argument-count-label { found: 1 }
+    cause: check-argument-count-why
+    fix: check-argument-count-fix { expected: 0 }

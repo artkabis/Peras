@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0218-return-mismatch.peras
+---
+diagnostics:
+  error[E0218] check-return { kind: "missing", expected: "f64" }
+    primary 3:16-3:22: check-return-label { kind: "missing" }
+    secondary 2:18-2:21: check-return-declared-label { expected: "f64" }
+    cause: check-return-why
+    fix: check-return-fix { kind: "missing" }
+  error[E0218] check-return { kind: "value", expected: "void" }
+    primary 7:10-7:17: check-return-label { kind: "value" }
+    secondary 6:26-6:30: check-return-declared-label { expected: "void" }
+    cause: check-return-why
+    fix: check-return-fix { kind: "value" }

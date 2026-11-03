@@ -1,0 +1,12 @@
+// E0201: a declaration hiding another one.
+fn scale(value: f64): f64 {
+  if (value > 1.0) {
+    let value = 1.0;
+    return value;
+  }
+  return value;
+}
+fn other(): void {
+  let scale = 2;
+  let _x = scale;
+}

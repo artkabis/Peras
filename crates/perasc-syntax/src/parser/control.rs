@@ -199,6 +199,7 @@ impl Parser<'_> {
         let body = Box::new(self.loop_body("for"));
         StmtKind::ForOf {
             mutable,
+            keyword: keyword.span,
             name,
             ty,
             iterable,

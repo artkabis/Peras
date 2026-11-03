@@ -1,0 +1,8 @@
+// One mistake gives one error: an undefined name or an unknown type is not
+// reported again at every use, and does not cause mismatches.
+fn f(p: Pont): f64 {
+  let a = p.x + 1;
+  let b = totl * 2.0 + a;
+  let c: f64 = b + undefinedToo;
+  return c;
+}

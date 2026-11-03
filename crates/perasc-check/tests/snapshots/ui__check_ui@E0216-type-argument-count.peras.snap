@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0216-type-argument-count.peras
+---
+diagnostics:
+  error[E0216] check-type-argument-count { name: "Array", expected: 1, found: 0 }
+    primary 2:10-2:15: check-type-argument-count-label { expected: 1 }
+    cause: check-type-argument-count-why
+    fix: check-type-argument-count-fix { name: "Array", expected: 1 }
+  error[E0216] check-type-argument-count { name: "Option", expected: 1, found: 2 }
+    primary 2:24-2:40: check-type-argument-count-label { expected: 1 }
+    cause: check-type-argument-count-why
+    fix: check-type-argument-count-fix { name: "Option", expected: 1 }
+  error[E0216] check-type-argument-count { name: "i32", expected: 0, found: 1 }
+    primary 2:45-2:53: check-type-argument-count-label { expected: 0 }
+    cause: check-type-argument-count-why
+    fix: check-type-argument-count-fix { name: "i32", expected: 0 }

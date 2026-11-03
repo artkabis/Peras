@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0212-literal-out-of-range.peras
+---
+diagnostics:
+  error[E0212] check-out-of-range { literal: "256", type: "u8" }
+    primary 3:19-3:22: check-out-of-range-label { type: "u8", min: "0", max: "255" }
+    cause: check-out-of-range-why
+    fix: check-out-of-range-fix
+  error[E0212] check-out-of-range { literal: "-129", type: "i8" }
+    primary 4:17-4:21: check-out-of-range-label { type: "i8", min: "-128", max: "127" }
+    cause: check-out-of-range-why
+    fix: check-out-of-range-fix
+  error[E0212] check-out-of-range { literal: "3000000000", type: "i32" }
+    primary 5:18-5:28: check-out-of-range-label { type: "i32", min: "-2147483648", max: "2147483647" }
+    cause: check-out-of-range-why
+    fix: check-out-of-range-fix

@@ -1,0 +1,4 @@
+// E0213: types that do not exist.
+fn f(ratio: float, count: number): Strng {
+  return ratio + count;
+}

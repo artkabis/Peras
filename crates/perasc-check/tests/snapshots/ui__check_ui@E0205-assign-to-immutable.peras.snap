@@ -1,0 +1,24 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0205-assign-to-immutable.peras
+---
+diagnostics:
+  error[E0205] check-immutable { kind: "parameter", name: "buf" }
+    primary 4:3-4:14: check-immutable-label
+    secondary 3:9-3:12: check-immutable-declared-label { kind: "parameter" }
+    cause: check-immutable-why
+    fix: check-immutable-fix-parameter { name: "buf" }
+      3:14-3:14 -> "inout "
+  error[E0205] check-immutable { kind: "const", name: "limit" }
+    primary 6:3-6:8: check-immutable-label
+    secondary 5:9-5:14: check-immutable-declared-label { kind: "const" }
+    cause: check-immutable-why
+    fix: check-immutable-fix-const { name: "limit" }
+      5:3-5:8 -> "let"
+  error[E0205] check-immutable { kind: "const", name: "s" }
+    primary 8:5-8:6: check-immutable-label
+    secondary 7:14-7:15: check-immutable-declared-label { kind: "const" }
+    cause: check-immutable-why
+    fix: check-immutable-fix-const { name: "s" }
+      7:8-7:13 -> "let"

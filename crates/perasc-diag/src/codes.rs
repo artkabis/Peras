@@ -2,7 +2,9 @@
 //!
 //! Codes are permanent. A retired code stays here and keeps its documentation
 //! pages (`docs/en/errors/Exxxx.md`, `docs/fr/errors/Exxxx.md`), marked as retired.
-//! Lexical errors use `E0001` to `E0099`, syntax errors `E0100` to `E0199`.
+//! Lexical errors use `E0001` to `E0099`, syntax errors `E0100` to `E0199`, name
+//! and type errors `E0200` to `E0299`. `E0204` is reserved for "value used after
+//! move", the example of the language spec.
 
 use crate::ErrorCode;
 use crate::messages::Language;
@@ -63,6 +65,40 @@ pub const JUMP_OUTSIDE_LOOP: ErrorCode = ErrorCode::new(117);
 pub const OPTIONAL_MARKER: ErrorCode = ErrorCode::new(118);
 /// `if (c);`: a `;` that empties the body of an `if` or a loop.
 pub const EMPTY_BODY: ErrorCode = ErrorCode::new(119);
+/// A name that is not declared, or not visible here.
+pub const UNDEFINED_NAME: ErrorCode = ErrorCode::new(200);
+/// A declaration hiding another one of an enclosing scope.
+pub const SHADOWING: ErrorCode = ErrorCode::new(201);
+/// The same name declared twice in one scope.
+pub const DUPLICATE_DECLARATION: ErrorCode = ErrorCode::new(202);
+/// A variable or parameter whose value is never read.
+pub const UNUSED: ErrorCode = ErrorCode::new(203);
+/// An assignment to a `const`, a `for…of` constant or a read-only parameter.
+pub const ASSIGN_TO_IMMUTABLE: ErrorCode = ErrorCode::new(205);
+/// A value of one type where another is expected.
+pub const MISMATCHED_TYPES: ErrorCode = ErrorCode::new(210);
+/// An integer literal where a float is expected.
+pub const INTEGER_FOR_FLOAT: ErrorCode = ErrorCode::new(211);
+/// A literal that does not fit its type.
+pub const LITERAL_OUT_OF_RANGE: ErrorCode = ErrorCode::new(212);
+/// A type name that does not exist.
+pub const UNKNOWN_TYPE: ErrorCode = ErrorCode::new(213);
+/// A call with too many or too few arguments.
+pub const ARGUMENT_COUNT: ErrorCode = ErrorCode::new(214);
+/// A field or method that the type does not have.
+pub const UNKNOWN_MEMBER: ErrorCode = ErrorCode::new(215);
+/// A generic type with the wrong number of type arguments.
+pub const TYPE_ARGUMENT_COUNT: ErrorCode = ErrorCode::new(216);
+/// A condition that is not a `bool`: Peras has no truthiness.
+pub const CONDITION_NOT_BOOL: ErrorCode = ErrorCode::new(217);
+/// `return;` in a function with a value, or `return x;` in a `void` one.
+pub const RETURN_MISMATCH: ErrorCode = ErrorCode::new(218);
+/// A function with a return type that can end without returning.
+pub const MISSING_RETURN: ErrorCode = ErrorCode::new(219);
+/// An exported function, or one returning a value, without a return type.
+pub const MISSING_RETURN_TYPE: ErrorCode = ErrorCode::new(220);
+/// An operator applied to a type that does not support it.
+pub const INVALID_OPERATOR: ErrorCode = ErrorCode::new(221);
 
 /// One entry of the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +182,23 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(JUMP_OUTSIDE_LOOP, "parse-jump-outside-loop", "E0117"),
     active!(OPTIONAL_MARKER, "parse-optional-marker", "E0118"),
     active!(EMPTY_BODY, "parse-empty-body", "E0119"),
+    active!(UNDEFINED_NAME, "check-undefined", "E0200"),
+    active!(SHADOWING, "check-shadowing", "E0201"),
+    active!(DUPLICATE_DECLARATION, "check-duplicate", "E0202"),
+    active!(UNUSED, "check-unused", "E0203"),
+    active!(ASSIGN_TO_IMMUTABLE, "check-immutable", "E0205"),
+    active!(MISMATCHED_TYPES, "check-mismatch", "E0210"),
+    active!(INTEGER_FOR_FLOAT, "check-integer-for-float", "E0211"),
+    active!(LITERAL_OUT_OF_RANGE, "check-out-of-range", "E0212"),
+    active!(UNKNOWN_TYPE, "check-unknown-type", "E0213"),
+    active!(ARGUMENT_COUNT, "check-argument-count", "E0214"),
+    active!(UNKNOWN_MEMBER, "check-unknown-member", "E0215"),
+    active!(TYPE_ARGUMENT_COUNT, "check-type-argument-count", "E0216"),
+    active!(CONDITION_NOT_BOOL, "check-condition", "E0217"),
+    active!(RETURN_MISMATCH, "check-return", "E0218"),
+    active!(MISSING_RETURN, "check-missing-return", "E0219"),
+    active!(MISSING_RETURN_TYPE, "check-missing-return-type", "E0220"),
+    active!(INVALID_OPERATOR, "check-operator", "E0221"),
 ];
 
 /// Looks up a code in the registry.

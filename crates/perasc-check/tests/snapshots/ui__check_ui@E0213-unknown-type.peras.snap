@@ -1,0 +1,19 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0213-unknown-type.peras
+---
+diagnostics:
+  error[E0213] check-unknown-type { name: "float" }
+    primary 2:13-2:18: check-unknown-type-label
+    cause: check-unknown-type-why
+    fix: check-unknown-type-fix
+  error[E0213] check-unknown-type { name: "number" }
+    primary 2:27-2:33: check-unknown-type-label
+    cause: check-unknown-type-why
+    fix: check-unknown-type-fix
+  error[E0213] check-unknown-type { name: "Strng" }
+    primary 2:36-2:41: check-unknown-type-label
+    cause: check-unknown-type-why
+    fix: check-did-you-mean { name: "String" }
+      2:36-2:41 -> "String"

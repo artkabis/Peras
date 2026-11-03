@@ -13,6 +13,7 @@ pub mod i18n;
 pub mod json;
 pub mod messages;
 pub mod render;
+pub mod snapshot;
 pub mod source;
 
 /// A stable error code such as `E0204`. Codes are never reused or renumbered.

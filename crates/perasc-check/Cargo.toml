@@ -12,5 +12,8 @@ publish.workspace = true
 perasc-diag.workspace = true
 perasc-syntax.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

@@ -1,0 +1,505 @@
+//! Name and type error diagnostics (`E0200`–`E0299`).
+
+use perasc_diag::{Diagnostic, Edit, ErrorCode, Fix, Label, Message, Span, codes};
+
+use crate::ty::Ty;
+
+fn primary(span: Span, message: Message) -> Label {
+    Label {
+        span,
+        message,
+        primary: true,
+    }
+}
+
+fn secondary(span: Span, message: Message) -> Label {
+    Label {
+        span,
+        message,
+        primary: false,
+    }
+}
+
+fn insert(at: u32, text: impl Into<String>) -> Edit {
+    Edit {
+        span: Span::new(at, at),
+        replacement: text.into(),
+    }
+}
+
+fn replace(span: Span, text: impl Into<String>) -> Edit {
+    Edit {
+        span,
+        replacement: text.into(),
+    }
+}
+
+/// A diagnostic whose message IDs all start with `id`: `id`, `id-label`, `id-why`.
+fn diagnostic(code: ErrorCode, title: Message, labels: Vec<Label>, fix: Fix) -> Diagnostic {
+    Diagnostic {
+        code,
+        message: title,
+        labels,
+        cause: Message::new(why(code)),
+        fix,
+    }
+}
+
+/// The cause message of each code.
+const fn why(code: ErrorCode) -> &'static str {
+    match code.number() {
+        200 => "check-undefined-why",
+        201 => "check-shadowing-why",
+        202 => "check-duplicate-why",
+        203 => "check-unused-why",
+        205 => "check-immutable-why",
+        210 => "check-mismatch-why",
+        211 => "check-integer-for-float-why",
+        212 => "check-out-of-range-why",
+        213 => "check-unknown-type-why",
+        214 => "check-argument-count-why",
+        215 => "check-unknown-member-why",
+        216 => "check-type-argument-count-why",
+        217 => "check-condition-why",
+        218 => "check-return-why",
+        219 => "check-missing-return-why",
+        220 => "check-missing-return-type-why",
+        _ => "check-operator-why",
+    }
+}
+
+/// A fix with a "did you mean" edit when a close name exists.
+fn suggestion_fix(span: Span, suggestion: Option<&str>, otherwise: &'static str) -> Fix {
+    match suggestion {
+        Some(name) => Fix {
+            message: Message::new("check-did-you-mean").text("name", name),
+            edits: vec![replace(span, name)],
+        },
+        None => Fix {
+            message: Message::new(otherwise),
+            edits: Vec::new(),
+        },
+    }
+}
+
+/// `E0200`
+pub fn undefined(span: Span, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNDEFINED_NAME,
+        Message::new("check-undefined").text("name", name),
+        vec![primary(span, Message::new("check-undefined-label"))],
+        suggestion_fix(span, suggestion, "check-undefined-fix"),
+    )
+}
+
+/// `E0201`
+/// `previous` is `None` for a name the language provides, such as `Some`.
+pub fn shadowing(span: Span, name: &str, previous: Option<Span>) -> Diagnostic {
+    let mut labels = vec![primary(
+        span,
+        Message::new("check-shadowing-label").text("name", name),
+    )];
+    if let Some(previous) = previous {
+        labels.push(secondary(
+            previous,
+            Message::new("check-shadowing-previous-label"),
+        ));
+    }
+    diagnostic(
+        codes::SHADOWING,
+        Message::new("check-shadowing").text("name", name),
+        labels,
+        Fix {
+            message: Message::new("check-shadowing-fix").text("name", name),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0202`
+pub fn duplicate(span: Span, name: &str, previous: Span) -> Diagnostic {
+    diagnostic(
+        codes::DUPLICATE_DECLARATION,
+        Message::new("check-duplicate").text("name", name),
+        vec![
+            primary(span, Message::new("check-duplicate-label")),
+            secondary(previous, Message::new("check-duplicate-previous-label")),
+        ],
+        Fix {
+            message: Message::new("check-duplicate-fix").text("name", name),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0203`. Parameters get an edit adding `_`; variables are best removed.
+pub fn unused(span: Span, name: &str, parameter: bool) -> Diagnostic {
+    let what = if parameter { "parameter" } else { "variable" };
+    let fix = if parameter {
+        Fix {
+            message: Message::new("check-unused-fix-parameter").text("name", name),
+            edits: vec![insert(span.start, "_")],
+        }
+    } else {
+        Fix {
+            message: Message::new("check-unused-fix-variable"),
+            edits: Vec::new(),
+        }
+    };
+    diagnostic(
+        codes::UNUSED,
+        Message::new("check-unused")
+            .text("what", what)
+            .text("name", name),
+        vec![primary(span, Message::new("check-unused-label"))],
+        fix,
+    )
+}
+
+/// What makes a binding immutable.
+pub enum Immutable {
+    /// A `const`, or a `for…of` variable declared `const`: the keyword to replace.
+    Const(Span),
+    /// A parameter without `inout`: where to insert it.
+    Parameter(u32),
+}
+
+/// `E0205`
+pub fn assign_to_immutable(span: Span, name: &str, declared: Span, why: &Immutable) -> Diagnostic {
+    let (kind, fix) = match why {
+        Immutable::Const(keyword) => (
+            "const",
+            Fix {
+                message: Message::new("check-immutable-fix-const").text("name", name),
+                edits: vec![replace(*keyword, "let")],
+            },
+        ),
+        Immutable::Parameter(at) => (
+            "parameter",
+            Fix {
+                message: Message::new("check-immutable-fix-parameter").text("name", name),
+                edits: vec![insert(*at, "inout ")],
+            },
+        ),
+    };
+    diagnostic(
+        codes::ASSIGN_TO_IMMUTABLE,
+        Message::new("check-immutable")
+            .text("kind", kind)
+            .text("name", name),
+        vec![
+            primary(span, Message::new("check-immutable-label")),
+            secondary(
+                declared,
+                Message::new("check-immutable-declared-label").text("kind", kind),
+            ),
+        ],
+        fix,
+    )
+}
+
+/// A conversion that fixes a numeric mismatch: append `.toF64()`, with parentheses
+/// around the expression when it is not a simple operand.
+pub struct Conversion {
+    /// The expression converted.
+    pub span: Span,
+    /// The method, e.g. `toF64`.
+    pub method: &'static str,
+    /// Whether the expression needs parentheses first.
+    pub parenthesize: bool,
+}
+
+/// `E0210`
+pub fn mismatch(
+    span: Span,
+    expected: &Ty,
+    found: &Ty,
+    conversion: Option<Conversion>,
+) -> Diagnostic {
+    let fix = match conversion {
+        Some(c) => {
+            let mut edits = Vec::new();
+            if c.parenthesize {
+                edits.push(insert(c.span.start, "("));
+                edits.push(insert(c.span.end, format!(").{}()", c.method)));
+            } else {
+                edits.push(insert(c.span.end, format!(".{}()", c.method)));
+            }
+            Fix {
+                message: Message::new("check-mismatch-fix-convert")
+                    .text("method", c.method)
+                    .text("expected", expected.to_string()),
+                edits,
+            }
+        }
+        None => Fix {
+            message: Message::new("check-mismatch-fix").text("expected", expected.to_string()),
+            edits: Vec::new(),
+        },
+    };
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-mismatch")
+            .text("expected", expected.to_string())
+            .text("found", found.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-mismatch-label").text("found", found.to_string()),
+        )],
+        fix,
+    )
+}
+
+/// `E0211`
+pub fn integer_for_float(span: Span, literal: &str, expected: &Ty) -> Diagnostic {
+    diagnostic(
+        codes::INTEGER_FOR_FLOAT,
+        Message::new("check-integer-for-float")
+            .text("expected", expected.clone().defaulted().to_string()),
+        vec![primary(
+            span,
+            Message::new("check-integer-for-float-label").text("literal", literal),
+        )],
+        Fix {
+            message: Message::new("check-integer-for-float-fix")
+                .text("literal", format!("{literal}.0")),
+            edits: vec![insert(span.end, ".0")],
+        },
+    )
+}
+
+/// `E0212`
+pub fn out_of_range(span: Span, literal: &str, ty: &Ty, min: &str, max: &str) -> Diagnostic {
+    diagnostic(
+        codes::LITERAL_OUT_OF_RANGE,
+        Message::new("check-out-of-range")
+            .text("literal", literal)
+            .text("type", ty.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-out-of-range-label")
+                .text("type", ty.to_string())
+                .text("min", min)
+                .text("max", max),
+        )],
+        Fix {
+            message: Message::new("check-out-of-range-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0213`
+pub fn unknown_type(span: Span, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_TYPE,
+        Message::new("check-unknown-type").text("name", name),
+        vec![primary(span, Message::new("check-unknown-type-label"))],
+        suggestion_fix(span, suggestion, "check-unknown-type-fix"),
+    )
+}
+
+/// `E0214`
+pub fn argument_count(
+    span: Span,
+    name: &str,
+    expected: usize,
+    found: usize,
+    declared: Option<Span>,
+) -> Diagnostic {
+    let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+    let mut labels = vec![primary(
+        span,
+        Message::new("check-argument-count-label").number("found", count(found)),
+    )];
+    if let Some(declared) = declared {
+        labels.push(secondary(
+            declared,
+            Message::new("check-argument-count-declared-label").number("expected", count(expected)),
+        ));
+    }
+    diagnostic(
+        codes::ARGUMENT_COUNT,
+        Message::new("check-argument-count")
+            .text("name", name)
+            .number("expected", count(expected))
+            .number("found", count(found)),
+        labels,
+        Fix {
+            message: Message::new("check-argument-count-fix").number("expected", count(expected)),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0215`
+pub fn unknown_member(span: Span, ty: &Ty, member: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_MEMBER,
+        Message::new("check-unknown-member")
+            .text("type", ty.to_string())
+            .text("member", member),
+        vec![primary(
+            span,
+            Message::new("check-unknown-member-label").text("type", ty.to_string()),
+        )],
+        suggestion_fix(span, suggestion, "check-unknown-member-fix"),
+    )
+}
+
+/// `E0216`
+pub fn type_argument_count(span: Span, name: &str, expected: usize, found: usize) -> Diagnostic {
+    let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+    diagnostic(
+        codes::TYPE_ARGUMENT_COUNT,
+        Message::new("check-type-argument-count")
+            .text("name", name)
+            .number("expected", count(expected))
+            .number("found", count(found)),
+        vec![primary(
+            span,
+            Message::new("check-type-argument-count-label").number("expected", count(expected)),
+        )],
+        Fix {
+            message: Message::new("check-type-argument-count-fix")
+                .text("name", name)
+                .number("expected", count(expected)),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// How to turn a non-boolean condition into a comparison.
+pub enum ConditionFix {
+    /// Append text, e.g. ` != 0`, with parentheses when needed.
+    Append(&'static str, bool),
+    /// No certain fix.
+    None,
+}
+
+/// `E0217`
+pub fn condition_not_bool(span: Span, found: &Ty, fix: &ConditionFix) -> Diagnostic {
+    let fix = match fix {
+        ConditionFix::Append(text, parenthesize) => {
+            let mut edits = Vec::new();
+            if *parenthesize {
+                edits.push(insert(span.start, "("));
+                edits.push(insert(span.end, format!("){text}")));
+            } else {
+                edits.push(insert(span.end, *text));
+            }
+            Fix {
+                message: Message::new("check-condition-fix-compare")
+                    .text("comparison", text.trim()),
+                edits,
+            }
+        }
+        ConditionFix::None => Fix {
+            message: Message::new("check-condition-fix"),
+            edits: Vec::new(),
+        },
+    };
+    diagnostic(
+        codes::CONDITION_NOT_BOOL,
+        Message::new("check-condition").text("found", found.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-condition-label").text("found", found.to_string()),
+        )],
+        fix,
+    )
+}
+
+/// `E0218`: `return;` where a value is expected, or a value in a `void` function.
+pub fn return_mismatch(
+    span: Span,
+    expected: &Ty,
+    has_value: bool,
+    ret_span: Option<Span>,
+) -> Diagnostic {
+    let key = if has_value { "value" } else { "missing" };
+    let mut labels = vec![primary(
+        span,
+        Message::new("check-return-label").text("kind", key),
+    )];
+    if let Some(ret) = ret_span {
+        labels.push(secondary(
+            ret,
+            Message::new("check-return-declared-label").text("expected", expected.to_string()),
+        ));
+    }
+    diagnostic(
+        codes::RETURN_MISMATCH,
+        Message::new("check-return")
+            .text("kind", key)
+            .text("expected", expected.to_string()),
+        labels,
+        Fix {
+            message: Message::new("check-return-fix").text("kind", key),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0219`
+pub fn missing_return(end: Span, name: &str, expected: &Ty, ret_span: Span) -> Diagnostic {
+    diagnostic(
+        codes::MISSING_RETURN,
+        Message::new("check-missing-return").text("name", name),
+        vec![
+            primary(end, Message::new("check-missing-return-label")),
+            secondary(
+                ret_span,
+                Message::new("check-missing-return-declared-label")
+                    .text("expected", expected.to_string()),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-missing-return-fix")
+                .text("expected", expected.to_string()),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0220`. `inferred` is the type of the returned values, when known.
+pub fn missing_return_type(
+    name_span: Span,
+    name: &str,
+    exported: bool,
+    insert_at: u32,
+    inferred: &Ty,
+) -> Diagnostic {
+    let reason = if exported { "exported" } else { "value" };
+    diagnostic(
+        codes::MISSING_RETURN_TYPE,
+        Message::new("check-missing-return-type").text("name", name),
+        vec![primary(
+            name_span,
+            Message::new("check-missing-return-type-label").text("reason", reason),
+        )],
+        Fix {
+            message: Message::new("check-missing-return-type-fix")
+                .text("type", inferred.to_string()),
+            edits: vec![insert(insert_at, format!(": {inferred}"))],
+        },
+    )
+}
+
+/// `E0221`
+pub fn invalid_operator(span: Span, operator: &str, ty: &Ty) -> Diagnostic {
+    diagnostic(
+        codes::INVALID_OPERATOR,
+        Message::new("check-operator")
+            .text("operator", operator)
+            .text("type", ty.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-operator-label").text("type", ty.to_string()),
+        )],
+        Fix {
+            message: Message::new("check-operator-fix").text("operator", operator),
+            edits: Vec::new(),
+        },
+    )
+}

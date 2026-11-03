@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0219-missing-return.peras
+---
+diagnostics:
+  error[E0219] check-missing-return { name: "sign" }
+    primary 5:1-5:2: check-missing-return-label
+    secondary 2:18-2:21: check-missing-return-declared-label { expected: "i32" }
+    cause: check-missing-return-why
+    fix: check-missing-return-fix { expected: "i32" }
+  error[E0219] check-missing-return { name: "first" }
+    primary 10:1-10:2: check-missing-return-label
+    secondary 6:27-6:30: check-missing-return-declared-label { expected: "i32" }
+    cause: check-missing-return-why
+    fix: check-missing-return-fix { expected: "i32" }

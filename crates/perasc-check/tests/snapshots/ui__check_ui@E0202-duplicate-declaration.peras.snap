@@ -1,0 +1,21 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0202-duplicate-declaration.peras
+---
+diagnostics:
+  error[E0202] check-duplicate { name: "x" }
+    primary 4:3-4:4: check-duplicate-label
+    secondary 3:3-3:4: check-duplicate-previous-label
+    cause: check-duplicate-why
+    fix: check-duplicate-fix { name: "x" }
+  error[E0202] check-duplicate { name: "w" }
+    primary 6:17-6:18: check-duplicate-label
+    secondary 6:9-6:10: check-duplicate-previous-label
+    cause: check-duplicate-why
+    fix: check-duplicate-fix { name: "w" }
+  error[E0202] check-duplicate { name: "area" }
+    primary 9:4-9:8: check-duplicate-label
+    secondary 6:4-6:8: check-duplicate-previous-label
+    cause: check-duplicate-why
+    fix: check-duplicate-fix { name: "area" }

@@ -1,0 +1,9 @@
+// E0220: exported functions, and functions returning a value, declare their type.
+export fn double(x: i32) {
+  return x * 2;
+}
+export fn reset() {
+}
+fn ratio(a: f64) {
+  return a / 2.0;
+}

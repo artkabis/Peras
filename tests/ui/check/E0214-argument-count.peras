@@ -1,0 +1,9 @@
+// E0214: one argument per parameter, no more, no less.
+struct Point { x: f64; y: f64; }
+fn dist(a: Point, b: Point): f64 {
+  return (a.x - b.x).abs() + (a.y - b.y).abs();
+}
+fn f(): f64 {
+  const origin = Point(0.0);
+  return dist(origin) + 1.0.sqrt(2.0);
+}

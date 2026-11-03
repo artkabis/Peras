@@ -32,6 +32,12 @@ impl Interner {
         symbol
     }
 
+    /// The symbol of a name, if the module uses it; never adds one.
+    #[must_use]
+    pub fn lookup(&self, name: &str) -> Option<Symbol> {
+        self.map.get(name).copied()
+    }
+
     /// The name of a symbol.
     #[must_use]
     pub fn name(&self, symbol: Symbol) -> &str {
@@ -92,6 +98,12 @@ impl Ast {
     pub fn name(&self, symbol: Symbol) -> &str {
         self.interner.name(symbol)
     }
+
+    /// The symbol of a name, if the module uses it.
+    #[must_use]
+    pub fn interner_symbol(&self, name: &str) -> Option<Symbol> {
+        self.interner.lookup(name)
+    }
 }
 
 /// A top-level declaration.
@@ -147,6 +159,8 @@ pub struct FnDecl {
     pub name: Ident,
     /// Parameters, in order.
     pub params: Vec<Param>,
+    /// From `(` to `)`: a missing return type is inserted after it.
+    pub params_span: Span,
     /// The return type, if written.
     pub ret: Option<Type>,
     /// The body.
@@ -274,6 +288,8 @@ pub enum StmtKind {
     ForOf {
         /// `let` (true) or `const` (false).
         mutable: bool,
+        /// The `let` or `const` keyword.
+        keyword: Span,
         /// The loop variable.
         name: Ident,
         /// Its annotation, if written.
@@ -296,6 +312,8 @@ pub enum StmtKind {
 pub struct Local {
     /// `let` (true) or `const` (false).
     pub mutable: bool,
+    /// The `let` or `const` keyword.
+    pub keyword: Span,
     /// The variable.
     pub name: Ident,
     /// Its annotation, if written.
@@ -651,6 +669,7 @@ impl Ast {
             }
             StmtKind::ForOf {
                 mutable,
+                keyword: _,
                 name,
                 ty,
                 iterable,

@@ -1,0 +1,6 @@
+// E0200: a name used without being declared; a close name is suggested.
+fn total(xs: Array<i32>): i32 {
+  let sum = 0;
+  for (const x of xs) sum += x;
+  return summ + offset;
+}

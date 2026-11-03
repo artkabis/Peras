@@ -1,0 +1,30 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0221-invalid-operator.peras
+---
+diagnostics:
+  error[E0221] check-operator { operator: "+", type: "bool" }
+    primary 3:11-3:16: check-operator-label { type: "bool" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "+" }
+  error[E0221] check-operator { operator: "-", type: "u8" }
+    primary 4:11-4:13: check-operator-label { type: "u8" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "-" }
+  error[E0221] check-operator { operator: "!", type: "i32" }
+    primary 5:11-5:13: check-operator-label { type: "i32" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "!" }
+  error[E0221] check-operator { operator: "[]", type: "i32" }
+    primary 6:11-6:15: check-operator-label { type: "i32" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "[]" }
+  error[E0221] check-operator { operator: "*", type: "String" }
+    primary 7:11-7:15: check-operator-label { type: "String" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "*" }
+  error[E0221] check-operator { operator: "-", type: "Array<f32>" }
+    primary 8:11-8:13: check-operator-label { type: "Array<f32>" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "-" }

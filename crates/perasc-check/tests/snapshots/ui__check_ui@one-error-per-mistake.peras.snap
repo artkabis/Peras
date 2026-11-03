@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/one-error-per-mistake.peras
+---
+diagnostics:
+  error[E0213] check-unknown-type { name: "Pont" }
+    primary 3:9-3:13: check-unknown-type-label
+    cause: check-unknown-type-why
+    fix: check-unknown-type-fix
+  error[E0200] check-undefined { name: "totl" }
+    primary 5:11-5:15: check-undefined-label
+    cause: check-undefined-why
+    fix: check-undefined-fix
+  error[E0200] check-undefined { name: "undefinedToo" }
+    primary 6:20-6:32: check-undefined-label
+    cause: check-undefined-why
+    fix: check-undefined-fix

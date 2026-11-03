@@ -1,0 +1,20 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0210-mismatched-types.peras
+---
+diagnostics:
+  error[E0210] check-mismatch { expected: "f64", found: "i32" }
+    primary 3:18-3:23: check-mismatch-label { found: "i32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix-convert { method: "toF64", expected: "f64" }
+      3:23-3:23 -> ".toF64()"
+  error[E0210] check-mismatch { expected: "i64", found: "i32" }
+    primary 6:14-6:15: check-mismatch-label { found: "i32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix-convert { method: "toI64", expected: "i64" }
+      6:15-6:15 -> ".toI64()"
+  error[E0210] check-mismatch { expected: "String", found: "f32" }
+    primary 7:23-7:24: check-mismatch-label { found: "f32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "String" }

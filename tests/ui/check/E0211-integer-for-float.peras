@@ -1,0 +1,6 @@
+// E0211: write a decimal point for a float.
+fn f(x: f64): f64 {
+  let gain: f32 = 1;
+  let _g = gain;
+  return x * 2;
+}

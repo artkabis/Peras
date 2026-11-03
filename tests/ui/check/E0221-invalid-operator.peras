@@ -1,0 +1,10 @@
+// E0221: operators on types that do not support them.
+fn f(ready: bool, n: i32, b: u8, xs: Array<f32>, name: String): void {
+  let a = ready + 1;
+  let c = -b;
+  let d = !n;
+  let e = n[0];
+  let g = name * 2;
+  let h = xs - xs;
+  let _all = [a, c, d, e, g, h];
+}

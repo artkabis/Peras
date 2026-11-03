@@ -1,0 +1,8 @@
+// E0212: literals are checked against their type.
+fn f(): void {
+  let alpha: u8 = 256;
+  let low: i8 = -129;
+  let big: i32 = 3000000000;
+  let ok: i64 = 3000000000;
+  let _all = [alpha.toI64(), low.toI64(), big.toI64(), ok];
+}

@@ -1,0 +1,7 @@
+// E0203: values never read. `_` marks one unused on purpose.
+fn area(width: f64, height: f64, _depth: f64): f64 {
+  let doubled = width * 2.0;
+  let count = 0;
+  count += 1;
+  return width * width;
+}

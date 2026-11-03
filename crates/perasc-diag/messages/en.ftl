@@ -290,6 +290,155 @@ parse-empty-body-label = this `;` ends the `{ $keyword }`
 parse-empty-body-why = In JavaScript, `if (c); {"{"} … {"}"}` runs the block every time: the `;` is the whole body. Peras refuses this silent mistake; an intentionally empty body is written `{"{"}{"}"}`.
 parse-empty-body-fix = remove the `;`, or write `{"{"}{"}"}` for an empty body
 
+## Names and types (E0200–E0299)
+
+check-did-you-mean = did you mean `{ $name }`?
+
+# E0200
+check-undefined = `{ $name }` is not defined
+check-undefined-label = not found in this scope
+check-undefined-why = A name must be declared before it is used, in this scope or an enclosing one: with `let`, `const`, `fn` or `struct`, or as a parameter.
+check-undefined-fix = declare it, or check its spelling
+
+# E0201
+check-shadowing = `{ $name }` hides another declaration
+check-shadowing-label = this `{ $name }` hides the other one
+check-shadowing-previous-label = first declared here
+check-shadowing-why = Peras refuses shadowing: two variables with the same name in nested scopes make it easy to read or change the wrong one.
+check-shadowing-fix = give this `{ $name }` another name
+
+# E0202
+check-duplicate = `{ $name }` is declared twice
+check-duplicate-label = declared again here
+check-duplicate-previous-label = first declared here
+check-duplicate-why = A name is declared once per scope: functions, structures and module constants share one namespace, and so do the fields of a structure and the parameters of a function.
+check-duplicate-fix = rename or remove one of the two `{ $name }`
+
+# E0203
+check-unused = { $what ->
+    [parameter] parameter
+   *[other] variable
+} `{ $name }` is never read
+check-unused-label = never read
+check-unused-why = A value that is never read is dead code, and often a bug: a typo, or a use that was forgotten. A name starting with `_` marks a parameter as unused on purpose.
+check-unused-fix-parameter = if it is unused on purpose, name it `_{ $name }`
+check-unused-fix-variable = remove it, or use its value
+
+# E0205
+check-immutable = cannot modify { $kind ->
+    [parameter] the parameter
+   *[other] the constant
+} `{ $name }`
+check-immutable-label = modified here
+check-immutable-declared-label = { $kind ->
+    [parameter] read-only parameter
+   *[other] declared with `const`
+}
+check-immutable-why = A `const` never changes, and a parameter is read-only unless it is passed `inout`, which shows the caller that the function modifies it.
+check-immutable-fix-const = declare `{ $name }` with `let`
+check-immutable-fix-parameter = pass `{ $name }` as `inout`
+
+# E0210
+check-mismatch = mismatched types: expected `{ $expected }`, found `{ $found }`
+check-mismatch-label = this is `{ $found }`
+check-mismatch-why = Peras never converts a value implicitly, not even between numbers: `i32 + f64` is an error, because a silent conversion can lose precision or overflow.
+check-mismatch-fix-convert = convert it explicitly with `.{ $method }()`
+check-mismatch-fix = use a value of type `{ $expected }`
+
+# E0211
+check-integer-for-float = integer literal where `{ $expected }` is expected
+check-integer-for-float-label = `{ $literal }` is an integer
+check-integer-for-float-why = An integer literal never becomes a float implicitly; the decimal point makes the intent visible.
+check-integer-for-float-fix = write `{ $literal }`
+
+# E0212
+check-out-of-range = `{ $literal }` does not fit in `{ $type }`
+check-out-of-range-label = `{ $type }` holds values from { $min } to { $max }
+check-out-of-range-why = A literal is checked against its type at compile time, so that it never overflows or wraps around silently.
+check-out-of-range-fix = use a value in range, or a wider type
+
+# E0213
+check-unknown-type = unknown type `{ $name }`
+check-unknown-type-label = not a type
+check-unknown-type-why = A type is either built in (`i32`, `f64`, `bool`, `String`, `Array<T>`, `Option<T>`…) or a `struct` declared in the module.
+check-unknown-type-fix = declare a `struct` with this name, or use a built-in type
+
+# E0214
+check-argument-count = `{ $name }` takes { $expected ->
+    [one] 1 argument
+   *[other] { $expected } arguments
+}, found { $found }
+check-argument-count-label = { $found ->
+    [one] 1 argument given
+   *[other] { $found } arguments given
+}
+check-argument-count-declared-label = { $expected ->
+    [one] takes 1 argument
+   *[other] takes { $expected } arguments
+}
+check-argument-count-why = Every parameter receives exactly one argument, in order: Peras has no optional parameters and no implicit `undefined`.
+check-argument-count-fix = pass exactly { $expected ->
+    [one] 1 argument
+   *[other] { $expected } arguments
+}
+
+# E0215
+check-unknown-member = `{ $type }` has no field or method `{ $member }`
+check-unknown-member-label = not a member of `{ $type }`
+check-unknown-member-why = The fields of a structure come from its declaration; built-in types have a fixed set of members, such as `length` or `toF64()`.
+check-unknown-member-fix = check the name of the field or method
+
+# E0216
+check-type-argument-count = `{ $name }` takes { $expected } type arguments, found { $found }
+check-type-argument-count-label = expects { $expected }
+check-type-argument-count-why = `Array` and `Option` take exactly one type argument, as in `Array<f32>`; other types take none.
+check-type-argument-count-fix = write `{ $name }` with { $expected } type arguments
+
+# E0217
+check-condition = condition of type `{ $found }`, expected `bool`
+check-condition-label = this is `{ $found }`, not `bool`
+check-condition-why = Peras has no truthiness: `0`, `""` and `None` are not false. A condition is a `bool`, so that its meaning is always explicit.
+check-condition-fix-compare = compare explicitly: `{ $comparison }`
+check-condition-fix = write a comparison that gives a `bool`
+
+# E0218
+check-return = { $kind ->
+    [value] this function returns no value
+   *[other] missing return value of type `{ $expected }`
+}
+check-return-label = { $kind ->
+    [value] value returned here
+   *[other] `return` without a value
+}
+check-return-declared-label = the function returns `{ $expected }`
+check-return-why = A function returns exactly what its return type says: a value of that type on every `return`, or nothing when it is `void`.
+check-return-fix = { $kind ->
+    [value] remove the value, or declare a return type
+   *[other] return a value of the declared type
+}
+
+# E0219
+check-missing-return = `{ $name }` can end without returning a value
+check-missing-return-label = the end of the function can be reached here
+check-missing-return-declared-label = returns `{ $expected }`
+check-missing-return-why = A function with a return type returns a value on every path; reaching the end of its body would return nothing.
+check-missing-return-fix = end every path with a `return` of type `{ $expected }`
+
+# E0220
+check-missing-return-type = `{ $name }` has no return type
+check-missing-return-type-label = { $reason ->
+    [exported] an exported function declares its return type
+   *[other] returns a value without declaring its type
+}
+check-missing-return-type-why = Public signatures are always written out, so a module's interface never depends on what its body happens to return; a function returning a value declares its type.
+check-missing-return-type-fix = add the return type `{ $type }`
+
+# E0221
+check-operator = `{ $operator }` cannot be used on `{ $type }`
+check-operator-label = this is `{ $type }`
+check-operator-why = Each operator applies to specific types: arithmetic to numbers, `+` also to strings, `&`, `|`, `^`, `~`, `<<` and `>>` to integers, `!`, `&&` and `||` to `bool`, unary `-` to signed numbers, `[]` to arrays.
+check-operator-fix = convert the value, or use another operation
+
 ## Diagnostic rendering
 
 diag-error = error

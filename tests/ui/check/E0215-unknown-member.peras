@@ -1,0 +1,7 @@
+// E0215: fields and methods that do not exist.
+struct Point { x: f64; y: f64; }
+fn f(p: Point, xs: Array<f32>, n: i32): f64 {
+  let size = xs.size;
+  let _r = n.sqrt();
+  return p.z + size.toF64();
+}

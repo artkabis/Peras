@@ -1,0 +1,19 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0203-unused.peras
+---
+diagnostics:
+  error[E0203] check-unused { what: "parameter", name: "height" }
+    primary 2:21-2:27: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-parameter { name: "height" }
+      2:21-2:21 -> "_"
+  error[E0203] check-unused { what: "variable", name: "doubled" }
+    primary 3:7-3:14: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-variable
+  error[E0203] check-unused { what: "variable", name: "count" }
+    primary 4:7-4:12: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-variable

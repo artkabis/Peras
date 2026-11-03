@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0201-shadowing.peras
+---
+diagnostics:
+  error[E0201] check-shadowing { name: "value" }
+    primary 4:9-4:14: check-shadowing-label { name: "value" }
+    secondary 2:10-2:15: check-shadowing-previous-label
+    cause: check-shadowing-why
+    fix: check-shadowing-fix { name: "value" }
+  error[E0201] check-shadowing { name: "scale" }
+    primary 10:7-10:12: check-shadowing-label { name: "scale" }
+    secondary 2:4-2:9: check-shadowing-previous-label
+    cause: check-shadowing-why
+    fix: check-shadowing-fix { name: "scale" }

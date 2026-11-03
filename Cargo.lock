@@ -257,6 +257,7 @@ dependencies = [
 name = "perasc-check"
 version = "0.0.0"
 dependencies = [
+ "insta",
  "perasc-diag",
  "perasc-syntax",
 ]

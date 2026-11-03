@@ -1,6 +1,6 @@
 //! Compilation pipeline, configuration and cargo/wasm-bindgen calls for the Peras compiler.
 //!
-//! For now the pipeline is the lexer and the parser; each new stage plugs into [`check`].
+//! The pipeline: lexer, parser, then names and types; each new stage plugs into [`check`].
 
 use std::fs;
 use std::io;
@@ -43,9 +43,16 @@ impl Checked {
 }
 
 /// Runs every available stage on a source and gathers all its errors.
+///
+/// Names and types are checked only on a file without syntax errors: on a broken
+/// tree they would mostly report consequences of the syntax errors.
 #[must_use]
 pub fn check(source: &str) -> Checked {
-    Checked::capped(perasc_syntax::parse(source).diagnostics)
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return Checked::capped(parsed.diagnostics);
+    }
+    Checked::capped(perasc_check::check(&parsed.ast, source))
 }
 
 /// Why a source file could not be read.

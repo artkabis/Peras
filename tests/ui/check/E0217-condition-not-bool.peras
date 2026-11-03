@@ -1,0 +1,7 @@
+// E0217: no truthiness; conditions are bool.
+fn f(count: i32, name: String, maybe: Option<i32>, flags: i32): void {
+  if (count) {}
+  while (name) {}
+  if (maybe) {}
+  for (let i = 0; i + flags; i++) {}
+}

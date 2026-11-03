@@ -505,7 +505,9 @@ impl<'src> Parser<'src> {
         }
         self.bump(); // `fn`, or `function` already reported.
         let name = self.ident(NameOf::Function)?;
+        let params_start = self.peek().span.start;
         let params = self.params()?;
+        let params_span = self.since(params_start);
         let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
         let outer_loops = std::mem::take(&mut self.loop_depth);
         let body = self.block();
@@ -518,6 +520,7 @@ impl<'src> Parser<'src> {
                 is_async,
                 name,
                 params,
+                params_span,
                 ret,
                 body,
             }),
@@ -745,6 +748,7 @@ impl<'src> Parser<'src> {
         }
         Some(Local {
             mutable,
+            keyword: keyword.span,
             name,
             ty,
             init,

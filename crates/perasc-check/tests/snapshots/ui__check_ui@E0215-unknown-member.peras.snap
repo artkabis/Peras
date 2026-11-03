@@ -1,0 +1,19 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0215-unknown-member.peras
+---
+diagnostics:
+  error[E0215] check-unknown-member { type: "Array<f32>", member: "size" }
+    primary 4:17-4:21: check-unknown-member-label { type: "Array<f32>" }
+    cause: check-unknown-member-why
+    fix: check-unknown-member-fix
+  error[E0215] check-unknown-member { type: "i32", member: "sqrt" }
+    primary 5:14-5:18: check-unknown-member-label { type: "i32" }
+    cause: check-unknown-member-why
+    fix: check-unknown-member-fix
+  error[E0215] check-unknown-member { type: "Point", member: "z" }
+    primary 6:12-6:13: check-unknown-member-label { type: "Point" }
+    cause: check-unknown-member-why
+    fix: check-did-you-mean { name: "x" }
+      6:12-6:13 -> "x"

@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0211-integer-for-float.peras
+---
+diagnostics:
+  error[E0211] check-integer-for-float { expected: "f32" }
+    primary 3:19-3:20: check-integer-for-float-label { literal: "1" }
+    cause: check-integer-for-float-why
+    fix: check-integer-for-float-fix { literal: "1.0" }
+      3:20-3:20 -> ".0"
+  error[E0211] check-integer-for-float { expected: "f64" }
+    primary 5:14-5:15: check-integer-for-float-label { literal: "2" }
+    cause: check-integer-for-float-why
+    fix: check-integer-for-float-fix { literal: "2.0" }
+      5:15-5:15 -> ".0"

@@ -1,0 +1,8 @@
+// E0218: return what the return type says.
+fn half(x: f64): f64 {
+  if (x < 0.0) return;
+  return x / 2.0;
+}
+fn log(message: String): void {
+  return message;
+}
