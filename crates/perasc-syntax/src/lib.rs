@@ -8,7 +8,7 @@ use std::path::Path;
 pub mod lexer;
 pub mod token;
 
-pub use lexer::{Lexed, lex, string_value};
+pub use lexer::{Lexed, lex, source_too_large, string_value};
 pub use token::{Token, TokenKind};
 
 /// The mode of a source module, set by its file extension.

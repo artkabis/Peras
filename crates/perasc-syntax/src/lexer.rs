@@ -48,7 +48,9 @@ fn lex_bounded(source: &str, max_len: usize) -> Lexed {
                 kind: TokenKind::Eof,
                 span: Span::new(0, 0),
             }],
-            diagnostics: vec![source_too_large(source.len())],
+            diagnostics: vec![source_too_large(
+                u64::try_from(source.len()).unwrap_or(u64::MAX),
+            )],
         };
     }
 
@@ -1248,7 +1250,10 @@ fn bidi_control(span: Span, c: char, name: &str) -> Diagnostic {
     )
 }
 
-fn source_too_large(len: usize) -> Diagnostic {
+/// The `E0008` diagnostic for a source of `len` bytes, also used by the driver
+/// to refuse a file without reading it.
+#[must_use]
+pub fn source_too_large(len: u64) -> Diagnostic {
     let size = i64::try_from(len).unwrap_or(i64::MAX);
     diagnostic(
         codes::SOURCE_TOO_LARGE,

@@ -2,8 +2,42 @@
 # Every key here must exist in fr.ftl; CI fails otherwise.
 
 cli-version = perasc { $version }
-cli-usage = Usage: perasc [--version] [--help]
+cli-usage =
+    Usage: perasc <command> [options]
+
+    Commands:
+      check <file>...    check .peras and .apeiron files and report every error
+      explain <code>     explain an error code, e.g. `perasc explain E0001`
+
+    Options:
+      --lang <en|fr>     language of messages (default: PERAS_LANG, then the system locale)
+      --json             print the diagnostics of `check` as JSON on standard output
+      --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
+      -V, --version      print the version
+      -h, --help         print this help
 cli-unknown-argument = unknown argument `{ $argument }`
+cli-unknown-command = unknown command `{ $command }`
+cli-missing-value = `{ $option }` needs a value
+cli-invalid-value = invalid value `{ $value }` for `{ $option }`
+cli-no-files = `check` needs at least one file
+cli-missing-code = `explain` needs an error code, e.g. E0001
+cli-unknown-code = unknown error code `{ $code }`
+cli-not-a-source = `{ $path }` is not a Peras source: the extension must be .peras or .apeiron
+cli-not-found = `{ $path }` does not exist
+cli-not-utf8 = `{ $path }` is not UTF-8 text
+cli-read-error = cannot read `{ $path }`: { $reason }
+cli-hidden-errors = { $count ->
+    [one] 1 more error
+   *[other] { $count } more errors
+} in { $path }, not shown: the limit is { $limit } per file
+cli-summary-ok = { $files ->
+    [one] 1 file checked, no error
+   *[other] { $files } files checked, no error
+}
+cli-summary-errors = { $errors ->
+    [one] 1 error: the build is blocked
+   *[other] { $errors } errors: the build is blocked
+}
 
 ## Lexer (E0001–E0099)
 
@@ -28,9 +62,9 @@ lex-invalid-character-fix-template = template literals are not supported yet: jo
 # E0002
 lex-unterminated-string = unterminated string
 lex-unterminated-string-label = this string is never closed
-lex-unterminated-string-end-label = the line ends here, before the closing { $quote }
+lex-unterminated-string-end-label = the line ends here, before the closing `{ $quote }`
 lex-unterminated-string-why = A string must close on the line where it starts; to put a line break in it, write `\n`.
-lex-unterminated-string-fix = close the string with { $quote }
+lex-unterminated-string-fix = close the string with `{ $quote }`
 
 # E0003
 lex-unterminated-block-comment = unterminated block comment
@@ -95,3 +129,10 @@ lex-source-too-large = source file too large
 lex-source-too-large-label = this file is { $size } bytes long
 lex-source-too-large-why = Source positions are 32-bit numbers, so a source file must be smaller than 4 GiB.
 lex-source-too-large-fix = split this file into several modules
+
+## Diagnostic rendering
+
+diag-error = error
+diag-why = why
+diag-fix = fix
+diag-details = details

@@ -22,6 +22,11 @@ perasc-driver = { path = "crates/perasc-driver" }
 
 # External crates. Latest stable releases, audited by cargo deny in CI.
 logos = "0.16.1"
+fluent-bundle = "0.16.0"
+unic-langid = "0.9.6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+unicode-width = "0.2.3"
 insta = { version = "1.49.0", features = ["glob"] }
 
 # The compiler holds itself to the rules it enforces: no unsafe, no warnings.

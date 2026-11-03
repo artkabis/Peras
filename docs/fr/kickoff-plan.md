@@ -58,7 +58,7 @@ Cela remplace l'idée du « parser oxc étendu » d'une version antérieure de l
 `perasc-diag` est construit avant le parser, pour que la toute première erreur de syntaxe ait déjà son format final.
 
 - **Un seul type de données** : un `Diagnostic` contient un code stable, une sévérité (toujours erreur), des positions annotées, une cause, l'historique de la valeur, une correction proposée sous forme de diff et un lien vers `perasc explain`.
-- **Rendu** : `ariadne` pour une sortie terminal colorée avec plusieurs annotations par extrait.
+- **Rendu** : notre propre moteur de rendu, au format exact de la [spec](spec.md#format-dun-diagnostic) : extrait avec plusieurs annotations, cause, correction en diff, `perasc explain`. `ariadne` était le premier choix, mais il code en dur des mots anglais (« Help », « Note ») et ne sait pas afficher une correction en diff. Les caractères invisibles et bidirectionnels d’un extrait s’affichent sous la forme `<U+202E>` : une erreur ne réordonne jamais le terminal.
 - **JSON** : le même `Diagnostic` sérialisé avec `serde` pour `--json`, l'overlay Vite, la CI et le futur LSP.
 - **Messages en deux langues** : les textes vivent dans des fichiers Project Fluent, `messages/en.ftl` et `messages/fr.ftl`. Le code ne référence que des identifiants de message, jamais de chaînes brutes.
 - **Registre des codes d'erreur** : un fichier liste chaque code (`E0001`…), son identifiant de message et ses pages de doc dans `docs/en/errors/` et `docs/fr/errors/`.
@@ -87,7 +87,7 @@ Les dépendances restent à leur dernière version : Renovate ouvre les PR de mi
 Dix jours ouvrés, chacun se terminant sur quelque chose qui tourne ou qui est testé.
 
 1. **Workspace et CI** : workspaces Cargo et pnpm, toolchain épinglée, tous les contrôles qualité branchés et verts sur un projet vide.
-2. **Diagnostics** : type `Diagnostic`, registre des codes, rendu `ariadne`, fichiers Fluent en anglais et en français, sortie `--json`.
+2. **Diagnostics** : type `Diagnostic`, registre des codes, rendu terminal, fichiers Fluent en anglais et en français, sortie `--json`.
 3. **Lexer** : tokens `logos` avec positions, une erreur pour chaque caractère invalide, premiers tests en snapshot.
 4. **Parser, partie 1** : fonctions, `let` et `const`, littéraux `i32` et `f64`, arithmétique en Pratt.
 5. **Parser, partie 2** : `struct`, `Array`, `if`, `for`, `return`, récupération à chaque fin d'instruction, 30 tests UI.

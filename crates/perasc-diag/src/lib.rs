@@ -3,12 +3,17 @@
 //! This crate defines the data every error carries: a stable code, labelled spans,
 //! a cause and a suggested fix. Texts are never stored here: a diagnostic only holds
 //! Fluent message IDs and their arguments, resolved in `messages/en.ftl` and
-//! `messages/fr.ftl`. Terminal rendering (`ariadne`) and `--json` output build on it.
+//! `messages/fr.ftl`, by [`i18n::Localizer`]. [`render`] prints a diagnostic for the
+//! terminal; [`json`] structures it for `--json`.
 
 use std::fmt;
 
 pub mod codes;
+pub mod i18n;
+pub mod json;
 pub mod messages;
+pub mod render;
+pub mod source;
 
 /// A stable error code such as `E0204`. Codes are never reused or renumbered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -37,7 +42,7 @@ impl fmt::Display for ErrorCode {
 /// A half-open byte range `start..end` in a source file.
 ///
 /// Offsets are `u32`: source files are limited to 4 GiB (see `E0008`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
     /// Offset of the first byte.
     pub start: u32,

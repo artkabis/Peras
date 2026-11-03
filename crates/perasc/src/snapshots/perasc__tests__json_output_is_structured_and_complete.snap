@@ -1,0 +1,373 @@
+---
+source: crates/perasc/src/tests.rs
+expression: out
+---
+{
+  "version": 1,
+  "language": "fr",
+  "errorCount": 5,
+  "files": [
+    {
+      "path": "tests/fixtures/demo.peras",
+      "diagnostics": [
+        {
+          "code": "E0006",
+          "severity": "error",
+          "message": {
+            "text": "`===` n’existe pas en Peras",
+            "id": "lex-strict-equality",
+            "args": {
+              "operator": "==="
+            }
+          },
+          "labels": [
+            {
+              "primary": true,
+              "range": {
+                "start": {
+                  "offset": 109,
+                  "line": 3,
+                  "column": 8
+                },
+                "end": {
+                  "offset": 112,
+                  "line": 3,
+                  "column": 11
+                }
+              },
+              "message": {
+                "text": "écris `==`",
+                "id": "lex-strict-equality-label",
+                "args": {
+                  "replacement": "=="
+                }
+              }
+            }
+          ],
+          "cause": {
+            "text": "Peras ne convertit jamais les types implicitement : `==` et `!=` comparent donc déjà strictement, comme `===` et `!==` en JavaScript.",
+            "id": "lex-strict-equality-why",
+            "args": {}
+          },
+          "fix": {
+            "message": {
+              "text": "remplace `===` par `==`",
+              "id": "lex-strict-equality-fix",
+              "args": {
+                "operator": "===",
+                "replacement": "=="
+              }
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": {
+                    "offset": 109,
+                    "line": 3,
+                    "column": 8
+                  },
+                  "end": {
+                    "offset": 112,
+                    "line": 3,
+                    "column": 11
+                  }
+                },
+                "replacement": "=="
+              }
+            ]
+          },
+          "explain": "perasc explain E0006"
+        },
+        {
+          "code": "E0002",
+          "severity": "error",
+          "message": {
+            "text": "chaîne non terminée",
+            "id": "lex-unterminated-string",
+            "args": {}
+          },
+          "labels": [
+            {
+              "primary": true,
+              "range": {
+                "start": {
+                  "offset": 148,
+                  "line": 4,
+                  "column": 15
+                },
+                "end": {
+                  "offset": 149,
+                  "line": 4,
+                  "column": 16
+                }
+              },
+              "message": {
+                "text": "cette chaîne n’est jamais fermée",
+                "id": "lex-unterminated-string-label",
+                "args": {}
+              }
+            },
+            {
+              "primary": false,
+              "range": {
+                "start": {
+                  "offset": 158,
+                  "line": 4,
+                  "column": 23
+                },
+                "end": {
+                  "offset": 158,
+                  "line": 4,
+                  "column": 23
+                }
+              },
+              "message": {
+                "text": "la ligne s’arrête ici, avant le `\"` fermant",
+                "id": "lex-unterminated-string-end-label",
+                "args": {
+                  "quote": "\""
+                }
+              }
+            }
+          ],
+          "cause": {
+            "text": "Une chaîne doit se fermer sur la ligne où elle commence ; pour y mettre un retour à la ligne, écris `\\n`.",
+            "id": "lex-unterminated-string-why",
+            "args": {}
+          },
+          "fix": {
+            "message": {
+              "text": "ferme la chaîne avec `\"`",
+              "id": "lex-unterminated-string-fix",
+              "args": {
+                "quote": "\""
+              }
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": {
+                    "offset": 157,
+                    "line": 4,
+                    "column": 22
+                  },
+                  "end": {
+                    "offset": 157,
+                    "line": 4,
+                    "column": 22
+                  }
+                },
+                "replacement": "\""
+              }
+            ]
+          },
+          "explain": "perasc explain E0002"
+        },
+        {
+          "code": "E0007",
+          "severity": "error",
+          "message": {
+            "text": "caractère invisible de contrôle bidirectionnel U+2067 (RIGHT-TO-LEFT ISOLATE)",
+            "id": "lex-bidi-control",
+            "args": {
+              "codepoint": "U+2067",
+              "name": "RIGHT-TO-LEFT ISOLATE"
+            }
+          },
+          "labels": [
+            {
+              "primary": true,
+              "range": {
+                "start": {
+                  "offset": 154,
+                  "line": 4,
+                  "column": 21
+                },
+                "end": {
+                  "offset": 157,
+                  "line": 4,
+                  "column": 22
+                }
+              },
+              "message": {
+                "text": "ce caractère invisible change l’ordre dans lequel le code s’affiche",
+                "id": "lex-bidi-control-label",
+                "args": {}
+              }
+            }
+          ],
+          "cause": {
+            "text": "Un caractère de contrôle bidirectionnel peut faire paraître le code différent de ce qu’il compile (l’attaque Trojan Source, CVE-2021-42574) : il est donc refusé partout, chaînes et commentaires compris.",
+            "id": "lex-bidi-control-why",
+            "args": {}
+          },
+          "fix": {
+            "message": {
+              "text": "écris-le sous forme d’échappement `\\u{2067}`, qui reste visible",
+              "id": "lex-bidi-control-fix-escape",
+              "args": {
+                "escape": "\\u{2067}"
+              }
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": {
+                    "offset": 154,
+                    "line": 4,
+                    "column": 21
+                  },
+                  "end": {
+                    "offset": 157,
+                    "line": 4,
+                    "column": 22
+                  }
+                },
+                "replacement": "\\u{2067}"
+              }
+            ]
+          },
+          "explain": "perasc explain E0007"
+        },
+        {
+          "code": "E0001",
+          "severity": "error",
+          "message": {
+            "text": "caractère invalide − (U+2212)",
+            "id": "lex-invalid-character",
+            "args": {
+              "character": "−",
+              "codepoint": "U+2212",
+              "count": 1
+            }
+          },
+          "labels": [
+            {
+              "primary": true,
+              "range": {
+                "start": {
+                  "offset": 170,
+                  "line": 5,
+                  "column": 12
+                },
+                "end": {
+                  "offset": 173,
+                  "line": 5,
+                  "column": 13
+                }
+              },
+              "message": {
+                "text": "ce caractère n’est pas autorisé dans du code Peras",
+                "id": "lex-invalid-character-label",
+                "args": {
+                  "count": 1
+                }
+              }
+            }
+          ],
+          "cause": {
+            "text": "Hors des chaînes et des commentaires, le code Peras n’utilise que des lettres ASCII, des chiffres, `_`, des espaces et les opérateurs du langage.",
+            "id": "lex-invalid-character-why",
+            "args": {}
+          },
+          "fix": {
+            "message": {
+              "text": "remplace − par `-`, le caractère ASCII auquel il ressemble",
+              "id": "lex-invalid-character-fix-replace",
+              "args": {
+                "character": "−",
+                "replacement": "-"
+              }
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": {
+                    "offset": 170,
+                    "line": 5,
+                    "column": 12
+                  },
+                  "end": {
+                    "offset": 173,
+                    "line": 5,
+                    "column": 13
+                  }
+                },
+                "replacement": "-"
+              }
+            ]
+          },
+          "explain": "perasc explain E0001"
+        },
+        {
+          "code": "E0005",
+          "severity": "error",
+          "message": {
+            "text": "nombre mal formé `10px`",
+            "id": "lex-malformed-number",
+            "args": {
+              "literal": "10px"
+            }
+          },
+          "labels": [
+            {
+              "primary": true,
+              "range": {
+                "start": {
+                  "offset": 180,
+                  "line": 5,
+                  "column": 20
+                },
+                "end": {
+                  "offset": 182,
+                  "line": 5,
+                  "column": 22
+                }
+              },
+              "message": {
+                "text": "`px` inattendu après le nombre",
+                "id": "lex-number-suffix-label",
+                "args": {
+                  "suffix": "px"
+                }
+              }
+            }
+          ],
+          "cause": {
+            "text": "Les nombres littéraux n’ont pas de suffixe d’unité ou de type : le type vient du contexte ou d’une annotation.",
+            "id": "lex-number-suffix-why",
+            "args": {}
+          },
+          "fix": {
+            "message": {
+              "text": "supprime `px` ; pour choisir un type, annote la variable, par exemple `let x: f32 = 5.0`",
+              "id": "lex-number-suffix-fix",
+              "args": {
+                "suffix": "px"
+              }
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": {
+                    "offset": 180,
+                    "line": 5,
+                    "column": 20
+                  },
+                  "end": {
+                    "offset": 182,
+                    "line": 5,
+                    "column": 22
+                  }
+                },
+                "replacement": ""
+              }
+            ]
+          },
+          "explain": "perasc explain E0005"
+        }
+      ],
+      "hiddenCount": 0
+    }
+  ]
+}

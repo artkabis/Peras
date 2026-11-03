@@ -2,8 +2,42 @@
 # Chaque clé de en.ftl doit exister ici ; sinon la CI échoue.
 
 cli-version = perasc { $version }
-cli-usage = Utilisation : perasc [--version] [--help]
+cli-usage =
+    Utilisation : perasc <commande> [options]
+
+    Commandes :
+      check <fichier>... vérifie des fichiers .peras et .apeiron et signale toutes les erreurs
+      explain <code>     explique un code d’erreur, par exemple `perasc explain E0001`
+
+    Options :
+      --lang <en|fr>     langue des messages (par défaut : PERAS_LANG, puis la locale du système)
+      --json             affiche les diagnostics de `check` en JSON sur la sortie standard
+      --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
+      -V, --version      affiche la version
+      -h, --help         affiche cette aide
 cli-unknown-argument = argument inconnu `{ $argument }`
+cli-unknown-command = commande inconnue `{ $command }`
+cli-missing-value = `{ $option }` attend une valeur
+cli-invalid-value = valeur `{ $value }` invalide pour `{ $option }`
+cli-no-files = `check` attend au moins un fichier
+cli-missing-code = `explain` attend un code d’erreur, par exemple E0001
+cli-unknown-code = code d’erreur inconnu `{ $code }`
+cli-not-a-source = `{ $path }` n’est pas un source Peras : l’extension doit être .peras ou .apeiron
+cli-not-found = `{ $path }` n’existe pas
+cli-not-utf8 = `{ $path }` n’est pas du texte UTF-8
+cli-read-error = impossible de lire `{ $path }` : { $reason }
+cli-hidden-errors = { $count ->
+    [one] 1 autre erreur
+   *[other] { $count } autres erreurs
+} dans { $path }, non affichées : la limite est de { $limit } par fichier
+cli-summary-ok = { $files ->
+    [one] 1 fichier vérifié, aucune erreur
+   *[other] { $files } fichiers vérifiés, aucune erreur
+}
+cli-summary-errors = { $errors ->
+    [one] 1 erreur : la compilation est bloquée
+   *[other] { $errors } erreurs : la compilation est bloquée
+}
 
 ## Lexer (E0001–E0099)
 
@@ -28,9 +62,9 @@ lex-invalid-character-fix-template = les gabarits de chaîne (template literals)
 # E0002
 lex-unterminated-string = chaîne non terminée
 lex-unterminated-string-label = cette chaîne n’est jamais fermée
-lex-unterminated-string-end-label = la ligne s’arrête ici, avant le { $quote } fermant
+lex-unterminated-string-end-label = la ligne s’arrête ici, avant le `{ $quote }` fermant
 lex-unterminated-string-why = Une chaîne doit se fermer sur la ligne où elle commence ; pour y mettre un retour à la ligne, écris `\n`.
-lex-unterminated-string-fix = ferme la chaîne avec { $quote }
+lex-unterminated-string-fix = ferme la chaîne avec `{ $quote }`
 
 # E0003
 lex-unterminated-block-comment = commentaire de bloc non terminé
@@ -95,3 +129,10 @@ lex-source-too-large = fichier source trop volumineux
 lex-source-too-large-label = ce fichier fait { $size } octets
 lex-source-too-large-why = Les positions dans le source sont des nombres sur 32 bits : un fichier source doit faire moins de 4 Gio.
 lex-source-too-large-fix = découpe ce fichier en plusieurs modules
+
+## Rendu des diagnostics
+
+diag-error = erreur
+diag-why = pourquoi
+diag-fix = correction
+diag-details = détails

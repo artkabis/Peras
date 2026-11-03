@@ -1,0 +1,76 @@
+---
+source: crates/perasc/src/tests.rs
+expression: err
+---
+error[E0006]: `===` does not exist in Peras
+  --> tests/fixtures/demo.peras:3:8
+   |
+ 3 |     if (b === 0.0) { return 0.0; }
+   |           ^^^ write `==`
+   |
+   = why: Peras never converts types implicitly, so `==` and `!=` already compare strictly, like `===` and `!==` in JavaScript.
+   = fix: replace `===` with `==`
+   |
+ 3 -     if (b === 0.0) { return 0.0; }
+ 3 +     if (b == 0.0) { return 0.0; }
+   |
+   = details: perasc explain E0006
+
+error[E0002]: unterminated string
+  --> tests/fixtures/demo.peras:4:15
+   |
+ 4 |   let label = "ratio<U+2067>;
+   |               ^ this string is never closed
+   |                              - the line ends here, before the closing `"`
+   |
+   = why: A string must close on the line where it starts; to put a line break in it, write `\n`.
+   = fix: close the string with `"`
+   |
+ 4 -   let label = "ratio<U+2067>;
+ 4 +   let label = "ratio<U+2067>";
+   |
+   = details: perasc explain E0002
+
+error[E0007]: invisible bidirectional control character U+2067 (RIGHT-TO-LEFT ISOLATE)
+  --> tests/fixtures/demo.peras:4:21
+   |
+ 4 |   let label = "ratio<U+2067>;
+   |                     ^^^^^^^^ this invisible character changes the order in which the code is displayed
+   |
+   = why: A bidirectional control character can make code look different from what it compiles to (the Trojan Source attack, CVE-2021-42574), so it is refused everywhere, strings and comments included.
+   = fix: write it as the escape `\u{2067}`, which stays visible
+   |
+ 4 -   let label = "ratio<U+2067>;
+ 4 +   let label = "ratio\u{2067};
+   |
+   = details: perasc explain E0007
+
+error[E0001]: invalid character − (U+2212)
+  --> tests/fixtures/demo.peras:5:12
+   |
+ 5 |   return a − b * 10px;
+   |            ^ this character is not allowed in Peras code
+   |
+   = why: Outside strings and comments, Peras code only uses ASCII letters, digits, `_`, spaces and the operators of the language.
+   = fix: replace − with `-`, the ASCII character it looks like
+   |
+ 5 -   return a − b * 10px;
+ 5 +   return a - b * 10px;
+   |
+   = details: perasc explain E0001
+
+error[E0005]: malformed number `10px`
+  --> tests/fixtures/demo.peras:5:20
+   |
+ 5 |   return a − b * 10px;
+   |                    ^^ unexpected `px` after the number
+   |
+   = why: Number literals have no unit or type suffix: the type comes from the context or from an annotation.
+   = fix: remove `px`; to choose a type, annotate the variable, e.g. `let x: f32 = 5.0`
+   |
+ 5 -   return a − b * 10px;
+ 5 +   return a − b * 10;
+   |
+   = details: perasc explain E0005
+
+5 errors: the build is blocked

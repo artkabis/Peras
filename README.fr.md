@@ -49,6 +49,10 @@ Prérequis : [rustup](https://rustup.rs), Node 26 LTS (26.13.0+), pnpm 12+.
 cargo test --workspace
 cargo run -p perasc -- --version
 
+# Vérifier des sources : chaque erreur avec extrait, cause et correction (--lang en|fr, --json)
+cargo run -p perasc -- check crates/perasc/tests/fixtures/demo.peras --lang fr
+cargo run -p perasc -- explain E0007 --lang fr
+
 # JS : une fois, installe les dernières dépendances de dev stables et mûres (publiées depuis plus de 24 h), les audite et lance tous les contrôles
 pnpm run bootstrap
 ```

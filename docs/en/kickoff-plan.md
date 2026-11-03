@@ -58,7 +58,7 @@ This replaces the “extended oxc parser” idea from an earlier draft of the [s
 `perasc-diag` is built before the parser, so the very first syntax error already has the final format.
 
 - **One data type**: a `Diagnostic` holds a stable code, a severity (always error), labelled spans, a cause, the value history, a suggested fix as a diff, and a link to `perasc explain`.
-- **Rendering**: `ariadne` for coloured terminal output with several labels per excerpt.
+- **Rendering**: our own renderer, in the exact format of the [spec](spec.md#diagnostic-format): excerpt with several labels, cause, fix as a diff, `perasc explain`. `ariadne` was the first choice, but it hard-codes English words ("Help", "Note") and cannot show a fix as a diff. Invisible and bidirectional characters in an excerpt are shown as `<U+202E>`, so an error never reorders the terminal.
 - **JSON**: the same `Diagnostic` serialized with `serde` for `--json`, the Vite overlay, CI and the future LSP.
 - **Messages in two languages**: message texts live in Project Fluent files, `messages/en.ftl` and `messages/fr.ftl`. Code only references message IDs, never raw strings.
 - **Error code registry**: one file lists every code (`E0001`…), its message ID and its doc pages in `docs/en/errors/` and `docs/fr/errors/`.
@@ -87,7 +87,7 @@ Dependencies stay on their latest versions; Renovate opens the update PRs, and t
 Ten working days, each closing on something that runs or is tested.
 
 1. **Workspace and CI**: Cargo and pnpm workspaces, pinned toolchain, every quality gate wired up and green on an empty project.
-2. **Diagnostics**: `Diagnostic` type, code registry, `ariadne` rendering, Fluent files in English and French, `--json` output.
+2. **Diagnostics**: `Diagnostic` type, code registry, terminal rendering, Fluent files in English and French, `--json` output.
 3. **Lexer**: `logos` tokens with spans, an error for every invalid character, first snapshot tests.
 4. **Parser, part 1**: functions, `let` and `const`, `i32` and `f64` literals, arithmetic with Pratt parsing.
 5. **Parser, part 2**: `struct`, `Array`, `if`, `for`, `return`, recovery at statement boundaries, 30 UI tests.

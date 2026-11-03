@@ -1,0 +1,6 @@
+---
+source: crates/perasc/src/tests.rs
+expression: err
+---
+error: `tests/fixtures/notes.txt` is not a Peras source: the extension must be .peras or .apeiron
+error: `tests/fixtures/missing.peras` does not exist

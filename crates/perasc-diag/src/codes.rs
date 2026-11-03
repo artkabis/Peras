@@ -5,6 +5,7 @@
 //! Lexical errors use `E0001` to `E0099`.
 
 use crate::ErrorCode;
+use crate::messages::Language;
 
 /// A character that cannot appear in Peras source outside strings and comments.
 pub const INVALID_CHARACTER: ErrorCode = ErrorCode::new(1);
@@ -32,27 +33,52 @@ pub struct CodeInfo {
     pub message_id: &'static str,
     /// Whether the compiler no longer emits it.
     pub retired: bool,
+    /// Its documentation page in English, shown by `perasc explain`.
+    pub docs_en: &'static str,
+    /// Its documentation page in French.
+    pub docs_fr: &'static str,
+}
+
+impl CodeInfo {
+    /// The documentation page in `language`.
+    #[must_use]
+    pub const fn docs(&self, language: Language) -> &'static str {
+        match language {
+            Language::English => self.docs_en,
+            Language::French => self.docs_fr,
+        }
+    }
+}
+
+/// A registry entry. The pages are embedded at compile time, so a missing page
+/// fails the build.
+macro_rules! active {
+    ($code:expr, $id:literal, $number:literal) => {
+        CodeInfo {
+            code: $code,
+            message_id: $id,
+            retired: false,
+            docs_en: include_str!(concat!("../../../docs/en/errors/", $number, ".md")),
+            docs_fr: include_str!(concat!("../../../docs/fr/errors/", $number, ".md")),
+        }
+    };
 }
 
 /// Every code issued so far, in numeric order.
 pub const REGISTRY: &[CodeInfo] = &[
-    active(INVALID_CHARACTER, "lex-invalid-character"),
-    active(UNTERMINATED_STRING, "lex-unterminated-string"),
-    active(UNTERMINATED_BLOCK_COMMENT, "lex-unterminated-block-comment"),
-    active(INVALID_ESCAPE, "lex-invalid-escape"),
-    active(MALFORMED_NUMBER, "lex-malformed-number"),
-    active(STRICT_EQUALITY, "lex-strict-equality"),
-    active(BIDI_CONTROL_CHARACTER, "lex-bidi-control"),
-    active(SOURCE_TOO_LARGE, "lex-source-too-large"),
+    active!(INVALID_CHARACTER, "lex-invalid-character", "E0001"),
+    active!(UNTERMINATED_STRING, "lex-unterminated-string", "E0002"),
+    active!(
+        UNTERMINATED_BLOCK_COMMENT,
+        "lex-unterminated-block-comment",
+        "E0003"
+    ),
+    active!(INVALID_ESCAPE, "lex-invalid-escape", "E0004"),
+    active!(MALFORMED_NUMBER, "lex-malformed-number", "E0005"),
+    active!(STRICT_EQUALITY, "lex-strict-equality", "E0006"),
+    active!(BIDI_CONTROL_CHARACTER, "lex-bidi-control", "E0007"),
+    active!(SOURCE_TOO_LARGE, "lex-source-too-large", "E0008"),
 ];
-
-const fn active(code: ErrorCode, message_id: &'static str) -> CodeInfo {
-    CodeInfo {
-        code,
-        message_id,
-        retired: false,
-    }
-}
 
 /// Looks up a code in the registry.
 #[must_use]
@@ -60,11 +86,21 @@ pub fn info(code: ErrorCode) -> Option<&'static CodeInfo> {
     REGISTRY.iter().find(|entry| entry.code == code)
 }
 
+/// Parses `E0001`, `e0001` or `1` into a registered code.
+#[must_use]
+pub fn parse(text: &str) -> Option<&'static CodeInfo> {
+    let digits = text.strip_prefix(['E', 'e']).unwrap_or(text);
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let number = digits.parse::<u16>().ok()?;
+    info(ErrorCode::new(number))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::REGISTRY;
+    use super::{REGISTRY, parse};
     use crate::messages::{Language, has_message};
-    use std::path::Path;
 
     #[test]
     fn codes_are_unique_and_in_order() {
@@ -90,16 +126,23 @@ mod tests {
     }
 
     #[test]
-    fn every_code_has_documentation_in_both_languages() {
-        let docs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
+    fn every_page_is_titled_with_its_code() {
         for entry in REGISTRY {
-            for language in ["en", "fr"] {
-                let page = docs
-                    .join(language)
-                    .join("errors")
-                    .join(format!("{}.md", entry.code));
-                assert!(page.is_file(), "missing page {}", page.display());
+            for language in Language::ALL {
+                let title = entry.docs(language).lines().next().unwrap_or("");
+                let expected = format!("# {}", entry.code);
+                assert!(title.starts_with(&expected), "{}: {title}", entry.code);
             }
         }
+    }
+
+    #[test]
+    fn codes_parse_in_any_case() {
+        assert_eq!(parse("E0006").map(|e| e.code), Some(super::STRICT_EQUALITY));
+        assert_eq!(parse("e6").map(|e| e.code), Some(super::STRICT_EQUALITY));
+        assert_eq!(parse("6").map(|e| e.code), Some(super::STRICT_EQUALITY));
+        assert_eq!(parse("E9999"), None);
+        assert_eq!(parse("E"), None);
+        assert_eq!(parse("E+1"), None);
     }
 }

@@ -1,0 +1,76 @@
+---
+source: crates/perasc/src/tests.rs
+expression: err
+---
+erreur[E0006] : `===` n’existe pas en Peras
+  --> tests/fixtures/demo.peras:3:8
+   |
+ 3 |     if (b === 0.0) { return 0.0; }
+   |           ^^^ écris `==`
+   |
+   = pourquoi : Peras ne convertit jamais les types implicitement : `==` et `!=` comparent donc déjà strictement, comme `===` et `!==` en JavaScript.
+   = correction : remplace `===` par `==`
+   |
+ 3 -     if (b === 0.0) { return 0.0; }
+ 3 +     if (b == 0.0) { return 0.0; }
+   |
+   = détails : perasc explain E0006
+
+erreur[E0002] : chaîne non terminée
+  --> tests/fixtures/demo.peras:4:15
+   |
+ 4 |   let label = "ratio<U+2067>;
+   |               ^ cette chaîne n’est jamais fermée
+   |                              - la ligne s’arrête ici, avant le `"` fermant
+   |
+   = pourquoi : Une chaîne doit se fermer sur la ligne où elle commence ; pour y mettre un retour à la ligne, écris `\n`.
+   = correction : ferme la chaîne avec `"`
+   |
+ 4 -   let label = "ratio<U+2067>;
+ 4 +   let label = "ratio<U+2067>";
+   |
+   = détails : perasc explain E0002
+
+erreur[E0007] : caractère invisible de contrôle bidirectionnel U+2067 (RIGHT-TO-LEFT ISOLATE)
+  --> tests/fixtures/demo.peras:4:21
+   |
+ 4 |   let label = "ratio<U+2067>;
+   |                     ^^^^^^^^ ce caractère invisible change l’ordre dans lequel le code s’affiche
+   |
+   = pourquoi : Un caractère de contrôle bidirectionnel peut faire paraître le code différent de ce qu’il compile (l’attaque Trojan Source, CVE-2021-42574) : il est donc refusé partout, chaînes et commentaires compris.
+   = correction : écris-le sous forme d’échappement `\u{2067}`, qui reste visible
+   |
+ 4 -   let label = "ratio<U+2067>;
+ 4 +   let label = "ratio\u{2067};
+   |
+   = détails : perasc explain E0007
+
+erreur[E0001] : caractère invalide − (U+2212)
+  --> tests/fixtures/demo.peras:5:12
+   |
+ 5 |   return a − b * 10px;
+   |            ^ ce caractère n’est pas autorisé dans du code Peras
+   |
+   = pourquoi : Hors des chaînes et des commentaires, le code Peras n’utilise que des lettres ASCII, des chiffres, `_`, des espaces et les opérateurs du langage.
+   = correction : remplace − par `-`, le caractère ASCII auquel il ressemble
+   |
+ 5 -   return a − b * 10px;
+ 5 +   return a - b * 10px;
+   |
+   = détails : perasc explain E0001
+
+erreur[E0005] : nombre mal formé `10px`
+  --> tests/fixtures/demo.peras:5:20
+   |
+ 5 |   return a − b * 10px;
+   |                    ^^ `px` inattendu après le nombre
+   |
+   = pourquoi : Les nombres littéraux n’ont pas de suffixe d’unité ou de type : le type vient du contexte ou d’une annotation.
+   = correction : supprime `px` ; pour choisir un type, annote la variable, par exemple `let x: f32 = 5.0`
+   |
+ 5 -   return a − b * 10px;
+ 5 +   return a − b * 10;
+   |
+   = détails : perasc explain E0005
+
+5 erreurs : la compilation est bloquée

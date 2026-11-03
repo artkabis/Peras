@@ -1,0 +1,6 @@
+// Several lexical errors at once, rendered by `perasc check`.
+export fn ratio(a: f32, b: f32): f32 {
+	if (b === 0.0) { return 0.0; }
+  let label = "ratio⁧;
+  return a − b * 10px;
+}
