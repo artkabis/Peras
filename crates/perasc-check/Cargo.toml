@@ -1,0 +1,16 @@
+[package]
+name = "perasc-check"
+description = "Name, type, ownership, resource and stack-budget checks for the Peras compiler."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+perasc-diag.workspace = true
+perasc-syntax.workspace = true
+
+[lints]
+workspace = true

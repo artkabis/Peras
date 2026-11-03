@@ -1,0 +1,45 @@
+# Contributing to Peras
+
+*Version française : [CONTRIBUTING.fr.md](CONTRIBUTING.fr.md)*
+
+## English first, then French
+
+English is the source of truth for code comments, documentation, compiler messages and commit messages. Every user-facing text lands in English **and** French in the same pull request:
+
+- compiler messages: `crates/*/messages/en.ftl` and `fr.ftl`, same keys;
+- documentation: `docs/en/<page>` and `docs/fr/<page>`, same paths;
+- root files: `README.md` / `README.fr.md`, `CONTRIBUTING.md` / `CONTRIBUTING.fr.md`.
+
+`node scripts/check-i18n.mjs` checks this locally; CI blocks the merge otherwise.
+
+## Zero tolerance
+
+- No warning: `cargo clippy -- -D warnings`, `eslint --max-warnings 0`.
+- No `unsafe`: every crate inherits `unsafe_code = "forbid"`.
+- No known CVE: `cargo deny`, `cargo audit` and `pnpm audit` block the merge.
+- No unreviewed snapshot: `cargo insta review` before pushing.
+
+Run everything locally before pushing:
+
+```sh
+cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+pnpm run check
+```
+
+## Error codes
+
+A new compiler error ships complete, in one pull request:
+
+1. a new code in the registry (`E` + four digits), never reusing a retired one;
+2. its message in `en.ftl` then `fr.ftl`;
+3. a suggested fix;
+4. a UI test in `tests/ui/`;
+5. its page in `docs/en/errors/` then `docs/fr/errors/`, used by `perasc explain`.
+
+## Commits and pull requests
+
+Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. The changelog is generated from them. Versions follow semver and stay `0.x` until the language is stable.
+
+## Dependencies
+
+Dependencies stay on their latest versions. Renovate opens the update pull requests; CI decides. A toolchain bump (`rust-toolchain.toml`) gets its own pull request.

@@ -1,0 +1,20 @@
+[package]
+name = "perasc-driver"
+description = "Compilation pipeline, configuration and cargo/wasm-bindgen calls for the Peras compiler."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+perasc-check.workspace = true
+perasc-codegen-js.workspace = true
+perasc-codegen-rs.workspace = true
+perasc-diag.workspace = true
+perasc-ir.workspace = true
+perasc-syntax.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,21 @@
+{
+  "name": "peras-workspace",
+  "private": true,
+  "type": "module",
+  "description": "JS tooling for the Peras language: Vite plugin, Vitest adapter, project scaffolding.",
+  "license": "MIT OR Apache-2.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "bootstrap": "sh scripts/bootstrap.sh",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint --max-warnings 0 .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "audit": "pnpm audit --audit-level low",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:i18n && pnpm run audit"
+  }
+}

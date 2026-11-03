@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/peras-lang/peras"
+publish = false
+
+# Internal crates, referenced by path so the whole workspace builds offline.
+[workspace.dependencies]
+perasc-syntax = { path = "crates/perasc-syntax" }
+perasc-diag = { path = "crates/perasc-diag" }
+perasc-check = { path = "crates/perasc-check" }
+perasc-ir = { path = "crates/perasc-ir" }
+perasc-codegen-rs = { path = "crates/perasc-codegen-rs" }
+perasc-codegen-js = { path = "crates/perasc-codegen-js" }
+perasc-driver = { path = "crates/perasc-driver" }
+
+# The compiler holds itself to the rules it enforces: no unsafe, no warnings.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+unused = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1

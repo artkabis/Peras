@@ -1,0 +1,11 @@
+{
+  "name": "vite-plugin-peras",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vite plugin that compiles .peras modules to WebAssembly and .apeiron modules to JavaScript.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
