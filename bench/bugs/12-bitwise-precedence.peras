@@ -1,0 +1,3 @@
+export fn isEven(flags: i32): bool {
+  return flags & 1 == 0;
+}

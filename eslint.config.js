@@ -4,7 +4,8 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["target/**", "**/dist/**", "**/node_modules/**"] },
+  // bench/bugs holds deliberately buggy code, linted by its own config in scripts/bench-bugs.mjs.
+  { ignores: ["target/**", "**/dist/**", "**/node_modules/**", "bench/bugs/**"] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,

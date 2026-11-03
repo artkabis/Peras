@@ -1,0 +1,6 @@
+export fn describe(stock: i32): String {
+  if (stock) {
+    return "available";
+  }
+  return "sold out";
+}

@@ -1,0 +1,7 @@
+export fn joinNames(names: Array<String>): String {
+  let out = "";
+  for (const name in names) {
+    out += name;
+  }
+  return out;
+}

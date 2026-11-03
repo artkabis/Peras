@@ -1,0 +1,4 @@
+export fn normalize(samples: Array<f64>): i32 {
+  samples[0] = 0.0;
+  return samples.length;
+}

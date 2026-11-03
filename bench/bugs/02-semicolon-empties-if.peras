@@ -1,0 +1,8 @@
+fn grantAccess(): void {}
+
+export fn check(isAdmin: bool): void {
+  if (isAdmin);
+  {
+    grantAccess();
+  }
+}

@@ -2,3 +2,4 @@ target/
 pnpm-lock.yaml
 Cargo.lock
 crates/
+bench/bugs/

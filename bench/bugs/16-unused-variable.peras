@@ -1,0 +1,4 @@
+export fn area(width: f64): f64 {
+  const doubled = width * 2.0;
+  return width * width;
+}

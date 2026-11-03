@@ -1,0 +1,82 @@
+[
+  {
+    "id": "01-assign-in-condition",
+    "category": "bug"
+  },
+  {
+    "id": "02-semicolon-empties-if",
+    "category": "bug"
+  },
+  {
+    "id": "03-truthy-zero",
+    "category": "bug"
+  },
+  {
+    "id": "04-string-plus-number",
+    "category": "bug"
+  },
+  {
+    "id": "05-for-in-over-array",
+    "category": "bug"
+  },
+  {
+    "id": "06-shadowed-accumulator",
+    "category": "bug"
+  },
+  {
+    "id": "07-mutates-caller-array",
+    "category": "bug"
+  },
+  {
+    "id": "08-byte-overflow",
+    "category": "bug"
+  },
+  {
+    "id": "09-var-in-loop",
+    "category": "bug"
+  },
+  {
+    "id": "10-trojan-source",
+    "category": "bug"
+  },
+  {
+    "id": "11-chained-comparison",
+    "category": "bug"
+  },
+  {
+    "id": "12-bitwise-precedence",
+    "category": "bug"
+  },
+  {
+    "id": "13-missing-return-path",
+    "category": "bug"
+  },
+  {
+    "id": "14-loose-equality",
+    "category": "bug"
+  },
+  {
+    "id": "15-typo-in-name",
+    "category": "bug"
+  },
+  {
+    "id": "16-unused-variable",
+    "category": "bug"
+  },
+  {
+    "id": "17-explicit-any",
+    "category": "rigour"
+  },
+  {
+    "id": "18-export-without-return-type",
+    "category": "rigour"
+  },
+  {
+    "id": "19-implicit-int-to-float",
+    "category": "rigour"
+  },
+  {
+    "id": "20-optional-field",
+    "category": "rigour"
+  }
+]

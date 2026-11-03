@@ -1,0 +1,4 @@
+export fn brighten(): u8 {
+  let alpha: u8 = 300;
+  return alpha;
+}

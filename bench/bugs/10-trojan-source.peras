@@ -1,0 +1,4 @@
+export fn isAdmin(role: String): bool {
+  /*‮ } ⁦if (role == "admin")⁩ ⁦ begin admins only */
+  return role == "user";
+}

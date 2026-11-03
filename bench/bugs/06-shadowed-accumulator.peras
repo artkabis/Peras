@@ -1,0 +1,10 @@
+fn log(_value: f64): void {}
+
+export fn total(prices: Array<f64>): f64 {
+  let sum = 0.0;
+  for (const price of prices) {
+    let sum = price * 1.2;
+    log(sum);
+  }
+  return sum;
+}

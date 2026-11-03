@@ -1,0 +1,7 @@
+export fn delays(): Array<i32> {
+  let out: Array<i32> = [];
+  for (var i = 0; i < 3; i++) {
+    out.push(i * 100);
+  }
+  return out;
+}
