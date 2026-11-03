@@ -1,6 +1,6 @@
 # Contributing to Peras
 
-*Version française : [CONTRIBUTING.fr.md](CONTRIBUTING.fr.md)*
+_Version française : [CONTRIBUTING.fr.md](CONTRIBUTING.fr.md)_
 
 ## English first, then French
 

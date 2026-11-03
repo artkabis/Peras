@@ -1,10 +1,10 @@
 # Peras
 
-*English version: [README.md](README.md), qui fait foi.*
+_English version: [README.md](README.md), qui fait foi._
 
 Peras est un langage web à la syntaxe TypeScript et à la rigueur de Rust. Les modules `.peras` sont compilés en WebAssembly avec une mémoire exacte, sans ramasse-miettes ; les modules `.apeiron` sont compilés en JavaScript, disciplinés par le compilateur.
 
-> Peras (πέρας) signifie *la limite* en grec. Pour les pythagoriciens, tout ce qui est bon naît de la limite imposée à l'illimité (*apeiron*).
+> Peras (πέρας) signifie _la limite_ en grec. Pour les pythagoriciens, tout ce qui est bon naît de la limite imposée à l'illimité (_apeiron_).
 
 **État :** jour 1 du plan de démarrage. Le dépôt compile, passe les lints et les tests, mais le compilateur ne compile encore rien.
 
@@ -23,22 +23,22 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 
 ## Organisation du dépôt
 
-| Chemin | Contenu |
-| --- | --- |
-| `crates/perasc-syntax` | Lexer, parser, AST |
-| `crates/perasc-diag` | Diagnostics, codes d'erreur, messages EN/FR |
-| `crates/perasc-check` | Noms, types, ownership, ressources, budget de pile |
-| `crates/perasc-ir` | IR typée partagée par les deux backends |
-| `crates/perasc-codegen-rs` | `.peras` → Rust → WASM |
-| `crates/perasc-codegen-js` | `.apeiron` → JavaScript |
-| `crates/perasc-driver` | Pipeline et orchestration du build |
-| `crates/perasc` | Interface en ligne de commande |
-| `packages/vite-plugin-peras` | Plugin Vite |
-| `packages/vitest-peras` | Adaptateur Vitest |
-| `packages/create-peras` | Création de projet |
-| `std/` | Bibliothèque standard, écrite en Peras |
-| `tests/ui/` | Fichiers source et leurs diagnostics attendus |
-| `docs/en`, `docs/fr` | Documentation, anglais d'abord |
+| Chemin                       | Contenu                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `crates/perasc-syntax`       | Lexer, parser, AST                                 |
+| `crates/perasc-diag`         | Diagnostics, codes d'erreur, messages EN/FR        |
+| `crates/perasc-check`        | Noms, types, ownership, ressources, budget de pile |
+| `crates/perasc-ir`           | IR typée partagée par les deux backends            |
+| `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                             |
+| `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                            |
+| `crates/perasc-driver`       | Pipeline et orchestration du build                 |
+| `crates/perasc`              | Interface en ligne de commande                     |
+| `packages/vite-plugin-peras` | Plugin Vite                                        |
+| `packages/vitest-peras`      | Adaptateur Vitest                                  |
+| `packages/create-peras`      | Création de projet                                 |
+| `std/`                       | Bibliothèque standard, écrite en Peras             |
+| `tests/ui/`                  | Fichiers source et leurs diagnostics attendus      |
+| `docs/en`, `docs/fr`         | Documentation, anglais d'abord                     |
 
 ## Démarrer
 

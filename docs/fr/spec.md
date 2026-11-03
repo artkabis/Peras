@@ -1,6 +1,6 @@
 # Peras — Spec initiale du langage
 
-*Dernière mise à jour : 2026-11-03. Traduction de [la version anglaise](../en/spec.md), qui fait foi.*
+_Dernière mise à jour : 2026-11-03. Traduction de [la version anglaise](../en/spec.md), qui fait foi._
 
 ## Vision et objectifs
 
@@ -25,7 +25,7 @@ Hors périmètre du MVP : remplacer JavaScript partout, le multithreading, un ba
 
 Le langage s'appelle **Peras**, et son extension indique le mode de chaque module : `.peras` pour `owned`, `.apeiron` pour `managed`.
 
-- **Peras (πέρας), « la limite »** : chez les pythagoriciens puis dans le *Philèbe* de Platon, tout ce qui est bon naît de la limite imposée à l'illimité. Le compilateur impose ses limites aux types, aux alias et aux durées de vie. La rasterisation impose une grille finie de pixels à une géométrie continue.
+- **Peras (πέρας), « la limite »** : chez les pythagoriciens puis dans le _Philèbe_ de Platon, tout ce qui est bon naît de la limite imposée à l'illimité. Le compilateur impose ses limites aux types, aux alias et aux durées de vie. La rasterisation impose une grille finie de pixels à une géométrie continue.
 - **Apeiron (ἄπειρον), « l'illimité »** : le monde ouvert, côté JS et GC, que Peras discipline sans le contraindre entièrement.
 - **L'extension est le mode** : aucune déclaration `owned module` ou `managed module` en tête de fichier. Le plugin Vite route chaque fichier vers son backend, et l'arborescence montre d'un coup d'œil quel code vit sous contrainte.
 - **Outils** : compilateur `perasc`, plugin `vite-plugin-peras`, scaffolding `pnpm create peras`.
@@ -35,19 +35,19 @@ Le langage s'appelle **Peras**, et son extension indique le mode de chaque modul
 
 Peras garde la syntaxe TS mais retire tout ce qui empêche une analyse statique complète.
 
-| Élément | Statut | Raison |
-| --- | --- | --- |
-| `let`, `const`, fonctions, flèches | Gardé | Base du langage |
-| `interface`, `type`, unions, génériques | Gardé | Cœur du typage |
-| `class` sans héritage | Gardé | Héritage remplacé par la composition et les traits |
-| `enum` et unions discriminées | Gardé | Avec `match` exhaustif |
-| `async` / `await` | Mode `managed` seulement | Repose sur les Promises JS |
-| `any`, `unknown` non narrowé | Retiré | Contourne le typage |
-| `eval`, `new Function`, `with` | Retiré | Code dynamique impossible à analyser |
-| Prototypes, `this` dynamique | Retiré | Ownership indéterminable |
-| `null` / `undefined` implicites | Retiré | Remplacés par `Option<T>` |
-| Exceptions `throw` | Retiré en `owned` | Remplacées par `Result<T, E>` |
-| `number` générique | Retiré en `owned` | Types explicites `i32`, `i64`, `f32`, `f64`, `u8` |
+| Élément                                 | Statut                   | Raison                                             |
+| --------------------------------------- | ------------------------ | -------------------------------------------------- |
+| `let`, `const`, fonctions, flèches      | Gardé                    | Base du langage                                    |
+| `interface`, `type`, unions, génériques | Gardé                    | Cœur du typage                                     |
+| `class` sans héritage                   | Gardé                    | Héritage remplacé par la composition et les traits |
+| `enum` et unions discriminées           | Gardé                    | Avec `match` exhaustif                             |
+| `async` / `await`                       | Mode `managed` seulement | Repose sur les Promises JS                         |
+| `any`, `unknown` non narrowé            | Retiré                   | Contourne le typage                                |
+| `eval`, `new Function`, `with`          | Retiré                   | Code dynamique impossible à analyser               |
+| Prototypes, `this` dynamique            | Retiré                   | Ownership indéterminable                           |
+| `null` / `undefined` implicites         | Retiré                   | Remplacés par `Option<T>`                          |
+| Exceptions `throw`                      | Retiré en `owned`        | Remplacées par `Result<T, E>`                      |
+| `number` générique                      | Retiré en `owned`        | Types explicites `i32`, `i64`, `f32`, `f64`, `u8`  |
 
 Ajouts : `match`, l'opérateur `?` sur `Result`, les conventions de passage `inout` et `sink`. Le mode d'un module est fixé par son extension, pas par un mot-clé.
 
@@ -134,12 +134,12 @@ La mémoire grandit par pages de 64 Kio et ne rétrécit jamais. La pile est pla
 
 Les limites sont déclarées dans `peras.config.ts` et vérifiées à la compilation, puis à l'exécution avec une erreur détaillée en cas de dépassement.
 
-| Budget | Exemple | Vérifié |
-| --- | --- | --- |
-| Pile | 256 Kio | compilation |
-| Mémoire initiale | 32 Mio | compilation (framebuffers inclus) |
-| Tas maximal | 64 Mio | exécution |
-| Plafond total | 512 Mio | exécution |
+| Budget           | Exemple | Vérifié                           |
+| ---------------- | ------- | --------------------------------- |
+| Pile             | 256 Kio | compilation                       |
+| Mémoire initiale | 32 Mio  | compilation (framebuffers inclus) |
+| Tas maximal      | 64 Mio  | exécution                         |
+| Plafond total    | 512 Mio | exécution                         |
 
 ### Allocateurs
 
@@ -270,9 +270,9 @@ export async fn onRecord(data: Float32Array): Promise<void> {
 
 Erreurs bloquantes attendues :
 
-- Utiliser `buf` après `consume(buf)` → *valeur déplacée*.
-- Passer `buf` deux fois en `inout` dans le même appel → *alias interdit*.
-- Appeler `document` dans `dsp.peras` → *API managed hors mode managed*.
+- Utiliser `buf` après `consume(buf)` → _valeur déplacée_.
+- Passer `buf` deux fois en `inout` dans le même appel → _alias interdit_.
+- Appeler `document` dans `dsp.peras` → _API managed hors mode managed_.
 
 ## Architecture du compilateur
 

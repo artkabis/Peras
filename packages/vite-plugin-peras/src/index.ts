@@ -27,9 +27,7 @@ export default function peras(): Plugin {
     load(id) {
       const mode = modeOf(id);
       if (mode === null) return null;
-      this.error(
-        `vite-plugin-peras: compiling ${mode} modules is not implemented yet (${id}).`,
-      );
+      this.error(`vite-plugin-peras: compiling ${mode} modules is not implemented yet (${id}).`);
     },
   };
 }

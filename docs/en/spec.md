@@ -1,6 +1,6 @@
 # Peras — Initial language spec
 
-*Last updated: 2026-11-03. French translation: [../fr/spec.md](../fr/spec.md).*
+_Last updated: 2026-11-03. French translation: [../fr/spec.md](../fr/spec.md)._
 
 ## Vision and goals
 
@@ -25,7 +25,7 @@ Out of scope for the MVP: replacing JavaScript everywhere, multithreading, a nat
 
 The language is called **Peras**, and the file extension sets each module's mode: `.peras` for `owned`, `.apeiron` for `managed`.
 
-- **Peras (πέρας), “the limit”**: for the Pythagoreans and in Plato's *Philebus*, everything good arises from limit imposed on the unlimited. The compiler imposes its limits on types, aliases and lifetimes. Rasterization imposes a finite pixel grid on continuous geometry.
+- **Peras (πέρας), “the limit”**: for the Pythagoreans and in Plato's _Philebus_, everything good arises from limit imposed on the unlimited. The compiler imposes its limits on types, aliases and lifetimes. Rasterization imposes a finite pixel grid on continuous geometry.
 - **Apeiron (ἄπειρον), “the unlimited”**: the open world of JS and the GC, which Peras disciplines without fully constraining.
 - **The extension is the mode**: no `owned module` or `managed module` header. The Vite plugin routes each file to its backend, and the file tree shows at a glance which code lives under constraint.
 - **Tools**: compiler `perasc`, plugin `vite-plugin-peras`, scaffolding `pnpm create peras`.
@@ -35,19 +35,19 @@ The language is called **Peras**, and the file extension sets each module's mode
 
 Peras keeps TS syntax but removes everything that prevents complete static analysis.
 
-| Feature | Status | Reason |
-| --- | --- | --- |
-| `let`, `const`, functions, arrows | Kept | Core of the language |
-| `interface`, `type`, unions, generics | Kept | Core of the type system |
-| `class` without inheritance | Kept | Inheritance replaced by composition and traits |
-| `enum` and discriminated unions | Kept | With exhaustive `match` |
-| `async` / `await` | Managed mode only | Relies on JS Promises |
-| `any`, un-narrowed `unknown` | Removed | Bypasses typing |
-| `eval`, `new Function`, `with` | Removed | Dynamic code cannot be analysed |
-| Prototypes, dynamic `this` | Removed | Ownership cannot be determined |
-| Implicit `null` / `undefined` | Removed | Replaced by `Option<T>` |
-| `throw` exceptions | Removed in `owned` | Replaced by `Result<T, E>` |
-| Generic `number` | Removed in `owned` | Explicit `i32`, `i64`, `f32`, `f64`, `u8` |
+| Feature                               | Status             | Reason                                         |
+| ------------------------------------- | ------------------ | ---------------------------------------------- |
+| `let`, `const`, functions, arrows     | Kept               | Core of the language                           |
+| `interface`, `type`, unions, generics | Kept               | Core of the type system                        |
+| `class` without inheritance           | Kept               | Inheritance replaced by composition and traits |
+| `enum` and discriminated unions       | Kept               | With exhaustive `match`                        |
+| `async` / `await`                     | Managed mode only  | Relies on JS Promises                          |
+| `any`, un-narrowed `unknown`          | Removed            | Bypasses typing                                |
+| `eval`, `new Function`, `with`        | Removed            | Dynamic code cannot be analysed                |
+| Prototypes, dynamic `this`            | Removed            | Ownership cannot be determined                 |
+| Implicit `null` / `undefined`         | Removed            | Replaced by `Option<T>`                        |
+| `throw` exceptions                    | Removed in `owned` | Replaced by `Result<T, E>`                     |
+| Generic `number`                      | Removed in `owned` | Explicit `i32`, `i64`, `f32`, `f64`, `u8`      |
 
 Additions: `match`, the `?` operator on `Result`, the `inout` and `sink` passing conventions. A module's mode is set by its extension, not by a keyword.
 
@@ -134,12 +134,12 @@ Memory grows in 64 KiB pages and never shrinks. The stack comes first, so an ove
 
 Limits are declared in `peras.config.ts` and checked at compile time, then at runtime with a detailed error when exceeded.
 
-| Budget | Example | Checked at |
-| --- | --- | --- |
-| Stack | 256 KiB | compile time |
-| Initial memory | 32 MiB | compile time (framebuffers included) |
-| Maximum heap | 64 MiB | runtime |
-| Total ceiling | 512 MiB | runtime |
+| Budget         | Example | Checked at                           |
+| -------------- | ------- | ------------------------------------ |
+| Stack          | 256 KiB | compile time                         |
+| Initial memory | 32 MiB  | compile time (framebuffers included) |
+| Maximum heap   | 64 MiB  | runtime                              |
+| Total ceiling  | 512 MiB | runtime                              |
 
 ### Allocators
 
@@ -270,9 +270,9 @@ export async fn onRecord(data: Float32Array): Promise<void> {
 
 Expected blocking errors:
 
-- Using `buf` after `consume(buf)` → *value moved*.
-- Passing `buf` twice as `inout` in the same call → *aliasing forbidden*.
-- Calling `document` in `dsp.peras` → *managed API outside managed mode*.
+- Using `buf` after `consume(buf)` → _value moved_.
+- Passing `buf` twice as `inout` in the same call → _aliasing forbidden_.
+- Calling `document` in `dsp.peras` → _managed API outside managed mode_.
 
 ## Compiler architecture
 

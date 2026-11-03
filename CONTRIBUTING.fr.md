@@ -1,6 +1,6 @@
 # Contribuer à Peras
 
-*English version: [CONTRIBUTING.md](CONTRIBUTING.md), qui fait foi.*
+_English version: [CONTRIBUTING.md](CONTRIBUTING.md), qui fait foi._
 
 ## Anglais d'abord, puis français
 
