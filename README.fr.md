@@ -16,6 +16,11 @@ Peras est un langage web à la syntaxe TypeScript et à la rigueur de Rust. Les 
 
 Chaque diagnostic bloque le build et explique la cause, l'historique de la valeur et la correction, en anglais ou en français.
 
+## Documentation
+
+- [Spec du langage](docs/fr/spec.md)
+- [Plan de démarrage du compilateur](docs/fr/kickoff-plan.md)
+
 ## Organisation du dépôt
 
 | Chemin | Contenu |
