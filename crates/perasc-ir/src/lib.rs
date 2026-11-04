@@ -13,6 +13,7 @@ use std::fmt::{self, Write as _};
 mod inline;
 #[cfg(test)]
 mod interp;
+mod licm;
 mod lower;
 mod opt;
 mod verify;

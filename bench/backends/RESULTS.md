@@ -8,14 +8,14 @@ Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores. rustc 1.99.1 (58cf8f9c3 
 
 | Backend | First build | Rebuild after an edit (median) | Tools needed |
 | --- | --- | --- | --- |
-| direct | 8.6 | 4.7 | perasc |
-| rust | 9,956 | 506 | perasc, rustup, cargo, wasm-bindgen |
+| direct | 7.7 | 5.1 | perasc |
+| rust | 10,500 | 540 | perasc, rustup, cargo, wasm-bindgen |
 
 ## Module size (bytes)
 
 | Backend | Raw | Raw, gzip | After wasm-opt -O3 | wasm-opt, gzip |
 | --- | --- | --- | --- | --- |
-| direct | 913 | 503 | 645 | 431 |
+| direct | 906 | 503 | 645 | 432 |
 | direct, IR not optimized | 677 | 415 | — | — |
 | rust | 19,232 | 7,750 | 1,969 | 1,286 |
 
@@ -25,12 +25,12 @@ The Rust sizes leave out the JavaScript glue that wasm-bindgen writes next to th
 
 | Build | fib(32) | primes(1 000 000) | mandel(600) | checksum(5 000 000, 7) |
 | --- | --- | --- | --- | --- |
-| direct | 4.4 | 133 | 15 | 11 |
-| direct, IR not optimized | 16 | 133 | 15 | 26 |
-| direct + wasm-opt | 4.0 | 137 | 14 | 12 |
-| rust | 4.5 | 134 | 13 | 11 |
-| rust + wasm-opt | 4.0 | 136 | 13 | 11 |
-| JavaScript | 22 | 135 | 14 | 157 |
+| direct | 4.0 | 133 | 14 | 11 |
+| direct, IR not optimized | 16 | 131 | 15 | 27 |
+| direct + wasm-opt | 5.7 | 132 | 13 | 12 |
+| rust | 4.2 | 130 | 12 | 10 |
+| rust + wasm-opt | 3.9 | 135 | 13 | 11 |
+| JavaScript | 20 | 132 | 14 | 155 |
 
 Every build gave the same result as the JavaScript reference on 19 inputs (114 comparisons).
 The JavaScript `checksum` must use BigInt, since JavaScript has no 64-bit integers.

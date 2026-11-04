@@ -31,6 +31,9 @@
 //! at the top cost two. It applies when `rest` has no `break` of its own, since
 //! that `break` would now run the code after the loop.
 //!
+//! **Loop-invariant code motion** and **doubling as an addition**: see
+//! [`crate::licm`].
+//!
 //! **Recursion unrolling** then copies the body into the remaining self calls; see
 //! [`crate::inline`] for why Peras does it rather than leave it to the engine.
 
@@ -43,6 +46,8 @@ pub fn optimize(module: &mut Module) {
         function.body = branchless_abs(std::mem::take(&mut function.body));
         eliminate_tail_recursion(function, id);
         function.body = rotate(std::mem::take(&mut function.body));
+        function.body = crate::licm::hoist_invariants(std::mem::take(&mut function.body));
+        function.body = crate::licm::doubling_as_addition(std::mem::take(&mut function.body));
         crate::inline::unroll_recursion(function, id);
     }
 }

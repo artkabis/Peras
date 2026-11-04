@@ -43,9 +43,26 @@ fn same_results(source: &str, inputs: &[Vec<Value>]) -> (Module, Module) {
             assert_ne!(actual, Err(Trap::Fuel), "{args:?}");
             continue;
         }
-        assert_eq!(actual, expected, "{args:?}\n{after}");
+        assert!(
+            same(&actual, &expected),
+            "{args:?}: {actual:?} for {expected:?}\n{after}"
+        );
     }
     (before, after)
+}
+
+/// Equal results, floats compared bit for bit (`0.0` is not `-0.0`), except that
+/// any NaN matches any NaN: WebAssembly does not fix the bits of a NaN either.
+fn same(a: &Result<Value, Trap>, b: &Result<Value, Trap>) -> bool {
+    match (a, b) {
+        (Ok(Value::F64(x)), Ok(Value::F64(y))) => {
+            (x.is_nan() && y.is_nan()) || x.to_bits() == y.to_bits()
+        }
+        (Ok(Value::F32(x)), Ok(Value::F32(y))) => {
+            (x.is_nan() && y.is_nan()) || x.to_bits() == y.to_bits()
+        }
+        _ => a == b,
+    }
 }
 
 fn i32s(range: std::ops::RangeInclusive<i32>) -> Vec<Vec<Value>> {
@@ -349,5 +366,83 @@ fn other_sign_tests_keep_their_branch() {
     ] {
         let before = compile(source);
         assert_eq!(optimized(&before), before, "{source}");
+    }
+}
+
+#[test]
+fn doubling_becomes_an_exact_addition() {
+    let source =
+        "export fn f(x: f64, y: f32): f64 {\n  return 2.0 * x + (y * 2.0).toF64() * x;\n}\n";
+    let mut inputs = Vec::new();
+    for x in [
+        0.0,
+        -0.0,
+        1.5,
+        -3.25,
+        f64::MAX,
+        f64::MIN_POSITIVE,
+        f64::INFINITY,
+        f64::NAN,
+    ] {
+        for y in [0.0_f32, -0.0, 0.1, f32::MAX, f32::NEG_INFINITY, f32::NAN] {
+            inputs.push(vec![Value::F64(x), Value::F32(y)]);
+        }
+    }
+    let (_, after) = same_results(source, &inputs);
+    let text = after.to_string();
+    assert!(
+        text.contains("(f64.+ %0 %0)") && text.contains("(f32.+ %1 %1)") && !text.contains("2.0"),
+        "{text}"
+    );
+    // Integers, and a doubled expression rather than a variable, keep their product.
+    for source in [
+        "export fn f(x: i32): i32 {\n  return 2 * x;\n}\n",
+        "export fn f(x: f64): f64 {\n  return 2.0 * (x + 1.0);\n}\n",
+        "export fn f(x: f64): f64 {\n  return 3.0 * x;\n}\n",
+    ] {
+        let before = compile(source);
+        assert_eq!(optimized(&before), before, "{source}");
+    }
+}
+
+#[test]
+fn invariant_values_leave_their_loop() {
+    // `cy` depends on `py` only: it leaves the loop over `px`, not the one over `py`.
+    let source = "export fn f(n: i32, scale: f64): f64 {\n  let total = 0.0;\n  for (let py = 0; py < n; py++) {\n    for (let px = 0; px < n; px++) {\n      const cy = py.toF64() * scale - 1.5;\n      total += cy + px.toF64();\n    }\n  }\n  return total;\n}\n";
+    let inputs: Vec<Vec<Value>> = [(-1, 0.5), (0, 0.5), (1, 2.0), (7, 0.25), (30, -1.0)]
+        .iter()
+        .map(|&(n, s)| vec![Value::I32(n), Value::F64(s)])
+        .collect();
+    let (_, after) = same_results(source, &inputs);
+    let text = after.to_string();
+    let hoisted = text
+        .find("(f64.- (f64.* (f64.from_i32")
+        .unwrap_or(usize::MAX);
+    let inner = text
+        .match_indices("loop while")
+        .nth(1)
+        .map_or(0, |(i, _)| i);
+    assert!(hoisted < inner, "{text}");
+}
+
+#[test]
+fn values_that_could_change_stay_in_their_loop() {
+    for source in [
+        // It reads `i`, which the loop changes.
+        "export fn f(n: i32): i32 {\n  let s = 0;\n  for (let i = 0; i < n; i++) { const k = i * 2; s += k; }\n  return s;\n}\n",
+        // A division could trap even when the loop does not run.
+        "export fn f(n: i32, d: i32): i32 {\n  let s = 0;\n  for (let i = 0; i < n; i++) { const k = 100 / d; s += k; }\n  return s;\n}\n",
+        // A call could trap or loop forever.
+        "export fn f(n: i32): i32 {\n  let s = 0;\n  for (let i = 0; i < n; i++) { const k = g(n); s += k; }\n  return s;\n}\nfn g(n: i32): i32 { return n; }\n",
+        // Assigned twice in the loop.
+        "export fn f(n: i32): i32 {\n  let s = 0;\n  let k = 0;\n  for (let i = 0; i < n; i++) { k = n + 1; s += k; k = 0; }\n  return s;\n}\n",
+        // Read before its assignment in the body: the first turn sees the old value.
+        "export fn f(n: i32): i32 {\n  let s = 0;\n  let k = 5;\n  for (let i = 0; i < n; i++) { s += k; k = n + 1; }\n  return s;\n}\n",
+        // Read after the loop: a loop that does not run must leave it alone.
+        "export fn f(n: i32): i32 {\n  let k = 5;\n  for (let i = 0; i < n; i++) { k = n + 1; }\n  return k;\n}\n",
+    ] {
+        let before = compile(source);
+        let after = optimized(&before);
+        assert_eq!(after, before, "{source}\n{after}");
     }
 }
