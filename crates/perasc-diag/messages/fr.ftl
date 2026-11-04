@@ -12,7 +12,7 @@ cli-usage =
 
     Options :
       --lang <en|fr>     langue des messages (par défaut : PERAS_LANG, puis la locale du système)
-      --json             affiche les diagnostics de `check` en JSON sur la sortie standard
+      --json             affiche les diagnostics de `check` et `build` en JSON sur la sortie standard
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)

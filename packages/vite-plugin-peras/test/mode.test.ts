@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import peras, { modeOf } from "../src/index.ts";
+import peras, { EXPORTS_MARKER, firstError, moduleCode, modeOf } from "../src/index.ts";
 
 describe("modeOf", () => {
   it("reads the mode from the extension", () => {
@@ -22,5 +22,60 @@ describe("plugin", () => {
     const plugin = peras();
     expect(plugin.name).toBe("vite-plugin-peras");
     expect(plugin.enforce).toBe("pre");
+  });
+});
+
+describe("firstError", () => {
+  it("places the primary label of the first diagnostic", () => {
+    const report = {
+      errorCount: 2,
+      files: [
+        {
+          path: "/src/a.peras",
+          diagnostics: [
+            {
+              code: "E0101",
+              message: { text: "missing `;`" },
+              labels: [
+                { primary: false, range: { start: { line: 1, column: 1 } } },
+                { primary: true, range: { start: { line: 2, column: 12 } } },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(firstError(report)).toEqual({
+      summary: "E0101: missing `;`",
+      loc: { file: "/src/a.peras", line: 2, column: 12 },
+    });
+  });
+
+  it("still says something without a diagnostic", () => {
+    expect(firstError({ errorCount: 1, files: [] })).toEqual({
+      summary: "1 error(s)",
+      loc: undefined,
+    });
+  });
+});
+
+describe("moduleCode", () => {
+  const compiled = {
+    wasm: new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]),
+    exports: `${EXPORTS_MARKER}\nconst wasm = instance.exports;\nexport const f = wasm.f;\n`,
+    dts: "",
+  };
+
+  it("inlines the module for the dev server", () => {
+    const code = moduleCode(compiled);
+    expect(code).toContain('atob("AGFzbQEAAAA=")');
+    expect(code).toContain("export const f = wasm.f;");
+  });
+
+  it("fetches the emitted asset in a build, streaming when the server allows it", () => {
+    const code = moduleCode(compiled, "import.meta.ROLLUP_FILE_URL_x");
+    expect(code).toContain("await fetch(import.meta.ROLLUP_FILE_URL_x)");
+    expect(code).toContain("WebAssembly.instantiateStreaming(response)");
+    expect(code).not.toContain("atob");
   });
 });

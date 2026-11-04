@@ -5,14 +5,30 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   // bench/bugs holds deliberately buggy code, linted by its own config in scripts/bench-bugs.mjs.
-  { ignores: ["target/**", "**/dist/**", "**/node_modules/**", "bench/bugs/**"] },
+  // The e2e fixtures are tiny browser apps, one of them broken on purpose.
+  {
+    ignores: [
+      "target/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "bench/bugs/**",
+      "packages/*/e2e/fixtures/**",
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ["*.js", "vitest.config.ts", "scripts/*.mjs"] },
+        projectService: {
+          allowDefaultProject: [
+            "*.js",
+            "vitest.config.ts",
+            "vitest.e2e.config.ts",
+            "scripts/*.mjs",
+          ],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

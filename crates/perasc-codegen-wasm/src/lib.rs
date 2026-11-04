@@ -473,6 +473,10 @@ const fn conversion(from: Ty, to: Ty) -> Option<I<'static>> {
     })
 }
 
+/// The line after which the loader only needs `instance`. `vite-plugin-peras`
+/// keeps what follows it and loads the module its own way: do not change it.
+pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `instance`)";
+
 /// A JavaScript ES module that loads the `.wasm` file next to it and exports its
 /// functions; `bool` results become JavaScript booleans.
 #[must_use]
@@ -484,6 +488,7 @@ pub fn js_loader(module: &Module, wasm_file: &str) -> String {
          ? await (await import(\"node:fs/promises\")).readFile(url)\n  \
          : await (await fetch(url)).arrayBuffer();\n\
          const {{ instance }} = await WebAssembly.instantiate(bytes);\n\
+         {EXPORTS_MARKER}\n\
          const wasm = instance.exports;\n"
     );
     for f in module.functions.iter().filter(|f| f.exported) {

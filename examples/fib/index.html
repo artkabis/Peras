@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Peras fib</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f7f5;
+        --fg: #1d1d1b;
+        --muted: #6b6b66;
+        --line: #deded8;
+        --accent: #2f5bd3;
+        font-family: system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141413;
+          --fg: #ececea;
+          --muted: #9a9a94;
+          --line: #33332f;
+          --accent: #7f9cf5;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 3rem 1rem;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.75rem;
+      }
+      p {
+        color: var(--muted);
+        margin: 0 0 2rem;
+      }
+      form {
+        display: flex;
+        gap: 0.5rem;
+        align-items: end;
+        margin-bottom: 2rem;
+      }
+      label {
+        display: grid;
+        gap: 0.25rem;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--fg);
+      }
+      input {
+        width: 6rem;
+      }
+      button {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        cursor: pointer;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+      td + td,
+      th + th {
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">fib in Peras</h1>
+      <p id="intro">The same function, in Peras compiled to WebAssembly, and in JavaScript.</p>
+      <form id="form">
+        <label
+          ><span id="n-label">n</span> <input id="n" type="number" min="0" max="40" value="30"
+        /></label>
+        <button id="run" type="submit">Run</button>
+      </form>
+      <table>
+        <thead>
+          <tr>
+            <th id="h-build"></th>
+            <th id="h-result"></th>
+            <th id="h-time"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Peras → WebAssembly</td>
+            <td id="wasm-result">…</td>
+            <td id="wasm-time"></td>
+          </tr>
+          <tr>
+            <td>JavaScript</td>
+            <td id="js-result">…</td>
+            <td id="js-time"></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

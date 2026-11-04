@@ -1,4 +1,4 @@
-use super::{compile, dts, js_loader};
+use super::{EXPORTS_MARKER, compile, dts, js_loader};
 
 fn module(source: &str) -> perasc_ir::Module {
     let parsed = perasc_syntax::parse(source);
@@ -68,4 +68,14 @@ fn declarations_and_loader_follow_the_types() {
         "{js}"
     );
     assert!(!js.contains("hidden"), "{js}");
+    // vite-plugin-peras splits the loader on this exact line (`EXPORTS_MARKER` in
+    // its source): changing it here means changing it there.
+    assert_eq!(EXPORTS_MARKER, "// perasc:exports (needs `instance`)");
+    let (_, exports) = js.split_once(EXPORTS_MARKER).unwrap_or_default();
+    assert!(
+        exports
+            .trim_start()
+            .starts_with("const wasm = instance.exports;"),
+        "{js}"
+    );
 }

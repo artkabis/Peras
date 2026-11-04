@@ -220,3 +220,38 @@ fn build_can_skip_the_ir_optimizations() {
     assert!(out.contains("compiled to"), "{out}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn build_reports_as_json_on_request() {
+    let dir = out_dir("json");
+    let out_path = dir.to_string_lossy().into_owned();
+    let (code, out, err) = cli(&[
+        "build",
+        "../../tests/ui/build/E0900-not-supported-yet.peras",
+        "--out",
+        &out_path,
+        "--json",
+        "--lang",
+        "fr",
+    ]);
+    assert_eq!((code, err.as_str()), (ERRORS_FOUND, ""));
+    let value: serde_json::Value = serde_json::from_str(&out).unwrap_or_default();
+    assert_eq!(value["language"], "fr");
+    let first = &value["files"][0]["diagnostics"][0];
+    assert_eq!(first["code"], "E0900", "{out}");
+    assert!(first["labels"][0]["range"]["start"]["line"].as_u64() > Some(0));
+    assert!(!dir.exists(), "nothing must be written");
+
+    let (code, out, err) = cli(&[
+        "build",
+        "../../tests/ui/build/supported.peras",
+        "--out",
+        &out_path,
+        "--json",
+    ]);
+    assert_eq!((code, err.as_str()), (SUCCESS, ""));
+    let value: serde_json::Value = serde_json::from_str(&out).unwrap_or_default();
+    assert_eq!(value["errorCount"], 0, "{out}");
+    assert!(dir.join("supported.wasm").is_file());
+    let _ = std::fs::remove_dir_all(&dir);
+}

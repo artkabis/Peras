@@ -225,7 +225,10 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
                 options.optimize,
                 &out_dir,
                 &localizer,
-                color,
+                build::Style {
+                    color,
+                    json: options.json,
+                },
                 out,
                 err,
             )

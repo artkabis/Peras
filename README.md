@@ -6,7 +6,7 @@ Peras is a web language with TypeScript syntax and Rust-grade rigour. `.peras` m
 
 > Peras (πέρας) is Greek for _the limit_. For the Pythagoreans, everything good arises from limit imposed on the unlimited (_apeiron_).
 
-**Status:** day 1 of the kickoff plan. The repository builds, lints and tests, but the compiler does not compile anything yet.
+**Status:** day 9 of the kickoff plan. `perasc` checks the syntax, names and types of a source, and compiles functions on numbers and booleans to WebAssembly, without a Rust toolchain; `vite-plugin-peras` runs them in the browser. Structures, arrays, ownership and `.apeiron` modules come next.
 
 ## Pillars
 
@@ -37,6 +37,7 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 | `packages/vite-plugin-peras` | Vite plugin                                         |
 | `packages/vitest-peras`      | Vitest adapter                                      |
 | `packages/create-peras`      | Project scaffolding                                 |
+| `examples/fib`               | `fib` in Peras, run in the browser through Vite     |
 | `std/`                       | Standard library, written in Peras                  |
 | `tests/ui/`                  | Source files and their expected diagnostics         |
 | `docs/en`, `docs/fr`         | Documentation, English first                        |
@@ -59,6 +60,24 @@ pnpm run bootstrap
 ```
 
 Before the first push, commit the `pnpm-lock.yaml` created by the bootstrap: CI installs it frozen.
+
+## Run Peras in the browser
+
+```sh
+cargo build --release -p perasc
+pnpm --filter peras-example-fib dev
+```
+
+`examples/fib/src/main.ts` imports `fib` from `fib.peras` like any module. `vite-plugin-peras` compiles it with `perasc`'s direct backend: in development the WebAssembly is inlined in the module, and `vite build` emits it as a hashed asset, compiled while it downloads. An error in the source shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`. The plugin also writes `fib.d.peras.ts` next to the source, so TypeScript knows the real signatures (with `allowArbitraryExtensions`).
+
+```ts
+// vite.config.ts
+import peras from "vite-plugin-peras";
+
+export default { plugins: [peras({ perasc: "path/to/perasc", lang: "en" })] };
+```
+
+`pnpm run e2e` builds the example, opens it in a headless Chromium on the dev server and on the production build, and checks the overlay shows errors. It needs `target/release/perasc` and a Chromium: `pnpm exec playwright install chromium`, or `PERAS_CHROMIUM` set to an installed one.
 
 ## Contributing
 
