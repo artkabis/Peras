@@ -27,9 +27,15 @@ const EVERY_CONSTRUCT: &str = "export fn all(a: i32, b: i64, x: f32, y: f64, ok:
 #[test]
 fn every_generated_module_is_valid_webassembly() {
     for source in [KERNELS, EVERY_CONSTRUCT] {
-        let wasm = compile(&module(source));
-        let validated = wasmparser::Validator::new().validate_all(&wasm);
-        assert!(validated.is_ok(), "{:?}", validated.err());
+        let plain = module(source);
+        let mut optimized = plain.clone();
+        perasc_ir::optimize(&mut optimized);
+        // The optimized kernels hold the `block` / `leave` of the unrolled `fib`.
+        for ir in [plain, optimized] {
+            let wasm = compile(&ir);
+            let validated = wasmparser::Validator::new().validate_all(&wasm);
+            assert!(validated.is_ok(), "{:?}\n{ir}", validated.err());
+        }
     }
 }
 

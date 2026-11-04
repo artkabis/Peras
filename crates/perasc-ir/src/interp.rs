@@ -65,6 +65,7 @@ enum Flow {
     Normal,
     Break,
     Continue,
+    Leave(u32),
     Return(Value),
 }
 
@@ -149,13 +150,19 @@ impl Machine<'_> {
                 }
                 match self.stmts(body, locals)? {
                     Flow::Break => break Flow::Normal,
-                    Flow::Return(v) => break Flow::Return(v),
+                    flow @ (Flow::Return(_) | Flow::Leave(_)) => break flow,
                     Flow::Normal | Flow::Continue => {}
                 }
-                if let Flow::Return(v) = self.stmts(step, locals)? {
-                    break Flow::Return(v);
+                if let flow @ (Flow::Return(_) | Flow::Leave(_)) = self.stmts(step, locals)? {
+                    break flow;
                 }
             },
+            Stmt::Block(body) => match self.stmts(body, locals)? {
+                Flow::Leave(0) => Flow::Normal,
+                Flow::Leave(depth) => Flow::Leave(depth - 1),
+                flow => flow,
+            },
+            Stmt::Leave(depth) => Flow::Leave(*depth),
             Stmt::Break => Flow::Break,
             Stmt::Continue => Flow::Continue,
             Stmt::Return(value) => {

@@ -10,6 +10,7 @@
 
 use std::fmt::{self, Write as _};
 
+mod inline;
 #[cfg(test)]
 mod interp;
 mod lower;
@@ -140,6 +141,11 @@ pub enum Stmt {
         /// Run after each iteration, also after `continue`.
         step: Vec<Stmt>,
     },
+    /// A block that [`Stmt::Leave`] can exit early; it has no other effect.
+    Block(Vec<Stmt>),
+    /// Jumps past the end of an enclosing [`Stmt::Block`]: `Leave(0)` the innermost
+    /// one, `Leave(1)` the one around it. Loops in between are left as well.
+    Leave(u32),
     /// Leaves the innermost loop.
     Break,
     /// Goes to the step of the innermost loop.
@@ -362,6 +368,13 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
                     let _ = writeln!(out, "{pad}step");
                     write_stmts(out, step, level + 1);
                 }
+            }
+            Stmt::Block(body) => {
+                let _ = writeln!(out, "{pad}block");
+                write_stmts(out, body, level + 1);
+            }
+            Stmt::Leave(depth) => {
+                let _ = writeln!(out, "{pad}leave {depth}");
             }
             Stmt::Break => {
                 let _ = writeln!(out, "{pad}break");

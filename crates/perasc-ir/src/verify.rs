@@ -19,6 +19,7 @@ pub fn verify(module: &Module) -> Result<(), Vec<String>> {
             module,
             function,
             loops: 0,
+            blocks: 0,
             problems: &mut problems,
         };
         verifier.stmts(&function.body);
@@ -35,6 +36,8 @@ struct Verifier<'a> {
     function: &'a Function,
     /// Loops around the current statement, for `break` and `continue`.
     loops: usize,
+    /// Blocks around the current statement, for `leave`.
+    blocks: u32,
     problems: &'a mut Vec<String>,
 }
 
@@ -90,6 +93,16 @@ impl Verifier<'_> {
                 self.stmts(body);
                 self.stmts(step);
                 self.loops -= 1;
+            }
+            Stmt::Block(body) => {
+                self.blocks += 1;
+                self.stmts(body);
+                self.blocks -= 1;
+            }
+            Stmt::Leave(depth) => {
+                if *depth >= self.blocks {
+                    self.problem(&format!("`leave {depth}` inside {} blocks", self.blocks));
+                }
             }
             Stmt::Break | Stmt::Continue => {
                 if self.loops == 0 {

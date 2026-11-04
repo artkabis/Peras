@@ -46,3 +46,19 @@ fn ci_installs_the_same_wasm_bindgen() {
     let install = format!("wasm-bindgen-cli --version ={WASM_BINDGEN_VERSION}");
     assert!(ci.contains(&install), "CI must install {install}");
 }
+
+#[test]
+fn blocks_of_the_optimized_ir_get_labels() {
+    // The return inside the loop leaves each copy early.
+    let mut ir = module(
+        "export fn f(n: i32): i32 {\n  while (n > 10) { return f(n - 1) + 1; }\n  return n;\n}\n",
+    );
+    perasc_ir::optimize(&mut ir);
+    let rust = source(&ir);
+    if let Ok(path) = std::env::var("PERAS_DUMP_RUST") {
+        let _ = std::fs::write(path, &rust);
+    }
+    for label in ["'b1: {", "'b3: {", "break 'b1;", "break 'b3;"] {
+        assert!(rust.contains(label), "{label}\n{rust}");
+    }
+}

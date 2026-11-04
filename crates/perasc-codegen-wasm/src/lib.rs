@@ -61,6 +61,8 @@ enum Frame {
     Top,
     /// The block a `continue` leaves, to reach the step.
     Continue,
+    /// A block that `leave` exits.
+    Leave,
     /// An `if`, or a short-circuit `&&` / `||`.
     Other,
 }
@@ -115,6 +117,19 @@ impl FnEncoder {
         u32::try_from(position).unwrap_or(0)
     }
 
+    /// The `br` depth of the `n`-th enclosing [`Frame::Leave`], innermost first.
+    fn leave_depth(&self, n: u32) -> u32 {
+        let position = self
+            .frames
+            .iter()
+            .rev()
+            .enumerate()
+            .filter(|(_, f)| **f == Frame::Leave)
+            .nth(usize::try_from(n).unwrap_or(usize::MAX))
+            .map_or(0, |(i, _)| i);
+        u32::try_from(position).unwrap_or(0)
+    }
+
     fn stmts(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             self.stmt(stmt);
@@ -150,6 +165,17 @@ impl FnEncoder {
                 self.emit(&I::End);
             }
             Stmt::Loop { cond, body, step } => self.loop_(cond.as_ref(), body, step),
+            Stmt::Block(body) => {
+                self.emit(&I::Block(BlockType::Empty));
+                self.frames.push(Frame::Leave);
+                self.stmts(body);
+                self.frames.pop();
+                self.emit(&I::End);
+            }
+            Stmt::Leave(n) => {
+                let depth = self.leave_depth(*n);
+                self.emit(&I::Br(depth));
+            }
             Stmt::Break => {
                 let depth = self.depth(Frame::Break);
                 self.emit(&I::Br(depth));
@@ -167,18 +193,21 @@ impl FnEncoder {
         }
     }
 
-    /// `block $break { loop $top { br_if $break !cond; block $continue { body } step; br $top } }`
+    /// A rotated loop, as LLVM writes them: the condition is checked once before
+    /// the loop, then at the bottom, so that each turn takes one branch.
+    ///
+    /// `block $break { br_if $break !cond; loop $top { block $continue { body } step;
+    /// br_if $top cond } }`; without a condition, the bottom is `br $top`.
     fn loop_(&mut self, cond: Option<&Expr>, body: &[Stmt], step: &[Stmt]) {
         self.emit(&I::Block(BlockType::Empty));
         self.frames.push(Frame::Break);
-        self.emit(&I::Loop(BlockType::Empty));
-        self.frames.push(Frame::Top);
         if let Some(cond) = cond {
-            self.expr(cond);
-            self.emit(&I::I32Eqz);
+            self.condition(cond, true);
             let depth = self.depth(Frame::Break);
             self.emit(&I::BrIf(depth));
         }
+        self.emit(&I::Loop(BlockType::Empty));
+        self.frames.push(Frame::Top);
         self.emit(&I::Block(BlockType::Empty));
         self.frames.push(Frame::Continue);
         self.stmts(body);
@@ -186,11 +215,28 @@ impl FnEncoder {
         self.emit(&I::End);
         self.stmts(step);
         let depth = self.depth(Frame::Top);
-        self.emit(&I::Br(depth));
+        if let Some(cond) = cond {
+            self.condition(cond, false);
+            self.emit(&I::BrIf(depth));
+        } else {
+            self.emit(&I::Br(depth));
+        }
         self.frames.pop();
         self.emit(&I::End);
         self.frames.pop();
         self.emit(&I::End);
+    }
+
+    /// A condition for `br_if`, negated if asked; `!x` costs no instruction.
+    fn condition(&mut self, cond: &Expr, negate: bool) {
+        if let ExprKind::Unary(UnOp::Not, inner) = &cond.kind {
+            self.condition(inner, !negate);
+            return;
+        }
+        self.expr(cond);
+        if negate {
+            self.emit(&I::I32Eqz);
+        }
     }
 
     fn expr(&mut self, e: &Expr) {
