@@ -39,3 +39,10 @@ fn the_toolchain_matches_the_repository() {
         "{manifest}"
     );
 }
+
+#[test]
+fn ci_installs_the_same_wasm_bindgen() {
+    let ci = include_str!("../../../.github/workflows/ci.yml");
+    let install = format!("wasm-bindgen-cli --version ={WASM_BINDGEN_VERSION}");
+    assert!(ci.contains(&install), "CI must install {install}");
+}

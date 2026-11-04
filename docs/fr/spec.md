@@ -276,7 +276,7 @@ Erreurs bloquantes attendues :
 
 ## Architecture du compilateur
 
-`perasc` vérifie d'abord le typage et la mémoire de tout le projet, puis génère du Rust compilé en WASM pour les modules owned, et du JavaScript discipliné pour les modules managed.
+`perasc` vérifie d'abord le typage et la mémoire de tout le projet, puis encode directement du WebAssembly pour les modules owned, et génère du JavaScript discipliné pour les modules managed. Un second backend WebAssembly, via Rust, tourne en CI pour vérifier le premier ([décision 0001](decisions/0001-webassembly-backend.md)).
 
 Le parser est écrit à la main (lexer `logos`, descente récursive, Pratt pour les expressions) afin de maîtriser la récupération d'erreurs et chaque message. Oxc ne sert qu'à générer le JavaScript. Détails dans le [plan de démarrage du compilateur](kickoff-plan.md).
 
@@ -288,13 +288,13 @@ flowchart TD
   PARSE -. erreur .-> BLOCK["Build bloqué<br/>erreur avec position source, aucun artefact"]
   TYPES -. erreur .-> BLOCK
   OWN -. erreur .-> BLOCK
-  OWN --> RS["Codegen Rust (.peras)<br/>sans unsafe, mémoire linéaire"] --> WASM["rustc + wasm-bindgen<br/>module .wasm, libération exacte"]
+  OWN --> RS["Codegen WASM (.peras)<br/>direct, mémoire linéaire"] --> WASM["module .wasm validé<br/>libération exacte"]
   OWN --> JS["Codegen JS (.apeiron)<br/>using, AbortSignal, dispose"] --> LEAK["Détecteur de fuites (debug)"]
   WASM --> VITE["Plugin Vite<br/>bundle, .d.ts, source maps, HMR, Vitest"]
   LEAK --> VITE
 ```
 
-Les trois premières analyses arrêtent le build avec un message pointant le fichier `.peras / .apeiron`. Rustc ne doit jamais renvoyer d'erreur sur un programme accepté par `perasc`.
+Les trois premières analyses arrêtent le build avec un message pointant le fichier `.peras / .apeiron`. Les backends direct et Rust doivent s'accorder sur chaque programme de test : un désaccord est un bug du compilateur, et fait échouer la CI.
 
 ## Outillage, tests et sécurité
 
@@ -312,12 +312,12 @@ Le compilateur `perasc` est écrit en Rust et distribué en binaire et en paquet
 
 Six étapes, chacune fermée par un critère vérifiable. Durée estimée en solo : 5 à 7 mois.
 
-1. **Langage jouet et diagnostics** (3 semaines) : fonctions, `i32`/`f64`, structs, `Array`, transpilés en Rust puis WASM. Le format d'erreur détaillé est construit dès cette étape.
+1. **Langage jouet et diagnostics** (3 semaines) : fonctions, `i32`/`f64`, structs, `Array`, compilés en WASM. Le format d'erreur détaillé est construit dès cette étape.
    - Critère : `fib` tourne dans le navigateur via Vite, et chaque erreur de syntaxe affiche extrait, cause et correction.
 2. **Types complets** (4 à 6 semaines) : unions, `match`, génériques, `Option` et `Result`, toutes les règles refusées.
    - Critère : 150 tests de snapshot de diagnostics, chacun avec une correction proposée valide.
 3. **Conventions mémoire** (4 à 6 semaines) : `let`, `inout`, `sink`, déplacement, détection d'alias, trace d'ownership dans les erreurs.
-   - Critère : aucune erreur rustc ne remonte à l'utilisateur sur un programme accepté par `perasc`.
+   - Critère : chaque valeur possédée est libérée exactement une fois sur chaque chemin, ce que prouve un vérificateur d'IR, et les deux backends s'accordent sur les résultats et les allocations vivantes.
 4. **Rasterisation** (4 semaines) : `Framebuffer`, types de pixels, primitives SIMD, `present` sans copie, règle `@frame`.
    - Critère : un rendu de 10 000 triangles par frame sans aucune allocation, prouvé par le compilateur.
 5. **Mode managed en JS** (3 semaines) : codegen JS, DOM natif, `async`, `requestAnimationFrame`, RAII des ressources, règles de closures, détecteur de fuites, génération de `.d.ts`.

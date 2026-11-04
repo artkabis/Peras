@@ -276,7 +276,7 @@ Expected blocking errors:
 
 ## Compiler architecture
 
-`perasc` first checks typing and memory across the whole project, then generates Rust compiled to WASM for `.peras` modules, and disciplined JavaScript for `.apeiron` modules.
+`perasc` first checks typing and memory across the whole project, then encodes WebAssembly directly for `.peras` modules, and generates disciplined JavaScript for `.apeiron` modules. A second WebAssembly backend, through Rust, runs in CI to check the first ([decision 0001](decisions/0001-webassembly-backend.md)).
 
 The parser is hand-written (`logos` lexer, recursive descent, Pratt parsing for expressions) to control error recovery and every message. Oxc is only used to generate JavaScript. Details in the [compiler kickoff plan](kickoff-plan.md).
 
@@ -288,13 +288,13 @@ flowchart TD
   PARSE -. error .-> BLOCK["Build blocked<br/>error with source position, no artifact"]
   TYPES -. error .-> BLOCK
   OWN -. error .-> BLOCK
-  OWN --> RS["Rust codegen (.peras)<br/>no unsafe, linear memory"] --> WASM["rustc + wasm-bindgen<br/>.wasm module, exact release"]
+  OWN --> RS["WASM codegen (.peras)<br/>direct, linear memory"] --> WASM["validated .wasm module<br/>exact release"]
   OWN --> JS["JS codegen (.apeiron)<br/>using, AbortSignal, dispose"] --> LEAK["Leak detector (debug)"]
   WASM --> VITE["Vite plugin<br/>bundle, .d.ts, source maps, HMR, Vitest"]
   LEAK --> VITE
 ```
 
-The first three analyses stop the build with a message pointing at the source file. Rustc must never report an error on a program accepted by `perasc`.
+The first three analyses stop the build with a message pointing at the source file. The direct and Rust backends must agree on every test program: a disagreement is a compiler bug, and fails CI.
 
 ## Tooling, tests and security
 
@@ -312,12 +312,12 @@ The `perasc` compiler is written in Rust and shipped as a binary and as an npm p
 
 Six steps, each closed by a verifiable criterion. Estimated duration solo: 5 to 7 months.
 
-1. **Toy language and diagnostics** (3 weeks): functions, `i32`/`f64`, structs, `Array`, transpiled to Rust then WASM. The detailed error format is built from this step.
+1. **Toy language and diagnostics** (3 weeks): functions, `i32`/`f64`, structs, `Array`, compiled to WASM. The detailed error format is built from this step.
    - Criterion: `fib` runs in the browser through Vite, and each syntax error shows excerpt, cause and fix.
 2. **Full types** (4 to 6 weeks): unions, `match`, generics, `Option` and `Result`, every refused rule.
    - Criterion: 150 diagnostic snapshot tests, each with a valid suggested fix.
 3. **Memory conventions** (4 to 6 weeks): `let`, `inout`, `sink`, moves, alias detection, ownership trace in errors.
-   - Criterion: no rustc error ever reaches the user on a program accepted by `perasc`.
+   - Criterion: every owned value is released exactly once on every path, proved by an IR verifier, and the two backends agree on results and live allocations.
 4. **Rasterization** (4 weeks): `Framebuffer`, pixel types, SIMD primitives, zero-copy `present`, `@frame` rule.
    - Criterion: 10,000 triangles rendered per frame with no allocation, proven by the compiler.
 5. **Managed mode in JS** (3 weeks): JS codegen, native DOM, `async`, `requestAnimationFrame`, resource RAII, closure rules, leak detector, `.d.ts` generation.

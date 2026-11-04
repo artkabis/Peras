@@ -18,9 +18,10 @@ peras/
 │  ├─ perasc-diag/         diagnostics, codes d'erreur, messages EN/FR
 │  ├─ perasc-check/        noms, types, ownership, ressources, budget de pile
 │  ├─ perasc-ir/           IR typée partagée par les deux backends
-│  ├─ perasc-codegen-rs/   .peras → source Rust
+│  ├─ perasc-codegen-wasm/ .peras → WebAssembly, en direct (par défaut)
+│  ├─ perasc-codegen-rs/   .peras → source Rust (référence en CI)
 │  ├─ perasc-codegen-js/   .apeiron → JavaScript + source maps
-│  ├─ perasc-driver/       pipeline, config, appels cargo et wasm-bindgen
+│  ├─ perasc-driver/       pipeline, config, appels cargo et wasm-bindgen optionnels
 │  └─ perasc/              interface en ligne de commande
 ├─ std/                    bibliothèque standard écrite en .peras (raster, math)
 ├─ packages/
@@ -39,17 +40,18 @@ Chaque crate ne dépend que des crates situées avant elle dans le pipeline. `pe
 
 Le compilateur est écrit en Rust et maîtrise chaque étape qui produit un diagnostic, car les erreurs détaillées sont un pilier du projet. Les crates existantes servent là où elles ne font que produire une sortie.
 
-| Étape             | Choix                                                                                                                                                                                                                        | Raison                                                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Lexer             | `logos`                                                                                                                                                                                                                      | Lexer généré rapide, positions exactes pour chaque token                                                                        |
-| Parser            | Descente récursive écrite à la main, Pratt pour les expressions                                                                                                                                                              | Contrôle total de la récupération d'erreurs et des messages ; la syntaxe s'éloigne de TS (`match`, `struct`, `inout`, `@frame`) |
-| Stockage de l'AST | Arène + identifiants internés                                                                                                                                                                                                | IDs peu coûteux, aucune durée de vie qui fuit dans l'API                                                                        |
-| Vérifications     | Noms et types en un seul parcours (un nom déjà signalé devient un type erreur, compatible avec tout), puis ownership → ressources → budget de pile ; les vérifications ne tournent que sur un fichier sans erreur de syntaxe | Une faute donne une erreur, et aucune vérification ne signale les conséquences d’un arbre cassé                                 |
-| IR                | IR typée et simplifiée dans `perasc-ir`                                                                                                                                                                                      | Une seule entrée pour les deux backends, facile à tester en snapshot                                                            |
-| Backend Rust      | Tokens émis, formatés avec `prettyplease`, compilés par cargo pour `wasm32-unknown-unknown`, puis `wasm-bindgen`                                                                                                             | Rust généré lisible, rustc comme filet de sécurité final                                                                        |
-| Backend JS        | AST et codegen `oxc`                                                                                                                                                                                                         | Générateur JS et source maps éprouvés, inutile d'écrire le nôtre                                                                |
-| Incrémentalité    | Requêtes conçues pour `salsa` dès le départ, `salsa` adopté à l'étape `--watch`                                                                                                                                              | Évite une réécriture à l'arrivée du LSP                                                                                         |
-| Sûreté            | `#![forbid(unsafe_code)]` dans toutes les crates du compilateur                                                                                                                                                              | Le compilateur s'applique la règle qu'il impose                                                                                 |
+| Étape               | Choix                                                                                                                                                                                                                        | Raison                                                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lexer               | `logos`                                                                                                                                                                                                                      | Lexer généré rapide, positions exactes pour chaque token                                                                                          |
+| Parser              | Descente récursive écrite à la main, Pratt pour les expressions                                                                                                                                                              | Contrôle total de la récupération d'erreurs et des messages ; la syntaxe s'éloigne de TS (`match`, `struct`, `inout`, `@frame`)                   |
+| Stockage de l'AST   | Arène + identifiants internés                                                                                                                                                                                                | IDs peu coûteux, aucune durée de vie qui fuit dans l'API                                                                                          |
+| Vérifications       | Noms et types en un seul parcours (un nom déjà signalé devient un type erreur, compatible avec tout), puis ownership → ressources → budget de pile ; les vérifications ne tournent que sur un fichier sans erreur de syntaxe | Une faute donne une erreur, et aucune vérification ne signale les conséquences d’un arbre cassé                                                   |
+| IR                  | IR typée et simplifiée dans `perasc-ir`                                                                                                                                                                                      | Une seule entrée pour les deux backends, facile à tester en snapshot                                                                              |
+| Backend WebAssembly | Encodage direct de l'IR avec `wasm-encoder` ; chargeur JavaScript et `.d.ts` écrits à partir des types connus                                                                                                                | Builds en millisecondes, modules les plus petits, aucune toolchain pour les utilisateurs ([décision 0001](decisions/0001-webassembly-backend.md)) |
+| Backend Rust        | Rust lisible sans `unsafe`, compilé par cargo pour `wasm32-unknown-unknown`, puis `wasm-bindgen` ; obligatoire en CI, optionnel pour les utilisateurs                                                                        | Test différentiel du backend direct, référence de performance tant qu'il n'est pas égalé                                                          |
+| Backend JS          | AST et codegen `oxc`                                                                                                                                                                                                         | Générateur JS et source maps éprouvés, inutile d'écrire le nôtre                                                                                  |
+| Incrémentalité      | Requêtes conçues pour `salsa` dès le départ, `salsa` adopté à l'étape `--watch`                                                                                                                                              | Évite une réécriture à l'arrivée du LSP                                                                                                           |
+| Sûreté              | `#![forbid(unsafe_code)]` dans toutes les crates du compilateur                                                                                                                                                              | Le compilateur s'applique la règle qu'il impose                                                                                                   |
 
 Cela remplace l'idée du « parser oxc étendu » d'une version antérieure de la [spec](spec.md) : oxc reste pour la sortie JS, le parser est le nôtre.
 
@@ -68,17 +70,18 @@ Cela remplace l'idée du « parser oxc étendu » d'une version antérieure de l
 
 Chaque pull request doit passer tous ces contrôles ; un seul échec bloque la fusion.
 
-| Contrôle                | Outil                                                         | Bloque si                               |
-| ----------------------- | ------------------------------------------------------------- | --------------------------------------- |
-| Formatage               | `cargo fmt --check`, Prettier                                 | le moindre écart                        |
-| Lints                   | `cargo clippy -- -D warnings`, ESLint                         | le moindre avertissement                |
-| Tests unitaires et UI   | `cargo test`, snapshots `insta` sur `tests/ui/`               | un échec ou un snapshot non relu        |
-| Tests de l'outillage JS | Vitest pour le plugin Vite                                    | un échec                                |
-| Bout en bout            | build de la démo avec Vite, exécution headless                | erreur de build ou mauvais résultat     |
-| Dépendances Rust        | `cargo audit`, `cargo deny`                                   | une CVE connue, une licence interdite   |
-| Dépendances JS          | `pnpm audit`                                                  | une CVE connue                          |
-| Traductions             | script comparant `en.ftl` et `fr.ftl`, `docs/en` et `docs/fr` | une clé ou une page absente en français |
-| Fuzzing                 | `cargo-fuzz` sur le lexer et le parser, exécution nocturne    | un crash                                |
+| Contrôle                | Outil                                                                                        | Bloque si                               |
+| ----------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Formatage               | `cargo fmt --check`, Prettier                                                                | le moindre écart                        |
+| Lints                   | `cargo clippy -- -D warnings`, ESLint                                                        | le moindre avertissement                |
+| Tests unitaires et UI   | `cargo test`, snapshots `insta` sur `tests/ui/`                                              | un échec ou un snapshot non relu        |
+| Tests de l'outillage JS | Vitest pour le plugin Vite                                                                   | un échec                                |
+| Bout en bout            | build de la démo avec Vite, exécution headless                                               | erreur de build ou mauvais résultat     |
+| Dépendances Rust        | `cargo audit`, `cargo deny`                                                                  | une CVE connue, une licence interdite   |
+| Dépendances JS          | `pnpm audit`                                                                                 | une CVE connue                          |
+| Backends                | `node scripts/bench-backends.mjs --check` : backends direct et Rust sur les mêmes programmes | le moindre désaccord                    |
+| Traductions             | script comparant `en.ftl` et `fr.ftl`, `docs/en` et `docs/fr`                                | une clé ou une page absente en français |
+| Fuzzing                 | `cargo-fuzz` sur le lexer et le parser, exécution nocturne                                   | un crash                                |
 
 Les dépendances restent à leur dernière version : Renovate ouvre les PR de mise à jour, et les contrôles ci-dessus tranchent.
 
@@ -92,9 +95,9 @@ Dix jours ouvrés, chacun se terminant sur quelque chose qui tourne ou qui est t
 4. **Parser, partie 1** : fonctions, `let` et `const`, littéraux `i32` et `f64`, arithmétique en Pratt.
 5. **Parser, partie 2** : `struct`, `Array`, `if`, `for`, `return`, récupération à chaque fin d'instruction, 30 tests UI.
 6. **Noms et types** : portées, masquage interdit, erreur sur variable inutilisée, aucune conversion numérique implicite.
-7. **IR et backend Rust** : abaissement du sous-ensemble vers l'IR, émission de Rust formaté, snapshot de la sortie.
-8. **Driver** : `perasc build` appelle cargo pour `wasm32-unknown-unknown` puis `wasm-bindgen`, et signale toute erreur rustc comme un bug du compilateur.
-9. **Plugin Vite** : `vite-plugin-peras` charge un fichier `.peras` comme module WASM ; `fib` tourne dans le navigateur.
+7. **IR et backends** : abaissement du sous-ensemble vers l'IR ; un backend WebAssembly direct et un backend Rust, comparés par un banc d'essai ([décision 0001](decisions/0001-webassembly-backend.md)).
+8. **Driver et CI** : `perasc build` avec le backend direct par défaut ; `--backend rust` appelle cargo et `wasm-bindgen` et signale leurs erreurs comme des bugs du compilateur ; la CI vérifie que les deux backends concordent.
+9. **Plugin Vite** : `vite-plugin-peras` charge un fichier `.peras` comme module WASM produit par le backend direct, sans toolchain Rust ; `fib` tourne dans le navigateur.
 10. **Consolidation et release** : fuzzing nocturne, doc de chaque code émis jusque-là en anglais puis en français, tag `v0.0.1`.
 
 Critères de sortie : `fib` tourne dans le navigateur, tous les contrôles sont verts, et chaque erreur de syntaxe affiche extrait, cause et correction dans les deux langues.

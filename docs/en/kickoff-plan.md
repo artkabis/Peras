@@ -18,9 +18,10 @@ peras/
 │  ├─ perasc-diag/         diagnostics, error codes, EN/FR messages
 │  ├─ perasc-check/        names, types, ownership, resources, stack budget
 │  ├─ perasc-ir/           typed IR shared by both backends
-│  ├─ perasc-codegen-rs/   .peras → Rust source
+│  ├─ perasc-codegen-wasm/ .peras → WebAssembly, directly (default)
+│  ├─ perasc-codegen-rs/   .peras → Rust source (CI reference)
 │  ├─ perasc-codegen-js/   .apeiron → JavaScript + source maps
-│  ├─ perasc-driver/       pipeline, config, cargo and wasm-bindgen calls
+│  ├─ perasc-driver/       pipeline, config, optional cargo and wasm-bindgen calls
 │  └─ perasc/              command-line interface
 ├─ std/                    standard library written in .peras (raster, math)
 ├─ packages/
@@ -39,17 +40,18 @@ Each crate depends only on the crates above it in the pipeline. `perasc-diag` is
 
 The compiler is written in Rust and owns every stage that produces a diagnostic, because verbose errors are a core pillar. Existing crates are used where they only produce output.
 
-| Stage          | Choice                                                                                                                                                                                              | Why                                                                                                             |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Lexer          | `logos`                                                                                                                                                                                             | Fast generated lexer, exact spans for every token                                                               |
-| Parser         | Hand-written recursive descent, Pratt parsing for expressions                                                                                                                                       | Full control of error recovery and messages; the syntax diverges from TS (`match`, `struct`, `inout`, `@frame`) |
-| AST storage    | Arena + interned identifiers                                                                                                                                                                        | Cheap IDs, no lifetimes leaking through the API                                                                 |
-| Checks         | Names and types in one walk (a name already reported becomes an error type, compatible with everything), then ownership → resources → stack budget; checks run only on a file without syntax errors | One mistake gives one error, and no check reports consequences of a broken tree                                 |
-| IR             | Typed, desugared IR in `perasc-ir`                                                                                                                                                                  | One input for both backends, easy to snapshot                                                                   |
-| Rust backend   | Emit tokens, format with `prettyplease`, build with cargo for `wasm32-unknown-unknown`, then `wasm-bindgen`                                                                                         | Readable generated Rust, rustc as the final safety net                                                          |
-| JS backend     | `oxc` AST and codegen                                                                                                                                                                               | Mature JS printer and source maps, no need to write our own                                                     |
-| Incrementality | Queries designed to be `salsa`-friendly from day one, `salsa` adopted at the `--watch` milestone                                                                                                    | Avoids a rewrite when the LSP arrives                                                                           |
-| Safety         | `#![forbid(unsafe_code)]` in every compiler crate                                                                                                                                                   | The compiler holds itself to the rule it enforces                                                               |
+| Stage               | Choice                                                                                                                                                                                              | Why                                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Lexer               | `logos`                                                                                                                                                                                             | Fast generated lexer, exact spans for every token                                                                         |
+| Parser              | Hand-written recursive descent, Pratt parsing for expressions                                                                                                                                       | Full control of error recovery and messages; the syntax diverges from TS (`match`, `struct`, `inout`, `@frame`)           |
+| AST storage         | Arena + interned identifiers                                                                                                                                                                        | Cheap IDs, no lifetimes leaking through the API                                                                           |
+| Checks              | Names and types in one walk (a name already reported becomes an error type, compatible with everything), then ownership → resources → stack budget; checks run only on a file without syntax errors | One mistake gives one error, and no check reports consequences of a broken tree                                           |
+| IR                  | Typed, desugared IR in `perasc-ir`                                                                                                                                                                  | One input for both backends, easy to snapshot                                                                             |
+| WebAssembly backend | Encode the IR directly with `wasm-encoder`; write the JavaScript loader and the `.d.ts` from the known types                                                                                        | Builds in milliseconds, smallest modules, no toolchain for users ([decision 0001](decisions/0001-webassembly-backend.md)) |
+| Rust backend        | Readable Rust without `unsafe`, built by cargo for `wasm32-unknown-unknown`, then `wasm-bindgen`; required in CI, optional for users                                                                | Differential test of the direct backend, performance reference until it is matched                                        |
+| JS backend          | `oxc` AST and codegen                                                                                                                                                                               | Mature JS printer and source maps, no need to write our own                                                               |
+| Incrementality      | Queries designed to be `salsa`-friendly from day one, `salsa` adopted at the `--watch` milestone                                                                                                    | Avoids a rewrite when the LSP arrives                                                                                     |
+| Safety              | `#![forbid(unsafe_code)]` in every compiler crate                                                                                                                                                   | The compiler holds itself to the rule it enforces                                                                         |
 
 This replaces the “extended oxc parser” idea from an earlier draft of the [spec](spec.md): oxc stays for JS output, the parser is ours.
 
@@ -68,17 +70,18 @@ This replaces the “extended oxc parser” idea from an earlier draft of the [s
 
 Every pull request must pass all of these checks; any failure blocks the merge.
 
-| Check             | Tool                                                            | Blocks on                          |
-| ----------------- | --------------------------------------------------------------- | ---------------------------------- |
-| Formatting        | `cargo fmt --check`, Prettier                                   | any diff                           |
-| Lints             | `cargo clippy -- -D warnings`, ESLint                           | any warning                        |
-| Unit and UI tests | `cargo test`, `insta` snapshots on `tests/ui/`                  | any failure or unreviewed snapshot |
-| JS tooling tests  | Vitest for the Vite plugin                                      | any failure                        |
-| End-to-end        | build the demo with Vite, run it headless                       | build error or wrong output        |
-| Rust dependencies | `cargo audit`, `cargo deny`                                     | any known CVE, banned licence      |
-| JS dependencies   | `pnpm audit`                                                    | any known CVE                      |
-| Translations      | script comparing `en.ftl` and `fr.ftl`, `docs/en` and `docs/fr` | a key or page missing in French    |
-| Fuzzing           | `cargo-fuzz` on lexer and parser, nightly run                   | any crash                          |
+| Check             | Tool                                                                                     | Blocks on                          |
+| ----------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
+| Formatting        | `cargo fmt --check`, Prettier                                                            | any diff                           |
+| Lints             | `cargo clippy -- -D warnings`, ESLint                                                    | any warning                        |
+| Unit and UI tests | `cargo test`, `insta` snapshots on `tests/ui/`                                           | any failure or unreviewed snapshot |
+| JS tooling tests  | Vitest for the Vite plugin                                                               | any failure                        |
+| End-to-end        | build the demo with Vite, run it headless                                                | build error or wrong output        |
+| Rust dependencies | `cargo audit`, `cargo deny`                                                              | any known CVE, banned licence      |
+| JS dependencies   | `pnpm audit`                                                                             | any known CVE                      |
+| Backends          | `node scripts/bench-backends.mjs --check`: direct and Rust backends on the same programs | any disagreement                   |
+| Translations      | script comparing `en.ftl` and `fr.ftl`, `docs/en` and `docs/fr`                          | a key or page missing in French    |
+| Fuzzing           | `cargo-fuzz` on lexer and parser, nightly run                                            | any crash                          |
 
 Dependencies stay on their latest versions; Renovate opens the update PRs, and the gates above decide.
 
@@ -92,9 +95,9 @@ Ten working days, each closing on something that runs or is tested.
 4. **Parser, part 1**: functions, `let` and `const`, `i32` and `f64` literals, arithmetic with Pratt parsing.
 5. **Parser, part 2**: `struct`, `Array`, `if`, `for`, `return`, recovery at statement boundaries, 30 UI tests.
 6. **Names and types**: scopes, no shadowing, unused-variable error, no implicit numeric conversion.
-7. **IR and Rust backend**: lower the subset to IR, emit formatted Rust, snapshot the output.
-8. **Driver**: `perasc build` calls cargo for `wasm32-unknown-unknown` and `wasm-bindgen`, then reports any rustc error as a compiler bug.
-9. **Vite plugin**: `vite-plugin-peras` loads a `.peras` file as a WASM module; `fib` runs in the browser.
+7. **IR and backends**: lower the subset to IR; a direct WebAssembly backend and a Rust backend, compared by a benchmark ([decision 0001](decisions/0001-webassembly-backend.md)).
+8. **Driver and CI**: `perasc build` with the direct backend by default; `--backend rust` calls cargo and `wasm-bindgen` and reports their errors as compiler bugs; CI checks that both backends agree.
+9. **Vite plugin**: `vite-plugin-peras` loads a `.peras` file as a WASM module built by the direct backend, with no Rust toolchain; `fib` runs in the browser.
 10. **Hardening and release**: nightly fuzzing, docs for every code issued so far in English then French, tag `v0.0.1`.
 
 Exit criteria: `fib` runs in the browser, all gates are green, and each syntax error shows excerpt, cause and fix in both languages.

@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0001-webassembly-backend.md](../../en/decisions/0001-webassembly-backend.md)._
 
-**Statut :** proposée, 4 novembre 2026. Le plan de démarrage garde son backend Rust tant que cette décision n’est pas acceptée.
+**Statut :** acceptée, 4 novembre 2026, avec les amendements sur les garanties ci-dessous. Le plan de démarrage et la spec la suivent.
 
 ## Contexte
 
@@ -40,15 +40,35 @@ D’où viennent les écarts :
 - Sur `checksum`, la cause n’a pas encore été analysée.
 - Sur les boucles sans ces motifs (`primes`, `mandel`), le compilateur optimisant de V8 met les deux à égalité.
 
-## Décision (proposée)
+## Décision
 
-1. **Le backend direct devient celui par défaut**, en développement comme en production : aucun outil à installer en dehors de `perasc`, des builds en millisecondes, les modules les plus petits.
+1. **Le backend direct est celui par défaut**, en développement comme en production : aucun outil à installer en dehors de `perasc`, des builds en millisecondes, les modules les plus petits.
 2. **Peras se dote de ses propres passes d’optimisation sur l’IR**, choisies et mesurées avec `bench/backends` : d’abord la transformation avec accumulateur qui explique `fib`, puis la cause de l’écart sur `checksum` une fois trouvée. L’IR sait ce que LLVM doit prouver, notamment que les arguments `inout` ne partagent jamais de mémoire.
-3. **Le backend Rust reste, comme backend secondaire**, derrière `--backend rust` : une référence de performance tant que le backend direct ne l’égale pas, et la seconde moitié d’un test différentiel, où les deux backends doivent s’accorder sur chaque programme et chaque entrée. Cela remplace la règle du plan selon laquelle `rustc` ne doit jamais refuser un programme accepté par `perasc`.
+3. **Le backend Rust reste, obligatoire en CI et optionnel pour les utilisateurs.** Derrière `--backend rust`, il sert de référence de performance tant que le backend direct ne l’égale pas. En CI, chaque programme du banc d’essai des backends passe par les deux backends, qui doivent donner les mêmes résultats : ce test différentiel remplace la règle du plan selon laquelle `rustc` ne doit jamais refuser un programme accepté par `perasc`. Les utilisateurs n’ont jamais besoin d’une toolchain Rust.
 4. **Chaque module généré est validé** avec `wasmparser` dans les tests.
+
+## Les garanties, et ce qui les protège sans `rustc`
+
+Les garanties que Peras donne à ses utilisateurs viennent des vérifications de `perasc`, jamais de `rustc` : un utilisateur ne devait jamais voir une erreur de `rustc`. Ce que `rustc` apportait, c’était un second filet contre les bugs de `perasc` lui-même. Le sortir du chemin par défaut change ce filet, pas les garanties de l’utilisateur.
+
+**Typage.** Chaque règle de typage est vérifiée par `perasc` avant toute génération de code, quel que soit le backend. Sans `rustc`, un bug du générateur qui produirait du code mal typé est encore attrapé par la validation WebAssembly (dans les tests, et par chaque moteur au chargement), mais WebAssembly n’a que quatre types de valeurs : un `bool` utilisé comme `i32`, un `u8` comme `i32`, ou une structure à la place d’une autre passeraient. Pour compenser :
+
+- un **vérificateur d’IR** recontrôle les types de l’IR après l’abaissement et après chaque passe d’optimisation, comme le font LLVM et Cranelift ;
+- le **test différentiel** contre le backend Rust attrape une compilation erronée qui change un résultat.
+
+**Libération de la mémoire.** Le sous-ensemble pris en charge n’alloue pas encore : rien n’est libéré aujourd’hui. Avec le backend Rust, un `Array` serait devenu un `Vec` Rust : `rustc` aurait inséré chaque libération, sur chaque chemin, et son vérificateur d’emprunts aurait recontrôlé l’analyse d’ownership de Peras. Avec le backend direct, `perasc` insère lui-même les libérations, et un bug pourrait libérer deux fois, utiliser une mémoire libérée ou fuir. WebAssembly confine un tel bug à la mémoire du module : il ne peut atteindre ni la page ni le navigateur, mais il peut corrompre les données du module. Le modèle de Peras garde ce problème maîtrisable : un seul propriétaire, aucune référence stockée, `inout` exclusif, comme en Swift ou en Hylo.
+
+**Conditions préalables.** Le backend direct ne compile rien qui alloue (structures, tableaux, chaînes) avant que ces trois éléments existent et tournent en CI :
+
+1. **des libérations explicites dans l’IR**, avec un vérificateur qui prouve que chaque valeur possédée est libérée exactement une fois sur chaque chemin, `return`, `break` et arrêts compris ;
+2. **un allocateur de débogage** qui marque la mémoire libérée, détecte les doubles libérations et vérifie que chaque allocation est rendue à la fin d’un programme ; la spec prévoit déjà ce détecteur de fuites pour le mode managed, et il s’applique aussi au mode owned ;
+3. **le test différentiel étendu aux allocations** : les deux backends doivent s’accorder sur les résultats et sur le nombre d’allocations encore vivantes.
+
+Le fuzzing, prévu au jour 10 du plan de démarrage, couvre les deux backends.
 
 ## Conséquences
 
-- Les jours 8 et 9 du plan changent : le plugin Vite utilise le backend direct et n’a besoin d’aucune toolchain Rust ; piloter `cargo` devient optionnel.
+- Les jours 8 et 9 du plan changent : le plugin Vite utilise le backend direct et n’a besoin d’aucune toolchain Rust ; seuls `--backend rust` et la CI pilotent `cargo`.
+- La CI gagne un job backends : il installe `wasm-bindgen` 0.2.130 et lance `node scripts/bench-backends.mjs --check`, qui échoue dès que les deux backends divergent.
 - Peras prend davantage à sa charge : son optimiseur, son allocateur (compact, comme la spec le prévoit déjà, et lié seulement quand un module alloue), la génération SIMD, et les informations de débogage et source maps pour WebAssembly, que LLVM fournirait sinon.
 - Le banc d’essai est petit : quatre noyaux, une machine, Node seulement. Il doit grandir avec chaque optimisation, et tourner dans les navigateurs avant toute affirmation de performance.
