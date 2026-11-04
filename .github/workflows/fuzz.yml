@@ -1,0 +1,49 @@
+# Nightly fuzzing of the lexer, the parser and the whole pipeline (kickoff plan, day 10).
+# Any crash fails the run and uploads the input that caused it.
+# Actions are pinned to a full commit SHA; Renovate updates SHA and version comment together.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # cargo-fuzz needs nightly; a dated one keeps a crash reproducible.
+  NIGHTLY: nightly-2026-11-03
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }} (30 min)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [lex, parse, pipeline]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal
+      - run: cargo +"$NIGHTLY" install --locked cargo-fuzz --version =0.13.2
+      # The corpus grows from one night to the next.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: Seed with every Peras source of the repository
+        run: sh fuzz/seed.sh
+      - name: Fuzz for 30 minutes
+        working-directory: fuzz
+        run: >-
+          cargo +"$NIGHTLY" fuzz run "${{ matrix.target }}" "corpus/${{ matrix.target }}" seeds --
+          -max_total_time=1800 -max_len=4096 -timeout=10
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}

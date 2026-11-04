@@ -34,11 +34,28 @@ A new compiler error ships complete, in one pull request:
 2. its message in `en.ftl` then `fr.ftl`;
 3. a suggested fix;
 4. a UI test in `tests/ui/`;
-5. its page in `docs/en/errors/` then `docs/fr/errors/`, used by `perasc explain`.
+5. its page in `docs/en/errors/` then `docs/fr/errors/`, used by `perasc explain`. A test compiles the example of every page, which must produce the code, and its fix, which must not. Fragments are allowed: `…` stands for anything, and statements are tried inside a function. Write invisible characters as `<U+202E>`.
+
+## Fuzzing
+
+`fuzz/` holds three [cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html) targets, run for 30 minutes every night by CI:
+
+- `lex`: the lexer never panics, and its tokens stay in order inside the source;
+- `parse`: the parser never panics nor overflows its stack;
+- `pipeline`: every diagnostic renders in both languages, and a source without errors compiles to a valid WebAssembly module, never to a compiler bug.
+
+```sh
+rustup toolchain install nightly
+cargo install --locked cargo-fuzz
+sh fuzz/seed.sh   # every Peras source of the repository as a starting corpus
+cd fuzz && cargo +nightly fuzz run pipeline corpus/pipeline seeds -- -max_total_time=600
+```
+
+A crash leaves its input in `fuzz/artifacts/<target>/`. Fix it with a regression test that uses this input, in the crate that panicked.
 
 ## Commits and pull requests
 
-Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. The changelog is generated from them. Versions follow semver and stay `0.x` until the language is stable.
+Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. The changelog is written from them. Versions follow semver and stay `0.x` until the language is stable.
 
 ## Dependencies
 

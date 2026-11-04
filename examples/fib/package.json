@@ -1,6 +1,6 @@
 {
   "name": "peras-example-fib",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "fib written in Peras, compiled to WebAssembly by vite-plugin-peras, run in the browser.",
   "license": "MIT OR Apache-2.0",

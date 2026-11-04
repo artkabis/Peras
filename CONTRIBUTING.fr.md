@@ -34,11 +34,28 @@ Une nouvelle erreur du compilateur arrive complète, dans une seule pull request
 2. son message dans `en.ftl` puis `fr.ftl` ;
 3. une correction proposée ;
 4. un test UI dans `tests/ui/` ;
-5. sa page dans `docs/en/errors/` puis `docs/fr/errors/`, utilisée par `perasc explain`.
+5. sa page dans `docs/en/errors/` puis `docs/fr/errors/`, utilisée par `perasc explain`. Un test compile l’exemple de chaque page, qui doit produire le code, et sa correction, qui ne le doit pas. Les fragments sont permis : `…` remplace n’importe quoi, et les instructions sont essayées dans une fonction. Écris les caractères invisibles sous la forme `<U+202E>`.
+
+## Fuzzing
+
+`fuzz/` contient trois cibles [cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html), lancées 30 minutes chaque nuit par la CI :
+
+- `lex` : le lexer ne panique jamais, et ses tokens restent dans l’ordre à l’intérieur de la source ;
+- `parse` : le parser ne panique jamais et ne fait jamais déborder sa pile ;
+- `pipeline` : chaque diagnostic s’affiche dans les deux langues, et une source sans erreur se compile en un module WebAssembly valide, jamais en bug du compilateur.
+
+```sh
+rustup toolchain install nightly
+cargo install --locked cargo-fuzz
+sh fuzz/seed.sh   # toutes les sources Peras du dépôt comme corpus de départ
+cd fuzz && cargo +nightly fuzz run pipeline corpus/pipeline seeds -- -max_total_time=600
+```
+
+Un crash laisse son entrée dans `fuzz/artifacts/<cible>/`. Corrige-le avec un test de régression qui utilise cette entrée, dans le crate qui a paniqué.
 
 ## Commits et pull requests
 
-Les titres de pull request suivent [Conventional Commits](https://www.conventionalcommits.org) : `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Le changelog en est généré. Les versions suivent semver et restent en `0.x` tant que le langage n'est pas stable.
+Les titres de pull request suivent [Conventional Commits](https://www.conventionalcommits.org) : `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Le changelog est rédigé à partir d’eux. Les versions suivent semver et restent en `0.x` tant que le langage n'est pas stable.
 
 ## Dépendances
 

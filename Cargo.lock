@@ -286,7 +286,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "perasc"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "insta",
  "perasc-diag",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-check"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "insta",
  "perasc-diag",
@@ -305,14 +305,14 @@ dependencies = [
 
 [[package]]
 name = "perasc-codegen-js"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "perasc-ir",
 ]
 
 [[package]]
 name = "perasc-codegen-rs"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "insta",
  "perasc-check",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-codegen-wasm"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "perasc-check",
  "perasc-ir",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-diag"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "fluent-bundle",
  "serde",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-driver"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "perasc-check",
  "perasc-codegen-js",
@@ -357,7 +357,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-ir"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "insta",
  "perasc-check",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "perasc-syntax"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "insta",
  "logos",

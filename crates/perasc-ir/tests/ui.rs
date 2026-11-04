@@ -65,3 +65,165 @@ fn every_code_has_a_ui_test() {
         );
     }
 }
+
+/// The exit criterion of the kickoff plan: every diagnostic of every UI test,
+/// rendered as in a terminal, shows its location, an excerpt with a marker, a
+/// cause and a fix, in English and in French, and the French is a translation.
+#[test]
+fn every_diagnostic_shows_excerpt_cause_and_fix_in_both_languages() {
+    use perasc_diag::i18n::Localizer;
+    use perasc_diag::messages::Language;
+    use perasc_diag::render::{RenderOptions, render};
+    use perasc_diag::source::SourceFile;
+
+    let mut checked = 0;
+    for stage in ["lexer", "parser", "check", "build"] {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/ui")
+            .join(stage);
+        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path().display().to_string();
+            let source = fs::read_to_string(entry.path()).unwrap_or_default();
+            let Err(errors) = compile(&source) else {
+                continue;
+            };
+            let file = SourceFile::new(&path, &source);
+            for d in &errors {
+                let mut causes = Vec::new();
+                for (language, why, fix, details) in [
+                    (
+                        Language::English,
+                        "= why: ",
+                        "= fix: ",
+                        "= details: perasc explain ",
+                    ),
+                    (
+                        Language::French,
+                        "= pourquoi : ",
+                        "= correction : ",
+                        "= détails : perasc explain ",
+                    ),
+                ] {
+                    let localizer = Localizer::new(language);
+                    let text = render(d, &file, &localizer, RenderOptions { color: false });
+                    let context = format!("{path}, {language:?}:\n{text}");
+                    assert!(text.contains(&format!("--> {path}:")), "{context}");
+                    assert!(
+                        text.lines()
+                            .any(|l| l.trim_start().starts_with('|') && l.contains('^')),
+                        "no marked excerpt: {context}"
+                    );
+                    let line = |prefix: &str| {
+                        text.lines()
+                            .find_map(|l| l.trim_start().strip_prefix(prefix))
+                            .map(str::to_owned)
+                    };
+                    let cause = line(why).unwrap_or_default();
+                    assert!(cause.len() > 10, "no cause: {context}");
+                    assert!(
+                        line(fix).is_some_and(|f| !f.is_empty()),
+                        "no fix: {context}"
+                    );
+                    assert_eq!(
+                        line(details),
+                        Some(d.code.to_string()),
+                        "no explain: {context}"
+                    );
+                    causes.push(cause);
+                }
+                assert_ne!(causes[0], causes[1], "{path}: the cause is not translated");
+                checked += 1;
+            }
+        }
+    }
+    // Guards against a test that checks nothing.
+    assert!(checked >= 46, "only {checked} diagnostics checked");
+}
+
+/// The code block under a heading of a page, if any. Pages write invisible
+/// characters as `<U+202E>`, never as themselves: they are decoded here.
+fn block_after(page: &str, heading: &str) -> Option<String> {
+    let rest = page.split_once(&format!("\n## {heading}\n"))?.1;
+    let rest = rest.split("\n## ").next()?;
+    let code = ["```peras\n", "```text\n"]
+        .iter()
+        .find_map(|fence| rest.split_once(fence))?
+        .1;
+    let code = code.split_once("\n```").map(|(code, _)| code)?;
+    let mut out = String::new();
+    let mut rest = code;
+    while let Some((before, after)) = rest.split_once("<U+") {
+        out.push_str(before);
+        let decoded = after.split_once('>').and_then(|(hex, tail)| {
+            let c = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)?;
+            Some((c, tail))
+        });
+        if let Some((c, tail)) = decoded {
+            out.push(c);
+            rest = tail;
+        } else {
+            out.push_str("<U+");
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// The documentation of every code is true: its example produces the code, and
+/// its fix no longer does, in English and in French.
+#[test]
+fn every_documented_example_and_fix_is_true() {
+    use perasc_diag::messages::Language;
+
+    let mut checked = 0;
+    let mut problems = Vec::new();
+    for entry in codes::REGISTRY {
+        for (language, example, fix) in [
+            (Language::English, "Example", "Fix"),
+            (Language::French, "Exemple", "Correction"),
+        ] {
+            let page = entry.docs(language);
+            let context = format!("{} ({language:?})", entry.code);
+            // Pages show fragments: `…` stands for anything, and statements that
+            // are not a declaration (E0110 at the top level) go inside a function.
+            let produces = |code: &str| {
+                let code = code.replace('…', "");
+                let codes_of = |source: &str| -> Vec<String> {
+                    compile(source)
+                        .err()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|d| d.code.to_string())
+                        .collect()
+                };
+                let mut found = codes_of(&code);
+                if entry.code.to_string() != "E0110" && found.iter().any(|c| c == "E0110") {
+                    found = codes_of(&format!("fn example() {{\n{code}\n}}\n"));
+                }
+                found.contains(&entry.code.to_string())
+            };
+            // E0111 needs more nesting than a page can show: its example is a sketch.
+            if entry.code.to_string() == "E0111" {
+                continue;
+            }
+            if let Some(code) = block_after(page, example).as_deref() {
+                if !produces(code) {
+                    problems.push(format!("{context}: the example does not produce it"));
+                }
+                checked += 1;
+            }
+            if let Some(code) = block_after(page, fix).as_deref()
+                && produces(code)
+            {
+                problems.push(format!("{context}: the fix still produces it"));
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    // E0008 has no example (it needs a 4 GiB file), and E0111 is a sketch.
+    assert!(
+        checked >= 2 * (codes::REGISTRY.len() - 2),
+        "only {checked} examples checked"
+    );
+}

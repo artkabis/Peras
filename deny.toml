@@ -17,6 +17,9 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.9
+# libFuzzer, from LLVM, used only by the fuzz targets in fuzz/; never part of perasc
+# nor of a compiled module.
+exceptions = [{ crate = "libfuzzer-sys", allow = ["NCSA"] }]
 
 [bans]
 multiple-versions = "warn"

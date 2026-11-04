@@ -6,7 +6,7 @@ Peras is a web language with TypeScript syntax and Rust-grade rigour. `.peras` m
 
 > Peras (πέρας) is Greek for _the limit_. For the Pythagoreans, everything good arises from limit imposed on the unlimited (_apeiron_).
 
-**Status:** day 9 of the kickoff plan. `perasc` checks the syntax, names and types of a source, and compiles functions on numbers and booleans to WebAssembly, without a Rust toolchain; `vite-plugin-peras` runs them in the browser. Structures, arrays, ownership and `.apeiron` modules come next.
+**Status:** version 0.0.1, the end of phase 0 of the kickoff plan ([changelog](CHANGELOG.md)). `perasc` checks the syntax, names and types of a source, and compiles functions on numbers and booleans to WebAssembly, without a Rust toolchain; `vite-plugin-peras` runs them in the browser. Structures, arrays, ownership and `.apeiron` modules come next.
 
 ## Pillars
 
