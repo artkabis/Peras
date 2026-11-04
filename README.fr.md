@@ -33,6 +33,7 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 | `crates/perasc-codegen-wasm` | `.peras` → WASM, en direct, sans toolchain Rust     |
 | `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                             |
 | `crates/perasc-driver`       | Pipeline et orchestration du build                  |
+| `crates/perasc-runtime`      | Runtime WebAssembly : l’allocateur de débogage      |
 | `crates/perasc`              | Interface en ligne de commande                      |
 | `packages/vite-plugin-peras` | Plugin Vite                                         |
 | `packages/vitest-peras`      | Adaptateur Vitest                                   |
