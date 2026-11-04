@@ -5,12 +5,20 @@
 //! increments are expanded, and every loop is one [`Stmt::Loop`] with an optional
 //! condition and a step that `continue` runs. [`lower`] builds it from a checked
 //! module; constructs the backends cannot compile yet are reported with `E0900`.
+//! [`optimize`] rewrites it without changing any result, and [`verify`] re-checks
+//! its types after each step.
 
 use std::fmt::{self, Write as _};
 
+#[cfg(test)]
+mod interp;
 mod lower;
+mod opt;
+mod verify;
 
 pub use lower::lower;
+pub use opt::optimize;
+pub use verify::verify;
 
 /// A value type. `bool` is stored as a 32-bit integer by the backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -404,3 +412,6 @@ fn expr(e: &Expr) -> String {
         ExprKind::Math(op, operand) => format!("({ty}.{} {})", op.name(), expr(operand)),
     }
 }
+
+#[cfg(test)]
+mod opt_tests;

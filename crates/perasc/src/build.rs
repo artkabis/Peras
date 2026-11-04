@@ -29,9 +29,11 @@ pub enum Backend {
 }
 
 /// Builds `path` into `out_dir`, printing the outcome.
+#[allow(clippy::too_many_arguments)]
 pub fn build(
     path: &str,
     backend: Backend,
+    optimize: bool,
     out_dir: &Path,
     localizer: &Localizer,
     color: bool,
@@ -72,7 +74,7 @@ pub fn build(
         .to_owned();
     let started = Instant::now();
     let result = match backend {
-        Backend::Direct => direct(&text, &stem, out_dir),
+        Backend::Direct => direct(&text, &stem, out_dir, optimize),
         Backend::Rust => {
             let name = crate_name(&stem);
             let crate_dir = out_dir.join(".rust").join(&stem);
@@ -112,6 +114,17 @@ pub fn build(
             )?;
             Ok(USAGE_OR_IO)
         }
+        Err(ToolError::Internal(problems)) => {
+            writeln!(
+                err,
+                "{}",
+                error_line(localizer, &Message::new("cli-internal-error"))
+            )?;
+            for problem in problems {
+                writeln!(err, "  {problem}")?;
+            }
+            Ok(COMPILER_BUG)
+        }
         Err(ToolError::Failed { tool, output }) => {
             writeln!(
                 err,
@@ -128,9 +141,9 @@ pub fn build(
 }
 
 /// The direct backend: writes `<stem>.wasm`, `<stem>.js` and `<stem>.d.ts`.
-fn direct(text: &str, stem: &str, out_dir: &Path) -> Result<PathBuf, ToolError> {
+fn direct(text: &str, stem: &str, out_dir: &Path, optimize: bool) -> Result<PathBuf, ToolError> {
     let wasm_file = format!("{stem}.wasm");
-    let output = build_direct(text, &wasm_file).map_err(ToolError::Diagnostics)?;
+    let output = build_direct(text, &wasm_file, optimize)?;
     fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
     let wasm = out_dir.join(&wasm_file);
     fs::write(&wasm, &output.wasm).map_err(ToolError::Io)?;

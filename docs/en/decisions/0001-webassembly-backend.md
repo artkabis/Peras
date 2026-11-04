@@ -72,3 +72,7 @@ Fuzzing, planned for day 10 of the kickoff plan, covers both backends.
 - The CI gains a backend job: it installs `wasm-bindgen` 0.2.130 and runs `node scripts/bench-backends.mjs --check`, which fails as soon as the two backends disagree.
 - Peras owns more: its optimizer, its allocator (a compact one, as the spec already plans, only linked when a module allocates), SIMD lowering, and debug information and source maps for WebAssembly, which LLVM would otherwise provide.
 - The benchmark is small: four kernels, one machine, Node only. It must grow with each optimization, and run in browsers before performance claims are made.
+
+## Follow-up
+
+- **2026-11-04, accumulator recursion elimination** (`crates/perasc-ir/src/opt.rs`). On the direct backend, `fib(32)` goes from 16 ms to 9.4 ms, and `fib(35)` from 68 ms to 39 ms; the Rust backend takes 4.2 ms on `fib(32)`. The IR verifier runs after lowering and after the pass, and the Rust backend compiles the unoptimized IR, so the differential test in CI also covers the pass; an IR interpreter compares both versions on hundreds of inputs in the unit tests. The remaining gap is not explained yet: it stays at 1.5 times on `fib(35)` with V8's optimizing compiler alone, so tiering is not the cause, and checking the base case before the loop, as LLVM does, was measured and brought nothing, so it was not kept.

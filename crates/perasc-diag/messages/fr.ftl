@@ -15,6 +15,7 @@ cli-usage =
       --json             affiche les diagnostics de `check` en JSON sur la sortie standard
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
+      --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide
@@ -38,6 +39,7 @@ cli-build-ok = { $file } compilé dans { $out } ({ $bytes } octets, { $ms } ms)
 cli-write-error = impossible d’écrire la sortie : { $reason }
 cli-tool-missing = `{ $tool }` est nécessaire au backend Rust mais n’est pas installé : installe-le, ou utilise `--backend direct`
 cli-tool-failed = `{ $tool }` a échoué sur du code généré par perasc : c’est un bug de perasc, signale-le avec la sortie ci-dessous
+cli-internal-error = le vérificateur d’IR a refusé le code produit par perasc : c’est un bug de perasc, signale-le avec les lignes ci-dessous
 cli-summary-ok = { $files ->
     [one] 1 fichier vérifié, aucune erreur
    *[other] { $files } fichiers vérifiés, aucune erreur

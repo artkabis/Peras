@@ -56,22 +56,27 @@ pub fn check(source: &str) -> Checked {
     Checked::capped(perasc_check::check(&parsed.ast, source))
 }
 
-/// Checks a source and lowers it to the IR, or returns its errors.
+/// Checks a source and lowers it to the IR, verified, or returns its errors.
 ///
 /// # Errors
 ///
 /// The errors of the first stage that has any: syntax, names and types, or code
-/// generation limits (`E0900`).
-pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, Checked> {
+/// generation limits (`E0900`); [`ToolError::Internal`] if the IR verifier fails.
+pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, ToolError> {
     let parsed = perasc_syntax::parse(source);
     if !parsed.diagnostics.is_empty() {
-        return Err(Checked::capped(parsed.diagnostics));
+        return Err(ToolError::Diagnostics(Checked::capped(parsed.diagnostics)));
     }
     let analysis = perasc_check::analyze(&parsed.ast, source);
     if !analysis.diagnostics.is_empty() {
-        return Err(Checked::capped(analysis.diagnostics));
+        return Err(ToolError::Diagnostics(Checked::capped(
+            analysis.diagnostics,
+        )));
     }
-    perasc_ir::lower(&parsed.ast, &analysis).map_err(Checked::capped)
+    let module = perasc_ir::lower(&parsed.ast, &analysis)
+        .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;
+    perasc_ir::verify(&module).map_err(ToolError::Internal)?;
+    Ok(module)
 }
 
 /// What the direct backend produces for one module.
@@ -85,13 +90,22 @@ pub struct DirectOutput {
     pub dts: String,
 }
 
-/// Compiles a source straight to WebAssembly, without any external tool.
+/// Compiles a source straight to WebAssembly, without any external tool, after
+/// the IR optimizations unless `optimize` is false.
 ///
 /// # Errors
 ///
 /// See [`compile_ir`].
-pub fn build_direct(source: &str, wasm_file: &str) -> Result<DirectOutput, Checked> {
-    let module = compile_ir(source)?;
+pub fn build_direct(
+    source: &str,
+    wasm_file: &str,
+    optimize: bool,
+) -> Result<DirectOutput, ToolError> {
+    let mut module = compile_ir(source)?;
+    if optimize {
+        perasc_ir::optimize(&mut module);
+        perasc_ir::verify(&module).map_err(ToolError::Internal)?;
+    }
     Ok(DirectOutput {
         wasm: perasc_codegen_wasm::compile(&module),
         js: perasc_codegen_wasm::js_loader(&module, wasm_file),
@@ -99,11 +113,13 @@ pub fn build_direct(source: &str, wasm_file: &str) -> Result<DirectOutput, Check
     })
 }
 
-/// Why the Rust backend failed after the checks passed.
+/// Why a build failed.
 #[derive(Debug)]
 pub enum ToolError {
     /// The source has errors.
     Diagnostics(Checked),
+    /// The IR verifier rejected the IR: a bug in perasc, with what it found.
+    Internal(Vec<String>),
     /// A file could not be written.
     Io(io::Error),
     /// `cargo` or `wasm-bindgen` is not installed.
@@ -145,7 +161,9 @@ pub fn build_rust(
     crate_dir: &Path,
     out_dir: &Path,
 ) -> Result<(), ToolError> {
-    let module = compile_ir(source).map_err(ToolError::Diagnostics)?;
+    // The Rust backend compiles the unoptimized IR: the differential test in CI
+    // then checks the IR optimizations too.
+    let module = compile_ir(source)?;
     for (path, contents) in perasc_codegen_rs::crate_files(&module, name) {
         let file = crate_dir.join(path);
         if let Some(parent) = file.parent() {

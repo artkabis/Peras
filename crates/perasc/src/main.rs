@@ -47,6 +47,7 @@ struct Options {
     json: bool,
     color: Color,
     backend: build::Backend,
+    optimize: bool,
     out: Option<String>,
 }
 
@@ -77,6 +78,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         json: false,
         color: Color::Auto,
         backend: build::Backend::Direct,
+        optimize: true,
         out: None,
     };
     let mut positional = Vec::new();
@@ -117,6 +119,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
                 options.backend = pick("--backend", value("--backend")?, &choices)?;
             }
             "--out" => options.out = Some(value("--out")?),
+            "--no-optimize" => options.optimize = false,
             "--color" => {
                 let choices = [
                     ("auto", Color::Auto),
@@ -216,7 +219,16 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         Command::Check(files) => check_files(files, &options, &localizer, color, out, err),
         Command::Build(file) => {
             let out_dir = std::path::PathBuf::from(options.out.as_deref().unwrap_or("dist"));
-            build::build(file, options.backend, &out_dir, &localizer, color, out, err)
+            build::build(
+                file,
+                options.backend,
+                options.optimize,
+                &out_dir,
+                &localizer,
+                color,
+                out,
+                err,
+            )
         }
     };
     written.unwrap_or(USAGE_OR_IO)

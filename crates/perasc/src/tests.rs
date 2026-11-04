@@ -202,3 +202,21 @@ fn build_refuses_what_it_cannot_compile_and_writes_nothing() {
         "{err}"
     );
 }
+
+#[test]
+fn build_can_skip_the_ir_optimizations() {
+    let dir = out_dir("plain");
+    let out_path = dir.to_string_lossy().into_owned();
+    let (code, out, err) = cli(&[
+        "build",
+        "../../tests/ui/build/supported.peras",
+        "--no-optimize",
+        "--out",
+        &out_path,
+        "--lang",
+        "en",
+    ]);
+    assert_eq!((code, err.as_str()), (SUCCESS, ""));
+    assert!(out.contains("compiled to"), "{out}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

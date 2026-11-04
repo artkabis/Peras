@@ -113,6 +113,19 @@ const rustWarm = check ? [] : [1, 2, 3].map((k) => build("rust", k));
 // 3. Final builds of the unedited kernels, then wasm-opt -O3 on both.
 build("direct", -1);
 build("rust", -1);
+// The same direct build without the IR optimizations, to measure what they bring.
+const plainFile = join(work, "src", "kernels.peras");
+run(perasc, [
+  "build",
+  plainFile,
+  "--backend",
+  "direct",
+  "--no-optimize",
+  "--out",
+  join(work, "direct-plain"),
+  "--lang",
+  "en",
+]);
 const modules = {
   direct: join(work, "direct", "kernels.wasm"),
   rust: join(work, "rust", "peras_kernels_bg.wasm"),
@@ -221,6 +234,7 @@ const reference = {
 /** @type {[string, Kernels][]} */
 const builds = [
   ["direct", await direct(modules.direct)],
+  ["direct, IR not optimized", await direct(join(work, "direct-plain", "kernels.wasm"))],
   ["direct + wasm-opt", await direct(optimized.direct)],
   ["rust", bindgen(join(work, "rust"))],
   ["rust + wasm-opt", bindgen(join(work, "rust-opt"))],
@@ -277,7 +291,7 @@ if (check) {
     `Backends agree: ${String(builds.length - 1)} builds matched the JavaScript reference on ${String(cases.length)} inputs (${String(agreements)} comparisons).`,
   );
 } else {
-  // 6. Run times: median of 7 runs after 2 warm-up runs.
+  // 6. Run times: median of 15 runs after 3 warm-up runs.
   /** @type {[string, (k: Kernels) => unknown][]} */
   const workloads = [
     ["fib(32)", (k) => k.fib(32)],
@@ -293,7 +307,7 @@ if (check) {
     for (const [, call] of workloads) {
       call(kernels);
       call(kernels);
-      row.push(median([1, 2, 3, 4, 5, 6, 7].map(() => timed(() => call(kernels)))));
+      row.push(median(Array.from({ length: 15 }, () => timed(() => call(kernels)))));
     }
     times.set(builds.find(([, k]) => k === kernels)?.[0] ?? "", row);
   }
@@ -304,6 +318,7 @@ if (check) {
   const kb = (/** @type {number} */ v) => v.toLocaleString("en-US");
   const sizes = {
     direct: size(modules.direct),
+    plain: size(join(work, "direct-plain", "kernels.wasm")),
     directOpt: size(optimized.direct),
     rust: size(modules.rust),
     rustOpt: size(optimized.rust),
@@ -327,11 +342,12 @@ if (check) {
     "| Backend | Raw | Raw, gzip | After wasm-opt -O3 | wasm-opt, gzip |",
     "| --- | --- | --- | --- | --- |",
     `| direct | ${kb(sizes.direct.raw)} | ${kb(sizes.direct.gzip)} | ${kb(sizes.directOpt.raw)} | ${kb(sizes.directOpt.gzip)} |`,
+    `| direct, IR not optimized | ${kb(sizes.plain.raw)} | ${kb(sizes.plain.gzip)} | — | — |`,
     `| rust | ${kb(sizes.rust.raw)} | ${kb(sizes.rust.gzip)} | ${kb(sizes.rustOpt.raw)} | ${kb(sizes.rustOpt.gzip)} |`,
     "",
     "The Rust sizes leave out the JavaScript glue that wasm-bindgen writes next to the module.",
     "",
-    "## Run time in Node (ms, median of 7 after 2 warm-up runs)",
+    "## Run time in Node (ms, median of 15 after 3 warm-up runs)",
     "",
     `| Build | ${workloads.map(([label]) => label).join(" | ")} |`,
     `| --- | ${workloads.map(() => "---").join(" | ")} |`,
