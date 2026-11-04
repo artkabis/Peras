@@ -14,7 +14,7 @@ pnpm pkg set "packageManager=pnpm@$(pnpm --version)"
 echo "==> Picking the newest mature stable versions"
 # typescript stays on 6.0.x until typescript-eslint supports 7 (its peer range is <6.1.0).
 # shellcheck disable=SC2046 # word splitting is intended: one argument per package
-set -- $(node scripts/latest-mature.mjs typescript@6.0 vitest vite eslint @eslint/js typescript-eslint prettier @types/node)
+set -- $(node scripts/latest-mature.mjs typescript@6.0 vitest vite eslint @eslint/js typescript-eslint prettier @types/node binaryen)
 echo "    $*"
 typescript="$1"
 shift

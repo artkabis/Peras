@@ -1,0 +1,21 @@
+[package]
+name = "perasc-codegen-wasm"
+description = "Direct WebAssembly code generation for owned Peras modules (.peras), without a Rust toolchain."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+perasc-ir.workspace = true
+wasm-encoder.workspace = true
+
+[dev-dependencies]
+perasc-check.workspace = true
+perasc-syntax.workspace = true
+wasmparser.workspace = true
+
+[lints]
+workspace = true

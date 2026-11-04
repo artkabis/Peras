@@ -30,6 +30,7 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 | `crates/perasc-check`        | Noms, types, ownership, ressources, budget de pile |
 | `crates/perasc-ir`           | IR typée partagée par les deux backends            |
 | `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                             |
+| `crates/perasc-codegen-wasm` | `.peras` → WASM, en direct, sans toolchain Rust    |
 | `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                            |
 | `crates/perasc-driver`       | Pipeline et orchestration du build                 |
 | `crates/perasc`              | Interface en ligne de commande                     |

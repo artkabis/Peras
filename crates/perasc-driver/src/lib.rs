@@ -5,6 +5,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::process::Command;
 
 use perasc_diag::Diagnostic;
 use perasc_syntax::Mode;
@@ -53,6 +54,144 @@ pub fn check(source: &str) -> Checked {
         return Checked::capped(parsed.diagnostics);
     }
     Checked::capped(perasc_check::check(&parsed.ast, source))
+}
+
+/// Checks a source and lowers it to the IR, or returns its errors.
+///
+/// # Errors
+///
+/// The errors of the first stage that has any: syntax, names and types, or code
+/// generation limits (`E0900`).
+pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, Checked> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return Err(Checked::capped(parsed.diagnostics));
+    }
+    let analysis = perasc_check::analyze(&parsed.ast, source);
+    if !analysis.diagnostics.is_empty() {
+        return Err(Checked::capped(analysis.diagnostics));
+    }
+    perasc_ir::lower(&parsed.ast, &analysis).map_err(Checked::capped)
+}
+
+/// What the direct backend produces for one module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectOutput {
+    /// The WebAssembly binary.
+    pub wasm: Vec<u8>,
+    /// An ES module loading the binary and exporting its functions.
+    pub js: String,
+    /// TypeScript declarations of the exported functions.
+    pub dts: String,
+}
+
+/// Compiles a source straight to WebAssembly, without any external tool.
+///
+/// # Errors
+///
+/// See [`compile_ir`].
+pub fn build_direct(source: &str, wasm_file: &str) -> Result<DirectOutput, Checked> {
+    let module = compile_ir(source)?;
+    Ok(DirectOutput {
+        wasm: perasc_codegen_wasm::compile(&module),
+        js: perasc_codegen_wasm::js_loader(&module, wasm_file),
+        dts: perasc_codegen_wasm::dts(&module),
+    })
+}
+
+/// Why the Rust backend failed after the checks passed.
+#[derive(Debug)]
+pub enum ToolError {
+    /// The source has errors.
+    Diagnostics(Checked),
+    /// A file could not be written.
+    Io(io::Error),
+    /// `cargo` or `wasm-bindgen` is not installed.
+    Missing(&'static str),
+    /// `cargo` or `wasm-bindgen` failed on generated code: a bug in perasc.
+    Failed {
+        /// The tool.
+        tool: &'static str,
+        /// What it printed.
+        output: String,
+    },
+}
+
+/// A crate name for a module: `peras_` and the file stem, in `[a-z0-9_]`.
+#[must_use]
+pub fn crate_name(stem: &str) -> String {
+    let clean: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("peras_{clean}")
+}
+
+/// Compiles a source through the Rust backend: writes a crate in `crate_dir`,
+/// builds it with `cargo`, then runs `wasm-bindgen` into `out_dir`.
+///
+/// # Errors
+///
+/// See [`ToolError`].
+pub fn build_rust(
+    source: &str,
+    name: &str,
+    crate_dir: &Path,
+    out_dir: &Path,
+) -> Result<(), ToolError> {
+    let module = compile_ir(source).map_err(ToolError::Diagnostics)?;
+    for (path, contents) in perasc_codegen_rs::crate_files(&module, name) {
+        let file = crate_dir.join(path);
+        if let Some(parent) = file.parent() {
+            fs::create_dir_all(parent).map_err(ToolError::Io)?;
+        }
+        // Rewriting an identical file would make cargo rebuild for nothing.
+        if fs::read_to_string(&file).ok().as_deref() != Some(contents.as_str()) {
+            fs::write(&file, contents).map_err(ToolError::Io)?;
+        }
+    }
+    run(
+        "cargo",
+        Command::new("cargo")
+            .args([
+                "build",
+                "--quiet",
+                "--release",
+                "--target",
+                "wasm32-unknown-unknown",
+            ])
+            .current_dir(crate_dir),
+    )?;
+    let wasm = crate_dir
+        .join("target/wasm32-unknown-unknown/release")
+        .join(format!("{name}.wasm"));
+    fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
+    run(
+        "wasm-bindgen",
+        Command::new("wasm-bindgen")
+            .args(["--target", "nodejs", "--out-dir"])
+            .arg(out_dir)
+            .arg(wasm),
+    )
+}
+
+fn run(tool: &'static str, command: &mut Command) -> Result<(), ToolError> {
+    let output = command.output().map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => ToolError::Missing(tool),
+        _ => ToolError::Io(e),
+    })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    Err(ToolError::Failed { tool, output: text })
 }
 
 /// Why a source file could not be read.

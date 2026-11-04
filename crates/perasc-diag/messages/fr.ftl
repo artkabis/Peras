@@ -7,11 +7,14 @@ cli-usage =
 
     Commandes :
       check <fichier>... vérifie des fichiers .peras et .apeiron et signale toutes les erreurs
+      build <fichier>    compile un fichier .peras en WebAssembly
       explain <code>     explique un code d’erreur, par exemple `perasc explain E0001`
 
     Options :
       --lang <en|fr>     langue des messages (par défaut : PERAS_LANG, puis la locale du système)
       --json             affiche les diagnostics de `check` en JSON sur la sortie standard
+      --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
+      --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide
@@ -20,6 +23,7 @@ cli-unknown-command = commande inconnue `{ $command }`
 cli-missing-value = `{ $option }` attend une valeur
 cli-invalid-value = valeur `{ $value }` invalide pour `{ $option }`
 cli-no-files = `check` attend au moins un fichier
+cli-no-build-file = `build` attend un fichier .peras
 cli-missing-code = `explain` attend un code d’erreur, par exemple E0001
 cli-unknown-code = code d’erreur inconnu `{ $code }`
 cli-not-a-source = `{ $path }` n’est pas un source Peras : l’extension doit être .peras ou .apeiron
@@ -30,6 +34,10 @@ cli-hidden-errors = { $count ->
     [one] 1 autre erreur
    *[other] { $count } autres erreurs
 } dans { $path }, non affichées : la limite est de { $limit } par fichier
+cli-build-ok = { $file } compilé dans { $out } ({ $bytes } octets, { $ms } ms)
+cli-write-error = impossible d’écrire la sortie : { $reason }
+cli-tool-missing = `{ $tool }` est nécessaire au backend Rust mais n’est pas installé : installe-le, ou utilise `--backend direct`
+cli-tool-failed = `{ $tool }` a échoué sur du code généré par perasc : c’est un bug de perasc, signale-le avec la sortie ci-dessous
 cli-summary-ok = { $files ->
     [one] 1 fichier vérifié, aucune erreur
    *[other] { $files } fichiers vérifiés, aucune erreur
@@ -438,6 +446,32 @@ check-operator = `{ $operator }` ne s’applique pas à `{ $type }`
 check-operator-label = ceci est `{ $type }`
 check-operator-why = Chaque opérateur s’applique à des types précis : l’arithmétique aux nombres, `+` aussi aux chaînes, `&`, `|`, `^`, `~`, `<<` et `>>` aux entiers, `!`, `&&` et `||` aux `bool`, le `-` unaire aux nombres signés, `[]` aux tableaux.
 check-operator-fix = convertis la valeur, ou utilise une autre opération
+
+## Génération de code (E0900–E0999)
+
+# E0900
+gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
+    [struct] les structures
+    [global] les constantes et variables de module
+    [inout] les paramètres `inout`
+    [for-of] les boucles `for…of`
+    [place] les affectations de champs et d’éléments
+    [function-value] les fonctions utilisées comme valeurs
+    [borrow] l’opérateur d’emprunt `&`
+    [float-remainder] `%` sur des flottants
+    [string] les chaînes
+    [array] les tableaux
+    [field] les champs
+    [index] l’indexation
+    [try] l’opérateur `?`
+    [option] les valeurs `Option`
+    [method] cette méthode
+    [integer-type] les types entiers autres que `i32` et `i64`
+   *[other] cette construction
+}
+gen-unsupported-label = du Peras valide, pas encore compilé
+gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite les fonctions sur `i32`, `i64`, `f32`, `f64` et `bool`, avec `if`, les boucles, les appels et les conversions numériques.
+gen-unsupported-fix = n’utilise pour l’instant que les constructions prises en charge dans ce module, ou limite-le à `perasc check`
 
 ## Rendu des diagnostics
 

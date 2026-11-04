@@ -1,0 +1,41 @@
+use super::{RUST_TOOLCHAIN, WASM_BINDGEN_VERSION, crate_files, source};
+
+fn module(text: &str) -> perasc_ir::Module {
+    let parsed = perasc_syntax::parse(text);
+    assert_eq!(parsed.diagnostics, []);
+    let analysis = perasc_check::analyze(&parsed.ast, text);
+    assert_eq!(analysis.diagnostics, []);
+    perasc_ir::lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:?}"))
+}
+
+#[test]
+fn generated_rust_is_readable_and_has_no_unsafe() {
+    let rust = source(&module(
+        "export fn fib(n: i32): i32 {\n  if (n < 2) return n;\n  return fib(n - 1) + fib(n - 2);\n}\n\
+         fn loop_(match_: i32): i32 {\n  let total = 0;\n  for (let i = 0; i < match_; i++) { if (i == 2) continue; total += i; }\n  return total;\n}\n",
+    ));
+    assert!(
+        !rust.contains("unsafe {") && !rust.contains("unsafe fn"),
+        "{rust}"
+    );
+    assert!(rust.contains("#![forbid(unsafe_code)]"), "{rust}");
+    insta::assert_snapshot!(rust);
+}
+
+#[test]
+fn the_toolchain_matches_the_repository() {
+    let pinned = include_str!("../../../rust-toolchain.toml");
+    assert!(
+        pinned.contains(&format!("channel = \"{RUST_TOOLCHAIN}\"")),
+        "{pinned}"
+    );
+    let files = crate_files(&module("export fn f(): i32 { return 1; }"), "peras_f");
+    let manifest = files
+        .iter()
+        .find(|(p, _)| p == "Cargo.toml")
+        .map_or("", |(_, c)| c.as_str());
+    assert!(
+        manifest.contains(&format!("wasm-bindgen = \"={WASM_BINDGEN_VERSION}\"")),
+        "{manifest}"
+    );
+}

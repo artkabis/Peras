@@ -30,9 +30,13 @@ impl Checker<'_> {
         match (actual, expected) {
             (Ty::IntLit, Ty::Int(int)) => {
                 self.range_check(id, *int);
+                self.settle(id, expected);
                 true
             }
-            (Ty::FloatLit, Ty::Float(_)) => true,
+            (Ty::FloatLit, Ty::Float(_)) => {
+                self.settle(id, expected);
+                true
+            }
             (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if self.literal(id).is_some() => {
                 let literal = self.slice(span).to_owned();
                 self.report(errors::integer_for_float(span, &literal, expected));
@@ -111,6 +115,32 @@ impl Checker<'_> {
 
     /// The type of an expression; `expected` guides literals, arrays and `Some`.
     pub(crate) fn infer(&mut self, id: ExprId, expected: Option<&Ty>) -> Ty {
+        let ty = self.infer_inner(id, expected);
+        self.expr_types.insert(id, ty.clone());
+        ty
+    }
+
+    /// Gives a literal expression the concrete type the context chose for it, down
+    /// to the literals it is made of: in `x + (1 + 2)` with `x: i64`, all are `i64`.
+    fn settle(&mut self, id: ExprId, ty: &Ty) {
+        if !matches!(self.expr_types.get(&id), Some(Ty::IntLit | Ty::FloatLit)) {
+            return;
+        }
+        self.expr_types.insert(id, ty.clone());
+        match self.ast.expr(id).kind {
+            ExprKind::Paren(inner) => self.settle(inner, ty),
+            ExprKind::Unary { op, operand } if op != UnaryOp::Not => self.settle(operand, ty),
+            ExprKind::Binary { op, lhs, rhs }
+                if !op.is_comparison() && !matches!(op, BinaryOp::And | BinaryOp::Or) =>
+            {
+                self.settle(lhs, ty);
+                self.settle(rhs, ty);
+            }
+            _ => {}
+        }
+    }
+
+    fn infer_inner(&mut self, id: ExprId, expected: Option<&Ty>) -> Ty {
         let expr = self.ast.expr(id);
         let span = expr.span;
         match &expr.kind {

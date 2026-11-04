@@ -23,22 +23,23 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 
 ## Repository layout
 
-| Path                         | Contents                                         |
-| ---------------------------- | ------------------------------------------------ |
-| `crates/perasc-syntax`       | Lexer, parser, AST                               |
-| `crates/perasc-diag`         | Diagnostics, error codes, EN/FR messages         |
-| `crates/perasc-check`        | Names, types, ownership, resources, stack budget |
-| `crates/perasc-ir`           | Typed IR shared by both backends                 |
-| `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                           |
-| `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                          |
-| `crates/perasc-driver`       | Pipeline and build orchestration                 |
-| `crates/perasc`              | Command-line interface                           |
-| `packages/vite-plugin-peras` | Vite plugin                                      |
-| `packages/vitest-peras`      | Vitest adapter                                   |
-| `packages/create-peras`      | Project scaffolding                              |
-| `std/`                       | Standard library, written in Peras               |
-| `tests/ui/`                  | Source files and their expected diagnostics      |
-| `docs/en`, `docs/fr`         | Documentation, English first                     |
+| Path                         | Contents                                            |
+| ---------------------------- | --------------------------------------------------- |
+| `crates/perasc-syntax`       | Lexer, parser, AST                                  |
+| `crates/perasc-diag`         | Diagnostics, error codes, EN/FR messages            |
+| `crates/perasc-check`        | Names, types, ownership, resources, stack budget    |
+| `crates/perasc-ir`           | Typed IR shared by both backends                    |
+| `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                              |
+| `crates/perasc-codegen-wasm` | `.peras` → WASM, directly, without a Rust toolchain |
+| `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                             |
+| `crates/perasc-driver`       | Pipeline and build orchestration                    |
+| `crates/perasc`              | Command-line interface                              |
+| `packages/vite-plugin-peras` | Vite plugin                                         |
+| `packages/vitest-peras`      | Vitest adapter                                      |
+| `packages/create-peras`      | Project scaffolding                                 |
+| `std/`                       | Standard library, written in Peras                  |
+| `tests/ui/`                  | Source files and their expected diagnostics         |
+| `docs/en`, `docs/fr`         | Documentation, English first                        |
 
 ## Getting started
 

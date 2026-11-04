@@ -1,0 +1,16 @@
+// Everything code generation supports today, lowered without error.
+export fn fib(n: i32): i32 {
+  if (n < 2) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+export fn mean(total: f64, count: i32): f64 {
+  if (count == 0) return 0.0;
+  return total / count.toF64();
+}
+
+export fn clamp(x: i64, low: i64, high: i64): i64 {
+  if (x < low) return low;
+  if (x > high) return high;
+  return x;
+}

@@ -105,7 +105,8 @@ fn unreadable_files_are_reported_and_the_rest_still_checked() {
 #[test]
 fn usage_errors_are_explained() {
     for (args, expected) in [
-        (&["build"][..], "error: unknown command `build`"),
+        (&["compile"][..], "error: unknown command `compile`"),
+        (&["build"][..], "error: `build` needs a .peras file"),
         (&["check"][..], "error: `check` needs at least one file"),
         (
             &["check", "a.peras", "--wat"][..],
@@ -129,9 +130,9 @@ fn usage_errors_are_explained() {
         assert_eq!(code, USAGE_OR_IO, "{args:?}");
         assert!(err.starts_with(expected), "{args:?}: {err}");
     }
-    let (_, _, err) = cli(&["build", "--lang", "fr"]);
+    let (_, _, err) = cli(&["compile", "--lang", "fr"]);
     assert!(
-        err.starts_with("erreur : commande inconnue `build`"),
+        err.starts_with("erreur : commande inconnue `compile`"),
         "{err}"
     );
 }
@@ -143,4 +144,61 @@ fn help_and_version() {
     assert!(out.starts_with("Usage: perasc <command> [options]"));
     let (_, out, _) = cli(&["--version"]);
     assert_eq!(out, format!("perasc {}\n", perasc_driver::VERSION));
+}
+
+/// A fresh output folder for a build test.
+fn out_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("perasc-test-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+#[test]
+fn build_writes_the_module_its_loader_and_its_types() {
+    let dir = out_dir("ok");
+    let out_path = dir.to_string_lossy().into_owned();
+    let (code, out, err) = cli(&[
+        "build",
+        "../../tests/ui/build/supported.peras",
+        "--out",
+        &out_path,
+        "--lang",
+        "en",
+    ]);
+    assert_eq!((code, err.as_str()), (SUCCESS, ""));
+    assert!(out.contains("compiled to"), "{out}");
+    let wasm = std::fs::read(dir.join("supported.wasm")).unwrap_or_default();
+    assert!(wasm.starts_with(b"\0asm"), "not a wasm module");
+    let dts = std::fs::read_to_string(dir.join("supported.d.ts")).unwrap_or_default();
+    assert!(
+        dts.contains(
+            "export declare function clamp(x: bigint, low: bigint, high: bigint): bigint;"
+        ),
+        "{dts}"
+    );
+    assert!(dir.join("supported.js").is_file());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn build_refuses_what_it_cannot_compile_and_writes_nothing() {
+    let dir = out_dir("unsupported");
+    let out_path = dir.to_string_lossy().into_owned();
+    let (code, _, err) = cli(&[
+        "build",
+        "../../tests/ui/build/E0900-not-supported-yet.peras",
+        "--out",
+        &out_path,
+        "--lang",
+        "fr",
+    ]);
+    assert_eq!(code, ERRORS_FOUND);
+    assert!(err.contains("erreur[E0900]"), "{err}");
+    assert!(!dir.exists(), "nothing must be written");
+    let (code, _, err) = cli(&["build", "x.peras", "--backend", "llvm", "--lang", "en"]);
+    assert_eq!(code, USAGE_OR_IO);
+    assert!(
+        err.starts_with("error: invalid value `llvm` for `--backend`"),
+        "{err}"
+    );
 }

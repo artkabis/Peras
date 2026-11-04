@@ -2,7 +2,7 @@
 
 One page per code, named after it (`E0204.md`). Each page explains the cause, shows a failing example and its fix. Codes are permanent: a retired code keeps its page, marked as retired.
 
-Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the parser, `E0200` to `E0299` for names and types. `E0204` is reserved for "value used after move", the example of the spec.
+Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the parser, `E0200` to `E0299` for names and types, `E0900` to `E0999` for limits of code generation. `E0204` is reserved for "value used after move", the example of the spec.
 
 | Code              | Error                                     | Stage           |
 | ----------------- | ----------------------------------------- | --------------- |
@@ -51,3 +51,4 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0219](E0219.md) | Missing return                            | names and types |
 | [E0220](E0220.md) | Missing return type                       | names and types |
 | [E0221](E0221.md) | Invalid operator                          | names and types |
+| [E0900](E0900.md) | Not supported by code generation yet      | code generation |

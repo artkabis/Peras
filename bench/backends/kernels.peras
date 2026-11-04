@@ -1,0 +1,54 @@
+// Benchmark kernels: recursion, integer loops, float loops.
+// Built by both backends; scripts/bench-backends.mjs checks they agree, then times them.
+
+export fn fib(n: i32): i32 {
+  if (n < 2) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+export fn primes(limit: i32): i32 {
+  let count = 0;
+  for (let n = 2; n < limit; n++) {
+    let prime = true;
+    for (let d = 2; d * d <= n; d++) {
+      if (n % d == 0) {
+        prime = false;
+        break;
+      }
+    }
+    if (prime) count++;
+  }
+  return count;
+}
+
+// Points of a size × size grid inside the Mandelbrot set, after at most 64 steps.
+export fn mandel(size: i32): i32 {
+  let inside = 0;
+  const scale = 3.0 / size.toF64();
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const cx = px.toF64() * scale - 2.0;
+      const cy = py.toF64() * scale - 1.5;
+      let x = 0.0;
+      let y = 0.0;
+      let step = 0;
+      while (step < 64 && x * x + y * y <= 4.0) {
+        const next = x * x - y * y + cx;
+        y = 2.0 * x * y + cy;
+        x = next;
+        step++;
+      }
+      if (step == 64) inside++;
+    }
+  }
+  return inside;
+}
+
+export fn checksum(a: i64, b: i64): i64 {
+  let h: i64 = 1469598103934665603;
+  for (let i: i64 = 0; i < a; i++) {
+    h = (h ^ (i * b)) * 1099511628211;
+    if (h < 0) h = -h;
+  }
+  return h % 1000000007;
+}

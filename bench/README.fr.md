@@ -20,3 +20,7 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 - Les performances ne sont pas encore mesurées : Peras ne génère pas de code avant le jour 7 du plan de démarrage.
 
 `bench/bugs` contient du code volontairement faux : l’ESLint et le Prettier du dépôt l’ignorent.
+
+## Comparaison des backends (`bench/backends`)
+
+`bench/backends/kernels.peras` contient quatre noyaux : récursion, boucles entières, boucles flottantes et arithmétique 64 bits. `node scripts/bench-backends.mjs` les compile avec les deux générateurs (WebAssembly direct, et Rust via `cargo` et `wasm-bindgen`), vérifie que chaque build renvoie les mêmes résultats qu’une référence JavaScript, puis mesure le temps de build, la taille du module (brute, gzip, après `wasm-opt -O3`) et le temps d’exécution dans Node. Il demande `rustup` et `wasm-bindgen` 0.2.130 pour le backend Rust, et écrit [`backends/RESULTS.md`](backends/RESULTS.md). La décision [0001](../docs/fr/decisions/0001-webassembly-backend.md) discute les résultats.

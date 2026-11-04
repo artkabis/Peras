@@ -4,7 +4,8 @@
 //! pages (`docs/en/errors/Exxxx.md`, `docs/fr/errors/Exxxx.md`), marked as retired.
 //! Lexical errors use `E0001` to `E0099`, syntax errors `E0100` to `E0199`, name
 //! and type errors `E0200` to `E0299`. `E0204` is reserved for "value used after
-//! move", the example of the language spec.
+//! move", the example of the language spec. `E0900` to `E0999` are limits of the
+//! compiler itself: valid programs it cannot compile yet.
 
 use crate::ErrorCode;
 use crate::messages::Language;
@@ -99,6 +100,8 @@ pub const MISSING_RETURN: ErrorCode = ErrorCode::new(219);
 pub const MISSING_RETURN_TYPE: ErrorCode = ErrorCode::new(220);
 /// An operator applied to a type that does not support it.
 pub const INVALID_OPERATOR: ErrorCode = ErrorCode::new(221);
+/// A valid construct that code generation does not support yet.
+pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
 /// One entry of the registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +202,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(MISSING_RETURN, "check-missing-return", "E0219"),
     active!(MISSING_RETURN_TYPE, "check-missing-return-type", "E0220"),
     active!(INVALID_OPERATOR, "check-operator", "E0221"),
+    active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 
 /// Looks up a code in the registry.

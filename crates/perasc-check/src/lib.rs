@@ -16,7 +16,8 @@ use std::collections::HashMap;
 
 use perasc_diag::{Diagnostic, Span};
 use perasc_syntax::ast::{
-    Ast, ExprKind, FnDecl, ItemKind, Local, Stmt, StmtKind, StructDecl, Symbol, Type, TypeKind,
+    Ast, ExprId, ExprKind, FnDecl, ItemKind, Local, Stmt, StmtKind, StructDecl, Symbol, Type,
+    TypeKind,
 };
 
 use crate::scope::{Binding, Declared, Kind, Scopes};
@@ -25,11 +26,32 @@ use crate::ty::{FloatTy, FnId, IntTy, StructId, Ty};
 /// Checks names and types of a parsed module, returning every error sorted by position.
 #[must_use]
 pub fn check(ast: &Ast, source: &str) -> Vec<Diagnostic> {
+    analyze(ast, source).diagnostics
+}
+
+/// What the checker learned about a module.
+#[derive(Debug, Clone)]
+pub struct Analysis {
+    /// Every error, sorted by position.
+    pub diagnostics: Vec<Diagnostic>,
+    /// The final type of each expression: literals have the type the context gave
+    /// them, or `i32` and `f64` when nothing did.
+    pub types: HashMap<ExprId, Ty>,
+}
+
+/// Checks a module and keeps the type of every expression, for code generation.
+#[must_use]
+pub fn analyze(ast: &Ast, source: &str) -> Analysis {
     let mut checker = Checker::new(ast, source);
     checker.module();
     let mut diagnostics = checker.diagnostics;
     diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
-    diagnostics
+    let types = checker
+        .expr_types
+        .into_iter()
+        .map(|(id, ty)| (id, ty.defaulted()))
+        .collect();
+    Analysis { diagnostics, types }
 }
 
 /// A structure's fields, in order.
@@ -65,6 +87,8 @@ struct Checker<'a> {
     ret: Option<(Ty, Option<Span>)>,
     /// Types of the values returned so far, to infer a missing return type.
     returned: Vec<Ty>,
+    /// Type of each expression checked so far.
+    expr_types: HashMap<ExprId, Ty>,
 }
 
 impl<'a> Checker<'a> {
@@ -91,6 +115,7 @@ impl<'a> Checker<'a> {
             fns: Vec::new(),
             ret: None,
             returned: Vec::new(),
+            expr_types: HashMap::new(),
         }
     }
 

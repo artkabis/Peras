@@ -12,6 +12,7 @@ publish.workspace = true
 perasc-check.workspace = true
 perasc-codegen-js.workspace = true
 perasc-codegen-rs.workspace = true
+perasc-codegen-wasm.workspace = true
 perasc-diag.workspace = true
 perasc-ir.workspace = true
 perasc-syntax.workspace = true

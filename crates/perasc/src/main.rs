@@ -2,7 +2,10 @@
 //!
 //! Every text comes from the Fluent files (`perasc-diag/messages`), in English or French.
 //! Exit codes: 0 when everything is valid, 1 when a source has errors, 2 when the
-//! command itself is wrong or a file cannot be read.
+//! command itself is wrong, a file cannot be read or a tool is missing, 3 when
+//! `cargo` or `wasm-bindgen` rejects code perasc generated: a bug in perasc.
+
+mod build;
 
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
@@ -19,6 +22,7 @@ use perasc_driver::{MAX_ERRORS_PER_FILE, ReadError, VERSION, check, read_source}
 const SUCCESS: u8 = 0;
 const ERRORS_FOUND: u8 = 1;
 const USAGE_OR_IO: u8 = 2;
+const COMPILER_BUG: u8 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Color {
@@ -33,6 +37,7 @@ enum Command {
     Version,
     Check(Vec<String>),
     Explain(String),
+    Build(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,10 +46,29 @@ struct Options {
     language: Option<Language>,
     json: bool,
     color: Color,
+    backend: build::Backend,
+    out: Option<String>,
 }
 
 /// A command-line mistake, as a message to show.
 type UsageError = Message;
+
+/// The value of an option among fixed choices.
+fn pick<T: Copy>(
+    option: &'static str,
+    value: String,
+    choices: &[(&str, T)],
+) -> Result<T, UsageError> {
+    choices
+        .iter()
+        .find(|(name, _)| *name == value)
+        .map(|(_, choice)| *choice)
+        .ok_or_else(|| {
+            Message::new("cli-invalid-value")
+                .text("option", option)
+                .text("value", value)
+        })
+}
 
 fn parse_args(args: &[String]) -> Result<Options, UsageError> {
     let mut options = Options {
@@ -52,6 +76,8 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         language: None,
         json: false,
         color: Color::Auto,
+        backend: build::Backend::Direct,
+        out: None,
     };
     let mut positional = Vec::new();
     let mut iter = args.iter();
@@ -83,18 +109,21 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
                         .text("value", tag.clone())
                 })?);
             }
+            "--backend" => {
+                let choices = [
+                    ("direct", build::Backend::Direct),
+                    ("rust", build::Backend::Rust),
+                ];
+                options.backend = pick("--backend", value("--backend")?, &choices)?;
+            }
+            "--out" => options.out = Some(value("--out")?),
             "--color" => {
-                let choice = value("--color")?;
-                options.color = match choice.as_str() {
-                    "auto" => Color::Auto,
-                    "always" => Color::Always,
-                    "never" => Color::Never,
-                    _ => {
-                        return Err(Message::new("cli-invalid-value")
-                            .text("option", "--color")
-                            .text("value", choice));
-                    }
-                };
+                let choices = [
+                    ("auto", Color::Auto),
+                    ("always", Color::Always),
+                    ("never", Color::Never),
+                ];
+                options.color = pick("--color", value("--color")?, &choices)?;
             }
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(Message::new("cli-unknown-argument").text("argument", other));
@@ -111,6 +140,15 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
                 return Err(Message::new("cli-no-files"));
             }
             Command::Check(files)
+        }
+        Some("build") => {
+            let file = positional
+                .next()
+                .ok_or_else(|| Message::new("cli-no-build-file"))?;
+            if let Some(extra) = positional.next() {
+                return Err(Message::new("cli-unknown-argument").text("argument", extra));
+            }
+            Command::Build(file)
         }
         Some("explain") => {
             let code = positional
@@ -176,6 +214,10 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         .map(|()| SUCCESS),
         Command::Explain(code) => explain(code, &localizer, out, err),
         Command::Check(files) => check_files(files, &options, &localizer, color, out, err),
+        Command::Build(file) => {
+            let out_dir = std::path::PathBuf::from(options.out.as_deref().unwrap_or("dist"));
+            build::build(file, options.backend, &out_dir, &localizer, color, out, err)
+        }
     };
     written.unwrap_or(USAGE_OR_IO)
 }
