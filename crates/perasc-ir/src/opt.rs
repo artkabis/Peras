@@ -95,7 +95,11 @@ pub fn is_simple(e: &Expr) -> bool {
             !matches!(op, BinOp::Div | BinOp::Rem) && is_simple(a) && is_simple(b)
         }
         // A call, an allocation or a change of owner is never moved.
-        ExprKind::Call(..) | ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => false,
+        ExprKind::Call(..)
+        | ExprKind::Alloc(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Buf(..) => false,
     }
 }
 
@@ -343,7 +347,7 @@ fn reads(e: &Expr, target: LocalId) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, target),
         ExprKind::Binary(_, a, b) => reads(a, target) || reads(b, target),
-        ExprKind::Call(_, args) => args.iter().any(|a| reads(a, target)),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().any(|a| reads(a, target)),
     }
 }
 

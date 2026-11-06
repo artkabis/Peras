@@ -2,7 +2,7 @@
 
 Une page par code, nommée d'après lui (`E0204.md`). Chaque page explique la cause, montre un exemple fautif et sa correction. Les codes sont permanents : un code retiré garde sa page, marquée comme retirée.
 
-Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au parser, `E0200` à `E0299` aux noms et aux types, `E0900` à `E0999` aux limites de la génération de code. `E0204` est réservé à « valeur utilisée après déplacement », l’exemple de la spec.
+Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au parser, `E0200` à `E0299` aux noms et aux types, `E0900` à `E0999` aux limites de la génération de code.
 
 | Code              | Erreur                                              | Étape              |
 | ----------------- | --------------------------------------------------- | ------------------ |
@@ -38,7 +38,11 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0201](E0201.md) | Masquage                                            | noms et types      |
 | [E0202](E0202.md) | Déclaration en double                               | noms et types      |
 | [E0203](E0203.md) | Variable ou paramètre inutilisé                     | noms et types      |
+| [E0204](E0204.md) | Valeur utilisée après un déplacement                | possession         |
 | [E0205](E0205.md) | Modification impossible                             | noms et types      |
+| [E0206](E0206.md) | `&` et les arguments `inout`                        | possession         |
+| [E0207](E0207.md) | Alias avec un argument `inout`                      | possession         |
+| [E0209](E0209.md) | Déplacer ce qui n’est qu’emprunté                   | possession         |
 | [E0210](E0210.md) | Types incompatibles                                 | noms et types      |
 | [E0211](E0211.md) | Entier littéral à la place d’un flottant            | noms et types      |
 | [E0212](E0212.md) | Littéral hors bornes                                | noms et types      |

@@ -334,6 +334,15 @@ check-unused-why = A value that is never read is dead code, and often a bug: a t
 check-unused-fix-parameter = if it is unused on purpose, name it `_{ $name }`
 check-unused-fix-variable = remove it, or use its value
 
+# E0204
+check-moved = `{ $name }` is used after it was moved
+check-moved-label = used here, after the move
+check-moved-here-label = moved here
+check-moved-loop-label = moved here in the previous turn of the loop
+check-moved-why = A value on the heap, an array, a string, or a structure holding one, has a single owner. Assigning it, returning it or passing it to a `sink` parameter moves it: the old name holds nothing until it is given a new value.
+check-moved-fix = give the variable a new value before it is used again
+check-fix-copy = move a copy instead, with `.copy()`
+
 # E0205
 check-immutable = cannot modify { $kind ->
     [parameter] the parameter
@@ -347,6 +356,42 @@ check-immutable-declared-label = { $kind ->
 check-immutable-why = A `const` never changes, and a parameter is read-only unless it is passed `inout`, which shows the caller that the function modifies it.
 check-immutable-fix-const = declare `{ $name }` with `let`
 check-immutable-fix-parameter = pass `{ $name }` as `inout`
+
+# E0206
+check-inout-marker = { $kind ->
+    [missing] an `inout` argument is written with `&`
+   *[other] `&` marks `inout` arguments only
+}
+check-inout-marker-label = { $kind ->
+    [missing] passed to an `inout` parameter without `&`
+   *[other] this parameter is not `inout`
+}
+check-inout-marker-why = `&` at the call shows that the function may change the variable. It is required for an `inout` parameter, and refused anywhere else, so that it always means that.
+check-inout-marker-fix-add = write `&` before the argument
+check-inout-marker-fix-remove = remove the `&`
+
+# E0207
+check-alias = `{ $name }` is passed twice to `{ $callee }`, and one of them changes it
+check-alias-label = reaches the same variable again
+check-alias-other-label = first reached here
+check-alias-why = An `inout` parameter changes its variable in place. Another argument reaching the same variable would see it change during the call, so Peras refuses it.
+check-alias-fix = pass two different variables
+check-alias-loop = `{ $name }` changes while `for…of` goes through it
+check-alias-loop-label = changed here
+check-alias-loop-iterated-label = the loop goes through it
+check-alias-loop-fix = go through a copy, `{ $name }.copy()`, to change the original
+
+# E0209
+check-move-out = cannot move { $what ->
+    [parameter] the parameter `{ $name }`, which only borrows its value
+    [field] a field out of its structure
+    [element] an element out of its array
+   *[other] a module-level value
+}
+check-move-out-label = moved here
+check-move-out-why = Only the owner of a value can move it. A parameter that is not `sink` borrows the caller's value, and a field or an element belongs to what holds it.
+check-move-out-fix = move a copy, with `.copy()`, or move the whole owner
+check-move-out-fix-sink = declare `{ $name }` as `sink`: the function then takes the value
 
 # E0210
 check-mismatch = mismatched types: expected `{ $expected }`, found `{ $found }`
@@ -463,6 +508,8 @@ gen-unsupported = code generation does not support { $feature ->
     [float-remainder] `%` on floats
     [string] strings
     [array] arrays
+    [array-element] arrays of anything but numbers and booleans
+    [heap-option] options holding an array or a string
     [field] fields
     [index] indexing
     [try] the `?` operator
@@ -472,7 +519,7 @@ gen-unsupported = code generation does not support { $feature ->
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet
-gen-unsupported-why = The program is correct: the checks accepted it. Code generation is built step by step and, for now, handles functions on `i32`, `i64`, `f32`, `f64` and `bool`, with `if`, loops, calls and numeric conversions.
+gen-unsupported-why = The program is correct: the checks accepted it. Code generation is built step by step and, for now, handles `i32`, `i64`, `f32`, `f64` and `bool`, structures, options, and arrays of numbers and booleans, with every statement, calls and conversions.
 gen-unsupported-fix = use only the supported constructs in this module for now, or keep it to `perasc check`
 
 ## Diagnostic rendering
@@ -493,3 +540,4 @@ runtime-invalid-release = { $release } releases something that is not a live blo
 runtime-double-release = the block allocated at { $alloc } is released a second time, at { $release }
 runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
 runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }
+runtime-index = index { $index } is out of bounds: the length is { $length }

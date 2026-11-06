@@ -1,0 +1,45 @@
+// E0207: two arguments reaching one variable, one of them `inout`.
+struct Pair { a: Array<i32>; b: Array<i32>; }
+fn append(target: inout Array<i32>, source: Array<i32>): void {
+  for (const x of source) {
+    target.push(x);
+  }
+}
+fn both(x: inout Array<i32>, y: inout Array<i32>): void {
+  x.push(y.length);
+}
+
+export fn doubled(): i32 {
+  let xs: Array<i32> = [1, 2];
+  append(&xs, xs);
+  return xs.length;
+}
+
+export fn twice_inout(): i32 {
+  let xs: Array<i32> = [1];
+  both(&xs, &xs);
+  return xs.length;
+}
+
+// Fields of one structure count as the same variable, even different ones.
+export fn through_fields(p: inout Pair): void {
+  append(&p.a, p.b);
+}
+
+export fn growing(xs: inout Array<i32>): void {
+  for (const x of xs) {
+    xs.push(x);
+  }
+}
+
+// Allowed: two different variables, changing elements during the loop.
+export fn fine(): i32 {
+  let xs: Array<i32> = [1];
+  let ys: Array<i32> = [2];
+  append(&xs, ys);
+  both(&xs, &ys);
+  for (const y of ys) {
+    ys[0] = y + 1;
+  }
+  return xs.length + ys.length;
+}

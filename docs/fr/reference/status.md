@@ -14,7 +14,8 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                        | <span class="status checked">vérifié</span>  |
 | structures, imbriquées, en paramètres et en résultats         | <span class="status compiled">compilé</span> |
 | `Option<T>`, `Some`, `None`, `?`                              | <span class="status compiled">compilé</span> |
-| `Array<T>`, `String`                                          | <span class="status checked">vérifié</span>  |
+| `Array<T>` de nombres et de booléens                          | <span class="status compiled">compilé</span> |
+| `Array<T>` d’autres types, `String`                           | <span class="status checked">vérifié</span>  |
 | `Result<T, E>`, énumérations et unions, `match`               | <span class="status planned">prévu</span>    |
 | génériques, interfaces et traits, méthodes sur les structures | <span class="status planned">prévu</span>    |
 | `Map`, `Set`, tuples, fermetures                              | <span class="status planned">prévu</span>    |
@@ -22,16 +23,18 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 
 ## Instructions et expressions
 
-| Fonctionnalité                                                  | État                                                                                                                 |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `let`, `const`, affectations, `+=` et les autres, `++`, `--`    | <span class="status compiled">compilé</span>                                                                         |
-| opérateurs arithmétiques, de comparaison, bit à bit et logiques | <span class="status compiled">compilé</span>, sauf `%` sur les flottants <span class="status checked">vérifié</span> |
-| `if`, `while`, `for`, `break`, `continue`                       | <span class="status compiled">compilé</span>                                                                         |
-| `for…of`                                                        | <span class="status checked">vérifié</span>                                                                          |
-| fonctions, récursion, `export`                                  | <span class="status compiled">compilé</span>                                                                         |
-| paramètres `inout` et `sink`, `&` à l’appel                     | <span class="status checked">vérifié</span>                                                                          |
-| `const` au niveau du module                                     | <span class="status checked">vérifié</span>                                                                          |
-| `import` entre modules                                          | <span class="status planned">prévu</span>                                                                            |
+| Fonctionnalité                                                  | État                                                                                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `let`, `const`, affectations, `+=` et les autres, `++`, `--`    | <span class="status compiled">compilé</span>                                                                                 |
+| opérateurs arithmétiques, de comparaison, bit à bit et logiques | <span class="status compiled">compilé</span>, sauf `%` sur les flottants <span class="status checked">vérifié</span>         |
+| `if`, `while`, `for`, `break`, `continue`                       | <span class="status compiled">compilé</span>                                                                                 |
+| `for…of`                                                        | <span class="status compiled">compilé</span>                                                                                 |
+| fonctions, récursion, `export`                                  | <span class="status compiled">compilé</span>                                                                                 |
+| paramètres `sink`                                               | <span class="status compiled">compilé</span>                                                                                 |
+| paramètres `inout`, `&` à l’appel                               | <span class="status compiled">compilé</span> pour les tableaux, <span class="status checked">vérifié</span> pour les nombres |
+| possession : déplacements, emprunts, alias refusés, libérations | <span class="status compiled">compilé</span>                                                                                 |
+| `const` au niveau du module                                     | <span class="status checked">vérifié</span>                                                                                  |
+| `import` entre modules                                          | <span class="status planned">prévu</span>                                                                                    |
 
 ## Méthodes
 

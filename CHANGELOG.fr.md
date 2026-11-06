@@ -14,6 +14,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- Les **tableaux** se compilent, de nombres et de booléens, sur le tas : littéraux, `length`, lecture et affectation par indice, `push`, `pop`, `copy`, `for…of`.
+  - Chaque indice est vérifié ; un indice hors limites arrête le programme avec une `RangeError`, en anglais ou en français, avant de toucher la mémoire.
+  - Un tableau est un en-tête de 12 octets, qui garde son adresse, et ses éléments ; `push` double la place quand elle manque. L’allocateur de débogage tient les deux blocs, si bien que chaque bug mémoire reste détecté.
+  - JavaScript passe et reçoit des copies, en `number[]`, `bigint[]` ou `boolean[]` ; un paramètre `inout` est recopié.
+- La **possession** est vérifiée : une valeur sur le tas a un seul propriétaire, se déplace à l’affectation, au `return` et vers `sink`, et est empruntée sinon.
+  - Quatre nouvelles erreurs : une valeur utilisée après son déplacement ([E0204](docs/fr/errors/E0204.md)), `&` manquant ou en trop sur un argument `inout` ([E0206](docs/fr/errors/E0206.md)), deux arguments qui atteignent une variable que l’un modifie, ou un tableau modifié pendant que `for…of` le parcourt ([E0207](docs/fr/errors/E0207.md)), le déplacement de ce qui n’est qu’emprunté ([E0209](docs/fr/errors/E0209.md)). Chaque correction ajoute `.copy()`, `&` ou `sink` là où c’est possible.
+  - Le lowering insère chaque libération : en fin de portée, à la réaffectation, avant `return`, `break` et `continue`, et là où des chemins se rejoignent après un déplacement sur l’un d’eux. Le vérificateur de libérations prouve chacune ; les programmes de test ne laissent aucun bloc vivant, dans l’interpréteur et en WebAssembly sur l’allocateur de débogage.
 - Les **options** se compilent, sans le tas elles aussi : une `Option<T>` est un `bool` suivi des scalaires de `T`, n’importe quel `T` compilé, structures comprises.
   - `Some`, `None`, `isSome`, `isNone`, `unwrapOr`, et `?`, qui renvoie `None` tout de suite depuis une fonction qui renvoie une option.
   - `checkedAdd`, `checkedSub` et `checkedMul` sur `i32` et `i64` donnent `None` en cas de dépassement ; ils sont testés contre ceux de Rust sur les valeurs où le dépassement commence et s’arrête.

@@ -49,7 +49,7 @@ export fn sum_to(n: i32): i64 {
 
 Parcourt les éléments d’un tableau :
 
-```peras
+```peras build
 export fn total(prices: Array<f64>): f64 {
   let sum = 0.0;
   for (const price of prices) {
@@ -59,7 +59,7 @@ export fn total(prices: Array<f64>): f64 {
 }
 ```
 
-> `for…of` est vérifié, pas encore compilé : il arrive avec les tableaux.
+La boucle relit la longueur à chaque tour. Pendant la boucle, le tableau ne peut ni grandir, ni rétrécir, ni être remplacé ([E0207](../errors/E0207.md)) ; ses éléments peuvent changer.
 
 ## `break` et `continue`
 

@@ -334,6 +334,15 @@ check-unused-why = Une valeur jamais lue est du code mort, et souvent un bug : u
 check-unused-fix-parameter = s’il est inutilisé volontairement, nomme-le `_{ $name }`
 check-unused-fix-variable = supprime-la, ou utilise sa valeur
 
+# E0204
+check-moved = `{ $name }` est utilisé après avoir été déplacé
+check-moved-label = utilisé ici, après le déplacement
+check-moved-here-label = déplacé ici
+check-moved-loop-label = déplacé ici au tour précédent de la boucle
+check-moved-why = Une valeur sur le tas, un tableau, une chaîne ou une structure qui en contient, a un seul propriétaire. L’affecter, la renvoyer ou la passer à un paramètre `sink` la déplace : l’ancien nom ne contient plus rien tant qu’il ne reçoit pas une nouvelle valeur.
+check-moved-fix = donne une nouvelle valeur à la variable avant de l’utiliser à nouveau
+check-fix-copy = déplace plutôt une copie, avec `.copy()`
+
 # E0205
 check-immutable = impossible de modifier { $kind ->
     [parameter] le paramètre
@@ -347,6 +356,42 @@ check-immutable-declared-label = { $kind ->
 check-immutable-why = Un `const` ne change jamais, et un paramètre est en lecture seule sauf s’il est passé `inout`, ce qui montre à l’appelant que la fonction le modifie.
 check-immutable-fix-const = déclare `{ $name }` avec `let`
 check-immutable-fix-parameter = passe `{ $name }` en `inout`
+
+# E0206
+check-inout-marker = { $kind ->
+    [missing] un argument `inout` s’écrit avec `&`
+   *[other] `&` ne marque que les arguments `inout`
+}
+check-inout-marker-label = { $kind ->
+    [missing] passé à un paramètre `inout` sans `&`
+   *[other] ce paramètre n’est pas `inout`
+}
+check-inout-marker-why = `&` à l’appel montre que la fonction peut modifier la variable. Il est exigé pour un paramètre `inout`, et refusé partout ailleurs, pour qu’il veuille toujours dire cela.
+check-inout-marker-fix-add = écris `&` devant l’argument
+check-inout-marker-fix-remove = retire le `&`
+
+# E0207
+check-alias = `{ $name }` est passé deux fois à `{ $callee }`, et l’un des deux le modifie
+check-alias-label = atteint de nouveau la même variable
+check-alias-other-label = atteinte une première fois ici
+check-alias-why = Un paramètre `inout` modifie sa variable sur place. Un autre argument qui atteindrait la même variable la verrait changer pendant l’appel : Peras le refuse.
+check-alias-fix = passe deux variables différentes
+check-alias-loop = `{ $name }` change pendant que `for…of` le parcourt
+check-alias-loop-label = modifié ici
+check-alias-loop-iterated-label = la boucle le parcourt
+check-alias-loop-fix = parcours une copie, `{ $name }.copy()`, pour modifier l’original
+
+# E0209
+check-move-out = impossible de déplacer { $what ->
+    [parameter] le paramètre `{ $name }`, qui ne fait qu’emprunter sa valeur
+    [field] un champ hors de sa structure
+    [element] un élément hors de son tableau
+   *[other] une valeur du niveau du module
+}
+check-move-out-label = déplacé ici
+check-move-out-why = Seul le propriétaire d’une valeur peut la déplacer. Un paramètre qui n’est pas `sink` emprunte la valeur de l’appelant, et un champ ou un élément appartient à ce qui le contient.
+check-move-out-fix = déplace une copie, avec `.copy()`, ou déplace le propriétaire en entier
+check-move-out-fix-sink = déclare `{ $name }` en `sink` : la fonction prend alors la valeur
 
 # E0210
 check-mismatch = types incompatibles : `{ $expected }` attendu, `{ $found }` trouvé
@@ -463,6 +508,8 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [float-remainder] `%` sur des flottants
     [string] les chaînes
     [array] les tableaux
+    [array-element] les tableaux d’autre chose que des nombres et des booléens
+    [heap-option] les options qui contiennent un tableau ou une chaîne
     [field] les champs
     [index] l’indexation
     [try] l’opérateur `?`
@@ -472,7 +519,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé
-gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite les fonctions sur `i32`, `i64`, `f32`, `f64` et `bool`, avec `if`, les boucles, les appels et les conversions numériques.
+gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite `i32`, `i64`, `f32`, `f64` et `bool`, les structures, les options, et les tableaux de nombres et de booléens, avec toutes les instructions, les appels et les conversions.
 gen-unsupported-fix = n’utilise pour l’instant que les constructions prises en charge dans ce module, ou limite-le à `perasc check`
 
 ## Rendu des diagnostics
@@ -493,3 +540,4 @@ runtime-invalid-release = { $release } libère quelque chose qui n’est pas un 
 runtime-double-release = le bloc alloué à { $alloc } est libéré une seconde fois, à { $release }
 runtime-use-after-release = le bloc alloué à { $alloc } a été modifié après que { $release } l’a libéré
 runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a été alloué à { $alloc }
+runtime-index = l’indice { $index } est hors limites : la longueur est { $length }

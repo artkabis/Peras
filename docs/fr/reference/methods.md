@@ -40,17 +40,19 @@ export fn wrapped(a: i32): i32 {
 
 ## `Array<T>`
 
-| Membre    | Donne                                              | État                                        |
-| --------- | -------------------------------------------------- | ------------------------------------------- |
-| `length`  | le nombre d’éléments, un `i32`                     | <span class="status checked">vérifié</span> |
-| `push(x)` | ajoute `x` à la fin                                | <span class="status checked">vérifié</span> |
-| `pop()`   | retire et donne le dernier élément, `None` si vide | <span class="status checked">vérifié</span> |
+| Membre    | Donne                                              | État                                         |
+| --------- | -------------------------------------------------- | -------------------------------------------- |
+| `length`  | le nombre d’éléments, un `i32`                     | <span class="status compiled">compilé</span> |
+| `push(x)` | ajoute `x` à la fin                                | <span class="status compiled">compilé</span> |
+| `pop()`   | retire et donne le dernier élément, `None` si vide | <span class="status compiled">compilé</span> |
+| `copy()`  | un nouveau tableau avec les mêmes éléments         | <span class="status compiled">compilé</span> |
 
 ## `String`
 
-| Membre   | Donne       | État                                        |
-| -------- | ----------- | ------------------------------------------- |
-| `length` | la longueur | <span class="status checked">vérifié</span> |
+| Membre   | Donne                                  | État                                        |
+| -------- | -------------------------------------- | ------------------------------------------- |
+| `length` | la longueur                            | <span class="status checked">vérifié</span> |
+| `copy()` | une nouvelle chaîne avec le même texte | <span class="status checked">vérifié</span> |
 
 ## `Option<T>`
 

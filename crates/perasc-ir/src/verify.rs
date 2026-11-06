@@ -5,7 +5,9 @@
 //! WebAssembly only knows four value types, so without this check a `bool` used as
 //! an `i32`, or one integer type for another, could reach the module unnoticed.
 
-use crate::{BinOp, Const, Expr, ExprKind, Function, LocalId, MathOp, Module, Stmt, Ty, UnOp};
+use crate::{
+    BinOp, BufOp, BufStmt, Const, Expr, ExprKind, Function, LocalId, MathOp, Module, Stmt, Ty, UnOp,
+};
 
 /// Checks a module; every problem is described in one line.
 ///
@@ -79,7 +81,9 @@ impl<'a> Verifier<'a> {
     fn handed_over(&mut self, value: &Expr) {
         match &value.kind {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
-            ExprKind::Alloc(_) | ExprKind::Call(..) => self.expr(value),
+            ExprKind::Alloc(_) | ExprKind::Call(..) | ExprKind::Buf(BufOp::New(_), _) => {
+                self.expr(value);
+            }
             _ => self.problem(&format!(
                 "an owned value must be allocated, moved or returned by a call, not {:?}",
                 value.kind
@@ -104,6 +108,79 @@ impl<'a> Verifier<'a> {
                 }
             }
             _ => self.expr(arg),
+        }
+    }
+
+    /// A buffer operand: a `borrow` of an `owned` local, or a `borrowed` parameter.
+    fn buffer(&mut self, arg: Option<&Expr>) {
+        match arg.map(|a| (&a.kind, a.ty)) {
+            Some((ExprKind::Borrow(local), Ty::Borrowed))
+                if self.local_type(local.0) == Some(Ty::Owned) => {}
+            Some((ExprKind::Local(local), Ty::Borrowed))
+                if self.local_type(local.0) == Some(Ty::Borrowed) => {}
+            other => self.problem(&format!("a buffer operand must be borrowed, not {other:?}")),
+        }
+    }
+
+    /// Operands after the buffer, with the types they must have.
+    fn operands(&mut self, what: &str, args: &[Expr], types: &[Ty]) {
+        let given: Vec<Ty> = args.iter().map(|a| a.ty).collect();
+        if given != types {
+            self.problem(&format!("{what} on {given:?}, expected {types:?}"));
+        }
+        for arg in args {
+            self.expr(arg);
+        }
+    }
+
+    fn buf_expr(&mut self, op: BufOp, args: &[Expr], ty: Ty) {
+        let rest = args.get(1..).unwrap_or(&[]);
+        let expected = match op {
+            BufOp::New(_) => {
+                self.operands("buf.new", args, &[Ty::I32]);
+                Ty::Owned
+            }
+            BufOp::Len => {
+                self.buffer(args.first());
+                self.operands("buf.len", rest, &[]);
+                Ty::I32
+            }
+            BufOp::Get(elem) => {
+                self.buffer(args.first());
+                self.operands("buf.get", rest, &[Ty::I32]);
+                elem.ty()
+            }
+        };
+        if ty != expected {
+            self.problem(&format!("{} typed {}", op.name(), ty.name()));
+        }
+    }
+
+    fn buf_stmt(&mut self, op: BufStmt, args: &[Expr]) {
+        let rest = args.get(1..).unwrap_or(&[]);
+        match op {
+            BufStmt::Set(elem) => {
+                self.buffer(args.first());
+                self.operands("buf.set", rest, &[Ty::I32, elem.ty()]);
+            }
+            BufStmt::Push(elem) => {
+                self.buffer(args.first());
+                self.operands("buf.push", rest, &[elem.ty()]);
+            }
+            BufStmt::Truncate => {
+                self.buffer(args.first());
+                self.operands("buf.truncate", rest, &[Ty::I32]);
+            }
+            BufStmt::CheckIndex => self.operands("check_index", args, &[Ty::I32, Ty::I32]),
+            BufStmt::Release => match args {
+                [
+                    Expr {
+                        kind: ExprKind::Move(local),
+                        ty,
+                    },
+                ] => self.handle(*local, Ty::Owned, *ty),
+                _ => self.problem("buf.release takes one moved buffer"),
+            },
         }
     }
 
@@ -184,6 +261,7 @@ impl<'a> Verifier<'a> {
                 args,
             } => self.call_many(targets, *callee, args),
             Stmt::ReturnMany(values) => self.return_many(values),
+            Stmt::Buf(op, args) => self.buf_stmt(*op, args),
             Stmt::Release(local) => {
                 if self.local_type(local.0) != Some(Ty::Owned) {
                     self.problem(&format!("release of %{}, which is not owned", local.0));
@@ -335,6 +413,7 @@ impl<'a> Verifier<'a> {
                 }
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs, e.ty),
+            ExprKind::Buf(op, args) => self.buf_expr(*op, args, e.ty),
             ExprKind::Call(id, args) => {
                 let results = if e.ty == Ty::Void { vec![] } else { vec![e.ty] };
                 if let Some(callee) = self.call(*id, args, &results)

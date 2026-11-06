@@ -1,0 +1,26 @@
+// E0209: moving what is only borrowed.
+struct Buffer { samples: Array<f32>; }
+fn take(xs: sink Array<i32>): i32 { return xs.length; }
+
+export fn keep(xs: Array<i32>): Array<i32> {
+  return xs;
+}
+
+export fn changed(xs: inout Array<i32>): i32 {
+  return take(xs);
+}
+
+export fn field(b: sink Buffer): Array<f32> {
+  return b.samples;
+}
+
+export fn element(xss: Array<Array<i32>>): i32 {
+  let first = xss[0];
+  return first.length;
+}
+
+// Allowed: a `sink` parameter, a copy of a field.
+export fn fine(xs: sink Array<i32>, b: Buffer): i32 {
+  const samples = b.samples.copy();
+  return take(xs) + samples.length;
+}

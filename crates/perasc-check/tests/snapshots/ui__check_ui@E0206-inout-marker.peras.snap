@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0206-inout-marker.peras
+---
+diagnostics:
+  error[E0206] check-inout-marker { kind: "missing" }
+    primary 11:9-11:11: check-inout-marker-label { kind: "missing" }
+    cause: check-inout-marker-why
+    fix: check-inout-marker-fix-add
+      11:9-11:9 -> "&"
+  error[E0206] check-inout-marker { kind: "extra" }
+    primary 18:15-18:18: check-inout-marker-label { kind: "extra" }
+    cause: check-inout-marker-why
+    fix: check-inout-marker-fix-remove
+      18:15-18:16 -> ""

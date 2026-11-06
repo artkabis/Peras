@@ -5,7 +5,9 @@
 // Truncating casts and exact float comparisons are the semantics being modelled.
 #![allow(clippy::cast_possible_truncation, clippy::float_cmp)]
 
-use crate::{BinOp, Const, Expr, ExprKind, FnId, MathOp, Module, Stmt, Ty, UnOp};
+use crate::{
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, FnId, MathOp, Module, Stmt, Ty, UnOp,
+};
 
 /// A value.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -38,6 +40,11 @@ pub enum Trap {
     UseAfterRelease,
     /// A negative size was allocated.
     BadAlloc,
+    /// `check_index` failed: the program reports an index out of bounds.
+    Bounds,
+    /// A buffer was read or written past its length without a check first: a
+    /// bug in `perasc`, which the backends would not catch.
+    Unchecked,
 }
 
 /// What a run left on the heap.
@@ -71,13 +78,13 @@ pub fn run_with_heap(
                 module: &module,
                 fuel: 50_000_000,
                 depth: 0,
-                heap: std::collections::BTreeSet::new(),
+                heap: std::collections::BTreeMap::new(),
                 allocated: 0,
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
                 allocated: machine.allocated,
-                live: machine.heap.into_iter().collect(),
+                live: machine.heap.into_keys().collect(),
             };
             Ok((value, report))
         });
@@ -93,8 +100,8 @@ struct Machine<'a> {
     module: &'a Module,
     fuel: u64,
     depth: usize,
-    /// Live blocks.
-    heap: std::collections::BTreeSet<u32>,
+    /// Live blocks, with their elements when they are buffers.
+    heap: std::collections::BTreeMap<u32, Vec<Value>>,
     allocated: u32,
 }
 
@@ -215,9 +222,17 @@ impl Machine<'_> {
             Stmt::Release(local) => {
                 let slot = slot(locals, *local);
                 match slot.map(std::mem::take) {
-                    Some(Value::Handle(block)) if self.heap.remove(&block) => {}
+                    Some(Value::Handle(block)) if self.heap.remove(&block).is_some() => {}
                     _ => return Err(Trap::DoubleRelease),
                 }
+                Flow::Normal
+            }
+            Stmt::Buf(op, args) => {
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
+                }
+                self.buf_stmt(*op, &values)?;
                 Flow::Normal
             }
             Stmt::Break => Flow::Break,
@@ -280,11 +295,18 @@ impl Machine<'_> {
             ExprKind::Alloc(size) => match self.expr(size, locals)? {
                 Value::I32(n) if n >= 0 => {
                     self.allocated += 1;
-                    self.heap.insert(self.allocated);
+                    self.heap.insert(self.allocated, Vec::new());
                     Value::Handle(self.allocated)
                 }
                 _ => return Err(Trap::BadAlloc),
             },
+            ExprKind::Buf(op, args) => {
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
+                }
+                self.buf_op(*op, &values)?
+            }
             ExprKind::Unary(op, x) => unary(*op, self.expr(x, locals)?),
             ExprKind::Binary(BinOp::And, a, b) => {
                 if self.expr(a, locals)? == Value::Bool(true) {
@@ -318,10 +340,66 @@ impl Machine<'_> {
 }
 
 impl Machine<'_> {
+    /// The elements of a live buffer.
+    fn elements(&mut self, value: Value) -> Result<&mut Vec<Value>, Trap> {
+        match value {
+            Value::Handle(block) => self.heap.get_mut(&block).ok_or(Trap::UseAfterRelease),
+            _ => Err(Trap::UseAfterRelease),
+        }
+    }
+
+    fn buf_op(&mut self, op: BufOp, values: &[Value]) -> Result<Value, Trap> {
+        Ok(match (op, values) {
+            (BufOp::New(_), [Value::I32(cap)]) if *cap >= 0 => {
+                self.allocated += 1;
+                self.heap.insert(self.allocated, Vec::new());
+                Value::Handle(self.allocated)
+            }
+            (BufOp::New(_), _) => return Err(Trap::BadAlloc),
+            (BufOp::Len, [buf]) => {
+                let len = self.elements(*buf)?.len();
+                Value::I32(i32::try_from(len).unwrap_or(i32::MAX))
+            }
+            (BufOp::Get(_), [buf, Value::I32(index)]) => {
+                let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
+                *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
+            }
+            _ => return Err(Trap::Unreachable),
+        })
+    }
+
+    fn buf_stmt(&mut self, op: BufStmt, values: &[Value]) -> Result<(), Trap> {
+        match (op, values) {
+            (BufStmt::Release, [Value::Handle(block)]) if self.heap.remove(block).is_some() => {}
+            (BufStmt::Release, _) => return Err(Trap::DoubleRelease),
+            (BufStmt::Set(elem), [buf, Value::I32(index), value]) => {
+                let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
+                let slot = self.elements(*buf)?.get_mut(index).ok_or(Trap::Unchecked)?;
+                *slot = stored(elem, *value);
+            }
+            (BufStmt::Push(elem), [buf, value]) => self.elements(*buf)?.push(stored(elem, *value)),
+            (BufStmt::Truncate, [buf, Value::I32(len)]) => {
+                let elements = self.elements(*buf)?;
+                let len = usize::try_from(*len).map_err(|_| Trap::Unchecked)?;
+                if len > elements.len() {
+                    return Err(Trap::Unchecked);
+                }
+                elements.truncate(len);
+            }
+            (BufStmt::CheckIndex, [Value::I32(index), Value::I32(len)]) => {
+                if *index < 0 || index >= len {
+                    return Err(Trap::Bounds);
+                }
+            }
+            _ => return Err(Trap::Unreachable),
+        }
+        Ok(())
+    }
+
     /// A handle must name a live block; an empty local holds `Void`.
     fn live(&self, value: Value) -> Result<Value, Trap> {
         match value {
-            Value::Handle(block) if !self.heap.contains(&block) => Err(Trap::UseAfterRelease),
+            Value::Handle(block) if !self.heap.contains_key(&block) => Err(Trap::UseAfterRelease),
             other => Ok(other),
         }
     }
@@ -329,9 +407,17 @@ impl Machine<'_> {
     /// A moved or borrowed local must hold a live block.
     fn block(&self, value: Value) -> Result<Value, Trap> {
         match value {
-            Value::Handle(block) if self.heap.contains(&block) => Ok(value),
+            Value::Handle(block) if self.heap.contains_key(&block) => Ok(value),
             _ => Err(Trap::UseAfterRelease),
         }
+    }
+}
+
+/// A value as a buffer stores it: a byte keeps its low 8 bits.
+const fn stored(elem: Elem, value: Value) -> Value {
+    match (elem, value) {
+        (Elem::U8, Value::I32(v)) => Value::I32(v & 0xFF),
+        _ => value,
     }
 }
 

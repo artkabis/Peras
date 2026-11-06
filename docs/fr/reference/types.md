@@ -46,7 +46,7 @@ Le résultat d’une fonction qui ne renvoie rien. <span class="status compiled"
 
 ## `Array<T>`
 
-Une liste extensible de valeurs de type `T`, écrite `[a, b]`. Voir [les collections](../guide/collections.md#arrayt). <span class="status checked">vérifié</span>
+Une liste extensible de valeurs de type `T`, écrite `[a, b]`, compilée quand `T` est un nombre ou `bool`. Voir [les collections](../guide/collections.md#arrayt). <span class="status compiled">compilé</span>
 
 ## `String`
 

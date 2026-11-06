@@ -14,7 +14,8 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                 | <span class="status checked">checked</span>   |
 | structures, nested, as parameters and results          | <span class="status compiled">compiled</span> |
 | `Option<T>`, `Some`, `None`, `?`                       | <span class="status compiled">compiled</span> |
-| `Array<T>`, `String`                                   | <span class="status checked">checked</span>   |
+| `Array<T>` of numbers and booleans                     | <span class="status compiled">compiled</span> |
+| `Array<T>` of other types, `String`                    | <span class="status checked">checked</span>   |
 | `Result<T, E>`, enumerations and unions, `match`       | <span class="status planned">planned</span>   |
 | generics, interfaces and traits, methods on structures | <span class="status planned">planned</span>   |
 | `Map`, `Set`, tuples, closures                         | <span class="status planned">planned</span>   |
@@ -22,16 +23,18 @@ Peras is young. This page says, feature by feature, how far each one goes:
 
 ## Statements and expressions
 
-| Feature                                                      | Status                                                                                                          |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `let`, `const`, assignments, `+=` and the others, `++`, `--` | <span class="status compiled">compiled</span>                                                                   |
-| arithmetic, comparisons, bitwise and logical operators       | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span> |
-| `if`, `while`, `for`, `break`, `continue`                    | <span class="status compiled">compiled</span>                                                                   |
-| `for…of`                                                     | <span class="status checked">checked</span>                                                                     |
-| functions, recursion, `export`                               | <span class="status compiled">compiled</span>                                                                   |
-| `inout` and `sink` parameters, `&` at the call               | <span class="status checked">checked</span>                                                                     |
-| module-level `const`                                         | <span class="status checked">checked</span>                                                                     |
-| `import` between modules                                     | <span class="status planned">planned</span>                                                                     |
+| Feature                                                      | Status                                                                                                            |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `let`, `const`, assignments, `+=` and the others, `++`, `--` | <span class="status compiled">compiled</span>                                                                     |
+| arithmetic, comparisons, bitwise and logical operators       | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span>   |
+| `if`, `while`, `for`, `break`, `continue`                    | <span class="status compiled">compiled</span>                                                                     |
+| `for…of`                                                     | <span class="status compiled">compiled</span>                                                                     |
+| functions, recursion, `export`                               | <span class="status compiled">compiled</span>                                                                     |
+| `sink` parameters                                            | <span class="status compiled">compiled</span>                                                                     |
+| `inout` parameters, `&` at the call                          | <span class="status compiled">compiled</span> for arrays, <span class="status checked">checked</span> for numbers |
+| ownership: moves, borrows, aliasing refused, releases        | <span class="status compiled">compiled</span>                                                                     |
+| module-level `const`                                         | <span class="status checked">checked</span>                                                                       |
+| `import` between modules                                     | <span class="status planned">planned</span>                                                                       |
 
 ## Methods
 

@@ -210,6 +210,68 @@
     (global.set $q_len (i32.add (global.get $q_len) (i32.const 1))))
 
   ;; Blocks still alive, and their bytes.
+;; Buffers: the arrays and strings of Peras. A buffer is a 12-byte block, its
+  ;; header, which keeps the same address when the buffer grows:
+  ;;
+  ;;   +0 length   +4 capacity, both counted in elements   +8 elements, or 0
+  ;;
+  ;; The elements are a block of their own, `capacity * size` bytes.
+
+  ;; A new, empty buffer with room for `cap` elements of `size` bytes.
+  (func $buf_new (export "buf_new") (param $cap i32) (param $size i32) (param $site i32) (result i32)
+    (local $h i32)
+    (local.set $h (call $alloc (i32.const 12) (local.get $site)))
+    (i32.store (local.get $h) (i32.const 0))
+    (i32.store offset=4 (local.get $h) (local.get $cap))
+    (i32.store offset=8 (local.get $h)
+      (if (result i32) (i32.eqz (local.get $cap))
+        (then (i32.const 0))
+        (else (call $alloc (call $bytes (local.get $cap) (local.get $size) (local.get $site)) (local.get $site)))))
+    (local.get $h))
+
+  ;; `count * size`, or a fault when it exceeds what one block can hold.
+  (func $bytes (param $count i32) (param $size i32) (param $site i32) (result i32)
+    (local $wide i64)
+    (local.set $wide (i64.mul (i64.extend_i32_u (local.get $count)) (i64.extend_i32_u (local.get $size))))
+    (if (i64.gt_u (local.get $wide) (i64.const 0x40000000))
+      (then (call $raise (global.get $TOO_LARGE) (i32.const 0x40000001) (local.get $site) (i32.const 0))))
+    (i32.wrap_i64 (local.get $wide)))
+
+  ;; Makes room for `extra` more elements: the capacity at least doubles, so
+  ;; adding elements one by one costs a constant time each, on average.
+  (func $buf_reserve (export "buf_reserve") (param $h i32) (param $extra i32) (param $size i32) (param $site i32)
+    (local $len i32) (local $cap i32) (local $need i64) (local $new_cap i32) (local $data i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $cap (i32.load offset=4 (local.get $h)))
+    (local.set $need (i64.add (i64.extend_i32_u (local.get $len)) (i64.extend_i32_u (local.get $extra))))
+    (if (i64.le_u (local.get $need) (i64.extend_i32_u (local.get $cap)))
+      (then (return)))
+    (if (i64.gt_u (local.get $need) (i64.const 0x40000000))
+      (then (call $raise (global.get $TOO_LARGE) (i32.const 0x40000001) (local.get $site) (i32.const 0))))
+    (local.set $new_cap (i32.shl (local.get $cap) (i32.const 1)))
+    (if (i32.lt_u (local.get $new_cap) (i32.wrap_i64 (local.get $need)))
+      (then (local.set $new_cap (i32.wrap_i64 (local.get $need)))))
+    (if (i32.lt_u (local.get $new_cap) (i32.const 4))
+      (then (local.set $new_cap (i32.const 4))))
+    (local.set $data
+      (call $alloc (call $bytes (local.get $new_cap) (local.get $size) (local.get $site)) (local.get $site)))
+    (if (i32.load offset=8 (local.get $h))
+      (then
+        (memory.copy (local.get $data) (i32.load offset=8 (local.get $h))
+          (i32.mul (local.get $len) (local.get $size)))
+        (call $release (i32.load offset=8 (local.get $h)) (local.get $site))))
+    (i32.store offset=4 (local.get $h) (local.get $new_cap))
+    (i32.store offset=8 (local.get $h) (local.get $data)))
+
+  ;; Releases a buffer: its header first, which catches a buffer released twice
+  ;; before its poisoned contents are read, then its elements.
+  (func $buf_release (export "buf_release") (param $h i32) (param $site i32)
+    (local $data i32)
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (call $release (local.get $h) (local.get $site))
+    (if (local.get $data)
+      (then (call $release (local.get $data) (local.get $site)))))
+
   (func (export "live_count") (result i32) (global.get $live_count))
   (func (export "live_bytes") (result i32) (global.get $live_bytes))
   ;; Allocations made since the start.

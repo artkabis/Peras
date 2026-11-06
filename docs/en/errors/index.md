@@ -2,7 +2,7 @@
 
 One page per code, named after it (`E0204.md`). Each page explains the cause, shows a failing example and its fix. Codes are permanent: a retired code keeps its page, marked as retired.
 
-Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the parser, `E0200` to `E0299` for names and types, `E0900` to `E0999` for limits of code generation. `E0204` is reserved for "value used after move", the example of the spec.
+Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the parser, `E0200` to `E0299` for names and types, `E0900` to `E0999` for limits of code generation.
 
 | Code              | Error                                     | Stage           |
 | ----------------- | ----------------------------------------- | --------------- |
@@ -38,7 +38,11 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0201](E0201.md) | Shadowing                                 | names and types |
 | [E0202](E0202.md) | Duplicate declaration                     | names and types |
 | [E0203](E0203.md) | Unused variable or parameter              | names and types |
+| [E0204](E0204.md) | Value used after a move                   | ownership       |
 | [E0205](E0205.md) | Cannot modify                             | names and types |
+| [E0206](E0206.md) | `&` and `inout` arguments                 | ownership       |
+| [E0207](E0207.md) | Aliasing with an `inout` argument         | ownership       |
+| [E0209](E0209.md) | Moving what is only borrowed              | ownership       |
 | [E0210](E0210.md) | Mismatched types                          | names and types |
 | [E0211](E0211.md) | Integer literal where a float is expected | names and types |
 | [E0212](E0212.md) | Literal out of range                      | names and types |

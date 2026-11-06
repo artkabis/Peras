@@ -87,7 +87,7 @@ export fn twice(): i32 {
 }
 ```
 
-> `inout` and `sink` are checked, not compiled yet; they arrive with the ownership checks ([memory](memory.md)).
+> `sink` is compiled. `inout` is compiled for arrays, and for structures that hold only arrays; on numbers, and on structures holding them like `Counter` above, it is checked, not compiled yet. The rules are on the [memory](memory.md) page.
 
 ## Built-in methods
 

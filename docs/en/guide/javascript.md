@@ -20,6 +20,8 @@ For `geometry.peras`:
 | `i64`               | `bigint`                                   |
 | `bool`              | `boolean`                                  |
 | a structure         | a plain object, declared as an `interface` |
+| `Option<T>`         | the value, or `undefined`                  |
+| `Array<T>`          | an array, copied in and out                |
 
 ```peras build
 export struct Rect {
@@ -43,7 +45,7 @@ area({ width: 3, height: 4 }); // 12
 big({ width: 30, height: 4 }); // true
 ```
 
-The loader converts at the boundary: an object passed in is copied field by field, so Peras never keeps a reference to it, and changes made by Peras never reach it.
+The loader converts at the boundary: an object passed in is copied field by field, so Peras never keeps a reference to it, and changes made by Peras never reach it. An array is copied the same way, element by element; only an `inout` parameter is copied back into the array passed ([collections](collections.md#in-javascript)).
 
 ## With Vite
 
@@ -74,6 +76,12 @@ import { __perasHeap } from "./parser.peras";
 
 __perasHeap.live(); // blocks still alive
 __perasHeap.checkLeaks(); // throws if one is
+```
+
+An index out of bounds throws a `RangeError`, in the language the module was built in:
+
+```text
+RangeError: index 3 is out of bounds: the length is 3
 ```
 
 This is the end of the guide. The [reference](../reference/status.md) lists everything the language has today.

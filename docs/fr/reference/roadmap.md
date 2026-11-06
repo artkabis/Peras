@@ -8,10 +8,10 @@ Les exemples de cette page montrent la syntaxe visée ; le compilateur les refus
 
 Les premiers types qui ont besoin de mémoire, sur les fondations déjà construites : le vérificateur de libérations et l’allocateur de débogage.
 
-- `Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`.
+- ~~`Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`~~ : fait pour les nombres et les booléens, avec `copy()` ; restent les tableaux de structures, de chaînes et de tableaux.
 - `String` compilé, en UTF-8.
 - ~~`Option<T>` compilé~~ : fait, avec `?` et l’arithmétique vérifiée.
-- Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés, l’historique d’une valeur montré dans les erreurs ([spécification](../spec.md#modèle-mémoire)).
+- ~~Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés~~ : fait ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)) ; restent `inout` sur les nombres, et l’historique d’une valeur dans les erreurs.
 
 ## Phase 2 : un système de types complet
 

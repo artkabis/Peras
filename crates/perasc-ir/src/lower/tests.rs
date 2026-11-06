@@ -50,18 +50,21 @@ fn every_unsupported_construct_is_reported_with_its_name() {
     for (source, feature) in [
         // A structure is compiled; one holding a type that is not, is reported.
         (
-            "struct P { xs: Array<i32>; }\nfn f(_p: P): i32 { return 0; }",
-            "array",
+            "struct P { xs: Array<String>; }\nfn f(_p: P): i32 { return 0; }",
+            "array-element",
         ),
         ("const LIMIT = 3;", "global"),
         ("fn f(x: inout i32): void { x = x + 1; }", "inout"),
-        ("fn f(xs: Array<i32>): i32 { return xs.length; }", "array"),
+        (
+            "fn f(_o: Option<Array<i32>>): i32 { return 0; }",
+            "heap-option",
+        ),
         ("fn f(): String { return \"a\"; }", "string"),
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
         ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
         (
-            "fn f(): void { for (const x of [1, 2]) { let _y = x; } }",
-            "for-of",
+            "fn f(xs: Array<Array<i32>>): i32 { return xs.length; }",
+            "array-element",
         ),
         ("fn f(x: f64): f64 { return x.sin(); }", "method"),
     ] {

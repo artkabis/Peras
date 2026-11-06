@@ -8,11 +8,12 @@
 pub mod builtins;
 mod errors;
 mod expr;
+mod owner;
 mod scope;
 mod stmt;
 pub mod ty;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use perasc_diag::{Diagnostic, Span};
 use perasc_syntax::ast::{
@@ -40,6 +41,9 @@ pub struct Analysis {
     /// Every structure, indexed by its [`StructId`]: its name
     /// and its fields in order.
     pub structs: Vec<(String, Vec<(String, Ty)>)>,
+    /// The variables read where their heap value moves out of them: an
+    /// assignment, a `return`, a `sink` argument… Any other read borrows.
+    pub moves: HashSet<ExprId>,
 }
 
 /// Checks a module and keeps the type of every expression, for code generation.
@@ -47,6 +51,10 @@ pub struct Analysis {
 pub fn analyze(ast: &Ast, source: &str) -> Analysis {
     let mut checker = Checker::new(ast, source);
     checker.module();
+    // Ownership needs correct types: one wrong type would give false moves.
+    if checker.diagnostics.is_empty() {
+        owner::Owner::new(&mut checker).module();
+    }
     let mut diagnostics = checker.diagnostics;
     diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
     let types = checker
@@ -63,6 +71,7 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
         diagnostics,
         types,
         structs,
+        moves: checker.moves,
     }
 }
 
@@ -101,6 +110,12 @@ struct Checker<'a> {
     returned: Vec<Ty>,
     /// Type of each expression checked so far.
     expr_types: HashMap<ExprId, Ty>,
+    /// The binding each name expression resolves to.
+    resolved: HashMap<ExprId, usize>,
+    /// The binding each variable or parameter declares, by the start of its name.
+    declared: HashMap<u32, usize>,
+    /// See [`Analysis::moves`].
+    moves: HashSet<ExprId>,
 }
 
 impl<'a> Checker<'a> {
@@ -128,6 +143,9 @@ impl<'a> Checker<'a> {
             ret: None,
             returned: Vec::new(),
             expr_types: HashMap::new(),
+            resolved: HashMap::new(),
+            declared: HashMap::new(),
+            moves: HashSet::new(),
         }
     }
 
@@ -158,6 +176,8 @@ impl<'a> Checker<'a> {
         };
         let outcome = self.scopes.declare(binding);
         let Some(span) = span else { return };
+        self.declared
+            .insert(span.start, self.scopes.bindings.len().saturating_sub(1));
         match outcome {
             Declared::Ok => {}
             Declared::Duplicate(previous) => {

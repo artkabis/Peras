@@ -201,7 +201,7 @@ impl<'a> Emitter<'a> {
                 let _ = writeln!(out, "{pad}break 'b{n};");
             }
             // Refused by the driver before this point, until the heap is supported.
-            Stmt::Release(_) => {
+            Stmt::Release(_) | Stmt::Buf(..) => {
                 let _ = writeln!(out, "{pad}unreachable!();");
             }
             Stmt::Break => {
@@ -258,7 +258,7 @@ impl<'a> Emitter<'a> {
         match &e.kind {
             ExprKind::Const(c) => constant(*c, e.ty),
             ExprKind::Local(local) => self.var(usize::try_from(local.0).unwrap_or(0)),
-            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {
+            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) | ExprKind::Buf(..) => {
                 "unreachable!()".to_owned()
             }
             ExprKind::Unary(op, operand) => {

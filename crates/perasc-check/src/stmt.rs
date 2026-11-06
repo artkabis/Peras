@@ -220,6 +220,7 @@ impl Checker<'_> {
                 let Some(index) = self.scopes.lookup(*symbol) else {
                     return self.infer(target, None);
                 };
+                self.resolved.insert(target, index);
                 self.check_mutable(index, expr.span);
                 self.scopes
                     .bindings
@@ -239,7 +240,7 @@ impl Checker<'_> {
     }
 
     /// The binding a field or element access starts from: `buf` in `buf.samples[0]`.
-    fn root(&self, mut expr: ExprId) -> Option<usize> {
+    pub(crate) fn root(&self, mut expr: ExprId) -> Option<usize> {
         loop {
             match &self.ast.expr(expr).kind {
                 ExprKind::Name(symbol) => return self.scopes.lookup(*symbol),
@@ -251,7 +252,7 @@ impl Checker<'_> {
     }
 
     /// `E0205` when the binding cannot be modified.
-    fn check_mutable(&mut self, index: usize, span: Span) {
+    pub(crate) fn check_mutable(&mut self, index: usize, span: Span) {
         let Some(binding) = self.scopes.bindings.get(index) else {
             return;
         };

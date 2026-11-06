@@ -138,6 +138,22 @@ pub enum Shape {
     /// An `Option<T>`: a `bool` saying whether a value is there, then the
     /// value's scalars. JavaScript sees the value, or `undefined`.
     Option(Box<Shape>),
+    /// An `Array<T>`: one buffer handle. JavaScript sees an array, copied in
+    /// and, for a result or an `inout` parameter, copied back out.
+    Array(Elem, Pass),
+}
+
+/// How a heap value is passed between JavaScript and WebAssembly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pass {
+    /// A parameter the function only reads.
+    Borrow,
+    /// A parameter the function may change: the changes are copied back.
+    Inout,
+    /// A parameter the function takes and releases.
+    Sink,
+    /// A result: the caller takes it.
+    Result,
 }
 
 impl Shape {
@@ -148,6 +164,8 @@ impl Shape {
             Self::Value(ty) => vec![*ty],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
             Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
+            Self::Array(_, Pass::Sink | Pass::Result) => vec![Ty::Owned],
+            Self::Array(..) => vec![Ty::Borrowed],
         }
     }
 }
@@ -256,6 +274,8 @@ pub enum Stmt {
     Release(LocalId),
     /// Returns every result of a function with several, in order.
     ReturnMany(Vec<Expr>),
+    /// An operation on a buffer: see [`BufStmt`].
+    Buf(BufStmt, Vec<Expr>),
     /// Calls a function with several results and stores them, in order.
     CallMany {
         /// One local per result.
@@ -311,6 +331,128 @@ pub enum ExprKind {
     Move(LocalId),
     /// Lends the block of an `owned` local, as a `borrowed` argument.
     Borrow(LocalId),
+    /// A value computed from a buffer: see [`BufOp`].
+    Buf(BufOp, Vec<Expr>),
+}
+
+/// How an element is stored in a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Elem {
+    /// 4 bytes.
+    I32,
+    /// 8 bytes.
+    I64,
+    /// 4 bytes.
+    F32,
+    /// 8 bytes.
+    F64,
+    /// 4 bytes, 0 or 1.
+    Bool,
+    /// 1 byte, read as an `i32` from 0 to 255: the bytes of a string.
+    U8,
+}
+
+impl Elem {
+    /// Its size in bytes.
+    #[must_use]
+    pub const fn size(self) -> u32 {
+        match self {
+            Self::U8 => 1,
+            Self::I32 | Self::F32 | Self::Bool => 4,
+            Self::I64 | Self::F64 => 8,
+        }
+    }
+
+    /// The value type of an element.
+    #[must_use]
+    pub const fn ty(self) -> Ty {
+        match self {
+            Self::I32 | Self::U8 => Ty::I32,
+            Self::I64 => Ty::I64,
+            Self::F32 => Ty::F32,
+            Self::F64 => Ty::F64,
+            Self::Bool => Ty::Bool,
+        }
+    }
+
+    /// The element type holding values of a type, if any.
+    #[must_use]
+    pub const fn of(ty: Ty) -> Option<Self> {
+        Some(match ty {
+            Ty::I32 => Self::I32,
+            Ty::I64 => Self::I64,
+            Ty::F32 => Self::F32,
+            Ty::F64 => Self::F64,
+            Ty::Bool => Self::Bool,
+            _ => return None,
+        })
+    }
+
+    /// Its name in the text form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::U8 => "u8",
+            other => other.ty().name(),
+        }
+    }
+}
+
+/// A buffer is a heap value with a length and a capacity, counted in elements,
+/// and its elements, contiguous: an `Array<T>` or the bytes of a `String`. Its
+/// handle stays the same when it grows. Operands that are buffers are `borrow`
+/// expressions or `borrowed` locals, except where [`BufStmt::Release`] says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufOp {
+    /// `[capacity]`: a new, empty `owned` buffer.
+    New(Elem),
+    /// `[buffer]`: its length, an `i32`.
+    Len,
+    /// `[buffer, index]`: the element at `index`, which the code has checked is
+    /// below the length ([`BufStmt::CheckIndex`]).
+    Get(Elem),
+}
+
+/// A statement on a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufStmt {
+    /// `[buffer, index, value]`: stores the element at a checked index.
+    Set(Elem),
+    /// `[buffer, value]`: adds an element at the end, growing the buffer.
+    Push(Elem),
+    /// `[buffer, length]`: sets a length no larger than the current one.
+    Truncate,
+    /// `[index, length]`: stops the program with an error unless
+    /// `0 <= index < length`.
+    CheckIndex,
+    /// `[move buffer]`: releases the buffer and its elements.
+    Release,
+}
+
+impl BufOp {
+    /// Its name in the text form.
+    #[must_use]
+    pub fn name(self) -> String {
+        match self {
+            Self::New(elem) => format!("buf.new.{}", elem.name()),
+            Self::Len => "buf.len".to_owned(),
+            Self::Get(elem) => format!("buf.get.{}", elem.name()),
+        }
+    }
+}
+
+impl BufStmt {
+    /// Its name in the text form.
+    #[must_use]
+    pub fn name(self) -> String {
+        match self {
+            Self::Set(elem) => format!("buf.set.{}", elem.name()),
+            Self::Push(elem) => format!("buf.push.{}", elem.name()),
+            Self::Truncate => "buf.truncate".to_owned(),
+            Self::CheckIndex => "check_index".to_owned(),
+            Self::Release => "buf.release".to_owned(),
+        }
+    }
 }
 
 /// Prefix operators.
@@ -504,6 +646,10 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
             Stmt::Release(local) => {
                 let _ = writeln!(out, "{pad}release %{}", local.0);
             }
+            Stmt::Buf(op, args) => {
+                let args: Vec<String> = args.iter().map(expr).collect();
+                let _ = writeln!(out, "{pad}{} {}", op.name(), args.join(" "));
+            }
             Stmt::ReturnMany(values) => {
                 let values: Vec<String> = values.iter().map(expr).collect();
                 let _ = writeln!(out, "{pad}return {}", values.join(", "));
@@ -573,9 +719,15 @@ fn expr(e: &Expr) -> String {
         ExprKind::Alloc(size) => format!("(alloc {})", expr(size)),
         ExprKind::Move(l) => format!("(move %{})", l.0),
         ExprKind::Borrow(l) => format!("(borrow %{})", l.0),
+        ExprKind::Buf(op, args) => {
+            let args: Vec<String> = args.iter().map(expr).collect();
+            format!("({} {})", op.name(), args.join(" "))
+        }
     }
 }
 
+#[cfg(test)]
+mod array_tests;
 #[cfg(test)]
 mod opt_tests;
 #[cfg(test)]

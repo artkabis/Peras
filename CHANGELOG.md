@@ -14,6 +14,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **Arrays** compile, of numbers and booleans, on the heap: literals, `length`, indexing and assignment through an index, `push`, `pop`, `copy`, `for…of`.
+  - Every index is checked; one out of bounds stops the program with a `RangeError`, in English or French, before memory is touched.
+  - An array is a 12-byte header, which keeps its address, and its elements; `push` doubles the room when it runs out. The debug allocator holds both blocks, so every memory bug stays caught.
+  - JavaScript passes and receives copies, as `number[]`, `bigint[]` or `boolean[]`; an `inout` parameter is copied back.
+- **Ownership** is checked: a value on the heap has one owner, moves on assignment, `return` and `sink`, and is borrowed otherwise.
+  - Four new errors: a value used after it moved ([E0204](docs/en/errors/E0204.md)), `&` missing or extra on an `inout` argument ([E0206](docs/en/errors/E0206.md)), two arguments reaching one variable that one of them changes, or an array changed while `for…of` goes through it ([E0207](docs/en/errors/E0207.md)), moving what is only borrowed ([E0209](docs/en/errors/E0209.md)). Each fix adds `.copy()`, `&` or `sink` where it applies.
+  - Lowering inserts every release: at the end of a scope, on reassignment, before `return`, `break` and `continue`, and where paths meet after a move on one of them. The release verifier proves each one; the test programs leave no block alive, in the interpreter and as WebAssembly on the debug allocator.
 - **Options** compile, also without the heap: an `Option<T>` is a `bool` followed by the scalars of `T`, any compiled `T`, structures included.
   - `Some`, `None`, `isSome`, `isNone`, `unwrapOr`, and `?`, which returns `None` early from a function returning an option.
   - `checkedAdd`, `checkedSub` and `checkedMul` on `i32` and `i64` give `None` on overflow; they are tested against Rust's own on the values where overflow starts and stops.

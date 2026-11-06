@@ -52,7 +52,11 @@ const fn why(code: ErrorCode) -> &'static str {
         201 => "check-shadowing-why",
         202 => "check-duplicate-why",
         203 => "check-unused-why",
+        204 => "check-moved-why",
         205 => "check-immutable-why",
+        206 => "check-inout-marker-why",
+        207 => "check-alias-why",
+        209 => "check-move-out-why",
         210 => "check-mismatch-why",
         211 => "check-integer-for-float-why",
         212 => "check-out-of-range-why",
@@ -500,6 +504,139 @@ pub fn invalid_operator(span: Span, operator: &str, ty: &Ty) -> Diagnostic {
         Fix {
             message: Message::new("check-operator-fix").text("operator", operator),
             edits: Vec::new(),
+        },
+    )
+}
+
+/// `.copy()` inserted after an expression ending at `at`.
+fn copy_fix(at: Option<u32>, otherwise: &'static str) -> Fix {
+    match at {
+        Some(at) => Fix {
+            message: Message::new("check-fix-copy"),
+            edits: vec![insert(at, ".copy()")],
+        },
+        None => Fix {
+            message: Message::new(otherwise),
+            edits: Vec::new(),
+        },
+    }
+}
+
+/// `E0204`: `name` is used at `span` after it moved at `moved_at`.
+pub fn moved(span: Span, name: &str, moved_at: Span, copyable: bool) -> Diagnostic {
+    diagnostic(
+        codes::USE_AFTER_MOVE,
+        Message::new("check-moved").text("name", name),
+        // The same place: a loop moved it in the previous turn.
+        if moved_at == span {
+            vec![primary(span, Message::new("check-moved-loop-label"))]
+        } else {
+            vec![
+                primary(span, Message::new("check-moved-label")),
+                secondary(moved_at, Message::new("check-moved-here-label")),
+            ]
+        },
+        copy_fix(copyable.then_some(moved_at.end), "check-moved-fix"),
+    )
+}
+
+/// `E0209`: a parameter that only borrows its value moves it.
+pub fn move_borrowed_parameter(span: Span, name: &str, sink_at: Option<u32>) -> Diagnostic {
+    let fix = match sink_at {
+        Some(at) => Fix {
+            message: Message::new("check-move-out-fix-sink").text("name", name),
+            edits: vec![insert(at, "sink ")],
+        },
+        None => Fix {
+            message: Message::new("check-move-out-fix"),
+            edits: Vec::new(),
+        },
+    };
+    diagnostic(
+        codes::MOVE_OUT_OF_BORROW,
+        Message::new("check-move-out")
+            .text("what", "parameter")
+            .text("name", name),
+        vec![primary(span, Message::new("check-move-out-label"))],
+        fix,
+    )
+}
+
+/// `E0209`: a field, an element or a module-level value moves.
+pub fn move_out(span: Span, what: &'static str, copyable: bool) -> Diagnostic {
+    diagnostic(
+        codes::MOVE_OUT_OF_BORROW,
+        Message::new("check-move-out")
+            .text("what", what)
+            .text("name", ""),
+        vec![primary(span, Message::new("check-move-out-label"))],
+        copy_fix(copyable.then_some(span.end), "check-move-out-fix"),
+    )
+}
+
+/// `E0206`: an `inout` argument without `&` (`missing`), or `&` on another.
+pub fn inout_marker(span: Span, missing: bool) -> Diagnostic {
+    let (kind, fix) = if missing {
+        (
+            "missing",
+            Fix {
+                message: Message::new("check-inout-marker-fix-add"),
+                edits: vec![insert(span.start, "&")],
+            },
+        )
+    } else {
+        (
+            "extra",
+            Fix {
+                message: Message::new("check-inout-marker-fix-remove"),
+                edits: vec![replace(Span::new(span.start, span.start + 1), "")],
+            },
+        )
+    };
+    diagnostic(
+        codes::INOUT_MARKER,
+        Message::new("check-inout-marker").text("kind", kind),
+        vec![primary(
+            span,
+            Message::new("check-inout-marker-label").text("kind", kind),
+        )],
+        fix,
+    )
+}
+
+/// `E0207`: `name` reached by the argument at `span` and the one at `other`.
+pub fn alias(
+    span: Span,
+    name: &str,
+    callee: &str,
+    other: Span,
+    copy_at: Option<u32>,
+) -> Diagnostic {
+    diagnostic(
+        codes::ALIASING,
+        Message::new("check-alias")
+            .text("name", name)
+            .text("callee", callee),
+        vec![
+            primary(span, Message::new("check-alias-label")),
+            secondary(other, Message::new("check-alias-other-label")),
+        ],
+        copy_fix(copy_at, "check-alias-fix"),
+    )
+}
+
+/// `E0207`: `name` changes at `span` while a `for…of` goes through it.
+pub fn changed_while_iterated(span: Span, name: &str, iterated: Span) -> Diagnostic {
+    diagnostic(
+        codes::ALIASING,
+        Message::new("check-alias-loop").text("name", name),
+        vec![
+            primary(span, Message::new("check-alias-loop-label")),
+            secondary(iterated, Message::new("check-alias-loop-iterated-label")),
+        ],
+        Fix {
+            message: Message::new("check-alias-loop-fix").text("name", name),
+            edits: vec![insert(iterated.end, ".copy()")],
         },
     )
 }

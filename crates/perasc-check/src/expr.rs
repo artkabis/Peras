@@ -163,7 +163,12 @@ impl Checker<'_> {
             ExprKind::String(_) => Ty::String,
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Array(items) => self.array(items, expected),
-            ExprKind::Name(symbol) => self.read_name(*symbol, span),
+            ExprKind::Name(symbol) => {
+                if let Some(index) = self.scopes.lookup(*symbol) {
+                    self.resolved.insert(id, index);
+                }
+                self.read_name(*symbol, span)
+            }
             ExprKind::Paren(inner) => self.infer(*inner, expected),
             ExprKind::Unary { op, operand } => self.unary(*op, *operand, span, expected),
             ExprKind::Binary { op, lhs, rhs } => self.binary(*op, *lhs, *rhs, span, expected),
@@ -399,10 +404,21 @@ impl Checker<'_> {
         let callee_expr = self.ast.expr(callee);
         match &callee_expr.kind {
             ExprKind::Name(symbol) => {
+                if let Some(index) = self.scopes.lookup(*symbol) {
+                    self.resolved.insert(callee, index);
+                }
                 self.call_name(*symbol, callee_expr.span, args, span, expected)
             }
             ExprKind::Field { base, name } => {
                 let receiver = self.infer(*base, None);
+                // `push` and `pop` change the array: it must be one that can change.
+                if matches!(receiver, Ty::Array(_))
+                    && matches!(self.name(name.symbol), "push" | "pop")
+                    && let Some(root) = self.root(*base)
+                {
+                    let base_span = self.ast.expr(*base).span;
+                    self.check_mutable(root, base_span);
+                }
                 self.method_call(&receiver, name.symbol, name.span, args, span)
             }
             _ => {

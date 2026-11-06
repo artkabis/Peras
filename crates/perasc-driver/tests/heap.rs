@@ -41,7 +41,7 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, DEBUG_ALLOCATOR)?)?;
     let mut linker = Linker::new(&engine);
-    for name in ["alloc", "release"] {
+    for name in ["alloc", "release", "buf_new", "buf_reserve", "buf_release"] {
         let func = allocator
             .get_func(&store, name)
             .ok_or_else(|| wasmi::Error::new(name))?;
@@ -51,6 +51,22 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
             Extern::Func(func),
         )?;
     }
+    let memory = allocator
+        .get_memory(&store, "memory")
+        .ok_or_else(|| wasmi::Error::new("memory"))?;
+    linker.define(
+        perasc_codegen_wasm::RUNTIME_MODULE,
+        "memory",
+        Extern::Memory(memory),
+    )?;
+    // An index out of bounds: JavaScript throws a `RangeError` here.
+    linker.func_wrap(
+        perasc_codegen_wasm::RUNTIME_MODULE,
+        "bounds",
+        |_: Caller<'_, Reported>, _index: i32, _len: i32| {
+            Err::<(), _>(wasmi::Error::new("index out of bounds"))
+        },
+    )?;
     let module =
         linker.instantiate_and_start(&mut store, &wasmi::Module::new(&engine, &output.wasm)?)?;
     Ok(Linked {
@@ -154,4 +170,30 @@ fn the_loader_speaks_the_language_asked() {
         js.contains("const $imports = {};") && !js.contains("PerasMemoryError"),
         "{js}"
     );
+}
+
+/// Arrays written in Peras, compiled to WebAssembly, linked to the debug
+/// allocator: the results, then nothing left alive. Any memory bug the release
+/// verifier missed would be a fault of the allocator here.
+#[test]
+fn peras_arrays_run_on_the_debug_allocator_without_a_leak() {
+    let source = "export fn squares(n: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let i = 0; i < n; i++) {\n    xs.push(i * i);\n  }\n  let total = 0;\n  for (const x of xs) {\n    total += x;\n  }\n  return total;\n}\n\
+         export fn churn(n: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let i = 0; i < n; i++) {\n    xs = [i, i + 1, i + 2];\n    let copy = xs.copy();\n    copy.push(i);\n    if (i % 7 == 3) {\n      continue;\n    }\n    xs = grow(copy);\n  }\n  return xs.length;\n}\n\
+         fn grow(xs: sink Array<i32>): Array<i32> {\n  let ys = xs;\n  ys.push(0);\n  return ys;\n}\n\
+         export fn early(n: i32): i32 {\n  let kept = [1, 2];\n  for (let i = 0; i < 100; i++) {\n    let inner = [i];\n    if (i == n) {\n      return inner[0] + kept.length;\n    }\n    if (i == 50) {\n      break;\n    }\n  }\n  return -1;\n}\n\
+         export fn pick(n: i32): i32 {\n  let xs = [5, 6, 7];\n  return xs[n];\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    let mut m = linked(&module);
+    assert_eq!(m.call("squares", 100), Ok(Some(328_350)));
+    // 10 000 pushes, one by one: the buffer grows by doubling.
+    assert_eq!(m.call("squares", 10_000), Ok(Some(-1_724_114_088)));
+    assert_eq!(m.call("churn", 1000), Ok(Some(5)));
+    assert_eq!(m.call("early", 10), Ok(Some(12)));
+    assert_eq!(m.call("early", 70), Ok(Some(-1)));
+    assert_eq!(m.call("pick", 2), Ok(Some(7)));
+    assert_eq!(m.runtime("live_count"), Ok(0));
+    assert_eq!(m.check_leaks(), Ok(()));
+    // Out of bounds: the program stops, through `bounds`, before any access.
+    assert!(m.call("pick", 3).is_err());
 }

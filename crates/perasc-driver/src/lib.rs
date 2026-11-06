@@ -122,10 +122,16 @@ pub fn emit_direct(
 ) -> DirectOutput {
     let compiled = perasc_codegen_wasm::compile_module(module);
     let faults = fault_messages(localizer);
+    let bounds = localizer.message(
+        &perasc_diag::Message::new("runtime-index")
+            .text("index", "{index}")
+            .text("length", "{length}"),
+    );
     let runtime = perasc_codegen_wasm::Runtime {
         allocator: perasc_runtime::DEBUG_ALLOCATOR,
         sites: &compiled.sites,
         faults: &faults,
+        bounds: &bounds,
     };
     DirectOutput {
         js: perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime)),

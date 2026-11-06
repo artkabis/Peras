@@ -8,10 +8,10 @@ The examples on this page show the intended syntax; the compiler refuses them to
 
 The first types that need memory, on the foundations already built: the release verifier and the debug allocator.
 
-- `Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`.
+- ~~`Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`~~: done for numbers and booleans, with `copy()`; arrays of structures, strings and arrays remain.
 - `String` compiled, in UTF-8.
 - ~~`Option<T>` compiled~~: done, with `?` and checked arithmetic.
-- Ownership checks: moves, `inout` and `sink`, aliasing refused, the history of a value shown in errors ([spec](../spec.md#memory-model)).
+- ~~Ownership checks: moves, `inout` and `sink`, aliasing refused~~: done ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)); `inout` on numbers remains, and the history of a value in errors.
 
 ## Phase 2: a complete type system
 

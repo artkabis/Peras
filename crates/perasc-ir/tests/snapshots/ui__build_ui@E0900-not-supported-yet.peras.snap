@@ -1,16 +1,11 @@
 ---
 source: crates/perasc-ir/tests/ui.rs
-assertion_line: 37
 expression: out
 input_file: tests/ui/build/E0900-not-supported-yet.peras
 ---
 diagnostics:
   error[E0900] gen-unsupported { feature: "global" }
     primary 2:7-2:12: gen-unsupported-label { feature: "global" }
-    cause: gen-unsupported-why
-    fix: gen-unsupported-fix
-  error[E0900] gen-unsupported { feature: "array" }
-    primary 4:21-4:31: gen-unsupported-label { feature: "array" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix
   error[E0900] gen-unsupported { feature: "string" }

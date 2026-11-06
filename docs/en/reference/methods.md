@@ -40,17 +40,19 @@ export fn wrapped(a: i32): i32 {
 
 ## `Array<T>`
 
-| Member    | Gives                                                 | Status                                      |
-| --------- | ----------------------------------------------------- | ------------------------------------------- |
-| `length`  | the number of elements, an `i32`                      | <span class="status checked">checked</span> |
-| `push(x)` | adds `x` at the end                                   | <span class="status checked">checked</span> |
-| `pop()`   | removes and gives the last element, `None` when empty | <span class="status checked">checked</span> |
+| Member    | Gives                                                 | Status                                        |
+| --------- | ----------------------------------------------------- | --------------------------------------------- |
+| `length`  | the number of elements, an `i32`                      | <span class="status compiled">compiled</span> |
+| `push(x)` | adds `x` at the end                                   | <span class="status compiled">compiled</span> |
+| `pop()`   | removes and gives the last element, `None` when empty | <span class="status compiled">compiled</span> |
+| `copy()`  | a new array with the same elements                    | <span class="status compiled">compiled</span> |
 
 ## `String`
 
-| Member   | Gives      | Status                                      |
-| -------- | ---------- | ------------------------------------------- |
-| `length` | the length | <span class="status checked">checked</span> |
+| Member   | Gives                           | Status                                      |
+| -------- | ------------------------------- | ------------------------------------------- |
+| `length` | the length                      | <span class="status checked">checked</span> |
+| `copy()` | a new string with the same text | <span class="status checked">checked</span> |
 
 ## `Option<T>`
 

@@ -87,7 +87,7 @@ export fn twice(): i32 {
 }
 ```
 
-> `inout` et `sink` sont vérifiés, pas encore compilés ; ils arrivent avec les vérifications de possession ([mémoire](memory.md)).
+> `sink` est compilé. `inout` est compilé pour les tableaux, et pour les structures qui ne contiennent que des tableaux ; sur des nombres, et sur des structures qui en contiennent comme `Counter` ci-dessus, il est vérifié, pas encore compilé. Les règles sont sur la page [mémoire](memory.md).
 
 ## Méthodes intégrées
 

@@ -83,6 +83,9 @@ fn map_exprs(stmts: Vec<Stmt>, f: &mut impl FnMut(Expr) -> Expr) -> Vec<Stmt> {
                 step: map_exprs(step, f),
             },
             Stmt::Block(body) => Stmt::Block(map_exprs(body, f)),
+            Stmt::Buf(op, args) => {
+                Stmt::Buf(op, args.into_iter().map(|e| map_expr(e, f)).collect())
+            }
             other @ (Stmt::Leave(_) | Stmt::Break | Stmt::Continue | Stmt::Release(_)) => other,
         })
         .collect()
@@ -100,6 +103,9 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         ExprKind::Convert(x) => ExprKind::Convert(Box::new(map_expr(*x, f))),
         ExprKind::Math(op, x) => ExprKind::Math(op, Box::new(map_expr(*x, f))),
         ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(map_expr(*x, f))),
+        ExprKind::Buf(op, args) => {
+            ExprKind::Buf(op, args.into_iter().map(|a| map_expr(a, f)).collect())
+        }
         kind @ (ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
@@ -216,7 +222,9 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
     for stmt in stmts {
         match stmt {
             Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => count_expr_reads(e, out),
-            Stmt::ReturnMany(values) | Stmt::CallMany { args: values, .. } => {
+            Stmt::ReturnMany(values)
+            | Stmt::CallMany { args: values, .. }
+            | Stmt::Buf(_, values) => {
                 for e in values {
                     count_expr_reads(e, out);
                 }
@@ -261,7 +269,7 @@ fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
             count_expr_reads(a, out);
             count_expr_reads(b, out);
         }
-        ExprKind::Call(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
             for a in args {
                 count_expr_reads(a, out);
             }
