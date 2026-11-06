@@ -10,7 +10,7 @@ Les premiers types qui ont besoin de mémoire, sur les fondations déjà constru
 
 - `Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`.
 - `String` compilé, en UTF-8.
-- `Option<T>` compilé.
+- ~~`Option<T>` compilé~~ : fait, avec `?` et l’arithmétique vérifiée.
 - Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés, l’historique d’une valeur montré dans les erreurs ([spécification](../spec.md#modèle-mémoire)).
 
 ## Phase 2 : un système de types complet

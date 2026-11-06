@@ -112,8 +112,8 @@ pub struct Function {
     /// fields. Such a function ends with [`Stmt::ReturnMany`], and is only called
     /// by [`Stmt::CallMany`].
     pub more: Vec<Ty>,
-    /// For an exported function that takes or returns structures: how
-    /// JavaScript sees them, as objects. `None` when every value is a scalar.
+    /// For an exported function that takes or returns structures or options:
+    /// how JavaScript sees them. `None` when every value is a scalar.
     pub shape: Option<JsShape>,
     /// The body.
     pub body: Vec<Stmt>,
@@ -135,6 +135,9 @@ pub enum Shape {
     Value(Ty),
     /// A structure: its name and its fields, whose scalars follow each other.
     Object(String, Vec<(String, Shape)>),
+    /// An `Option<T>`: a `bool` saying whether a value is there, then the
+    /// value's scalars. JavaScript sees the value, or `undefined`.
+    Option(Box<Shape>),
 }
 
 impl Shape {
@@ -144,6 +147,7 @@ impl Shape {
         match self {
             Self::Value(ty) => vec![*ty],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
+            Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
         }
     }
 }
@@ -574,6 +578,8 @@ fn expr(e: &Expr) -> String {
 
 #[cfg(test)]
 mod opt_tests;
+#[cfg(test)]
+mod option_tests;
 #[cfg(test)]
 mod own_tests;
 #[cfg(test)]

@@ -10,7 +10,7 @@ The first types that need memory, on the foundations already built: the release 
 
 - `Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`.
 - `String` compiled, in UTF-8.
-- `Option<T>` compiled.
+- ~~`Option<T>` compiled~~: done, with `?` and checked arithmetic.
 - Ownership checks: moves, `inout` and `sink`, aliasing refused, the history of a value shown in errors ([spec](../spec.md#memory-model)).
 
 ## Phase 2: a complete type system

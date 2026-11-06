@@ -15,8 +15,8 @@ export const MANAGED_EXTENSION = ".apeiron";
  * in between.
  */
 export const IMPORTS_MARKER = "// perasc:imports";
-export const LOAD_MARKER = "// perasc:load (needs `imports`)";
-export const EXPORTS_MARKER = "// perasc:exports (needs `instance`)";
+export const LOAD_MARKER = "// perasc:load (needs `$imports`)";
+export const EXPORTS_MARKER = "// perasc:exports (needs `$instance`)";
 
 /** The mode of a Peras source module, set by its file extension. */
 export type Mode = "owned" | "managed";
@@ -51,9 +51,9 @@ export interface PerasOptions {
 export interface Compiled {
   /** The WebAssembly module. */
   wasm: Uint8Array;
-  /** The JavaScript that defines `imports`, the module's imports. */
+  /** The JavaScript that defines `$imports`, the module's imports. */
   imports: string;
-  /** The JavaScript that turns `instance` into the module's exports. */
+  /** The JavaScript that turns `$instance` into the module's exports. */
   exports: string;
   /** TypeScript declarations of the exports. */
   dts: string;
@@ -199,14 +199,14 @@ export function splitLoader(loader: string): { imports: string; exports: string 
 export function moduleCode(compiled: Compiled, wasmUrl?: string): string {
   const load =
     wasmUrl === undefined
-      ? `const bytes = Uint8Array.from(atob(${JSON.stringify(Buffer.from(compiled.wasm).toString("base64"))}), (c) => c.charCodeAt(0));
-const { instance } = await WebAssembly.instantiate(bytes, imports);`
-      : `const response = await fetch(${wasmUrl});
-if (!response.ok) throw new Error(\`Peras: cannot load \${response.url} (\${response.status})\`);
+      ? `const $bytes = Uint8Array.from(atob(${JSON.stringify(Buffer.from(compiled.wasm).toString("base64"))}), (c) => c.charCodeAt(0));
+const { instance: $instance } = await WebAssembly.instantiate($bytes, $imports);`
+      : `const $response = await fetch(${wasmUrl});
+if (!$response.ok) throw new Error(\`Peras: cannot load \${$response.url} (\${$response.status})\`);
 // Compiled while it downloads, when the server labels it as WebAssembly.
-const { instance } = response.headers.get("content-type")?.startsWith("application/wasm")
-  ? await WebAssembly.instantiateStreaming(response, imports)
-  : await WebAssembly.instantiate(await response.arrayBuffer(), imports);`;
+const { instance: $instance } = $response.headers.get("content-type")?.startsWith("application/wasm")
+  ? await WebAssembly.instantiateStreaming($response, $imports)
+  : await WebAssembly.instantiate(await $response.arrayBuffer(), $imports);`;
   return `${compiled.imports}${load}\n${compiled.exports}`;
 }
 

@@ -14,10 +14,17 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- Les **options** se compilent, sans le tas elles aussi : une `Option<T>` est un `bool` suivi des scalaires de `T`, n’importe quel `T` compilé, structures comprises.
+  - `Some`, `None`, `isSome`, `isNone`, `unwrapOr`, et `?`, qui renvoie `None` tout de suite depuis une fonction qui renvoie une option.
+  - `checkedAdd`, `checkedSub` et `checkedMul` sur `i32` et `i64` donnent `None` en cas de dépassement ; ils sont testés contre ceux de Rust sur les valeurs où le dépassement commence et s’arrête.
+  - `None` et `[]` prennent le type qu’attend leur contexte.
+  - JavaScript voit la valeur ou `undefined`, déclarée `T | undefined`.
+- Le chargeur JavaScript préfixe par `$` chaque nom qu’il déclare, ce par quoi un nom Peras ne peut pas commencer : une fonction ou un paramètre nommé `r`, `url` ou `runtime` ne casse plus le module.
 - L’IR vérifie la possession : poignées `owned` et `borrowed`, libérations explicites, et un vérificateur qui prouve que chaque bloc est libéré exactement une fois sur chaque chemin. L’allocateur de débogage est intégré aux modules qui utilisent le tas ; un bug mémoire lève une `PerasMemoryError` qui nomme les deux sites, en anglais ou en français. Rien dans le langage n’alloue encore.
 
 ### Banc d’essai
 
+- `overflows` exerce les options et l’arithmétique vérifiée ; les deux backends s’accordent avec la référence JavaScript.
 - `cmandel` calcule l’ensemble de Mandelbrot avec `struct Complex`. Les deux backends s’accordent avec la référence JavaScript. Le backend direct prend 15 ms contre 13 ms pour le code `f64` simple et pour Rust ; JavaScript, qui alloue un objet par nombre complexe, prend 49 ms. L’optimiseur ne touche pas encore aux fonctions à plusieurs résultats.
 
 ## 0.0.1 — 4 novembre 2026

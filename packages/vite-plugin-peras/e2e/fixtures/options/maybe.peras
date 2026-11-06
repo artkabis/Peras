@@ -1,0 +1,31 @@
+export struct Range {
+  low: i32;
+  high: i32;
+}
+
+export fn half(n: i32): Option<i32> {
+  if (n % 2 != 0) {
+    return None;
+  }
+  return Some(n / 2);
+}
+
+export fn quarter(n: i32): Option<i32> {
+  const h = half(n)?;
+  return half(h);
+}
+
+export fn widen(r: Option<Range>, by: i32): Option<Range> {
+  const inner = r?;
+  const low = inner.low.checkedSub(by)?;
+  const high = inner.high.checkedAdd(by)?;
+  return Some(Range(low, high));
+}
+
+export fn product(a: i64, b: i64): Option<i64> {
+  return a.checkedMul(b);
+}
+
+export fn either(a: Option<f64>, fallback: f64): f64 {
+  return a.unwrapOr(fallback);
+}

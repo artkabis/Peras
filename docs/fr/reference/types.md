@@ -54,7 +54,7 @@ Du texte en UTF-8, écrit `"…"`. <span class="status checked">vérifié</span>
 
 ## `Option<T>`
 
-`Some(valeur)` ou `None` : une valeur qui peut être absente. Peras n’a ni `null` ni `undefined`. <span class="status checked">vérifié</span>
+`Some(valeur)` ou `None` : une valeur qui peut être absente. Peras n’a ni `null` ni `undefined` ; JavaScript voit une option vide comme `undefined`. <span class="status compiled">compilé</span>
 
 ## Pas encore dans le langage
 

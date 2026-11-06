@@ -13,7 +13,8 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | `i32`, `i64`, `f32`, `f64`, `bool`                     | <span class="status compiled">compiled</span> |
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                 | <span class="status checked">checked</span>   |
 | structures, nested, as parameters and results          | <span class="status compiled">compiled</span> |
-| `Array<T>`, `String`, `Option<T>`                      | <span class="status checked">checked</span>   |
+| `Option<T>`, `Some`, `None`, `?`                       | <span class="status compiled">compiled</span> |
+| `Array<T>`, `String`                                   | <span class="status checked">checked</span>   |
 | `Result<T, E>`, enumerations and unions, `match`       | <span class="status planned">planned</span>   |
 | generics, interfaces and traits, methods on structures | <span class="status planned">planned</span>   |
 | `Map`, `Set`, tuples, closures                         | <span class="status planned">planned</span>   |

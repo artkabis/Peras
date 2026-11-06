@@ -1,6 +1,6 @@
 # Arrays, strings and options
 
-These three types are part of the language and fully checked, but not compiled yet: `perasc check` accepts them, `perasc build` reports [E0900](../errors/E0900.md). Arrays come next, with the heap.
+Options are compiled. Arrays and strings are part of the language and fully checked, but not compiled yet: `perasc check` accepts them, `perasc build` reports [E0900](../errors/E0900.md). They come next, with the heap.
 
 ## `Array<T>`
 
@@ -52,28 +52,53 @@ Invisible characters that can reorder what you read, the "Trojan Source" attack,
 
 ## `Option<T>`
 
-A value that may be absent: `Some(value)` or `None`. Peras has no `null`: absence is in the type, and the compiler makes you handle it.
+A value that may be absent: `Some(value)` or `None`. Peras has no `null`: absence is in the type, and the compiler makes you handle it. <span class="status compiled">compiled</span>
 
-```peras
-export fn last_or(xs: Array<i32>, fallback: i32): i32 {
-  let copy = xs;
-  return copy.pop().unwrapOr(fallback);
-}
-
+```peras build
 export fn half(n: i32): Option<i32> {
   if (n % 2 != 0) {
     return None;
   }
   return Some(n / 2);
 }
+
+export fn quarter(n: i32): Option<i32> {
+  const h = half(n)?;
+  return half(h);
+}
+
+export fn half_or(n: i32, fallback: i32): i32 {
+  return half(n).unwrapOr(fallback);
+}
 ```
 
-| Method                     | Gives                                |
-| -------------------------- | ------------------------------------ |
-| `o.isSome()`, `o.isNone()` | whether a value is present           |
-| `o.unwrapOr(fallback)`     | the value, or `fallback` when absent |
+| Method or operator         | Gives                                                                |
+| -------------------------- | -------------------------------------------------------------------- |
+| `o.isSome()`, `o.isNone()` | whether a value is present                                           |
+| `o.unwrapOr(fallback)`     | the value, or `fallback` when absent; `fallback` is always evaluated |
+| `o?`                       | the value; when absent, the function returns `None` at once          |
 
-Checked arithmetic returns an option too: `a.checkedAdd(b)` is `None` on overflow.
+`?` is allowed in a function that returns an option. Checked arithmetic returns an option too: `a.checkedAdd(b)` is `None` on overflow, where `a + b` would wrap.
+
+```peras build
+export fn total(a: i32, b: i32, c: i32): Option<i32> {
+  const ab = a.checkedAdd(b)?;
+  return ab.checkedAdd(c);
+}
+```
+
+An option holds any compiled type, a structure included. It costs no allocation: it is a `bool` followed by the value. JavaScript sees the value, or `undefined`:
+
+```ts
+import { half } from "./maths.peras";
+
+half(10); // 5
+half(7); // undefined
+```
+
+The TypeScript declaration says so: `half(n: number): number | undefined`.
+
+> `pop()` on an array returns an option; it compiles with arrays.
 
 > A complete set of methods on strings and arrays (`split`, `slice`, `map`, `filter`…) is planned: see the [roadmap](../reference/roadmap.md).
 

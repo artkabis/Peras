@@ -42,8 +42,14 @@ impl Checker<'_> {
                 self.report(errors::integer_for_float(span, &literal, expected));
                 false
             }
-            (Ty::Option(inner), Ty::Option(_)) if **inner == Ty::Error => true,
-            (Ty::Array(inner), Ty::Array(_)) if **inner == Ty::Error => true,
+            // `None` and `[]` take the type the context expects: code generation
+            // needs to know what they hold.
+            (Ty::Option(inner), Ty::Option(_)) | (Ty::Array(inner), Ty::Array(_))
+                if **inner == Ty::Error =>
+            {
+                self.fill_in(id, expected);
+                true
+            }
             _ => {
                 let conversion = self.conversion(id, actual, expected);
                 self.report(errors::mismatch(span, expected, actual, conversion));
@@ -118,6 +124,14 @@ impl Checker<'_> {
         let ty = self.infer_inner(id, expected);
         self.expr_types.insert(id, ty.clone());
         ty
+    }
+
+    /// Records the type the context expects for `None` or `[]`, through parentheses.
+    fn fill_in(&mut self, id: ExprId, ty: &Ty) {
+        self.expr_types.insert(id, ty.clone());
+        if let ExprKind::Paren(inner) = self.ast.expr(id).kind {
+            self.fill_in(inner, ty);
+        }
     }
 
     /// Gives a literal expression the concrete type the context chose for it, down

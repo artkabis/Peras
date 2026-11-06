@@ -101,6 +101,8 @@ struct FnState {
     /// Statements that must run before the statement being lowered: calls
     /// returning several results, and what keeps the order of evaluation.
     pre: Vec<Stmt>,
+    /// When the function returns an option: its result's scalars, for `?`.
+    ret_option: Option<Vec<Ty>>,
 }
 
 impl FnState {
@@ -216,6 +218,7 @@ impl Lowering<'_> {
             locals: Vec::new(),
             scopes: vec![HashMap::new()],
             pre: Vec::new(),
+            ret_option: None,
         };
         let errors_before = self.diagnostics.len();
         let mut shapes = Vec::new();
@@ -228,10 +231,10 @@ impl Lowering<'_> {
             let Some(ty) = self.typed(&param.ty) else {
                 continue;
             };
-            has_struct |= matches!(ty, CheckTy::Struct(..));
+            has_struct |= values::is_aggregate(&ty);
             shapes.push((name.to_owned(), self.shape(&ty)));
             match self.leaves(&ty) {
-                Ok(leaves) if matches!(ty, CheckTy::Struct(..)) => {
+                Ok(leaves) if values::is_aggregate(&ty) => {
                     state.add_struct(param.name.symbol, name, &leaves);
                 }
                 Ok(leaves) => {
@@ -243,7 +246,7 @@ impl Lowering<'_> {
         }
         let param_count = u32::try_from(state.locals.len()).unwrap_or(u32::MAX);
         let ret_ty = decl.ret.as_ref().and_then(|t| self.typed(t));
-        has_struct |= matches!(ret_ty, Some(CheckTy::Struct(..)));
+        has_struct |= ret_ty.as_ref().is_some_and(values::is_aggregate);
         let results: Vec<Ty> = match &ret_ty {
             Some(ty) if *ty != CheckTy::Void => match self.leaves(ty) {
                 Ok(leaves) => leaves.into_iter().map(|(_, t)| t).collect(),
@@ -251,6 +254,9 @@ impl Lowering<'_> {
             },
             _ => Vec::new(),
         };
+        if matches!(ret_ty, Some(CheckTy::Option(_))) {
+            state.ret_option = Some(results.clone());
+        }
         let mut body = Vec::new();
         // A signature already reported: its body would only repeat the same cause
         // (`xs.length` for an unsupported `xs: Array<i32>`), so it is not lowered.
@@ -409,7 +415,7 @@ impl Lowering<'_> {
             (None, Some(init)) => self.check_type(init).cloned(),
             (None, None) => None,
         };
-        if let Some(ty @ CheckTy::Struct(..)) = ty {
+        if let Some(ty) = ty.filter(values::is_aggregate) {
             let Ok(leaves) = self.leaves(&ty) else {
                 self.unsupported(local.name.span, "struct");
                 return;
@@ -517,8 +523,8 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
-        if self.is_struct(id) {
-            // Structures go through `value`: never a single scalar.
+        if self.is_aggregate(id) {
+            // Structures and options go through `value`: never a single scalar.
             let span = self.ast.expr(id).span;
             self.unsupported(span, "struct");
             return zero(Ty::Void);
@@ -579,7 +585,7 @@ impl Lowering<'_> {
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Field { base, name } => {
-                if !self.is_struct(*base) {
+                if !self.is_aggregate(*base) {
                     return self.not_yet(span, "field", ty);
                 }
                 let fields = self.value(state, *base);
@@ -594,7 +600,13 @@ impl Lowering<'_> {
                     .unwrap_or_else(|| zero(ty));
             }
             AstExpr::Index { .. } => return self.not_yet(span, "index", ty),
-            AstExpr::Try(_) => return self.not_yet(span, "try", ty),
+            AstExpr::Try(inner) => {
+                return self
+                    .try_values(state, *inner, span)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty));
+            }
             AstExpr::Error => return zero(ty),
         };
         Expr { kind, ty }
@@ -657,6 +669,13 @@ impl Lowering<'_> {
                 };
                 let args = self.arguments(state, args);
                 self.call_results(state, id, args)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty))
+            }
+            AstExpr::Field { base, name } if self.is_aggregate(*base) => {
+                let method = self.ast.name(name.symbol);
+                self.method_values(state, *base, method, args, span)
                     .into_iter()
                     .next()
                     .unwrap_or_else(|| zero(ty))

@@ -14,10 +14,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **Options** compile, also without the heap: an `Option<T>` is a `bool` followed by the scalars of `T`, any compiled `T`, structures included.
+  - `Some`, `None`, `isSome`, `isNone`, `unwrapOr`, and `?`, which returns `None` early from a function returning an option.
+  - `checkedAdd`, `checkedSub` and `checkedMul` on `i32` and `i64` give `None` on overflow; they are tested against Rust's own on the values where overflow starts and stops.
+  - `None` and `[]` take the type their context expects.
+  - JavaScript sees the value or `undefined`, declared as `T | undefined`.
+- The JavaScript loader prefixes every name it declares with `$`, which a Peras name cannot start with: a function or a parameter named `r`, `url` or `runtime` no longer breaks the module.
 - The IR verifies ownership: `owned` and `borrowed` handles, explicit releases, and a verifier proving that every block is released exactly once on every path. The debug allocator is linked into modules that use the heap; a memory bug throws a `PerasMemoryError` naming both sites, in English or French. Nothing in the language allocates yet.
 
 ### Benchmark
 
+- `overflows` exercises options and checked arithmetic; both backends agree with the JavaScript reference.
 - `cmandel` computes the Mandelbrot set with `struct Complex`. Both backends agree with the JavaScript reference. The direct backend takes 15 ms against 13 ms for plain `f64` code and for Rust; JavaScript, which allocates an object per complex number, takes 49 ms. The optimizer does not touch functions with several results yet.
 
 ## 0.0.1 — 2026-11-04

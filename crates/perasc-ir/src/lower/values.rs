@@ -1,4 +1,4 @@
-//! Structures, as values: every structure is replaced by its scalars.
+//! Structures and options, as values: each is replaced by its scalars.
 //!
 //! A structure is a fixed-size value, so it lives in locals, never on the heap
 //! (spec, "Where values live"). Lowering replaces it by its *leaves*: the scalar
@@ -6,6 +6,9 @@
 //! local becomes two locals, a parameter two parameters, and a function returning
 //! a `Point` returns two results ([`Stmt::ReturnMany`], called by
 //! [`Stmt::CallMany`]).
+//!
+//! An `Option<T>` is a `bool`, whether a value is there, followed by the
+//! scalars of `T`, which are zero when it is not.
 //!
 //! **Evaluation order.** A call returning several results cannot sit inside an
 //! expression: it runs first, as a statement, into temporaries. To keep the
@@ -18,7 +21,7 @@ use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Type, TypeKind};
 
 use super::{FnState, Lowering};
 use crate::opt::is_simple;
-use crate::{Expr, ExprKind, LocalId, Shape, Stmt, Ty};
+use crate::{BinOp, Const, Expr, ExprKind, LocalId, Shape, Stmt, Ty, UnOp};
 
 impl Lowering<'_> {
     /// The scalars of a type with their path (`inner_x`), or the feature that is
@@ -40,6 +43,18 @@ impl Lowering<'_> {
                 }
                 Ok(out)
             }
+            CheckTy::Option(inner) => {
+                let mut out = vec![("some".to_owned(), Ty::Bool)];
+                for (path, leaf) in self.leaves(inner)? {
+                    let path = if path.is_empty() {
+                        "value".to_owned()
+                    } else {
+                        format!("value_{path}")
+                    };
+                    out.push((path, leaf));
+                }
+                Ok(out)
+            }
             other => match Self::ir_type(other) {
                 Some(Ty::Void) | None => Err(super::feature_of_check_type(other)),
                 Some(leaf) => Ok(vec![(String::new(), leaf)]),
@@ -56,6 +71,9 @@ impl Lowering<'_> {
         let text = self.ast.name(name.symbol);
         if let Some(index) = self.analysis.structs.iter().position(|(n, _)| n == text) {
             return Ok(CheckTy::Struct(StructId(index), text.to_owned()));
+        }
+        if let ("Option", [inner]) = (text, args.as_slice()) {
+            return Ok(CheckTy::Option(Box::new(self.resolve(inner)?)));
         }
         Ok(match (text, args.is_empty()) {
             ("i32", true) => CheckTy::Int(IntTy::I32),
@@ -85,6 +103,7 @@ impl Lowering<'_> {
                     .unwrap_or_default();
                 Shape::Object(name.clone(), fields)
             }
+            CheckTy::Option(inner) => Shape::Option(Box::new(self.shape(inner))),
             other => Shape::Value(Self::ir_type(other).unwrap_or(Ty::Void)),
         }
     }
@@ -111,15 +130,15 @@ impl Lowering<'_> {
         self.analysis.types.get(&id)
     }
 
-    /// Whether the checker typed an expression as a structure.
-    pub(super) fn is_struct(&self, id: ExprId) -> bool {
-        matches!(self.check_type(id), Some(CheckTy::Struct(..)))
+    /// Whether the checker typed an expression as a structure or an option.
+    pub(super) fn is_aggregate(&self, id: ExprId) -> bool {
+        self.check_type(id).is_some_and(is_aggregate)
     }
 
     /// The scalars of any expression: one for a scalar, the leaves of a
-    /// structure. Statements it needs first go to `state.pre`.
+    /// structure or an option. Statements it needs first go to `state.pre`.
     pub(super) fn value(&mut self, state: &mut FnState, id: ExprId) -> Vec<Expr> {
-        if !self.is_struct(id) {
+        if !self.is_aggregate(id) {
             return vec![self.expr(state, id)];
         }
         let ast_expr = self.ast.expr(id);
@@ -132,24 +151,37 @@ impl Lowering<'_> {
                         .iter()
                         .map(|l| super::local_expr(state, *l))
                         .collect()
+                } else if self.ast.name(*symbol) == "None" {
+                    self.none(id)
                 } else {
                     self.unsupported(span, "global");
                     Vec::new()
                 }
             }
-            AstExpr::Call { callee, args } => {
-                let AstExpr::Name(symbol) = self.ast.expr(*callee).kind else {
-                    self.unsupported(span, "method");
-                    return Vec::new();
-                };
-                let args = self.arguments(state, args);
-                if let Some(&id) = self.fns.get(&symbol) {
-                    self.call_results(state, id, args)
-                } else {
-                    // A constructor: its scalars are its arguments', in order.
-                    args
+            AstExpr::Call { callee, args } => match self.ast.expr(*callee).kind {
+                AstExpr::Name(symbol) => {
+                    let args = self.arguments(state, args);
+                    if let Some(&id) = self.fns.get(&symbol) {
+                        self.call_results(state, id, args)
+                    } else if self.ast.name(symbol) == "Some" {
+                        let mut out = vec![bool_const(true)];
+                        out.extend(args);
+                        out
+                    } else {
+                        // A constructor: its scalars are its arguments', in order.
+                        args
+                    }
                 }
-            }
+                AstExpr::Field { base, name } => {
+                    let method = self.ast.name(name.symbol);
+                    self.method_values(state, base, method, args, span)
+                }
+                _ => {
+                    self.unsupported(span, "function-value");
+                    Vec::new()
+                }
+            },
+            AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::Field { base, name } => {
                 let fields = self.value(state, *base);
                 let base_ty = self.check_type(*base).cloned();
@@ -164,6 +196,127 @@ impl Lowering<'_> {
                 Vec::new()
             }
         }
+    }
+
+    /// `None`, of the type the checker gave it: `false`, then zeros.
+    fn none(&self, id: ExprId) -> Vec<Expr> {
+        let leaves = self
+            .check_type(id)
+            .and_then(|t| self.leaves(t).ok())
+            .unwrap_or_default();
+        leaves.iter().map(|(_, t)| super::zero(*t)).collect()
+    }
+
+    /// A method whose receiver or result is an option, as scalars.
+    pub(super) fn method_values(
+        &mut self,
+        state: &mut FnState,
+        base: ExprId,
+        method: &str,
+        args: &[ExprId],
+        span: perasc_diag::Span,
+    ) -> Vec<Expr> {
+        if !self.is_aggregate(base) {
+            let op = match method {
+                "checkedAdd" => BinOp::Add,
+                "checkedSub" => BinOp::Sub,
+                "checkedMul" => BinOp::Mul,
+                _ => {
+                    self.unsupported(span, "method");
+                    return Vec::new();
+                }
+            };
+            let receiver = self.expr(state, base);
+            let mark = state.pre.len();
+            let arg = args.first().map(|&a| self.expr(state, a));
+            let mut operands = [receiver];
+            state.keep_before(mark, &mut operands);
+            let [receiver] = operands;
+            return match arg {
+                Some(arg) => checked(state, op, receiver, arg),
+                None => Vec::new(),
+            };
+        }
+        let mut fields = self.value(state, base);
+        match method {
+            "isSome" | "isNone" => {
+                let some = Self::pick(state, fields, 0, 1);
+                let Some(some) = some.into_iter().next() else {
+                    return Vec::new();
+                };
+                if method == "isSome" {
+                    vec![some]
+                } else {
+                    vec![Expr {
+                        kind: ExprKind::Unary(UnOp::Not, Box::new(some)),
+                        ty: Ty::Bool,
+                    }]
+                }
+            }
+            "unwrapOr" => {
+                // The receiver, then the fallback; then the value is chosen.
+                let mark = state.pre.len();
+                let fallback = self.arguments(state, args);
+                state.keep_before(mark, &mut fields);
+                let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
+                let Some((some, payload)) = fields.split_first() else {
+                    return Vec::new();
+                };
+                let mut out = Vec::new();
+                let mut then = Vec::new();
+                for (value, fallback) in payload.iter().zip(fallback) {
+                    let temp = state.temp(fallback.ty);
+                    state.pre.push(Stmt::Set(temp, fallback));
+                    then.push(Stmt::Set(temp, value.clone()));
+                    out.push(super::local_expr(state, temp));
+                }
+                state.pre.push(Stmt::If {
+                    cond: some.clone(),
+                    then,
+                    otherwise: Vec::new(),
+                });
+                out
+            }
+            _ => {
+                self.unsupported(span, "method");
+                Vec::new()
+            }
+        }
+    }
+
+    /// `x?`: the value of an option, or a return of `None` when it has none.
+    pub(super) fn try_values(
+        &mut self,
+        state: &mut FnState,
+        inner: ExprId,
+        span: perasc_diag::Span,
+    ) -> Vec<Expr> {
+        let Some(ret) = state.ret_option.clone() else {
+            self.unsupported(span, "try");
+            return Vec::new();
+        };
+        let fields: Vec<Expr> = self
+            .value(state, inner)
+            .into_iter()
+            .map(|e| state.spill(e))
+            .collect();
+        let Some((some, payload)) = fields.split_first() else {
+            return Vec::new();
+        };
+        let mut none: Vec<Expr> = ret.iter().map(|t| super::zero(*t)).collect();
+        let exit = match none.len() {
+            1 => Stmt::Return(none.pop()),
+            _ => Stmt::ReturnMany(none),
+        };
+        state.pre.push(Stmt::If {
+            cond: Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(some.clone())),
+                ty: Ty::Bool,
+            },
+            then: vec![exit],
+            otherwise: Vec::new(),
+        });
+        payload.to_vec()
     }
 
     /// `len` scalars from `offset`. The others are dropped, so any of them that
@@ -298,6 +451,87 @@ impl FnState {
             }
         }
     }
+}
+
+/// Structures and options: values made of several scalars.
+pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
+    matches!(ty, CheckTy::Struct(..) | CheckTy::Option(_))
+}
+
+fn bool_const(value: bool) -> Expr {
+    Expr {
+        kind: ExprKind::Const(Const::Bool(value)),
+        ty: Ty::Bool,
+    }
+}
+
+fn convert(e: Expr, ty: Ty) -> Expr {
+    Expr {
+        kind: ExprKind::Convert(Box::new(e)),
+        ty,
+    }
+}
+
+/// `a.checkedAdd(b)` and the others: whether the exact result fits, and the
+/// wrapped result. An `i32` is computed in 64 bits; an `i64` is checked on its
+/// sign bits, and a product by dividing it again.
+fn checked(state: &mut FnState, op: BinOp, a: Expr, b: Expr) -> Vec<Expr> {
+    use super::binary;
+    let a = state.spill(a);
+    let b = state.spill(b);
+    let ty = a.ty;
+    let int = |v: i64| Expr {
+        kind: ExprKind::Const(Const::Int(v)),
+        ty,
+    };
+    if ty == Ty::I32 {
+        let wide = binary(op, convert(a, Ty::I64), convert(b, Ty::I64));
+        let wide = force(state, wide);
+        let narrow = convert(wide.clone(), Ty::I32);
+        let fits = binary(BinOp::Eq, convert(narrow.clone(), Ty::I64), wide);
+        return vec![fits, narrow];
+    }
+    let r = force(state, binary(op, a.clone(), b.clone()));
+    let xor = |x: &Expr, y: &Expr| binary(BinOp::BitXor, x.clone(), y.clone());
+    let fits = match op {
+        BinOp::Add => binary(
+            BinOp::Ge,
+            binary(BinOp::BitAnd, xor(&a, &r), xor(&b, &r)),
+            int(0),
+        ),
+        BinOp::Sub => binary(
+            BinOp::Ge,
+            binary(BinOp::BitAnd, xor(&a, &b), xor(&a, &r)),
+            int(0),
+        ),
+        _ => {
+            // a == 0 || (!(a == -1 && b == MIN) && r / a == b)
+            let min = binary(
+                BinOp::And,
+                binary(BinOp::Eq, a.clone(), int(-1)),
+                binary(BinOp::Eq, b.clone(), int(i64::MIN)),
+            );
+            let not_min = Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(min)),
+                ty: Ty::Bool,
+            };
+            let back = binary(BinOp::Eq, binary(BinOp::Div, r.clone(), a.clone()), b);
+            binary(
+                BinOp::Or,
+                binary(BinOp::Eq, a, int(0)),
+                binary(BinOp::And, not_min, back),
+            )
+        }
+    };
+    let fits = force(state, fits);
+    vec![fits, r]
+}
+
+/// The value, always evaluated now into a temporary.
+fn force(state: &mut FnState, value: Expr) -> Expr {
+    let temp = state.temp(value.ty);
+    state.pre.push(Stmt::Set(temp, value));
+    super::local_expr(state, temp)
 }
 
 /// Whether an expression reads a local.

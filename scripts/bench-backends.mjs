@@ -150,7 +150,7 @@ function size(path) {
 }
 
 // 4. Load every build, and a JavaScript reference written the same way.
-/** @typedef {{ fib(n: number): number, primes(limit: number): number, mandel(size: number): number, cmandel(size: number): number, checksum(a: bigint, b: bigint): bigint }} Kernels */
+/** @typedef {{ fib(n: number): number, primes(limit: number): number, mandel(size: number): number, cmandel(size: number): number, overflows(n: number): number, checksum(a: bigint, b: bigint): bigint }} Kernels */
 
 /**
  * Instantiates a module from the direct backend, which needs no imports.
@@ -239,6 +239,21 @@ const reference = {
     }
     return inside;
   },
+  // Checked arithmetic, by comparing with the bounds of an i32.
+  overflows(n) {
+    const fits = (/** @type {number} */ v) => v >= -2147483648 && v <= 2147483647;
+    let total = 0;
+    for (let k = 2; k < n + 2; k++) {
+      let x = 1;
+      for (;;) {
+        const y = x * k;
+        if (!fits(y) || !fits(y + 1)) break;
+        x = y + 1;
+        total++;
+      }
+    }
+    return total;
+  },
   // JavaScript has no 64-bit integers: BigInt, wrapped to 64 bits, is the only way.
   checksum(a, b) {
     let h = 1469598103934665603n;
@@ -288,6 +303,13 @@ const cases = [
         (k) => k.cmandel(n),
       ]),
   ),
+  ...[0, 1, 5, 1000].map(
+    (n) =>
+      /** @type {[string, (k: Kernels) => unknown]} */ ([
+        `overflows(${String(n)})`,
+        (k) => k.overflows(n),
+      ]),
+  ),
   .../** @type {[bigint, bigint][]} */ ([
     [0n, 1n],
     [1n, 7n],
@@ -324,6 +346,7 @@ if (check) {
     ["primes(1 000 000)", (k) => k.primes(1_000_000)],
     ["mandel(600)", (k) => k.mandel(600)],
     ["cmandel(600)", (k) => k.cmandel(600)],
+    ["overflows(200 000)", (k) => k.overflows(200_000)],
     ["checksum(5 000 000, 7)", (k) => k.checksum(5_000_000n, 7n)],
   ];
   /** @type {Map<string, number[]>} */

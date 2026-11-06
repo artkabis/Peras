@@ -1,6 +1,6 @@
 # Tableaux, chaînes et options
 
-Ces trois types font partie du langage et sont entièrement vérifiés, mais pas encore compilés : `perasc check` les accepte, `perasc build` signale [E0900](../errors/E0900.md). Les tableaux viennent ensuite, avec le tas.
+Les options sont compilées. Les tableaux et les chaînes font partie du langage et sont entièrement vérifiés, mais pas encore compilés : `perasc check` les accepte, `perasc build` signale [E0900](../errors/E0900.md). Ils viennent ensuite, avec le tas.
 
 ## `Array<T>`
 
@@ -52,28 +52,53 @@ Les caractères invisibles qui peuvent réordonner ce que vous lisez, l’attaqu
 
 ## `Option<T>`
 
-Une valeur qui peut être absente : `Some(valeur)` ou `None`. Peras n’a pas de `null` : l’absence est dans le type, et le compilateur oblige à la traiter.
+Une valeur qui peut être absente : `Some(valeur)` ou `None`. Peras n’a pas de `null` : l’absence est dans le type, et le compilateur oblige à la traiter. <span class="status compiled">compilé</span>
 
-```peras
-export fn last_or(xs: Array<i32>, fallback: i32): i32 {
-  let copy = xs;
-  return copy.pop().unwrapOr(fallback);
-}
-
+```peras build
 export fn half(n: i32): Option<i32> {
   if (n % 2 != 0) {
     return None;
   }
   return Some(n / 2);
 }
+
+export fn quarter(n: i32): Option<i32> {
+  const h = half(n)?;
+  return half(h);
+}
+
+export fn half_or(n: i32, fallback: i32): i32 {
+  return half(n).unwrapOr(fallback);
+}
 ```
 
-| Méthode                    | Donne                                       |
-| -------------------------- | ------------------------------------------- |
-| `o.isSome()`, `o.isNone()` | si une valeur est présente                  |
-| `o.unwrapOr(secours)`      | la valeur, ou `secours` si elle est absente |
+| Méthode ou opérateur       | Donne                                                                       |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `o.isSome()`, `o.isNone()` | si une valeur est présente                                                  |
+| `o.unwrapOr(secours)`      | la valeur, ou `secours` si elle est absente ; `secours` est toujours évalué |
+| `o?`                       | la valeur ; si elle est absente, la fonction renvoie `None` aussitôt        |
 
-L’arithmétique vérifiée renvoie aussi une option : `a.checkedAdd(b)` vaut `None` en cas de dépassement.
+`?` est permis dans une fonction qui renvoie une option. L’arithmétique vérifiée renvoie aussi une option : `a.checkedAdd(b)` vaut `None` en cas de dépassement, là où `a + b` reboucle.
+
+```peras build
+export fn total(a: i32, b: i32, c: i32): Option<i32> {
+  const ab = a.checkedAdd(b)?;
+  return ab.checkedAdd(c);
+}
+```
+
+Une option contient n’importe quel type compilé, structure comprise. Elle ne coûte aucune allocation : c’est un `bool` suivi de la valeur. JavaScript voit la valeur, ou `undefined` :
+
+```ts
+import { half } from "./maths.peras";
+
+half(10); // 5
+half(7); // undefined
+```
+
+La déclaration TypeScript le dit : `half(n: number): number | undefined`.
+
+> `pop()` sur un tableau renvoie une option ; il sera compilé avec les tableaux.
 
 > Un ensemble complet de méthodes sur les chaînes et les tableaux (`split`, `slice`, `map`, `filter`…) est prévu : voir la [feuille de route](../reference/roadmap.md).
 

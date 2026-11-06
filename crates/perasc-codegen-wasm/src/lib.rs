@@ -581,10 +581,12 @@ const fn conversion(from: Ty, to: Ty) -> Option<I<'static>> {
 /// with. `vite-plugin-peras` keeps the imports and the exports, and replaces the
 /// part between [`LOAD_MARKER`] and [`EXPORTS_MARKER`]: do not change them.
 pub const IMPORTS_MARKER: &str = "// perasc:imports";
-/// The first line of the part that loads the module into `instance`.
-pub const LOAD_MARKER: &str = "// perasc:load (needs `imports`)";
-/// The line after which the loader only needs `instance`.
-pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `instance`)";
+/// The first line of the part that loads the module into `$instance`.
+/// Every name the loader declares starts with `$`, which a Peras name cannot:
+/// an exported function or a parameter never hides one.
+pub const LOAD_MARKER: &str = "// perasc:load (needs `$imports`)";
+/// The line after which the loader only needs `$instance`.
+pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `$instance`)";
 
 /// What a loader needs to link the debug allocator into a module using the heap.
 #[derive(Debug, Clone, Copy)]
@@ -613,18 +615,18 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
-        None => js.push_str("const imports = {};\n"),
+        None => js.push_str("const $imports = {};\n"),
     }
     let _ = write!(
         js,
         "{LOAD_MARKER}\n\
-         const url = new URL(\"./{wasm_file}\", import.meta.url);\n\
-         const bytes = url.protocol === \"file:\"\n  \
-         ? await (await import(\"node:fs/promises\")).readFile(url)\n  \
-         : await (await fetch(url)).arrayBuffer();\n\
-         const {{ instance }} = await WebAssembly.instantiate(bytes, imports);\n\
+         const $url = new URL(\"./{wasm_file}\", import.meta.url);\n\
+         const $bytes = $url.protocol === \"file:\"\n  \
+         ? await (await import(\"node:fs/promises\")).readFile($url)\n  \
+         : await (await fetch($url)).arrayBuffer();\n\
+         const {{ instance: $instance }} = await WebAssembly.instantiate($bytes, $imports);\n\
          {EXPORTS_MARKER}\n\
-         const wasm = instance.exports;\n"
+         const $wasm = $instance.exports;\n"
     );
     for f in module.functions.iter().filter(|f| f.exported) {
         if let Some(shape) = &f.shape {
@@ -632,18 +634,18 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         } else if f.ret == Ty::Bool {
             let _ = writeln!(
                 js,
-                "export const {0} = (...args) => wasm.{0}(...args) !== 0;",
+                "export const {0} = (...args) => $wasm.{0}(...args) !== 0;",
                 f.name
             );
         } else {
-            let _ = writeln!(js, "export const {0} = wasm.{0};", f.name);
+            let _ = writeln!(js, "export const {0} = $wasm.{0};", f.name);
         }
     }
     if heap {
         js.push_str(
             "export const __perasHeap = {\n  \
-             live: () => runtime.live_count(),\n  \
-             checkLeaks: () => runtime.check_leaks(),\n};\n",
+             live: () => $runtime.live_count(),\n  \
+             checkLeaks: () => $runtime.check_leaks(),\n};\n",
         );
     }
     js
@@ -656,41 +658,57 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
     let params: Vec<&str> = shape.params.iter().map(|(n, _)| n.as_str()).collect();
     let mut args = Vec::new();
     for (param, value) in &shape.params {
-        flatten(param, value, &mut args);
+        flatten(param, value, false, &mut args);
     }
-    let call = format!("wasm.{name}({})", args.join(", "));
+    let call = format!("$wasm.{name}({})", args.join(", "));
     let body = match &shape.result {
         None => call,
         Some(result) => {
             let many = result.scalars().len() > 1;
             let mut index = 0;
             let value = rebuild(result, many, &mut index);
-            format!("{{ const r = {call}; return {value}; }}")
+            // `$` cannot start a Peras name, so `$r` never hides a parameter.
+            format!("{{ const $r = {call}; return {value}; }}")
         }
     };
     format!("export const {name} = ({}) => {body};\n", params.join(", "))
 }
 
 /// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
-fn flatten(path: &str, shape: &Shape, out: &mut Vec<String>) {
+/// Inside an option, which JavaScript passes as `undefined` when it is empty,
+/// fields are read with `?.` and an absent scalar is zero.
+fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Vec<String>) {
     match shape {
+        Shape::Value(ty) if optional => {
+            let zero = match ty {
+                Ty::I64 => "0n",
+                Ty::Bool => "false",
+                _ => "0",
+            };
+            out.push(format!("({path} ?? {zero})"));
+        }
         Shape::Value(_) => out.push(path.to_owned()),
         Shape::Object(_, fields) => {
+            let dot = if optional { "?." } else { "." };
             for (field, value) in fields {
-                flatten(&format!("{path}.{field}"), value, out);
+                flatten(&format!("{path}{dot}{field}"), value, optional, out);
             }
+        }
+        Shape::Option(inner) => {
+            out.push(format!("{path} !== undefined"));
+            flatten(path, inner, true, out);
         }
     }
 }
 
-/// A result rebuilt from `r`, the WebAssembly result: an array when `many`.
+/// A result rebuilt from `$r`, the WebAssembly result: an array when `many`.
 fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
     match shape {
         Shape::Value(ty) => {
             let scalar = if many {
-                format!("r[{index}]")
+                format!("$r[{index}]")
             } else {
-                "r".to_owned()
+                "$r".to_owned()
             };
             *index += 1;
             if *ty == Ty::Bool {
@@ -706,6 +724,11 @@ fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
                 .collect();
             format!("({{ {} }})", fields.join(", "))
         }
+        Shape::Option(inner) => {
+            let some = rebuild(&Shape::Value(Ty::Bool), many, index);
+            let value = rebuild(inner, many, index);
+            format!("({some} ? {value} : undefined)")
+        }
     }
 }
 
@@ -718,23 +741,23 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         .collect();
     format!(
         "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
-         const faults = [{faults}];\n\
-         const sites = [{sites}];\n\
-         const site = (n) => sites[n] ?? \"?\";\n\
-         const fault = (kind, ptr, allocSite, releaseSite) => {{\n  \
-         const text = (faults[kind - 1] ?? `memory fault ${{kind}}`)\n    \
-         .replaceAll(\"{{alloc}}\", site(allocSite))\n    \
-         .replaceAll(\"{{release}}\", site(releaseSite))\n    \
+         const $faults = [{faults}];\n\
+         const $sites = [{sites}];\n\
+         const $site = (n) => $sites[n] ?? \"?\";\n\
+         const $fault = (kind, ptr, allocSite, releaseSite) => {{\n  \
+         const text = ($faults[kind - 1] ?? `memory fault ${{kind}}`)\n    \
+         .replaceAll(\"{{alloc}}\", $site(allocSite))\n    \
+         .replaceAll(\"{{release}}\", $site(releaseSite))\n    \
          .replaceAll(\"{{count}}\", String(releaseSite))\n    \
          .replaceAll(\"{{size}}\", String(ptr >>> 0));\n  \
          const error = new Error(text);\n  \
          error.name = \"PerasMemoryError\";\n  \
-         Object.assign(error, {{ kind, allocSite: site(allocSite), releaseSite: site(releaseSite) }});\n  \
+         Object.assign(error, {{ kind, allocSite: $site(allocSite), releaseSite: $site(releaseSite) }});\n  \
          throw error;\n\
          }};\n\
-         const allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
-         const runtime = (await WebAssembly.instantiate(allocator, {{ peras: {{ fault }} }})).instance.exports;\n\
-         const imports = {{ {module}: {{ alloc: runtime.alloc, release: runtime.release }} }};\n",
+         const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault }} }})).instance.exports;\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release }} }};\n",
         faults = faults.join(", "),
         sites = sites.join(", "),
         allocator = base64(runtime.allocator),
@@ -864,12 +887,16 @@ fn ts_shape(shape: &Shape) -> String {
     match shape {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
         Shape::Object(name, _) => name.clone(),
+        Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
     }
 }
 
 /// `export interface Point { x: number; y: number; }`, for a structure and the
 /// structures in it, each once.
 fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
+    if let Shape::Option(inner) = shape {
+        return interface(inner, out);
+    }
     let Shape::Object(name, fields) = shape else {
         return;
     };

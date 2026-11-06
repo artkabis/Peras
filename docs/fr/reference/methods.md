@@ -21,7 +21,7 @@ Depuis un flottant, les conversions arrondissent vers zéro et saturent ; entre 
 | ---------------------------------------------------- | ----------- | ------------------------------------------------------ | -------------------------------------------- |
 | `abs()`                                              | tout nombre | la valeur absolue ; reboucle pour le plus petit entier | <span class="status compiled">compilé</span> |
 | `wrappingAdd(b)`, `wrappingSub(b)`, `wrappingMul(b)` | entiers     | le résultat rebouclé, comme `+`, `-`, `*`              | <span class="status compiled">compilé</span> |
-| `checkedAdd(b)`, `checkedSub(b)`, `checkedMul(b)`    | entiers     | `Some(résultat)`, ou `None` en cas de dépassement      | <span class="status checked">vérifié</span>  |
+| `checkedAdd(b)`, `checkedSub(b)`, `checkedMul(b)`    | entiers     | `Some(résultat)`, ou `None` en cas de dépassement      | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn wrapped(a: i32): i32 {
@@ -54,9 +54,9 @@ export fn wrapped(a: i32): i32 {
 
 ## `Option<T>`
 
-| Méthode                | Donne                      | État                                        |
-| ---------------------- | -------------------------- | ------------------------------------------- |
-| `isSome()`, `isNone()` | si une valeur est présente | <span class="status checked">vérifié</span> |
-| `unwrapOr(secours)`    | la valeur, ou `secours`    | <span class="status checked">vérifié</span> |
+| Méthode                | Donne                      | État                                         |
+| ---------------------- | -------------------------- | -------------------------------------------- |
+| `isSome()`, `isNone()` | si une valeur est présente | <span class="status compiled">compilé</span> |
+| `unwrapOr(secours)`    | la valeur, ou `secours`    | <span class="status compiled">compilé</span> |
 
 Un membre inconnu est refusé avec la liste de ceux qui existent ([E0215](../errors/E0215.md)). Beaucoup d’autres méthodes sont prévues : voir la [feuille de route](roadmap.md#phase-3--une-bibliothèque-standard).
