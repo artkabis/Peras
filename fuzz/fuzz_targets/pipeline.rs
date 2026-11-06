@@ -30,7 +30,12 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
     for optimize in [false, true] {
-        match build_direct(source, "fuzz.wasm", optimize) {
+        match build_direct(
+            source,
+            "fuzz.wasm",
+            optimize,
+            &Localizer::new(Language::English),
+        ) {
             Ok(output) => {
                 let valid = wasmparser::Validator::new().validate_all(&output.wasm);
                 assert!(valid.is_ok(), "invalid module: {:?}\n{source}", valid.err());

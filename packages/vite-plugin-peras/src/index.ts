@@ -9,9 +9,13 @@ export const OWNED_EXTENSION = ".peras";
 /** Extension of managed modules, compiled to JavaScript. */
 export const MANAGED_EXTENSION = ".apeiron";
 /**
- * The line of the loader written by `perasc build` after which only `instance`
- * is needed (`EXPORTS_MARKER` in `perasc-codegen-wasm`, whose tests pin it).
+ * Lines of the loader written by `perasc build`, pinned by the tests of
+ * `perasc-codegen-wasm`. The plugin keeps the imports (the debug allocator, for
+ * a module that uses the heap) and the exports, and loads the module its own way
+ * in between.
  */
+export const IMPORTS_MARKER = "// perasc:imports";
+export const LOAD_MARKER = "// perasc:load (needs `imports`)";
 export const EXPORTS_MARKER = "// perasc:exports (needs `instance`)";
 
 /** The mode of a Peras source module, set by its file extension. */
@@ -47,6 +51,8 @@ export interface PerasOptions {
 export interface Compiled {
   /** The WebAssembly module. */
   wasm: Uint8Array;
+  /** The JavaScript that defines `imports`, the module's imports. */
+  imports: string;
   /** The JavaScript that turns `instance` into the module's exports. */
   exports: string;
   /** TypeScript declarations of the exports. */
@@ -168,13 +174,21 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
       readFile(join(out, `${stem}.js`), "utf8"),
       readFile(join(out, `${stem}.d.ts`), "utf8"),
     ]);
-    const at = loader.indexOf(EXPORTS_MARKER);
-    if (at < 0)
-      throw new PerasError("vite-plugin-peras: this perasc writes loaders it does not understand.");
-    return { wasm, exports: loader.slice(at), dts };
+    return { wasm, ...splitLoader(loader), dts };
   } finally {
     await rm(out, { recursive: true, force: true });
   }
+}
+
+/** The imports and the exports of a loader written by `perasc build`. */
+export function splitLoader(loader: string): { imports: string; exports: string } {
+  const imports = loader.indexOf(IMPORTS_MARKER);
+  const load = loader.indexOf(LOAD_MARKER);
+  const exports = loader.indexOf(EXPORTS_MARKER);
+  if (imports < 0 || load < imports || exports < load) {
+    throw new PerasError("vite-plugin-peras: this perasc writes loaders it does not understand.");
+  }
+  return { imports: loader.slice(imports, load), exports: loader.slice(exports) };
 }
 
 /**
@@ -186,14 +200,14 @@ export function moduleCode(compiled: Compiled, wasmUrl?: string): string {
   const load =
     wasmUrl === undefined
       ? `const bytes = Uint8Array.from(atob(${JSON.stringify(Buffer.from(compiled.wasm).toString("base64"))}), (c) => c.charCodeAt(0));
-const { instance } = await WebAssembly.instantiate(bytes);`
+const { instance } = await WebAssembly.instantiate(bytes, imports);`
       : `const response = await fetch(${wasmUrl});
 if (!response.ok) throw new Error(\`Peras: cannot load \${response.url} (\${response.status})\`);
 // Compiled while it downloads, when the server labels it as WebAssembly.
 const { instance } = response.headers.get("content-type")?.startsWith("application/wasm")
-  ? await WebAssembly.instantiateStreaming(response)
-  : await WebAssembly.instantiate(await response.arrayBuffer());`;
-  return `${load}\n${compiled.exports}`;
+  ? await WebAssembly.instantiateStreaming(response, imports)
+  : await WebAssembly.instantiate(await response.arrayBuffer(), imports);`;
+  return `${compiled.imports}${load}\n${compiled.exports}`;
 }
 
 /** Writes `name.d.peras.ts` next to `name.peras`, only when it changes. */

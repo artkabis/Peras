@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 
 use perasc_ir::{BinOp, Const, Expr, ExprKind, Function, MathOp, Module, Stmt, Ty, UnOp};
 use wasm_encoder::{
-    BlockType, CodeSection, ExportKind, ExportSection, Function as WasmFunction, FunctionSection,
-    Ieee32, Ieee64, Instruction as I, TypeSection, ValType,
+    BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function as WasmFunction,
+    FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I, TypeSection, ValType,
 };
 
 /// The value type of an IR type; `None` for `void`.
@@ -27,30 +27,70 @@ const fn val_type(ty: Ty) -> Option<ValType> {
     }
 }
 
+/// Module that a module using the heap imports its allocator from.
+pub const RUNTIME_MODULE: &str = "peras_rt";
+
+/// A compiled module, and what its allocation sites are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Compiled {
+    /// The WebAssembly binary.
+    pub wasm: Vec<u8>,
+    /// What each allocation or release site is, for messages: `sites[n - 1]` is
+    /// site `n`, the number passed to the allocator; 0 means unknown.
+    pub sites: Vec<String>,
+}
+
 /// Encodes a module as a WebAssembly binary.
 #[must_use]
 pub fn compile(module: &Module) -> Vec<u8> {
+    compile_module(module).wasm
+}
+
+/// Encodes a module, and numbers its allocation sites.
+///
+/// A module that uses the heap imports `alloc(size, site) -> ptr` and
+/// `release(ptr, site)` from [`RUNTIME_MODULE`], the debug allocator of
+/// `perasc-runtime`; the imports come first, so its own functions follow them.
+#[must_use]
+pub fn compile_module(module: &Module) -> Compiled {
     let mut types = TypeSection::new();
+    let mut imports = ImportSection::new();
     let mut functions = FunctionSection::new();
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
+    let heap = module.uses_heap();
+    let offset = if heap { 2 } else { 0 };
+    if heap {
+        types
+            .ty()
+            .function([ValType::I32, ValType::I32], [ValType::I32]);
+        types.ty().function([ValType::I32, ValType::I32], []);
+        imports.import(RUNTIME_MODULE, "alloc", EntityType::Function(0));
+        imports.import(RUNTIME_MODULE, "release", EntityType::Function(1));
+    }
+    let mut sites = Vec::new();
     for (index, function) in module.functions.iter().enumerate() {
-        let index = u32::try_from(index).unwrap_or(u32::MAX);
+        let index = u32::try_from(index).unwrap_or(u32::MAX) + offset;
         let params: Vec<ValType> = function.params().filter_map(|l| val_type(l.ty)).collect();
         let results: Vec<ValType> = val_type(function.ret).into_iter().collect();
         types.ty().function(params, results);
+        // Its type comes after the two import types, as its index after the imports.
         functions.function(index);
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
-        code.function(&FnEncoder::encode(function));
+        code.function(&FnEncoder::encode(function, offset, &mut sites));
     }
     let mut wasm = wasm_encoder::Module::new();
-    wasm.section(&types)
-        .section(&functions)
-        .section(&exports)
-        .section(&code);
-    wasm.finish()
+    wasm.section(&types);
+    if heap {
+        wasm.section(&imports);
+    }
+    wasm.section(&functions).section(&exports).section(&code);
+    Compiled {
+        wasm: wasm.finish(),
+        sites,
+    }
 }
 
 /// What an enclosing structured instruction is, to compute `br` depths.
@@ -68,16 +108,24 @@ enum Frame {
     Other,
 }
 
-struct FnEncoder {
+struct FnEncoder<'a> {
     out: WasmFunction,
     frames: Vec<Frame>,
+    /// Index of the module's first own function: the imports come before.
+    offset: u32,
+    /// The function's name, and how many sites of each kind it has so far.
+    name: &'a str,
+    allocs: u32,
+    releases: u32,
+    /// Every site of the module so far.
+    sites: &'a mut Vec<String>,
     /// Scratch locals for integer `abs`, indexed after the function's own locals.
     temp_i32: u32,
     temp_i64: u32,
 }
 
-impl FnEncoder {
-    fn encode(function: &Function) -> WasmFunction {
+impl<'a> FnEncoder<'a> {
+    fn encode(function: &'a Function, offset: u32, sites: &'a mut Vec<String>) -> WasmFunction {
         let params = usize::try_from(function.param_count).unwrap_or(0);
         let mut locals: Vec<(u32, ValType)> = function
             .locals
@@ -91,6 +139,11 @@ impl FnEncoder {
         let mut encoder = Self {
             out: WasmFunction::new(locals),
             frames: Vec::new(),
+            offset,
+            name: &function.name,
+            allocs: 0,
+            releases: 0,
+            sites,
             temp_i32: count,
             temp_i64: count + 1,
         };
@@ -101,6 +154,12 @@ impl FnEncoder {
         }
         encoder.emit(&I::End);
         encoder.out
+    }
+
+    /// A new site number, with what it is.
+    fn site(&mut self, what: String) -> i32 {
+        self.sites.push(what);
+        i32::try_from(self.sites.len()).unwrap_or(0)
     }
 
     fn emit(&mut self, instruction: &I<'_>) {
@@ -177,8 +236,13 @@ impl FnEncoder {
                 let depth = self.leave_depth(*n);
                 self.emit(&I::Br(depth));
             }
-            // See `ExprKind::Alloc`: refused by the driver before this point.
-            Stmt::Release(_) => self.emit(&I::Unreachable),
+            Stmt::Release(local) => {
+                self.emit(&I::LocalGet(local.0));
+                self.releases += 1;
+                let number = self.site(format!("{} (release {})", self.name, self.releases));
+                self.emit(&I::I32Const(number));
+                self.emit(&I::Call(1));
+            }
             Stmt::Break => {
                 let depth = self.depth(Frame::Break);
                 self.emit(&I::Br(depth));
@@ -245,11 +309,17 @@ impl FnEncoder {
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => self.constant(*c, e.ty),
-            ExprKind::Local(local) => self.emit(&I::LocalGet(local.0)),
-            // The driver refuses code that uses the heap until the debug
-            // allocator is linked in (decision 0001): never emitted today.
-            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {
-                self.emit(&I::Unreachable);
+            // A handle is an address: moving or lending it copies the number. The
+            // release verifier proved a moved-from local is not used again.
+            ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {
+                self.emit(&I::LocalGet(local.0));
+            }
+            ExprKind::Alloc(size) => {
+                self.expr(size);
+                self.allocs += 1;
+                let number = self.site(format!("{} (alloc {})", self.name, self.allocs));
+                self.emit(&I::I32Const(number));
+                self.emit(&I::Call(0));
             }
             ExprKind::Unary(op, operand) => self.unary(*op, operand, e.ty),
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
@@ -257,7 +327,7 @@ impl FnEncoder {
                 for arg in args {
                     self.expr(arg);
                 }
-                self.emit(&I::Call(id.0));
+                self.emit(&I::Call(id.0 + self.offset));
             }
             ExprKind::Convert(operand) => {
                 self.expr(operand);
@@ -481,21 +551,52 @@ const fn conversion(from: Ty, to: Ty) -> Option<I<'static>> {
     })
 }
 
-/// The line after which the loader only needs `instance`. `vite-plugin-peras`
-/// keeps what follows it and loads the module its own way: do not change it.
+/// The first line of the loader's imports: what the module is instantiated
+/// with. `vite-plugin-peras` keeps the imports and the exports, and replaces the
+/// part between [`LOAD_MARKER`] and [`EXPORTS_MARKER`]: do not change them.
+pub const IMPORTS_MARKER: &str = "// perasc:imports";
+/// The first line of the part that loads the module into `instance`.
+pub const LOAD_MARKER: &str = "// perasc:load (needs `imports`)";
+/// The line after which the loader only needs `instance`.
 pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `instance`)";
 
+/// What a loader needs to link the debug allocator into a module using the heap.
+#[derive(Debug, Clone, Copy)]
+pub struct Runtime<'a> {
+    /// The allocator module: `perasc_runtime::DEBUG_ALLOCATOR`.
+    pub allocator: &'a [u8],
+    /// The sites of the module, from [`compile_module`].
+    pub sites: &'a [String],
+    /// The message of each fault kind, kind 1 first, in the user's language,
+    /// with `{alloc}`, `{release}`, `{count}` and `{size}` to fill in.
+    pub faults: &'a [String],
+}
+
 /// A JavaScript ES module that loads the `.wasm` file next to it and exports its
-/// functions; `bool` results become JavaScript booleans.
+/// functions; `bool` results become JavaScript booleans. A module that uses the
+/// heap also gets the debug allocator, which throws a `PerasMemoryError` on a
+/// memory bug, and an `__perasHeap` export to count live blocks and check leaks.
 #[must_use]
-pub fn js_loader(module: &Module, wasm_file: &str) -> String {
+pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>) -> String {
     let mut js = format!(
-        "// Generated by perasc. Loads {wasm_file} and exports its functions.\n\
+        "// Generated by perasc. Loads {wasm_file} and exports its functions.\n{IMPORTS_MARKER}\n"
+    );
+    let heap = module.uses_heap();
+    match runtime.filter(|_| heap) {
+        Some(runtime) => js.push_str(&runtime_imports(runtime)),
+        None if heap => js.push_str(
+            "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
+        ),
+        None => js.push_str("const imports = {};\n"),
+    }
+    let _ = write!(
+        js,
+        "{LOAD_MARKER}\n\
          const url = new URL(\"./{wasm_file}\", import.meta.url);\n\
          const bytes = url.protocol === \"file:\"\n  \
          ? await (await import(\"node:fs/promises\")).readFile(url)\n  \
          : await (await fetch(url)).arrayBuffer();\n\
-         const {{ instance }} = await WebAssembly.instantiate(bytes);\n\
+         const {{ instance }} = await WebAssembly.instantiate(bytes, imports);\n\
          {EXPORTS_MARKER}\n\
          const wasm = instance.exports;\n"
     );
@@ -510,7 +611,87 @@ pub fn js_loader(module: &Module, wasm_file: &str) -> String {
             let _ = writeln!(js, "export const {0} = wasm.{0};", f.name);
         }
     }
+    if heap {
+        js.push_str(
+            "export const __perasHeap = {\n  \
+             live: () => runtime.live_count(),\n  \
+             checkLeaks: () => runtime.check_leaks(),\n};\n",
+        );
+    }
     js
+}
+
+/// The allocator, instantiated first, and the imports it gives the module.
+fn runtime_imports(runtime: &Runtime<'_>) -> String {
+    let faults: Vec<String> = runtime.faults.iter().map(|m| js_string(m)).collect();
+    let sites: Vec<String> = std::iter::once("?".to_owned())
+        .chain(runtime.sites.iter().cloned())
+        .map(|s| js_string(&s))
+        .collect();
+    format!(
+        "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
+         const faults = [{faults}];\n\
+         const sites = [{sites}];\n\
+         const site = (n) => sites[n] ?? \"?\";\n\
+         const fault = (kind, ptr, allocSite, releaseSite) => {{\n  \
+         const text = (faults[kind - 1] ?? `memory fault ${{kind}}`)\n    \
+         .replaceAll(\"{{alloc}}\", site(allocSite))\n    \
+         .replaceAll(\"{{release}}\", site(releaseSite))\n    \
+         .replaceAll(\"{{count}}\", String(releaseSite))\n    \
+         .replaceAll(\"{{size}}\", String(ptr >>> 0));\n  \
+         const error = new Error(text);\n  \
+         error.name = \"PerasMemoryError\";\n  \
+         Object.assign(error, {{ kind, allocSite: site(allocSite), releaseSite: site(releaseSite) }});\n  \
+         throw error;\n\
+         }};\n\
+         const allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
+         const runtime = (await WebAssembly.instantiate(allocator, {{ peras: {{ fault }} }})).instance.exports;\n\
+         const imports = {{ {module}: {{ alloc: runtime.alloc, release: runtime.release }} }};\n",
+        faults = faults.join(", "),
+        sites = sites.join(", "),
+        allocator = base64(runtime.allocator),
+        module = RUNTIME_MODULE,
+    )
+}
+
+/// A JavaScript string literal.
+fn js_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if c.is_control() => {
+                let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Standard base64, for `atob`.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0_u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                let index = usize::try_from((n >> (18 - 6 * i)) & 63).unwrap_or(0);
+                out.push(char::from(ALPHABET[index]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// TypeScript declarations of the exported functions: `i64` is a `bigint`.
@@ -523,6 +704,12 @@ pub fn dts(module: &Module) -> String {
         _ => "number",
     };
     let mut out = String::from("// Generated by perasc.\n");
+    if module.uses_heap() {
+        out.push_str(
+            "/** Blocks still alive in the debug allocator, and a check that throws on a leak. */\n\
+             export declare const __perasHeap: { live(): number; checkLeaks(): void };\n",
+        );
+    }
     for f in module.functions.iter().filter(|f| f.exported) {
         let params: Vec<String> = f
             .params()

@@ -66,7 +66,7 @@ pub fn build(
         .to_owned();
     let started = Instant::now();
     let result = match backend {
-        Backend::Direct => direct(&text, &stem, out_dir, optimize),
+        Backend::Direct => direct(&text, &stem, out_dir, optimize, localizer),
         Backend::Rust => {
             let name = crate_name(&stem);
             let crate_dir = out_dir.join(".rust").join(&stem);
@@ -180,9 +180,15 @@ fn read(
 }
 
 /// The direct backend: writes `<stem>.wasm`, `<stem>.js` and `<stem>.d.ts`.
-fn direct(text: &str, stem: &str, out_dir: &Path, optimize: bool) -> Result<PathBuf, ToolError> {
+fn direct(
+    text: &str,
+    stem: &str,
+    out_dir: &Path,
+    optimize: bool,
+    localizer: &Localizer,
+) -> Result<PathBuf, ToolError> {
     let wasm_file = format!("{stem}.wasm");
-    let output = build_direct(text, &wasm_file, optimize)?;
+    let output = build_direct(text, &wasm_file, optimize, localizer)?;
     fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
     let wasm = out_dir.join(&wasm_file);
     fs::write(&wasm, &output.wasm).map_err(ToolError::Io)?;

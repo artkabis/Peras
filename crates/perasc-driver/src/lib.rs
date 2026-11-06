@@ -8,6 +8,7 @@ use std::path::Path;
 use std::process::Command;
 
 use perasc_diag::Diagnostic;
+use perasc_diag::i18n::Localizer;
 use perasc_syntax::Mode;
 pub use perasc_syntax::source_too_large;
 
@@ -76,13 +77,6 @@ pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, ToolError> {
     let module = perasc_ir::lower(&parsed.ast, &analysis)
         .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;
     perasc_ir::verify(&module).map_err(ToolError::Internal)?;
-    // Decision 0001: nothing that allocates is compiled before the debug
-    // allocator is linked in. Lowering never produces such IR today.
-    if module.uses_heap() {
-        return Err(ToolError::Internal(vec![
-            "the IR uses the heap, which the backends do not compile yet".to_owned(),
-        ]));
-    }
     Ok(module)
 }
 
@@ -107,17 +101,62 @@ pub fn build_direct(
     source: &str,
     wasm_file: &str,
     optimize: bool,
+    localizer: &Localizer,
 ) -> Result<DirectOutput, ToolError> {
     let mut module = compile_ir(source)?;
     if optimize {
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
-    Ok(DirectOutput {
-        wasm: perasc_codegen_wasm::compile(&module),
-        js: perasc_codegen_wasm::js_loader(&module, wasm_file),
-        dts: perasc_codegen_wasm::dts(&module),
+    Ok(emit_direct(&module, wasm_file, localizer))
+}
+
+/// The direct backend's output for a verified module. A module that uses the
+/// heap is linked to the debug allocator, whose messages are in the language of
+/// `localizer`.
+#[must_use]
+pub fn emit_direct(
+    module: &perasc_ir::Module,
+    wasm_file: &str,
+    localizer: &Localizer,
+) -> DirectOutput {
+    let compiled = perasc_codegen_wasm::compile_module(module);
+    let faults = fault_messages(localizer);
+    let runtime = perasc_codegen_wasm::Runtime {
+        allocator: perasc_runtime::DEBUG_ALLOCATOR,
+        sites: &compiled.sites,
+        faults: &faults,
+    };
+    DirectOutput {
+        js: perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime)),
+        dts: perasc_codegen_wasm::dts(module),
+        wasm: compiled.wasm,
+    }
+}
+
+/// The message of each fault of the debug allocator, kind 1 first, with the
+/// placeholders the generated JavaScript fills in.
+#[must_use]
+pub fn fault_messages(localizer: &Localizer) -> Vec<String> {
+    [
+        "runtime-out-of-memory",
+        "runtime-too-large",
+        "runtime-overflow",
+        "runtime-invalid-release",
+        "runtime-double-release",
+        "runtime-use-after-release",
+        "runtime-leak",
+    ]
+    .into_iter()
+    .map(|id| {
+        let message = perasc_diag::Message::new(id)
+            .text("alloc", "{alloc}")
+            .text("release", "{release}")
+            .text("count", "{count}")
+            .text("size", "{size}");
+        localizer.message(&message)
     })
+    .collect()
 }
 
 /// Why a build failed.
@@ -171,6 +210,12 @@ pub fn build_rust(
     // The Rust backend compiles the unoptimized IR: the differential test in CI
     // then checks the IR optimizations too.
     let module = compile_ir(source)?;
+    // It has no allocator yet; lowering produces no heap IR today.
+    if module.uses_heap() {
+        return Err(ToolError::Internal(vec![
+            "the IR uses the heap, which the Rust backend does not compile yet".to_owned(),
+        ]));
+    }
     for (path, contents) in perasc_codegen_rs::crate_files(&module, name) {
         let file = crate_dir.join(path);
         if let Some(parent) = file.parent() {

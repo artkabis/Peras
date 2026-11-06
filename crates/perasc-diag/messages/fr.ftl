@@ -481,3 +481,15 @@ diag-error = erreur
 diag-why = pourquoi
 diag-fix = correction
 diag-details = détails
+
+## Exécution : bugs mémoire détectés par l’allocateur de débogage
+# Complétés par le JavaScript généré : { $alloc } et { $release } sont des sites,
+# comme `f (alloc 1)` ; { $count } et { $size } sont des nombres.
+
+runtime-out-of-memory = mémoire épuisée : le bloc alloué à { $alloc } ne tient pas
+runtime-too-large = { $alloc } demande { $size } octets d’un coup, plus de 1 Gio
+runtime-overflow = des octets ont été écrits après la fin du bloc alloué à { $alloc } ; vu quand { $release } l’a libéré
+runtime-invalid-release = { $release } libère quelque chose qui n’est pas un bloc vivant
+runtime-double-release = le bloc alloué à { $alloc } est libéré une seconde fois, à { $release }
+runtime-use-after-release = le bloc alloué à { $alloc } a été modifié après que { $release } l’a libéré
+runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a été alloué à { $alloc }

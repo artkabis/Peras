@@ -96,3 +96,10 @@ Le fuzzing, prévu au jour 10 du plan de démarrage, couvre les deux backends.
   - chaque copie de ces programmes où une seule `release` est supprimée ou doublée est refusée.
 
   Désactiver n’importe laquelle des dix vérifications fait échouer un test. L’optimiseur laisse telles quelles les fonctions qui utilisent le tas tant qu’aucune passe n’est prouvée garder les libérations exactes, et le driver refuse l’IR qui utilise le tas tant que l’allocateur de débogage n’est pas intégré. L’abaissement n’en produit pas encore : la condition 3, le test différentiel sur les allocations vivantes, arrive avec le premier type qui alloue.
+
+- **6 novembre 2026, l’allocateur de débogage intégré aux modules générés.** Un module qui utilise le tas importe `alloc(taille, site)` et `release(pointeur, site)` depuis `peras_rt`. Chaque allocation et chaque libération reçoit un numéro de site, associé à un nom comme `work (alloc 1)`. Le chargeur qu’écrit `perasc` embarque l’allocateur, l’instancie d’abord et y relie le module. Un bug mémoire lève une `PerasMemoryError` dont le message, dans la langue de `--lang`, nomme les deux sites, par exemple « le bloc alloué à twice (alloc 1) est libéré une seconde fois, à twice (release 2) ». Un export `__perasHeap` compte les blocs vivants et vérifie les fuites. Le plugin Vite garde les imports du chargeur et fait donc de même. Vérifié de trois façons, sur une IR écrite à la main puisqu’aucune construction n’alloue encore :
+  - relié et exécuté dans `wasmi` : 1 000 allocations et libérations sans rien laisser ;
+  - une double libération et une fuite sont détectées avec leurs sites ;
+  - les mêmes modules importés dans Node par les tests de bout en bout, en anglais et en français.
+
+  Le backend Rust refuse toujours l’IR qui utilise le tas : il n’a pas d’allocateur.
