@@ -76,6 +76,13 @@ pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, ToolError> {
     let module = perasc_ir::lower(&parsed.ast, &analysis)
         .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;
     perasc_ir::verify(&module).map_err(ToolError::Internal)?;
+    // Decision 0001: nothing that allocates is compiled before the debug
+    // allocator is linked in. Lowering never produces such IR today.
+    if module.uses_heap() {
+        return Err(ToolError::Internal(vec![
+            "the IR uses the heap, which the backends do not compile yet".to_owned(),
+        ]));
+    }
     Ok(module)
 }
 

@@ -43,6 +43,11 @@ use crate::{BinOp, Const, Expr, ExprKind, FnId, Function, Local, LocalId, Module
 pub fn optimize(module: &mut Module) {
     for (index, function) in module.functions.iter_mut().enumerate() {
         let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
+        // No pass is proven yet to keep releases exact: code that uses the heap
+        // is left as written, and the release verifier checks it as such.
+        if function.uses_heap() {
+            continue;
+        }
         function.body = branchless_abs(std::mem::take(&mut function.body));
         eliminate_tail_recursion(function, id);
         function.body = rotate(std::mem::take(&mut function.body));
@@ -89,7 +94,8 @@ pub fn is_simple(e: &Expr) -> bool {
         ExprKind::Binary(op, a, b) => {
             !matches!(op, BinOp::Div | BinOp::Rem) && is_simple(a) && is_simple(b)
         }
-        ExprKind::Call(..) => false,
+        // A call, an allocation or a change of owner is never moved.
+        ExprKind::Call(..) | ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => false,
     }
 }
 
@@ -331,8 +337,11 @@ fn self_call_args<'a>(stmts: &'a [Stmt], id: FnId, ret: Ty, out: &mut Vec<&'a [E
 fn reads(e: &Expr, target: LocalId) -> bool {
     match &e.kind {
         ExprKind::Const(_) => false,
-        ExprKind::Local(l) => *l == target,
-        ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => reads(x, target),
+        ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => *l == target,
+        ExprKind::Unary(_, x)
+        | ExprKind::Convert(x)
+        | ExprKind::Math(_, x)
+        | ExprKind::Alloc(x) => reads(x, target),
         ExprKind::Binary(_, a, b) => reads(a, target) || reads(b, target),
         ExprKind::Call(_, args) => args.iter().any(|a| reads(a, target)),
     }

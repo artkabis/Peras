@@ -16,6 +16,7 @@ mod interp;
 mod licm;
 mod lower;
 mod opt;
+mod own;
 mod verify;
 
 pub use lower::lower;
@@ -37,6 +38,11 @@ pub enum Ty {
     Bool,
     /// No value.
     Void,
+    /// A heap block with a single owner, who must release it exactly once.
+    Owned,
+    /// Read-only access to a block someone else owns: only a parameter has this
+    /// type, so a reference is never stored.
+    Borrowed,
 }
 
 impl Ty {
@@ -50,7 +56,15 @@ impl Ty {
             Self::F64 => "f64",
             Self::Bool => "bool",
             Self::Void => "void",
+            Self::Owned => "owned",
+            Self::Borrowed => "borrowed",
         }
+    }
+
+    /// `owned` and `borrowed`: handles to heap blocks.
+    #[must_use]
+    pub const fn is_handle(self) -> bool {
+        matches!(self, Self::Owned | Self::Borrowed)
     }
 
     /// `i32` and `i64`.
@@ -98,7 +112,23 @@ pub struct Function {
     pub body: Vec<Stmt>,
 }
 
+impl Module {
+    /// Whether a function allocates, releases or passes heap blocks. The backends
+    /// do not compile such code yet: decision 0001 requires the debug allocator
+    /// to be linked in first.
+    #[must_use]
+    pub fn uses_heap(&self) -> bool {
+        self.functions.iter().any(Function::uses_heap)
+    }
+}
+
 impl Function {
+    /// Whether the function allocates, releases or passes heap blocks.
+    #[must_use]
+    pub fn uses_heap(&self) -> bool {
+        self.ret.is_handle() || self.locals.iter().any(|l| l.ty.is_handle())
+    }
+
     /// The parameters.
     pub fn params(&self) -> impl Iterator<Item = &Local> {
         self.locals
@@ -153,6 +183,8 @@ pub enum Stmt {
     Continue,
     /// Returns from the function.
     Return(Option<Expr>),
+    /// Releases the block an `owned` local holds; the local is empty afterwards.
+    Release(LocalId),
 }
 
 /// An expression and its type.
@@ -192,6 +224,13 @@ pub enum ExprKind {
     Convert(Box<Expr>),
     /// A math operation of the operand's type.
     Math(MathOp, Box<Expr>),
+    /// A new `owned` block of the given number of bytes (an `i32`).
+    Alloc(Box<Expr>),
+    /// Takes the block out of an `owned` local, which is empty afterwards: to
+    /// another local, to a `sink` argument, or as the result.
+    Move(LocalId),
+    /// Lends the block of an `owned` local, as a `borrowed` argument.
+    Borrow(LocalId),
 }
 
 /// Prefix operators.
@@ -377,6 +416,9 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
             Stmt::Leave(depth) => {
                 let _ = writeln!(out, "{pad}leave {depth}");
             }
+            Stmt::Release(local) => {
+                let _ = writeln!(out, "{pad}release %{}", local.0);
+            }
             Stmt::Break => {
                 let _ = writeln!(out, "{pad}break");
             }
@@ -424,8 +466,13 @@ fn expr(e: &Expr) -> String {
             format!("({ty}.from_{} {})", operand.ty.name(), expr(operand))
         }
         ExprKind::Math(op, operand) => format!("({ty}.{} {})", op.name(), expr(operand)),
+        ExprKind::Alloc(size) => format!("(alloc {})", expr(size)),
+        ExprKind::Move(l) => format!("(move %{})", l.0),
+        ExprKind::Borrow(l) => format!("(borrow %{})", l.0),
     }
 }
 
 #[cfg(test)]
 mod opt_tests;
+#[cfg(test)]
+mod own_tests;

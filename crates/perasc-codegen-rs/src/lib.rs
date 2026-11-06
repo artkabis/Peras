@@ -65,6 +65,8 @@ const fn rust_type(ty: Ty) -> &'static str {
         Ty::F64 => "f64",
         Ty::Bool => "bool",
         Ty::Void => "()",
+        // A block's address; the driver refuses heap code for now (decision 0001).
+        Ty::Owned | Ty::Borrowed => "u32",
     }
 }
 
@@ -197,6 +199,10 @@ impl<'a> Emitter<'a> {
                     .unwrap_or(0);
                 let _ = writeln!(out, "{pad}break 'b{n};");
             }
+            // Refused by the driver before this point, until the heap is supported.
+            Stmt::Release(_) => {
+                let _ = writeln!(out, "{pad}unreachable!();");
+            }
             Stmt::Break => {
                 let n = self.loops.last().copied().unwrap_or(0);
                 let _ = writeln!(out, "{pad}break 'l{n};");
@@ -220,6 +226,9 @@ impl<'a> Emitter<'a> {
         match &e.kind {
             ExprKind::Const(c) => constant(*c, e.ty),
             ExprKind::Local(local) => self.var(usize::try_from(local.0).unwrap_or(0)),
+            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {
+                "unreachable!()".to_owned()
+            }
             ExprKind::Unary(op, operand) => {
                 let x = self.expr(operand);
                 match op {

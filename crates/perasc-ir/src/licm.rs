@@ -71,7 +71,7 @@ fn map_exprs(stmts: Vec<Stmt>, f: &mut impl FnMut(Expr) -> Expr) -> Vec<Stmt> {
                 step: map_exprs(step, f),
             },
             Stmt::Block(body) => Stmt::Block(map_exprs(body, f)),
-            other @ (Stmt::Leave(_) | Stmt::Break | Stmt::Continue) => other,
+            other @ (Stmt::Leave(_) | Stmt::Break | Stmt::Continue | Stmt::Release(_)) => other,
         })
         .collect()
 }
@@ -87,7 +87,11 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         }
         ExprKind::Convert(x) => ExprKind::Convert(Box::new(map_expr(*x, f))),
         ExprKind::Math(op, x) => ExprKind::Math(op, Box::new(map_expr(*x, f))),
-        kind @ (ExprKind::Const(_) | ExprKind::Local(_)) => kind,
+        ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(map_expr(*x, f))),
+        kind @ (ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)) => kind,
     };
     f(Expr { kind, ty: e.ty })
 }
@@ -212,7 +216,11 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
                 count_reads(step, out);
             }
             Stmt::Block(body) => count_reads(body, out),
-            Stmt::Return(None) | Stmt::Leave(_) | Stmt::Break | Stmt::Continue => {}
+            Stmt::Return(None)
+            | Stmt::Leave(_)
+            | Stmt::Break
+            | Stmt::Continue
+            | Stmt::Release(_) => {}
         }
     }
 }
@@ -220,7 +228,10 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
 fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
     match &e.kind {
         ExprKind::Const(_) => {}
-        ExprKind::Local(LocalId(l)) => *out.entry(*l).or_default() += 1,
+        ExprKind::Local(LocalId(l)) | ExprKind::Move(LocalId(l)) | ExprKind::Borrow(LocalId(l)) => {
+            *out.entry(*l).or_default() += 1;
+        }
+        ExprKind::Alloc(x) => count_expr_reads(x, out),
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => {
             count_expr_reads(x, out);
         }
