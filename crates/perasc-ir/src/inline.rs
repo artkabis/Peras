@@ -192,6 +192,7 @@ impl Copy {
                     out.push(Stmt::Leave(blocks));
                 }
                 Stmt::Leave(_) | Stmt::Break | Stmt::Continue => out.push(stmt.clone()),
+                Stmt::Release(local) => out.push(Stmt::Release(shift(*local, self.base))),
             }
         }
         out
@@ -210,6 +211,9 @@ impl Copy {
             }
             ExprKind::Convert(x) => ExprKind::Convert(Box::new(self.expr(x))),
             ExprKind::Math(op, x) => ExprKind::Math(*op, Box::new(self.expr(x))),
+            ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(self.expr(x))),
+            ExprKind::Move(local) => ExprKind::Move(shift(*local, self.base)),
+            ExprKind::Borrow(local) => ExprKind::Borrow(shift(*local, self.base)),
         };
         Expr { kind, ty: e.ty }
     }
@@ -221,9 +225,13 @@ impl Copy {
 fn hoistable(e: &Expr, id: FnId) -> bool {
     match &e.kind {
         ExprKind::Call(callee, _) => *callee == id,
-        ExprKind::Binary(BinOp::And | BinOp::Or, ..) | ExprKind::Const(_) | ExprKind::Local(_) => {
-            false
-        }
+        // Moving a call before a block changes hands would change who holds it.
+        ExprKind::Binary(BinOp::And | BinOp::Or, ..)
+        | ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Alloc(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_) => false,
         ExprKind::Binary(_, a, b) => {
             (hoistable(a, id) && is_simple(b)) || (is_simple(a) && hoistable(b, id))
         }
@@ -283,12 +291,15 @@ pub fn needs_reset(function: &Function) -> Vec<LocalId> {
 fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
     match &e.kind {
         ExprKind::Const(_) => true,
-        ExprKind::Local(local) => assigned.contains(&local.0),
+        ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {
+            assigned.contains(&local.0)
+        }
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => {
             reads_only(x, assigned)
         }
         ExprKind::Binary(_, a, b) => reads_only(a, assigned) && reads_only(b, assigned),
         ExprKind::Call(_, args) => args.iter().all(|a| reads_only(a, assigned)),
+        ExprKind::Alloc(x) => reads_only(x, assigned),
     }
 }
 
@@ -307,15 +318,22 @@ fn size(stmts: &[Stmt]) -> usize {
                 1 + cond.as_ref().map_or(0, expr_size) + size(body) + size(step)
             }
             Stmt::Block(body) => 1 + size(body),
-            Stmt::Return(None) | Stmt::Leave(_) | Stmt::Break | Stmt::Continue => 1,
+            Stmt::Return(None)
+            | Stmt::Leave(_)
+            | Stmt::Break
+            | Stmt::Continue
+            | Stmt::Release(_) => 1,
         })
         .sum()
 }
 
 fn expr_size(e: &Expr) -> usize {
     1 + match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) => 0,
-        ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => expr_size(x),
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => 0,
+        ExprKind::Unary(_, x)
+        | ExprKind::Convert(x)
+        | ExprKind::Math(_, x)
+        | ExprKind::Alloc(x) => expr_size(x),
         ExprKind::Binary(_, a, b) => expr_size(a) + expr_size(b),
         ExprKind::Call(_, args) => args.iter().map(expr_size).sum(),
     }
@@ -325,7 +343,8 @@ pub fn zero(ty: Ty) -> Expr {
     let c = match ty {
         Ty::F32 | Ty::F64 => Const::Float(0.0),
         Ty::Bool => Const::Bool(false),
-        Ty::I32 | Ty::I64 | Ty::Void => Const::Int(0),
+        // Handles never reach a copy: functions using the heap are not optimized.
+        Ty::I32 | Ty::I64 | Ty::Void | Ty::Owned | Ty::Borrowed => Const::Int(0),
     };
     Expr {
         kind: ExprKind::Const(c),

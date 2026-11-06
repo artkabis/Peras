@@ -1,0 +1,19 @@
+[package]
+name = "perasc-runtime"
+description = "WebAssembly runtime of owned Peras modules: the debug allocator, written in WebAssembly text and assembled at build time."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+wat.workspace = true
+
+[dev-dependencies]
+wasmi.workspace = true
+wasmparser.workspace = true
+
+[lints]
+workspace = true

@@ -8,13 +8,16 @@
 use crate::{BinOp, Const, Expr, ExprKind, FnId, MathOp, Module, Stmt, Ty, UnOp};
 
 /// A value.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Value {
     I32(i32),
     I64(i64),
     F32(f32),
     F64(f64),
     Bool(bool),
+    /// A heap block, by its allocation number.
+    Handle(u32),
+    #[default]
     Void,
 }
 
@@ -29,12 +32,36 @@ pub enum Trap {
     Depth,
     /// Too many steps: the program probably does not end.
     Fuel,
+    /// A block released while it was not live: twice, or never allocated.
+    DoubleRelease,
+    /// A block used after it was released, or an empty local read.
+    UseAfterRelease,
+    /// A negative size was allocated.
+    BadAlloc,
+}
+
+/// What a run left on the heap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeapReport {
+    /// Blocks allocated during the run.
+    pub allocated: u32,
+    /// Blocks still live at the end, in allocation order.
+    pub live: Vec<u32>,
 }
 
 /// Calls function `id` of `module`.
 ///
 /// Runs on a thread with a stack large enough for `MAX_DEPTH` nested calls.
 pub fn run(module: &Module, id: FnId, args: &[Value]) -> Result<Value, Trap> {
+    run_with_heap(module, id, args).map(|(value, _)| value)
+}
+
+/// Calls function `id`, and also reports what is left on the heap.
+pub fn run_with_heap(
+    module: &Module,
+    id: FnId,
+    args: &[Value],
+) -> Result<(Value, HeapReport), Trap> {
     let module = module.clone();
     let args = args.to_vec();
     let worker = std::thread::Builder::new()
@@ -44,8 +71,15 @@ pub fn run(module: &Module, id: FnId, args: &[Value]) -> Result<Value, Trap> {
                 module: &module,
                 fuel: 50_000_000,
                 depth: 0,
+                heap: std::collections::BTreeSet::new(),
+                allocated: 0,
             };
-            machine.call(id, &args)
+            let value = machine.call(id, &args)?;
+            let report = HeapReport {
+                allocated: machine.allocated,
+                live: machine.heap.into_iter().collect(),
+            };
+            Ok((value, report))
         });
     worker
         .ok()
@@ -59,6 +93,9 @@ struct Machine<'a> {
     module: &'a Module,
     fuel: u64,
     depth: usize,
+    /// Live blocks.
+    heap: std::collections::BTreeSet<u32>,
+    allocated: u32,
 }
 
 enum Flow {
@@ -76,7 +113,8 @@ fn zero(ty: Ty) -> Value {
         Ty::F32 => Value::F32(0.0),
         Ty::F64 => Value::F64(0.0),
         Ty::Bool => Value::Bool(false),
-        Ty::Void => Value::Void,
+        // An `owned` local starts empty.
+        Ty::Void | Ty::Owned | Ty::Borrowed => Value::Void,
     }
 }
 
@@ -163,6 +201,14 @@ impl Machine<'_> {
                 flow => flow,
             },
             Stmt::Leave(depth) => Flow::Leave(*depth),
+            Stmt::Release(local) => {
+                let slot = slot(locals, *local);
+                match slot.map(std::mem::take) {
+                    Some(Value::Handle(block)) if self.heap.remove(&block) => {}
+                    _ => return Err(Trap::DoubleRelease),
+                }
+                Flow::Normal
+            }
             Stmt::Break => Flow::Break,
             Stmt::Continue => Flow::Continue,
             Stmt::Return(value) => {
@@ -185,11 +231,26 @@ impl Machine<'_> {
                 (Const::Float(v), _) => Value::F64(*v),
                 (Const::Bool(v), _) => Value::Bool(*v),
             },
-            ExprKind::Local(local) => usize::try_from(local.0)
-                .ok()
-                .and_then(|i| locals.get(i))
-                .copied()
-                .unwrap_or(Value::Void),
+            ExprKind::Local(local) => {
+                let value = slot(locals, *local).map_or(Value::Void, |v| *v);
+                self.live(value)?
+            }
+            ExprKind::Borrow(local) => {
+                let value = slot(locals, *local).map_or(Value::Void, |v| *v);
+                self.block(value)?
+            }
+            ExprKind::Move(local) => {
+                let value = slot(locals, *local).map_or(Value::Void, std::mem::take);
+                self.block(value)?
+            }
+            ExprKind::Alloc(size) => match self.expr(size, locals)? {
+                Value::I32(n) if n >= 0 => {
+                    self.allocated += 1;
+                    self.heap.insert(self.allocated);
+                    Value::Handle(self.allocated)
+                }
+                _ => return Err(Trap::BadAlloc),
+            },
             ExprKind::Unary(op, x) => unary(*op, self.expr(x, locals)?),
             ExprKind::Binary(BinOp::And, a, b) => {
                 if self.expr(a, locals)? == Value::Bool(true) {
@@ -220,6 +281,31 @@ impl Machine<'_> {
             ExprKind::Math(op, x) => math(*op, self.expr(x, locals)?),
         })
     }
+}
+
+impl Machine<'_> {
+    /// A handle must name a live block; an empty local holds `Void`.
+    fn live(&self, value: Value) -> Result<Value, Trap> {
+        match value {
+            Value::Handle(block) if !self.heap.contains(&block) => Err(Trap::UseAfterRelease),
+            other => Ok(other),
+        }
+    }
+
+    /// A moved or borrowed local must hold a live block.
+    fn block(&self, value: Value) -> Result<Value, Trap> {
+        match value {
+            Value::Handle(block) if self.heap.contains(&block) => Ok(value),
+            _ => Err(Trap::UseAfterRelease),
+        }
+    }
+}
+
+/// The slot of a local. A moved or released local is left `Void`.
+fn slot(locals: &mut [Value], local: crate::LocalId) -> Option<&mut Value> {
+    usize::try_from(local.0)
+        .ok()
+        .and_then(|i| locals.get_mut(i))
 }
 
 fn unary(op: UnOp, v: Value) -> Value {

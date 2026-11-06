@@ -18,7 +18,8 @@ use wasm_encoder::{
 /// The value type of an IR type; `None` for `void`.
 const fn val_type(ty: Ty) -> Option<ValType> {
     match ty {
-        Ty::I32 | Ty::Bool => Some(ValType::I32),
+        // A handle is an address in linear memory.
+        Ty::I32 | Ty::Bool | Ty::Owned | Ty::Borrowed => Some(ValType::I32),
         Ty::I64 => Some(ValType::I64),
         Ty::F32 => Some(ValType::F32),
         Ty::F64 => Some(ValType::F64),
@@ -176,6 +177,8 @@ impl FnEncoder {
                 let depth = self.leave_depth(*n);
                 self.emit(&I::Br(depth));
             }
+            // See `ExprKind::Alloc`: refused by the driver before this point.
+            Stmt::Release(_) => self.emit(&I::Unreachable),
             Stmt::Break => {
                 let depth = self.depth(Frame::Break);
                 self.emit(&I::Br(depth));
@@ -243,6 +246,11 @@ impl FnEncoder {
         match &e.kind {
             ExprKind::Const(c) => self.constant(*c, e.ty),
             ExprKind::Local(local) => self.emit(&I::LocalGet(local.0)),
+            // The driver refuses code that uses the heap until the debug
+            // allocator is linked in (decision 0001): never emitted today.
+            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {
+                self.emit(&I::Unreachable);
+            }
             ExprKind::Unary(op, operand) => self.unary(*op, operand, e.ty),
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
             ExprKind::Call(id, args) => {
@@ -331,7 +339,7 @@ impl FnEncoder {
         self.expr(lhs);
         self.expr(rhs);
         let instruction = match lhs.ty {
-            Ty::I32 | Ty::Bool => int32(op),
+            Ty::I32 | Ty::Bool | Ty::Owned | Ty::Borrowed => int32(op),
             Ty::I64 => int64(op),
             Ty::F32 => float32(op),
             Ty::F64 | Ty::Void => float64(op),
