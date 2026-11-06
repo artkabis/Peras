@@ -106,10 +106,46 @@ pub struct Function {
     pub param_count: u32,
     /// Parameters, then variables, each with its source name.
     pub locals: Vec<Local>,
-    /// The result type.
+    /// The result type; the first result when there are several.
     pub ret: Ty,
+    /// The results after the first: a function returning a structure returns its
+    /// fields. Such a function ends with [`Stmt::ReturnMany`], and is only called
+    /// by [`Stmt::CallMany`].
+    pub more: Vec<Ty>,
+    /// For an exported function that takes or returns structures: how
+    /// JavaScript sees them, as objects. `None` when every value is a scalar.
+    pub shape: Option<JsShape>,
     /// The body.
     pub body: Vec<Stmt>,
+}
+
+/// How JavaScript sees the parameters and result of an exported function.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JsShape {
+    /// Each parameter, by name.
+    pub params: Vec<(String, Shape)>,
+    /// The result; `None` for `void`.
+    pub result: Option<Shape>,
+}
+
+/// A value as JavaScript sees it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shape {
+    /// A scalar: one parameter or result of the WebAssembly function.
+    Value(Ty),
+    /// A structure: its name and its fields, whose scalars follow each other.
+    Object(String, Vec<(String, Shape)>),
+}
+
+impl Shape {
+    /// The scalars of the value, in order.
+    #[must_use]
+    pub fn scalars(&self) -> Vec<Ty> {
+        match self {
+            Self::Value(ty) => vec![*ty],
+            Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
+        }
+    }
 }
 
 impl Module {
@@ -123,6 +159,35 @@ impl Module {
 }
 
 impl Function {
+    /// Every result type, in order; empty for a `void` function.
+    #[must_use]
+    pub fn results(&self) -> Vec<Ty> {
+        if self.ret == Ty::Void {
+            Vec::new()
+        } else {
+            std::iter::once(self.ret)
+                .chain(self.more.iter().copied())
+                .collect()
+        }
+    }
+
+    /// Whether the function has several results, or calls a function that has.
+    #[must_use]
+    pub fn uses_many(&self) -> bool {
+        fn any(stmts: &[Stmt]) -> bool {
+            stmts.iter().any(|stmt| match stmt {
+                Stmt::ReturnMany(_) | Stmt::CallMany { .. } => true,
+                Stmt::If {
+                    then, otherwise, ..
+                } => any(then) || any(otherwise),
+                Stmt::Loop { body, step, .. } => any(body) || any(step),
+                Stmt::Block(body) => any(body),
+                _ => false,
+            })
+        }
+        !self.more.is_empty() || any(&self.body)
+    }
+
     /// Whether the function allocates, releases or passes heap blocks.
     #[must_use]
     pub fn uses_heap(&self) -> bool {
@@ -185,6 +250,17 @@ pub enum Stmt {
     Return(Option<Expr>),
     /// Releases the block an `owned` local holds; the local is empty afterwards.
     Release(LocalId),
+    /// Returns every result of a function with several, in order.
+    ReturnMany(Vec<Expr>),
+    /// Calls a function with several results and stores them, in order.
+    CallMany {
+        /// One local per result.
+        targets: Vec<LocalId>,
+        /// The function.
+        callee: FnId,
+        /// Its arguments.
+        args: Vec<Expr>,
+    },
 }
 
 /// An expression and its type.
@@ -360,12 +436,17 @@ impl fmt::Display for Module {
                 .map(|(i, l)| format!("%{i} {}: {}", l.name, l.ty.name()))
                 .collect();
             let export = if function.exported { "export " } else { "" };
+            let ret = if function.more.is_empty() {
+                function.ret.name().to_owned()
+            } else {
+                let all: Vec<&str> = function.results().iter().map(|t| t.name()).collect();
+                format!("({})", all.join(", "))
+            };
             writeln!(
                 f,
-                "{export}fn {}({}) -> {}",
+                "{export}fn {}({}) -> {ret}",
                 function.name,
                 params.join(", "),
-                function.ret.name()
             )?;
             for (i, local) in function.locals.iter().enumerate().skip(params.len()) {
                 writeln!(f, "  local %{i} {}: {}", local.name, local.ty.name())?;
@@ -418,6 +499,25 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
             }
             Stmt::Release(local) => {
                 let _ = writeln!(out, "{pad}release %{}", local.0);
+            }
+            Stmt::ReturnMany(values) => {
+                let values: Vec<String> = values.iter().map(expr).collect();
+                let _ = writeln!(out, "{pad}return {}", values.join(", "));
+            }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => {
+                let targets: Vec<String> = targets.iter().map(|t| format!("%{}", t.0)).collect();
+                let args: Vec<String> = args.iter().map(expr).collect();
+                let _ = writeln!(
+                    out,
+                    "{pad}{} = call #{} {}",
+                    targets.join(", "),
+                    callee.0,
+                    args.join(" ")
+                );
             }
             Stmt::Break => {
                 let _ = writeln!(out, "{pad}break");
@@ -476,3 +576,5 @@ fn expr(e: &Expr) -> String {
 mod opt_tests;
 #[cfg(test)]
 mod own_tests;
+#[cfg(test)]
+mod struct_tests;

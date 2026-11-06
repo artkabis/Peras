@@ -150,7 +150,7 @@ function size(path) {
 }
 
 // 4. Load every build, and a JavaScript reference written the same way.
-/** @typedef {{ fib(n: number): number, primes(limit: number): number, mandel(size: number): number, checksum(a: bigint, b: bigint): bigint }} Kernels */
+/** @typedef {{ fib(n: number): number, primes(limit: number): number, mandel(size: number): number, cmandel(size: number): number, checksum(a: bigint, b: bigint): bigint }} Kernels */
 
 /**
  * Instantiates a module from the direct backend, which needs no imports.
@@ -220,6 +220,25 @@ const reference = {
     }
     return inside;
   },
+  // The same set with complex numbers, in the same order of operations.
+  cmandel(size) {
+    let inside = 0;
+    const scale = 3.0 / size;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const c = { re: px * scale - 2.0, im: py * scale - 1.5 };
+        let z = { re: 0.0, im: 0.0 };
+        let step = 0;
+        while (step < 64 && z.re * z.re + z.im * z.im <= 4.0) {
+          const square = { re: z.re * z.re - z.im * z.im, im: 2.0 * z.re * z.im };
+          z = { re: square.re + c.re, im: square.im + c.im };
+          step++;
+        }
+        if (step === 64) inside++;
+      }
+    }
+    return inside;
+  },
   // JavaScript has no 64-bit integers: BigInt, wrapped to 64 bits, is the only way.
   checksum(a, b) {
     let h = 1469598103934665603n;
@@ -262,6 +281,13 @@ const cases = [
         (k) => k.mandel(n),
       ]),
   ),
+  ...[1, 10, 40, 100].map(
+    (n) =>
+      /** @type {[string, (k: Kernels) => unknown]} */ ([
+        `cmandel(${String(n)})`,
+        (k) => k.cmandel(n),
+      ]),
+  ),
   .../** @type {[bigint, bigint][]} */ ([
     [0n, 1n],
     [1n, 7n],
@@ -297,6 +323,7 @@ if (check) {
     ["fib(32)", (k) => k.fib(32)],
     ["primes(1 000 000)", (k) => k.primes(1_000_000)],
     ["mandel(600)", (k) => k.mandel(600)],
+    ["cmandel(600)", (k) => k.cmandel(600)],
     ["checksum(5 000 000, 7)", (k) => k.checksum(5_000_000n, 7n)],
   ];
   /** @type {Map<string, number[]>} */

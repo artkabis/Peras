@@ -1,0 +1,20 @@
+{
+  "name": "peras-website",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The Peras documentation site, built from docs/ with Vite.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.2.0",
+    "markdown-it": "15.0.3",
+    "minisearch": "7.2.0",
+    "shiki": "4.6.0",
+    "vite": "^8.3.5"
+  }
+}

@@ -481,3 +481,15 @@ diag-error = error
 diag-why = why
 diag-fix = fix
 diag-details = details
+
+## Runtime: memory bugs caught by the debug allocator
+# Filled in by the generated JavaScript: { $alloc } and { $release } are sites,
+# such as `f (alloc 1)`; { $count } and { $size } are numbers.
+
+runtime-out-of-memory = out of memory: the block allocated at { $alloc } does not fit
+runtime-too-large = { $alloc } asks for { $size } bytes at once, more than 1 GiB
+runtime-overflow = bytes were written past the end of the block allocated at { $alloc }; seen when { $release } released it
+runtime-invalid-release = { $release } releases something that is not a live block
+runtime-double-release = the block allocated at { $alloc } is released a second time, at { $release }
+runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
+runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }

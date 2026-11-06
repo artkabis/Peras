@@ -43,9 +43,9 @@ use crate::{BinOp, Const, Expr, ExprKind, FnId, Function, Local, LocalId, Module
 pub fn optimize(module: &mut Module) {
     for (index, function) in module.functions.iter_mut().enumerate() {
         let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
-        // No pass is proven yet to keep releases exact: code that uses the heap
-        // is left as written, and the release verifier checks it as such.
-        if function.uses_heap() {
+        // No pass is proven yet to keep releases exact, nor written for several
+        // results: such code is left as written, and the verifiers check it.
+        if function.uses_heap() || function.uses_many() {
             continue;
         }
         function.body = branchless_abs(std::mem::take(&mut function.body));

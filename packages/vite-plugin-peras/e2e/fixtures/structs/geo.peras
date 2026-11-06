@@ -1,0 +1,47 @@
+export struct Vec2 {
+  x: f64;
+  y: f64;
+}
+
+export struct Segment {
+  from: Vec2;
+  to: Vec2;
+  closed: bool;
+}
+
+fn add(a: Vec2, b: Vec2): Vec2 {
+  return Vec2(a.x + b.x, a.y + b.y);
+}
+
+fn scale(v: Vec2, k: f64): Vec2 {
+  return Vec2(v.x * k, v.y * k);
+}
+
+export fn middle(s: Segment): Vec2 {
+  return scale(add(s.from, s.to), 0.5);
+}
+
+export fn flip(s: Segment): Segment {
+  let t = s;
+  t.from = s.to;
+  t.to = s.from;
+  t.closed = !s.closed;
+  return t;
+}
+
+export fn swapped(x: f64, y: f64): f64 {
+  let p = Vec2(x, y);
+  p = Vec2(p.y, p.x);
+  p.x += 10.0;
+  return p.x * 100.0 + p.y;
+}
+
+export fn walk(n: i32): f64 {
+  let p = Vec2(0.0, 0.0);
+  let i = 0;
+  while (add(p, Vec2(1.0, 0.0)).x <= n.toF64()) {
+    p = add(p, Vec2(1.0, 2.0));
+    i++;
+  }
+  return p.y + i.toF64();
+}

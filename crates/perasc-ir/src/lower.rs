@@ -1,9 +1,12 @@
 //! Lowering: from a checked syntax tree to the IR.
 //!
 //! The checker has already accepted the module, so names resolve and types match;
-//! this pass only reshapes. What the backends cannot compile yet (structures,
-//! arrays, strings, options, `for…of`, `inout` and the other constructs listed in
-//! `E0900`) is reported, every occurrence at once, instead of being miscompiled.
+//! this pass only reshapes. Structures become their scalars (see [`values`]).
+//! What the backends cannot compile yet (arrays, strings, options, `for…of`,
+//! `inout` and the other constructs listed in `E0900`) is reported, every
+//! occurrence at once, instead of being miscompiled.
+
+mod values;
 
 use std::collections::HashMap;
 
@@ -16,7 +19,8 @@ use perasc_syntax::ast::{
 };
 
 use crate::{
-    BinOp, Const, Expr, ExprKind, FnId, Function, Local, LocalId, MathOp, Module, Stmt, Ty, UnOp,
+    BinOp, Const, Expr, ExprKind, FnId, Function, JsShape, Local, LocalId, MathOp, Module, Stmt,
+    Ty, UnOp,
 };
 
 /// Lowers a checked module to the IR, or reports what code generation does not support yet.
@@ -29,16 +33,29 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         ast,
         analysis,
         fns: HashMap::new(),
+        results: HashMap::new(),
         diagnostics: Vec::new(),
     };
     let mut index = 0u32;
     for item in &ast.items {
         match &item.kind {
             ItemKind::Fn(decl) => {
-                lowering.fns.insert(decl.name.symbol, FnId(index));
+                let id = FnId(index);
+                lowering.fns.insert(decl.name.symbol, id);
+                // Its results, for its callers; a type not compiled yet is
+                // reported once, with the function itself.
+                let results = decl
+                    .ret
+                    .as_ref()
+                    .and_then(|t| lowering.resolve(t).ok())
+                    .and_then(|t| lowering.leaves(&t).ok())
+                    .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
+                    .unwrap_or_default();
+                lowering.results.insert(id, results);
                 index += 1;
             }
-            ItemKind::Struct(decl) => lowering.unsupported(decl.name.span, "struct"),
+            // A structure is a type: its uses are lowered where they appear.
+            ItemKind::Struct(_) => {}
             ItemKind::Global(local) => lowering.unsupported(local.name.span, "global"),
         }
     }
@@ -63,33 +80,69 @@ struct Lowering<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
     fns: HashMap<Symbol, FnId>,
+    /// The scalar results of each function: several for a structure.
+    results: HashMap<FnId, Vec<Ty>>,
     diagnostics: Vec<Diagnostic>,
+}
+
+/// What a name stands for.
+#[derive(Debug, Clone)]
+enum Binding {
+    /// A scalar local.
+    Scalar(LocalId),
+    /// A structure: one local per scalar, in order.
+    Struct(Vec<LocalId>),
 }
 
 /// The state of one function being lowered.
 struct FnState {
     locals: Vec<Local>,
-    scopes: Vec<HashMap<Symbol, LocalId>>,
+    scopes: Vec<HashMap<Symbol, Binding>>,
+    /// Statements that must run before the statement being lowered: calls
+    /// returning several results, and what keeps the order of evaluation.
+    pre: Vec<Stmt>,
 }
 
 impl FnState {
     fn add(&mut self, symbol: Symbol, name: &str, ty: Ty) -> LocalId {
+        let id = self.local(name, ty);
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(symbol, Binding::Scalar(id));
+        }
+        id
+    }
+
+    /// A structure's locals, named `p_x`, `p_inner_y`.
+    fn add_struct(&mut self, symbol: Symbol, name: &str, leaves: &[(String, Ty)]) -> Vec<LocalId> {
+        let ids: Vec<LocalId> = leaves
+            .iter()
+            .map(|(path, ty)| self.local(&format!("{name}_{path}"), *ty))
+            .collect();
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(symbol, Binding::Struct(ids.clone()));
+        }
+        ids
+    }
+
+    fn local(&mut self, name: &str, ty: Ty) -> LocalId {
         let id = LocalId(u32::try_from(self.locals.len()).unwrap_or(u32::MAX));
         self.locals.push(Local {
             name: name.to_owned(),
             ty,
         });
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(symbol, id);
-        }
         id
     }
 
-    fn lookup(&self, symbol: Symbol) -> Option<LocalId> {
+    fn lookup(&self, symbol: Symbol) -> Option<Binding> {
         self.scopes
             .iter()
             .rev()
-            .find_map(|s| s.get(&symbol).copied())
+            .find_map(|s| s.get(&symbol).cloned())
+    }
+
+    /// Moves the statements waiting in `pre` to `out`.
+    fn flush(&mut self, out: &mut Vec<Stmt>) {
+        out.append(&mut self.pre);
     }
 }
 
@@ -162,29 +215,75 @@ impl Lowering<'_> {
         let mut state = FnState {
             locals: Vec::new(),
             scopes: vec![HashMap::new()],
+            pre: Vec::new(),
         };
         let errors_before = self.diagnostics.len();
+        let mut shapes = Vec::new();
+        let mut has_struct = false;
         for param in &decl.params {
             if param.convention == Convention::Inout {
                 self.unsupported(param.name.span, "inout");
             }
-            let ty = self.written_type(&param.ty);
-            state.add(param.name.symbol, self.ast.name(param.name.symbol), ty);
+            let name = self.ast.name(param.name.symbol);
+            let Some(ty) = self.typed(&param.ty) else {
+                continue;
+            };
+            has_struct |= matches!(ty, CheckTy::Struct(..));
+            shapes.push((name.to_owned(), self.shape(&ty)));
+            match self.leaves(&ty) {
+                Ok(leaves) if matches!(ty, CheckTy::Struct(..)) => {
+                    state.add_struct(param.name.symbol, name, &leaves);
+                }
+                Ok(leaves) => {
+                    let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
+                    state.add(param.name.symbol, name, leaf);
+                }
+                Err(feature) => self.unsupported(param.ty.span, feature),
+            }
         }
-        let ret = decl.ret.as_ref().map_or(Ty::Void, |t| self.written_type(t));
+        let param_count = u32::try_from(state.locals.len()).unwrap_or(u32::MAX);
+        let ret_ty = decl.ret.as_ref().and_then(|t| self.typed(t));
+        has_struct |= matches!(ret_ty, Some(CheckTy::Struct(..)));
+        let results: Vec<Ty> = match &ret_ty {
+            Some(ty) if *ty != CheckTy::Void => match self.leaves(ty) {
+                Ok(leaves) => leaves.into_iter().map(|(_, t)| t).collect(),
+                Err(_) => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
         let mut body = Vec::new();
         // A signature already reported: its body would only repeat the same cause
-        // (`p.x` for an unsupported `p: Point`), so it is not lowered.
+        // (`xs.length` for an unsupported `xs: Array<i32>`), so it is not lowered.
         if self.diagnostics.len() == errors_before {
             self.block(&mut state, &decl.body.stmts, &mut body);
         }
+        let shape = (decl.exported && has_struct).then(|| JsShape {
+            params: shapes,
+            result: ret_ty
+                .filter(|t| *t != CheckTy::Void)
+                .map(|t| self.shape(&t)),
+        });
         Function {
             name: self.ast.name(decl.name.symbol).to_owned(),
             exported: decl.exported,
-            param_count: u32::try_from(decl.params.len()).unwrap_or(u32::MAX),
+            param_count,
             locals: state.locals,
-            ret,
+            ret: results.first().copied().unwrap_or(Ty::Void),
+            more: results.get(1..).map(<[Ty]>::to_vec).unwrap_or_default(),
+            shape,
             body,
+        }
+    }
+
+    /// The checker type of a type written in source; what is not compiled yet
+    /// is reported.
+    fn typed(&mut self, ty: &Type) -> Option<CheckTy> {
+        match self.resolve(ty) {
+            Ok(resolved) => Some(resolved),
+            Err(feature) => {
+                self.unsupported(ty.span, feature);
+                None
+            }
         }
     }
 
@@ -205,40 +304,34 @@ impl Lowering<'_> {
 
     fn stmt(&mut self, state: &mut FnState, stmt: &AstStmt, out: &mut Vec<Stmt>) {
         match &stmt.kind {
-            StmtKind::Local(local) => {
-                let ty = match (&local.ty, local.init) {
-                    (Some(t), _) => self.written_type(t),
-                    (None, Some(init)) => self.type_of(init),
-                    (None, None) => Ty::I32,
-                };
-                let value = match local.init {
-                    Some(init) => self.expr(state, init),
-                    None => zero(ty),
-                };
-                let id = state.add(local.name.symbol, self.ast.name(local.name.symbol), ty);
-                out.push(Stmt::Set(id, value));
-            }
+            StmtKind::Local(local) => self.local(state, local, out),
             StmtKind::Return(value) => {
-                let value = value.map(|v| self.expr(state, v));
-                out.push(Stmt::Return(value));
+                let values = value.map(|v| self.value(state, v)).unwrap_or_default();
+                state.flush(out);
+                out.push(match values.len() {
+                    0 => Stmt::Return(None),
+                    1 => Stmt::Return(values.into_iter().next()),
+                    _ => Stmt::ReturnMany(values),
+                });
             }
             StmtKind::Expr(e) => {
-                let e = self.expr(state, *e);
-                out.push(Stmt::Expr(e));
+                let values = self.value(state, *e);
+                state.flush(out);
+                // A structure's scalars are kept only for their effects.
+                for value in values {
+                    if !matches!(value.kind, ExprKind::Local(_) | ExprKind::Const(_)) {
+                        out.push(Stmt::Expr(value));
+                    }
+                }
             }
             StmtKind::Assign { target, op, value } => {
-                let Some(local) = self.target(state, *target) else {
-                    return;
-                };
-                let value = self.expr(state, *value);
-                let value = match assign_op(*op) {
-                    None => value,
-                    Some(op) => binary(op, local_expr(state, local), value),
-                };
-                out.push(Stmt::Set(local, value));
+                self.assign_stmt(state, *target, *op, *value, out);
             }
             StmtKind::Step { target, op } => {
-                let Some(local) = self.target(state, *target) else {
+                let Some(locals) = self.place(state, *target) else {
+                    return;
+                };
+                let Some(&local) = locals.first() else {
                     return;
                 };
                 let current = local_expr(state, local);
@@ -257,6 +350,7 @@ impl Lowering<'_> {
                 otherwise,
             } => {
                 let cond = self.expr(state, *cond);
+                state.flush(out);
                 let then = self.body(state, then);
                 let otherwise = otherwise
                     .as_ref()
@@ -269,13 +363,9 @@ impl Lowering<'_> {
                 });
             }
             StmtKind::While { cond, body } => {
-                let cond = self.loop_condition(state, *cond);
+                let (cond, before) = self.loop_condition(state, *cond);
                 let body = self.body(state, body);
-                out.push(Stmt::Loop {
-                    cond,
-                    body,
-                    step: Vec::new(),
-                });
+                out.push(Self::loop_with(cond, before, body, Vec::new()));
             }
             StmtKind::For {
                 init,
@@ -287,14 +377,17 @@ impl Lowering<'_> {
                 if let Some(init) = init {
                     self.stmt(state, init, out);
                 }
-                let cond = cond.and_then(|c| self.loop_condition(state, c));
+                let (cond, before) = match cond {
+                    Some(c) => self.loop_condition(state, *c),
+                    None => (None, Vec::new()),
+                };
                 let mut step = Vec::new();
                 if let Some(update) = update {
                     self.stmt(state, update, &mut step);
                 }
                 let body = self.body(state, body);
                 state.scopes.pop();
-                out.push(Stmt::Loop { cond, body, step });
+                out.push(Self::loop_with(cond, before, body, step));
             }
             StmtKind::ForOf { name, .. } => self.unsupported(name.span, "for-of"),
             StmtKind::Break => out.push(Stmt::Break),
@@ -303,18 +396,119 @@ impl Lowering<'_> {
         }
     }
 
-    /// A loop condition; `true` means no condition.
-    fn loop_condition(&mut self, state: &mut FnState, cond: ExprId) -> Option<Expr> {
-        let cond = self.expr(state, cond);
-        (cond.kind != ExprKind::Const(Const::Bool(true))).then_some(cond)
+    /// `let name = value;`, a scalar or a structure.
+    fn local(
+        &mut self,
+        state: &mut FnState,
+        local: &perasc_syntax::ast::Local,
+        out: &mut Vec<Stmt>,
+    ) {
+        let name = self.ast.name(local.name.symbol);
+        let ty = match (&local.ty, local.init) {
+            (Some(t), _) => self.typed(t),
+            (None, Some(init)) => self.check_type(init).cloned(),
+            (None, None) => None,
+        };
+        if let Some(ty @ CheckTy::Struct(..)) = ty {
+            let Ok(leaves) = self.leaves(&ty) else {
+                self.unsupported(local.name.span, "struct");
+                return;
+            };
+            let values = match local.init {
+                Some(init) => self.value(state, init),
+                None => leaves.iter().map(|(_, t)| zero(*t)).collect(),
+            };
+            state.flush(out);
+            let ids = state.add_struct(local.name.symbol, name, &leaves);
+            Self::assign(state, &ids, values, out);
+            return;
+        }
+        let ty = match (&local.ty, local.init) {
+            (Some(t), _) => self.written_type(t),
+            (None, Some(init)) => self.type_of(init),
+            (None, None) => Ty::I32,
+        };
+        let value = match local.init {
+            Some(init) => self.expr(state, init),
+            None => zero(ty),
+        };
+        state.flush(out);
+        let id = state.add(local.name.symbol, name, ty);
+        out.push(Stmt::Set(id, value));
     }
 
-    /// The local an assignment or increment writes; only variables for now.
-    fn target(&mut self, state: &FnState, target: ExprId) -> Option<LocalId> {
+    /// `target = value`, or `target op= value`, on a variable or a field.
+    fn assign_stmt(
+        &mut self,
+        state: &mut FnState,
+        target: ExprId,
+        op: AssignOp,
+        value: ExprId,
+        out: &mut Vec<Stmt>,
+    ) {
+        let Some(locals) = self.place(state, target) else {
+            return;
+        };
+        let values = self.value(state, value);
+        state.flush(out);
+        match (assign_op(op), locals.as_slice(), values.as_slice()) {
+            (Some(op), [local], [value]) => {
+                let value = binary(op, local_expr(state, *local), value.clone());
+                out.push(Stmt::Set(*local, value));
+            }
+            _ => Self::assign(state, &locals, values, out),
+        }
+    }
+
+    /// A loop condition, `None` for `true`, and the statements it needs first.
+    fn loop_condition(&mut self, state: &mut FnState, cond: ExprId) -> (Option<Expr>, Vec<Stmt>) {
+        let cond = self.expr(state, cond);
+        let before = std::mem::take(&mut state.pre);
+        let cond = (cond.kind != ExprKind::Const(Const::Bool(true))).then_some(cond);
+        (cond, before)
+    }
+
+    /// A loop whose condition needs statements first runs them at every turn:
+    /// `loop { before; if (!cond) break; body } step`.
+    fn loop_with(cond: Option<Expr>, before: Vec<Stmt>, body: Vec<Stmt>, step: Vec<Stmt>) -> Stmt {
+        if before.is_empty() {
+            return Stmt::Loop { cond, body, step };
+        }
+        let mut turn = before;
+        if let Some(cond) = cond {
+            turn.push(Stmt::If {
+                cond: Expr {
+                    kind: ExprKind::Unary(UnOp::Not, Box::new(cond)),
+                    ty: Ty::Bool,
+                },
+                then: vec![Stmt::Break],
+                otherwise: Vec::new(),
+            });
+        }
+        turn.extend(body);
+        Stmt::Loop {
+            cond: None,
+            body: turn,
+            step,
+        }
+    }
+
+    /// The locals an assignment or increment writes: a variable, or a field of
+    /// a structure variable, as many scalars as it has.
+    fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
         let expr = self.ast.expr(target);
         match &expr.kind {
-            AstExpr::Name(symbol) => state.lookup(*symbol),
-            AstExpr::Paren(inner) => self.target(state, *inner),
+            AstExpr::Name(symbol) => match state.lookup(*symbol)? {
+                Binding::Scalar(local) => Some(vec![local]),
+                Binding::Struct(locals) => Some(locals),
+            },
+            AstExpr::Paren(inner) => self.place(state, *inner),
+            AstExpr::Field { base, name } => {
+                let locals = self.place(state, *base)?;
+                let base_ty = self.check_type(*base).cloned()?;
+                let (offset, len, _) = self.field(&base_ty, self.ast.name(name.symbol))?;
+                Some(locals.into_iter().skip(offset).take(len).collect())
+            }
             _ => {
                 self.unsupported(expr.span, "place");
                 None
@@ -323,6 +517,12 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
+        if self.is_struct(id) {
+            // Structures go through `value`: never a single scalar.
+            let span = self.ast.expr(id).span;
+            self.unsupported(span, "struct");
+            return zero(Ty::Void);
+        }
         let ty = self.type_of(id);
         let ast_expr = self.ast.expr(id);
         let span = ast_expr.span;
@@ -331,7 +531,7 @@ impl Lowering<'_> {
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => {
-                let Some(local) = state.lookup(*symbol) else {
+                let Some(Binding::Scalar(local)) = state.lookup(*symbol) else {
                     // Not a local: a function used as a value, or a module-level constant.
                     let feature = if self.fns.contains_key(symbol) {
                         "function-value"
@@ -362,7 +562,14 @@ impl Lowering<'_> {
             }
             AstExpr::Binary { op, lhs, rhs } => {
                 let lhs = self.expr(state, *lhs);
+                if matches!(op, BinaryOp::And | BinaryOp::Or) {
+                    return self.short_circuit(state, *op, lhs, *rhs);
+                }
+                let mark = state.pre.len();
                 let rhs = self.expr(state, *rhs);
+                let mut operands = [lhs];
+                state.keep_before(mark, &mut operands);
+                let [lhs] = operands;
                 if *op == BinaryOp::Rem && lhs.ty.is_float() {
                     self.unsupported(span, "float-remainder");
                 }
@@ -371,12 +578,57 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args } => return self.call(state, *callee, args, ty, span),
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
-            AstExpr::Field { .. } => return self.not_yet(span, "field", ty),
+            AstExpr::Field { base, name } => {
+                if !self.is_struct(*base) {
+                    return self.not_yet(span, "field", ty);
+                }
+                let fields = self.value(state, *base);
+                let base_ty = self.check_type(*base).cloned();
+                let picked = base_ty.and_then(|t| self.field(&t, self.ast.name(name.symbol)));
+                let Some((offset, len, _)) = picked else {
+                    return zero(ty);
+                };
+                return Self::pick(state, fields, offset, len)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty));
+            }
             AstExpr::Index { .. } => return self.not_yet(span, "index", ty),
             AstExpr::Try(_) => return self.not_yet(span, "try", ty),
             AstExpr::Error => return zero(ty),
         };
         Expr { kind, ty }
+    }
+
+    /// `a && b`, `a || b`. When `b` needs statements first, they run only when
+    /// `b` would: `t = a; if (t) { …; t = b }` for `&&`.
+    fn short_circuit(&mut self, state: &mut FnState, op: BinaryOp, lhs: Expr, rhs: ExprId) -> Expr {
+        let outer = std::mem::take(&mut state.pre);
+        let rhs = self.expr(state, rhs);
+        let inner = std::mem::replace(&mut state.pre, outer);
+        let op = bin_op(op);
+        if inner.is_empty() {
+            return binary(op, lhs, rhs);
+        }
+        let t = state.temp(Ty::Bool);
+        state.pre.push(Stmt::Set(t, lhs));
+        let t_expr = local_expr(state, t);
+        let cond = if op == BinOp::And {
+            t_expr.clone()
+        } else {
+            Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(t_expr.clone())),
+                ty: Ty::Bool,
+            }
+        };
+        let mut then = inner;
+        then.push(Stmt::Set(t, rhs));
+        state.pre.push(Stmt::If {
+            cond,
+            then,
+            otherwise: Vec::new(),
+        });
+        t_expr
     }
 
     fn not_yet(&mut self, span: Span, feature: &'static str, ty: Ty) -> Expr {
@@ -403,11 +655,11 @@ impl Lowering<'_> {
                     };
                     return self.not_yet(span, feature, ty);
                 };
-                let args = args.iter().map(|&a| self.expr(state, a)).collect();
-                Expr {
-                    kind: ExprKind::Call(id, args),
-                    ty,
-                }
+                let args = self.arguments(state, args);
+                self.call_results(state, id, args)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty))
             }
             AstExpr::Field { base, name } => {
                 let receiver = self.expr(state, *base);
@@ -454,7 +706,11 @@ impl Lowering<'_> {
             _ => None,
         };
         if let (Some(op), Some(&arg)) = (wrapping, args.first()) {
+            let mark = state.pre.len();
             let arg = self.expr(state, arg);
+            let mut operands = [receiver];
+            state.keep_before(mark, &mut operands);
+            let [receiver] = operands;
             return binary(op, receiver, arg);
         }
         self.not_yet(span, "method", ty)

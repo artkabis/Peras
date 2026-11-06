@@ -56,6 +56,18 @@ fn map_exprs(stmts: Vec<Stmt>, f: &mut impl FnMut(Expr) -> Expr) -> Vec<Stmt> {
             Stmt::Set(l, e) => Stmt::Set(l, map_expr(e, f)),
             Stmt::Expr(e) => Stmt::Expr(map_expr(e, f)),
             Stmt::Return(e) => Stmt::Return(e.map(|e| map_expr(e, f))),
+            Stmt::ReturnMany(values) => {
+                Stmt::ReturnMany(values.into_iter().map(|e| map_expr(e, f)).collect())
+            }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => Stmt::CallMany {
+                targets,
+                callee,
+                args: args.into_iter().map(|e| map_expr(e, f)).collect(),
+            },
             Stmt::If {
                 cond,
                 then,
@@ -179,6 +191,11 @@ fn count_sets(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
     for stmt in stmts {
         match stmt {
             Stmt::Set(LocalId(l), _) => *out.entry(*l).or_default() += 1,
+            Stmt::CallMany { targets, .. } => {
+                for LocalId(l) in targets {
+                    *out.entry(*l).or_default() += 1;
+                }
+            }
             Stmt::If {
                 then, otherwise, ..
             } => {
@@ -199,6 +216,11 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
     for stmt in stmts {
         match stmt {
             Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => count_expr_reads(e, out),
+            Stmt::ReturnMany(values) | Stmt::CallMany { args: values, .. } => {
+                for e in values {
+                    count_expr_reads(e, out);
+                }
+            }
             Stmt::If {
                 cond,
                 then,

@@ -267,6 +267,8 @@ fn variables_read_before_assignment_start_at_zero_again() {
             },
         ],
         ret: Ty::I32,
+        more: Vec::new(),
+        shape: None,
         body: vec![
             Stmt::If {
                 cond: bin(BinOp::Lt, get(0), int(1), Ty::Bool),

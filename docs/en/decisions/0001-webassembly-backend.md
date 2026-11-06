@@ -96,3 +96,10 @@ Fuzzing, planned for day 10 of the kickoff plan, covers both backends.
   - every copy of those programs with one `release` removed or doubled is refused.
 
   Disabling any of the verifier's ten checks makes a test fail. The optimizer leaves functions that use the heap as written until a pass is proven to keep releases exact, and the driver refuses heap IR until the debug allocator is linked in. Lowering produces none yet: precondition 3, the differential test on live allocations, comes with the first type that allocates.
+
+- **2026-11-06, the debug allocator linked into generated modules.** A module that uses the heap imports `alloc(size, site)` and `release(ptr, site)` from `peras_rt`. Every allocation and release gets a site number, mapped to a name such as `work (alloc 1)`. The loader `perasc` writes embeds the allocator, instantiates it first and links the module to it. A memory bug throws a `PerasMemoryError` whose message, in the language of `--lang`, names both sites, for example "the block allocated at twice (alloc 1) is released a second time, at twice (release 2)". An `__perasHeap` export counts live blocks and checks leaks. The Vite plugin keeps the loader's imports, so it does the same. Checked three ways, on IR written by hand since no construct allocates yet:
+  - linked and run in `wasmi`: 1,000 allocations and releases with nothing left;
+  - a double release and a leak are caught with their sites;
+  - the same modules imported in Node by the end-to-end tests, in English and French.
+
+  The Rust backend still refuses heap IR: it has no allocator.

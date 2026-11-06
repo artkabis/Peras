@@ -48,7 +48,11 @@ fn negative_literals_are_folded_including_the_smallest() {
 #[test]
 fn every_unsupported_construct_is_reported_with_its_name() {
     for (source, feature) in [
-        ("struct P { x: f64; }", "struct"),
+        // A structure is compiled; one holding a type that is not, is reported.
+        (
+            "struct P { xs: Array<i32>; }\nfn f(_p: P): i32 { return 0; }",
+            "array",
+        ),
         ("const LIMIT = 3;", "global"),
         ("fn f(x: inout i32): void { x = x + 1; }", "inout"),
         ("fn f(xs: Array<i32>): i32 { return xs.length; }", "array"),

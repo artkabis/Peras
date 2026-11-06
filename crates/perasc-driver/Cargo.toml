@@ -15,7 +15,12 @@ perasc-codegen-rs.workspace = true
 perasc-codegen-wasm.workspace = true
 perasc-diag.workspace = true
 perasc-ir.workspace = true
+perasc-runtime.workspace = true
 perasc-syntax.workspace = true
+
+[dev-dependencies]
+wasmi.workspace = true
+wasmparser.workspace = true
 
 [lints]
 workspace = true
