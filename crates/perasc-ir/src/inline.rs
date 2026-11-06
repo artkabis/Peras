@@ -36,7 +36,7 @@ const MAX_GROWTH: usize = 8;
 /// Replaces the self calls of a function by copies of its body.
 pub fn unroll_recursion(function: &mut Function, id: FnId) {
     let ret = function.ret;
-    if ret == Ty::Void {
+    if ret == Ty::Void || function.uses_many() {
         return;
     }
     let template = Template {
@@ -170,6 +170,15 @@ impl Copy {
                     out.push(Stmt::Set(shift(*local, self.base), self.expr(value)));
                 }
                 Stmt::Expr(e) => out.push(Stmt::Expr(self.expr(e))),
+                Stmt::CallMany {
+                    targets,
+                    callee,
+                    args,
+                } => out.push(Stmt::CallMany {
+                    targets: targets.iter().map(|t| shift(*t, self.base)).collect(),
+                    callee: *callee,
+                    args: args.iter().map(|a| self.expr(a)).collect(),
+                }),
                 Stmt::If {
                     cond,
                     then,
@@ -191,7 +200,11 @@ impl Copy {
                     }
                     out.push(Stmt::Leave(blocks));
                 }
-                Stmt::Leave(_) | Stmt::Break | Stmt::Continue => out.push(stmt.clone()),
+                // `ReturnMany` never occurs: `unroll_recursion` leaves functions
+                // with several results alone.
+                Stmt::Leave(_) | Stmt::Break | Stmt::Continue | Stmt::ReturnMany(_) => {
+                    out.push(stmt.clone());
+                }
                 Stmt::Release(local) => out.push(Stmt::Release(shift(*local, self.base))),
             }
         }
@@ -309,6 +322,9 @@ fn size(stmts: &[Stmt]) -> usize {
         .iter()
         .map(|stmt| match stmt {
             Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => 1 + expr_size(e),
+            Stmt::ReturnMany(values) | Stmt::CallMany { args: values, .. } => {
+                1 + values.iter().map(expr_size).sum::<usize>()
+            }
             Stmt::If {
                 cond,
                 then,

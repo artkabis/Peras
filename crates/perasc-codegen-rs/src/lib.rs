@@ -99,10 +99,11 @@ impl<'a> Emitter<'a> {
             let _ = writeln!(out, "#[wasm_bindgen(js_name = \"{}\")]", function.name);
             out.push_str("pub ");
         }
-        let ret = if function.ret == Ty::Void {
-            String::new()
-        } else {
-            format!(" -> {}", rust_type(function.ret))
+        let results: Vec<&str> = function.results().into_iter().map(rust_type).collect();
+        let ret = match results.as_slice() {
+            [] => String::new(),
+            [one] => format!(" -> {one}"),
+            many => format!(" -> ({})", many.join(", ")),
         };
         let _ = writeln!(out, "fn p_{}({}){ret} {{", function.name, params.join(", "));
         for (i, local) in function.locals.iter().enumerate().skip(params.len()) {
@@ -218,7 +219,38 @@ impl<'a> Emitter<'a> {
                 let value = self.expr(value);
                 let _ = writeln!(out, "{pad}return {value};");
             }
+            Stmt::ReturnMany(values) => {
+                let values: Vec<String> = values.iter().map(|v| self.expr(v)).collect();
+                let _ = writeln!(out, "{pad}return ({});", values.join(", "));
+            }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => {
+                let line = self.call_many(targets, *callee, args);
+                let _ = writeln!(out, "{pad}{line}");
+            }
         }
+    }
+
+    /// `(a, b) = p_f(args);`: a call with several results, into its targets.
+    fn call_many(
+        &self,
+        targets: &[perasc_ir::LocalId],
+        callee: perasc_ir::FnId,
+        args: &[Expr],
+    ) -> String {
+        let targets: Vec<String> = targets
+            .iter()
+            .map(|t| self.var(usize::try_from(t.0).unwrap_or(0)))
+            .collect();
+        let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+        let name = usize::try_from(callee.0)
+            .ok()
+            .and_then(|i| self.module.functions.get(i))
+            .map_or("missing", |f| f.name.as_str());
+        format!("({}) = p_{name}({});", targets.join(", "), args.join(", "))
     }
 
     /// An expression, fully parenthesized.

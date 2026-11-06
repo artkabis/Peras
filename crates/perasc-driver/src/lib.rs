@@ -216,6 +216,17 @@ pub fn build_rust(
             "the IR uses the heap, which the Rust backend does not compile yet".to_owned(),
         ]));
     }
+    // wasm-bindgen cannot export several results: only inner functions return them.
+    if let Some(f) = module
+        .functions
+        .iter()
+        .find(|f| f.exported && !f.more.is_empty())
+    {
+        return Err(ToolError::Internal(vec![format!(
+            "the Rust backend cannot export {}, which returns a structure",
+            f.name
+        )]));
+    }
     for (path, contents) in perasc_codegen_rs::crate_files(&module, name) {
         let file = crate_dir.join(path);
         if let Some(parent) = file.parent() {

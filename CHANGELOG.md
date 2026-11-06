@@ -4,6 +4,22 @@ _Version française : [CHANGELOG.fr.md](CHANGELOG.fr.md)_
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). Before 1.0, any release may break the language.
 
+## Unreleased
+
+### Language and compiler
+
+- **Structures** compile, as values: each one is replaced by its scalar fields, nested structures flattened, so it never touches the heap.
+  - A structure parameter becomes one parameter per field.
+  - A function returning a structure returns one WebAssembly result per field, and a tuple in the Rust backend.
+  - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
+  - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
+  - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- The IR verifies ownership: `owned` and `borrowed` handles, explicit releases, and a verifier proving that every block is released exactly once on every path. The debug allocator is linked into modules that use the heap; a memory bug throws a `PerasMemoryError` naming both sites, in English or French. Nothing in the language allocates yet.
+
+### Benchmark
+
+- `cmandel` computes the Mandelbrot set with `struct Complex`. Both backends agree with the JavaScript reference. The direct backend takes 15 ms against 13 ms for plain `f64` code and for Rust; JavaScript, which allocates an object per complex number, takes 49 ms. The optimizer does not touch functions with several results yet.
+
 ## 0.0.1 — 2026-11-04
 
 The end of phase 0 of the [kickoff plan](docs/en/kickoff-plan.md): a `.peras` function compiles to WebAssembly and runs in the browser through Vite, and every error shows an excerpt, a cause and a fix, in English and French.

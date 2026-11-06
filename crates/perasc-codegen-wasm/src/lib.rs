@@ -9,7 +9,9 @@
 
 use std::fmt::Write as _;
 
-use perasc_ir::{BinOp, Const, Expr, ExprKind, Function, MathOp, Module, Stmt, Ty, UnOp};
+use perasc_ir::{
+    BinOp, Const, Expr, ExprKind, Function, JsShape, MathOp, Module, Shape, Stmt, Ty, UnOp,
+};
 use wasm_encoder::{
     BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function as WasmFunction,
     FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I, TypeSection, ValType,
@@ -72,7 +74,11 @@ pub fn compile_module(module: &Module) -> Compiled {
     for (index, function) in module.functions.iter().enumerate() {
         let index = u32::try_from(index).unwrap_or(u32::MAX) + offset;
         let params: Vec<ValType> = function.params().filter_map(|l| val_type(l.ty)).collect();
-        let results: Vec<ValType> = val_type(function.ret).into_iter().collect();
+        let results: Vec<ValType> = function
+            .results()
+            .into_iter()
+            .filter_map(val_type)
+            .collect();
         types.ty().function(params, results);
         // Its type comes after the two import types, as its index after the imports.
         functions.function(index);
@@ -235,6 +241,26 @@ impl<'a> FnEncoder<'a> {
             Stmt::Leave(n) => {
                 let depth = self.leave_depth(*n);
                 self.emit(&I::Br(depth));
+            }
+            Stmt::ReturnMany(values) => {
+                for value in values {
+                    self.expr(value);
+                }
+                self.emit(&I::Return);
+            }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => {
+                for arg in args {
+                    self.expr(arg);
+                }
+                self.emit(&I::Call(callee.0 + self.offset));
+                // The last result is on top of the stack.
+                for target in targets.iter().rev() {
+                    self.emit(&I::LocalSet(target.0));
+                }
             }
             Stmt::Release(local) => {
                 self.emit(&I::LocalGet(local.0));
@@ -601,7 +627,9 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
          const wasm = instance.exports;\n"
     );
     for f in module.functions.iter().filter(|f| f.exported) {
-        if f.ret == Ty::Bool {
+        if let Some(shape) = &f.shape {
+            js.push_str(&object_wrapper(&f.name, shape));
+        } else if f.ret == Ty::Bool {
             let _ = writeln!(
                 js,
                 "export const {0} = (...args) => wasm.{0}(...args) !== 0;",
@@ -619,6 +647,66 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         );
     }
     js
+}
+
+/// An exported function taking or returning structures, as JavaScript objects:
+/// a parameter object is passed field by field, and the results, which
+/// WebAssembly returns as an array when there are several, become an object.
+fn object_wrapper(name: &str, shape: &JsShape) -> String {
+    let params: Vec<&str> = shape.params.iter().map(|(n, _)| n.as_str()).collect();
+    let mut args = Vec::new();
+    for (param, value) in &shape.params {
+        flatten(param, value, &mut args);
+    }
+    let call = format!("wasm.{name}({})", args.join(", "));
+    let body = match &shape.result {
+        None => call,
+        Some(result) => {
+            let many = result.scalars().len() > 1;
+            let mut index = 0;
+            let value = rebuild(result, many, &mut index);
+            format!("{{ const r = {call}; return {value}; }}")
+        }
+    };
+    format!("export const {name} = ({}) => {body};\n", params.join(", "))
+}
+
+/// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
+fn flatten(path: &str, shape: &Shape, out: &mut Vec<String>) {
+    match shape {
+        Shape::Value(_) => out.push(path.to_owned()),
+        Shape::Object(_, fields) => {
+            for (field, value) in fields {
+                flatten(&format!("{path}.{field}"), value, out);
+            }
+        }
+    }
+}
+
+/// A result rebuilt from `r`, the WebAssembly result: an array when `many`.
+fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
+    match shape {
+        Shape::Value(ty) => {
+            let scalar = if many {
+                format!("r[{index}]")
+            } else {
+                "r".to_owned()
+            };
+            *index += 1;
+            if *ty == Ty::Bool {
+                format!("{scalar} !== 0")
+            } else {
+                scalar
+            }
+        }
+        Shape::Object(_, fields) => {
+            let fields: Vec<String> = fields
+                .iter()
+                .map(|(field, value)| format!("{field}: {}", rebuild(value, many, index)))
+                .collect();
+            format!("({{ {} }})", fields.join(", "))
+        }
+    }
 }
 
 /// The allocator, instantiated first, and the imports it gives the module.
@@ -704,6 +792,23 @@ pub fn dts(module: &Module) -> String {
         _ => "number",
     };
     let mut out = String::from("// Generated by perasc.\n");
+    // Each structure seen by JavaScript, once, before the functions.
+    let mut interfaces: Vec<(String, String)> = Vec::new();
+    for f in module.functions.iter().filter(|f| f.exported) {
+        if let Some(shape) = &f.shape {
+            let values = shape
+                .params
+                .iter()
+                .map(|(_, s)| s)
+                .chain(shape.result.iter());
+            for value in values {
+                interface(value, &mut interfaces);
+            }
+        }
+    }
+    for (_, declaration) in &interfaces {
+        out.push_str(declaration);
+    }
     if module.uses_heap() {
         out.push_str(
             "/** Blocks still alive in the debug allocator, and a check that throws on a leak. */\n\
@@ -711,6 +816,24 @@ pub fn dts(module: &Module) -> String {
         );
     }
     for f in module.functions.iter().filter(|f| f.exported) {
+        if let Some(shape) = &f.shape {
+            let params: Vec<String> = shape
+                .params
+                .iter()
+                .map(|(name, value)| format!("{name}: {}", ts_shape(value)))
+                .collect();
+            let result = shape
+                .result
+                .as_ref()
+                .map_or_else(|| "void".to_owned(), ts_shape);
+            let _ = writeln!(
+                out,
+                "export declare function {}({}): {result};",
+                f.name,
+                params.join(", ")
+            );
+            continue;
+        }
         let params: Vec<String> = f
             .params()
             .map(|p| format!("{}: {}", p.name, ts(p.ty)))
@@ -724,6 +847,46 @@ pub fn dts(module: &Module) -> String {
         );
     }
     out
+}
+
+/// The TypeScript type of a scalar.
+const fn ts_scalar(ty: Ty) -> &'static str {
+    match ty {
+        Ty::I64 => "bigint",
+        Ty::Bool => "boolean",
+        Ty::Void => "void",
+        _ => "number",
+    }
+}
+
+/// The TypeScript type of a value: a scalar type, or a structure's name.
+fn ts_shape(shape: &Shape) -> String {
+    match shape {
+        Shape::Value(ty) => ts_scalar(*ty).to_owned(),
+        Shape::Object(name, _) => name.clone(),
+    }
+}
+
+/// `export interface Point { x: number; y: number; }`, for a structure and the
+/// structures in it, each once.
+fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
+    let Shape::Object(name, fields) = shape else {
+        return;
+    };
+    for (_, field) in fields {
+        interface(field, out);
+    }
+    if out.iter().any(|(n, _)| n == name) {
+        return;
+    }
+    let fields: Vec<String> = fields
+        .iter()
+        .map(|(field, value)| format!("{field}: {};", ts_shape(value)))
+        .collect();
+    out.push((
+        name.clone(),
+        format!("export interface {name} {{ {} }}\n", fields.join(" ")),
+    ));
 }
 
 #[cfg(test)]

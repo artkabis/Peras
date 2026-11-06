@@ -4,6 +4,22 @@ _English version: [CHANGELOG.md](CHANGELOG.md)_
 
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les versions suivent le [versionnage sémantique](https://semver.org/lang/fr/). Avant la 1.0, toute version peut casser le langage.
 
+## Non publié
+
+### Langage et compilateur
+
+- Les **structures** se compilent, comme des valeurs : chacune est remplacée par ses champs scalaires, structures imbriquées aplaties, si bien qu’elle ne touche jamais le tas.
+  - Un paramètre structure devient un paramètre par champ.
+  - Une fonction qui renvoie une structure renvoie un résultat WebAssembly par champ, et un tuple dans le backend Rust.
+  - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
+  - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
+  - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- L’IR vérifie la possession : poignées `owned` et `borrowed`, libérations explicites, et un vérificateur qui prouve que chaque bloc est libéré exactement une fois sur chaque chemin. L’allocateur de débogage est intégré aux modules qui utilisent le tas ; un bug mémoire lève une `PerasMemoryError` qui nomme les deux sites, en anglais ou en français. Rien dans le langage n’alloue encore.
+
+### Banc d’essai
+
+- `cmandel` calcule l’ensemble de Mandelbrot avec `struct Complex`. Les deux backends s’accordent avec la référence JavaScript. Le backend direct prend 15 ms contre 13 ms pour le code `f64` simple et pour Rust ; JavaScript, qui alloue un objet par nombre complexe, prend 49 ms. L’optimiseur ne touche pas encore aux fonctions à plusieurs résultats.
+
 ## 0.0.1 — 4 novembre 2026
 
 La fin de la phase 0 du [plan de démarrage](docs/fr/kickoff-plan.md) : une fonction `.peras` se compile en WebAssembly et s’exécute dans le navigateur via Vite, et chaque erreur affiche un extrait, une cause et une correction, en anglais et en français.

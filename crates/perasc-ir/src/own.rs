@@ -96,15 +96,22 @@ impl<'a> Checker<'a> {
         match stmt {
             Stmt::Set(local, value) => {
                 expr(value, &mut state)?;
-                if self.is_owned(*local) {
-                    if holds(&state, *local) {
-                        return Err(format!(
-                            "%{} is overwritten while it holds a block: that block leaks",
-                            local.0
-                        ));
-                    }
-                    set(&mut state, *local, true);
+                self.fill(&mut state, *local)?;
+            }
+            Stmt::CallMany { targets, args, .. } => {
+                for arg in args {
+                    expr(arg, &mut state)?;
                 }
+                for target in targets {
+                    self.fill(&mut state, *target)?;
+                }
+            }
+            Stmt::ReturnMany(values) => {
+                for value in values {
+                    expr(value, &mut state)?;
+                }
+                all_empty(&state, "when the function returns")?;
+                return Ok(None);
             }
             Stmt::Expr(e) => {
                 expr(e, &mut state)?;
@@ -224,6 +231,20 @@ impl<'a> Checker<'a> {
             leaving.push(head);
         }
         join(&leaving, "after a loop")
+    }
+
+    /// `local` receives a value; an `owned` local must be empty first.
+    fn fill(&self, state: &mut State, local: LocalId) -> Result<(), String> {
+        if self.is_owned(local) {
+            if holds(state, local) {
+                return Err(format!(
+                    "%{} is overwritten while it holds a block: that block leaks",
+                    local.0
+                ));
+            }
+            set(state, local, true);
+        }
+        Ok(())
     }
 
     fn is_owned(&self, local: LocalId) -> bool {

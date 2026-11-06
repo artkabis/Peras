@@ -44,6 +44,8 @@ pub fn work() -> Module {
         param_count: 1,
         locals: vec![local("x", Ty::Borrowed)],
         ret: Ty::I32,
+        more: Vec::new(),
+        shape: None,
         body: vec![Stmt::Return(Some(int(7)))],
     };
     let work = Function {
@@ -56,6 +58,8 @@ pub fn work() -> Module {
             local("i", Ty::I32),
         ],
         ret: Ty::I32,
+        more: Vec::new(),
+        shape: None,
         body: vec![
             set(2, int(0)),
             Stmt::Loop {
@@ -119,6 +123,8 @@ fn one(name: &str, body: Vec<Stmt>) -> Module {
             param_count: 1,
             locals: vec![local("n", Ty::I32), local("block", Ty::Owned)],
             ret: Ty::Void,
+            more: Vec::new(),
+            shape: None,
             body,
         }],
     }

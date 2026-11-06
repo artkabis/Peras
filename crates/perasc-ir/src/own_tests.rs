@@ -91,6 +91,8 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
         param_count: 1,
         locals: all,
         ret,
+        more: Vec::new(),
+        shape: None,
         body,
     };
     let helper = |name: &str, param: Option<Ty>, ret: Ty, body: Vec<Stmt>| Function {
@@ -99,6 +101,8 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
         param_count: u32::from(param.is_some()),
         locals: param.map(|ty| local("x", ty)).into_iter().collect(),
         ret,
+        more: Vec::new(),
+        shape: None,
         body,
     };
     Module {

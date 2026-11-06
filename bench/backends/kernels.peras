@@ -52,3 +52,39 @@ export fn checksum(a: i64, b: i64): i64 {
   }
   return h % 1000000007;
 }
+
+// The same set, with complex numbers as a structure: two f64 scalars, no heap.
+struct Complex {
+  re: f64;
+  im: f64;
+}
+
+fn square(z: Complex): Complex {
+  return Complex(z.re * z.re - z.im * z.im, 2.0 * z.re * z.im);
+}
+
+fn plus(a: Complex, b: Complex): Complex {
+  return Complex(a.re + b.re, a.im + b.im);
+}
+
+fn norm(z: Complex): f64 {
+  return z.re * z.re + z.im * z.im;
+}
+
+export fn cmandel(size: i32): i32 {
+  let inside = 0;
+  const scale = 3.0 / size.toF64();
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const c = Complex(px.toF64() * scale - 2.0, py.toF64() * scale - 1.5);
+      let z = Complex(0.0, 0.0);
+      let step = 0;
+      while (step < 64 && norm(z) <= 4.0) {
+        z = plus(square(z), c);
+        step++;
+      }
+      if (step == 64) inside++;
+    }
+  }
+  return inside;
+}

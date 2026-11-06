@@ -37,6 +37,9 @@ pub struct Analysis {
     /// The final type of each expression: literals have the type the context gave
     /// them, or `i32` and `f64` when nothing did.
     pub types: HashMap<ExprId, Ty>,
+    /// Every structure, indexed by its [`StructId`]: its name
+    /// and its fields in order.
+    pub structs: Vec<(String, Vec<(String, Ty)>)>,
 }
 
 /// Checks a module and keeps the type of every expression, for code generation.
@@ -51,7 +54,16 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
         .into_iter()
         .map(|(id, ty)| (id, ty.defaulted()))
         .collect();
-    Analysis { diagnostics, types }
+    let structs = checker
+        .structs
+        .into_iter()
+        .map(|s| (s.name, s.fields))
+        .collect();
+    Analysis {
+        diagnostics,
+        types,
+        structs,
+    }
 }
 
 /// A structure's fields, in order.

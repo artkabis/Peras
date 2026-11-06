@@ -85,3 +85,42 @@ fn declarations_and_loader_follow_the_types() {
         "{js}"
     );
 }
+
+#[test]
+fn structures_cross_into_javascript_as_objects() {
+    let source = "export struct V { x: f64; y: f64; }\nexport struct S { a: V; ok: bool; }\n\
+                  export fn flip(s: S): S { return S(V(s.a.y, s.a.x), !s.ok); }\n\
+                  export fn len(v: V): f64 { return v.x + v.y; }\n";
+    let m = module(source);
+    let wasm = compile(&m);
+    let validated = wasmparser::Validator::new().validate_all(&wasm);
+    assert!(validated.is_ok(), "{:?}", validated.err());
+    let js = js_loader(&m, "m.wasm", None);
+    assert!(
+        js.contains("export const flip = (s) => { const r = wasm.flip(s.a.x, s.a.y, s.ok); return ({ a: ({ x: r[0], y: r[1] }), ok: r[2] !== 0 }); };"),
+        "{js}"
+    );
+    assert!(
+        js.contains("export const len = (v) => { const r = wasm.len(v.x, v.y); return r; };"),
+        "{js}"
+    );
+    let types = dts(&m);
+    assert!(
+        types.contains("export interface V { x: number; y: number; }"),
+        "{types}"
+    );
+    assert!(
+        types.contains("export interface S { a: V; ok: boolean; }"),
+        "{types}"
+    );
+    assert!(
+        types.contains("export declare function flip(s: S): S;"),
+        "{types}"
+    );
+    // Each interface once, a nested one first.
+    assert_eq!(types.matches("export interface V ").count(), 1, "{types}");
+    assert!(
+        types.find("interface V ") < types.find("interface S "),
+        "{types}"
+    );
+}

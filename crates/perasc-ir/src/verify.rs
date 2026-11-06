@@ -46,7 +46,7 @@ struct Verifier<'a> {
     problems: &'a mut Vec<String>,
 }
 
-impl Verifier<'_> {
+impl<'a> Verifier<'a> {
     fn problem(&mut self, text: &str) {
         self.problems
             .push(format!("fn {}: {text}", self.function.name));
@@ -178,10 +178,19 @@ impl Verifier<'_> {
                     self.problem("`break` or `continue` outside a loop");
                 }
             }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => self.call_many(targets, *callee, args),
+            Stmt::ReturnMany(values) => self.return_many(values),
             Stmt::Release(local) => {
                 if self.local_type(local.0) != Some(Ty::Owned) {
                     self.problem(&format!("release of %{}, which is not owned", local.0));
                 }
+            }
+            Stmt::Return(_) if !self.function.more.is_empty() => {
+                self.problem("has several results: it returns them all at once");
             }
             Stmt::Return(value) => {
                 let ret = self.function.ret;
@@ -207,6 +216,67 @@ impl Verifier<'_> {
                 }
             }
         }
+    }
+
+    /// `targets = call callee(args)`, for a function with several results.
+    fn call_many(&mut self, targets: &[LocalId], callee: crate::FnId, args: &[Expr]) {
+        let mut types = Vec::with_capacity(targets.len());
+        for target in targets {
+            match self.local_type(target.0) {
+                Some(Ty::Borrowed) => {
+                    self.problem(&format!("%{} is borrowed and cannot be assigned", target.0));
+                }
+                Some(ty) => types.push(ty),
+                None => self.problem(&format!("%{} does not exist", target.0)),
+            }
+        }
+        if let Some(called) = self.call(callee, args, &types)
+            && called.more.is_empty()
+        {
+            self.problem(&format!(
+                "{} has one result: it is called by an expression",
+                called.name
+            ));
+        }
+    }
+
+    /// `return a, b, …`, in a function with several results.
+    fn return_many(&mut self, values: &[Expr]) {
+        for value in values {
+            if value.ty == Ty::Owned {
+                self.handed_over(value);
+            } else {
+                self.expr(value);
+            }
+        }
+        let given: Vec<Ty> = values.iter().map(|v| v.ty).collect();
+        if self.function.more.is_empty() || given != self.function.results() {
+            self.problem("returns several values that do not match its results");
+        }
+    }
+
+    /// A call with `args` whose results are `results`; the callee, if it exists.
+    fn call(&mut self, id: crate::FnId, args: &[Expr], results: &[Ty]) -> Option<&'a Function> {
+        for arg in args {
+            self.argument(arg);
+        }
+        let module = self.module;
+        let Some(callee) = usize::try_from(id.0)
+            .ok()
+            .and_then(|i| module.functions.get(i))
+        else {
+            self.problem(&format!("calls missing function #{}", id.0));
+            return None;
+        };
+        let params: Vec<Ty> = callee.params().map(|p| p.ty).collect();
+        let given: Vec<Ty> = args.iter().map(|a| a.ty).collect();
+        if params != given || callee.results() != results {
+            self.problem(&format!(
+                "call to {} does not match its signature",
+                callee.name
+            ));
+        }
+        Some(callee)
     }
 
     fn condition(&mut self, cond: &Expr) {
@@ -266,21 +336,12 @@ impl Verifier<'_> {
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs, e.ty),
             ExprKind::Call(id, args) => {
-                for arg in args {
-                    self.argument(arg);
-                }
-                let callee = usize::try_from(id.0)
-                    .ok()
-                    .and_then(|i| self.module.functions.get(i));
-                let Some(callee) = callee else {
-                    self.problem(&format!("calls missing function #{}", id.0));
-                    return;
-                };
-                let params: Vec<Ty> = callee.params().map(|p| p.ty).collect();
-                let given: Vec<Ty> = args.iter().map(|a| a.ty).collect();
-                if params != given || callee.ret != e.ty {
+                let results = if e.ty == Ty::Void { vec![] } else { vec![e.ty] };
+                if let Some(callee) = self.call(*id, args, &results)
+                    && !callee.more.is_empty()
+                {
                     self.problem(&format!(
-                        "call to {} does not match its signature",
+                        "{} has several results: it is called by `call many` only",
                         callee.name
                     ));
                 }

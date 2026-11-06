@@ -1,14 +1,5 @@
 // E0900: valid Peras that code generation cannot compile yet; every occurrence is reported.
-export struct Point {
-  x: f64;
-  y: f64;
-}
-
 const LIMIT: i32 = 10;
-
-export fn length(p: Point): f64 {
-  return (p.x * p.x + p.y * p.y).sqrt();
-}
 
 export fn total(xs: Array<i32>, label: String): i32 {
   let sum = 0;

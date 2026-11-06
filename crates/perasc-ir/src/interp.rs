@@ -103,7 +103,8 @@ enum Flow {
     Break,
     Continue,
     Leave(u32),
-    Return(Value),
+    /// Every result: none, one, or several.
+    Return(Vec<Value>),
 }
 
 fn zero(ty: Ty) -> Value {
@@ -119,7 +120,17 @@ fn zero(ty: Ty) -> Value {
 }
 
 impl Machine<'_> {
+    /// A call with one result, or none (`Void`).
     fn call(&mut self, id: FnId, args: &[Value]) -> Result<Value, Trap> {
+        Ok(self
+            .call_all(id, args)?
+            .first()
+            .copied()
+            .unwrap_or(Value::Void))
+    }
+
+    /// A call, with every result.
+    fn call_all(&mut self, id: FnId, args: &[Value]) -> Result<Vec<Value>, Trap> {
         let function = usize::try_from(id.0)
             .ok()
             .and_then(|i| self.module.functions.get(i))
@@ -135,8 +146,8 @@ impl Machine<'_> {
         let flow = self.stmts(&function.body, &mut locals);
         self.depth -= 1;
         match flow? {
-            Flow::Return(v) => Ok(v),
-            _ if function.ret == Ty::Void => Ok(Value::Void),
+            Flow::Return(values) => Ok(values),
+            _ if function.ret == Ty::Void => Ok(Vec::new()),
             _ => Err(Trap::Unreachable),
         }
     }
@@ -212,11 +223,34 @@ impl Machine<'_> {
             Stmt::Break => Flow::Break,
             Stmt::Continue => Flow::Continue,
             Stmt::Return(value) => {
-                let v = match value {
-                    Some(e) => self.expr(e, locals)?,
-                    None => Value::Void,
+                let values = match value {
+                    Some(e) => vec![self.expr(e, locals)?],
+                    None => Vec::new(),
                 };
-                Flow::Return(v)
+                Flow::Return(values)
+            }
+            Stmt::ReturnMany(values) => {
+                let mut out = Vec::with_capacity(values.len());
+                for e in values {
+                    out.push(self.expr(e, locals)?);
+                }
+                Flow::Return(out)
+            }
+            Stmt::CallMany {
+                targets,
+                callee,
+                args,
+            } => {
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
+                }
+                for (target, value) in targets.iter().zip(self.call_all(*callee, &values)?) {
+                    if let Some(slot) = slot(locals, *target) {
+                        *slot = value;
+                    }
+                }
+                Flow::Normal
             }
         })
     }
