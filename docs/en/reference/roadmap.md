@@ -1,0 +1,120 @@
+# Toward a complete language
+
+Peras today covers the core of a language: numbers, structures, functions, control flow, and diagnostics. Building large web applications needs much more. This page lists what is planned, grouped in phases, in the order they are meant to land. Each phase ends with something usable, and every feature arrives the same way as the rest: checked, explained in English and French, tested, and documented here.
+
+The examples on this page show the intended syntax; the compiler refuses them today, and the documentation's tests check that it does, so this page is updated as each feature lands.
+
+## Phase 1: data on the heap
+
+The first types that need memory, on the foundations already built: the release verifier and the debug allocator.
+
+- `Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`.
+- `String` compiled, in UTF-8.
+- `Option<T>` compiled.
+- Ownership checks: moves, `inout` and `sink`, aliasing refused, the history of a value shown in errors ([spec](../spec.md#memory-model)).
+
+## Phase 2: a complete type system
+
+What lets a program say precisely what its data can be.
+
+- **Enumerations with data, and `match`**, checked for exhaustiveness: forgetting a case is an error.
+- **`Result<T, E>` and `?`**, for errors that are values, not exceptions.
+- **Generics**, on functions and structures, with constraints.
+- **Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time.
+- Tuples, type aliases, module-level constants compiled.
+
+```peras planned
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+}
+
+fn area(s: Shape): f64 {
+  return match (s) {
+    Circle(r) => 3.14159 * r * r,
+    Rect(w, h) => w * h,
+  };
+}
+```
+
+```peras planned
+fn parse_port(text: String): Result<u16, ParseError> {
+  const n = text.parse::<u32>()?;
+  if (n > 65535) {
+    return Err(ParseError.OutOfRange);
+  }
+  return Ok(n.toU16());
+}
+```
+
+## Phase 3: a standard library
+
+The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values.
+
+| Area        | What                                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| text        | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, formatting and template strings |
+| arrays      | `map`, `filter`, `reduce`, `find`, `some`, `every`, `sort`, `slice`, `concat`, `join`, `reverse`, iterators and ranges     |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                          |
+| numbers     | `min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                             |
+| time        | durations and instants                                                                                                     |
+| data        | JSON, text encoding, bytes                                                                                                 |
+
+```peras planned
+export fn words(text: String): i32 {
+  return text.split(" ").filter((w) => w.length > 0).length;
+}
+```
+
+## Phase 4: managed mode, for the rest of the application
+
+`.apeiron` modules compiled to JavaScript, for everything that talks to the browser ([spec](../spec.md#managed-mode-apeiron)).
+
+- The DOM, events, `fetch`, timers, storage, WebSockets, Web Workers, with typed APIs.
+- `async` and `await`.
+- Closures, with rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not.
+- Calls between managed and owned modules, with conversions checked at the boundary.
+
+```peras planned
+import { inside } from "./mandel.peras";
+
+export async fn render(canvas: HTMLCanvasElement): Promise<void> {
+  const response = await fetch("/settings.json");
+  const settings = Settings.fromJson(await response.text())?;
+  draw(canvas, settings, inside);
+}
+```
+
+## Phase 5: modules and packages
+
+- `import` and `export` between Peras modules.
+- Typed use of JavaScript libraries, from their `.d.ts` declarations.
+- Packages: a manifest, versions, a registry.
+
+## Phase 6: graphics and performance
+
+What the spec calls rasterization ([spec](../spec.md#rasterization)).
+
+- `Framebuffer<Rgba8>` and pixel types, shared with the canvas without copying.
+- SIMD types and operations.
+- The `@frame` rule: a function that renders a frame may not allocate, and the compiler proves it.
+- `Arena` and `Pool<T>` allocators.
+- WebGPU bindings.
+
+## Phase 7: tooling
+
+- An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming.
+- A formatter, so that every Peras file looks the same.
+- A test runner: tests written in Peras, run by Vitest.
+- `create-peras`, to start a project in one command.
+- A playground in this documentation: the compiler itself compiled to WebAssembly, running in the page.
+
+## Why this order
+
+1. **Data first**: almost every program needs arrays and text, and the memory foundations for them are ready.
+2. **Types next**: enumerations, `match`, `Result` and generics change how every later API is written; the standard library is designed on top of them, not before.
+3. **The standard library** then gives each type the methods that make it useful.
+4. **Managed mode** opens the browser: the DOM and `async` make Peras an application language, not only a computation language.
+5. **Modules, graphics and tooling** follow, the editor support starting as soon as the type system is stable.
+
+What already works is on the [status page](status.md).

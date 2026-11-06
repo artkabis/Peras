@@ -5,7 +5,7 @@
 //! [`ty::Ty::Error`], compatible with everything, so one mistake gives one error.
 //! The walk runs only on a tree without syntax errors.
 
-mod builtins;
+pub mod builtins;
 mod errors;
 mod expr;
 mod scope;

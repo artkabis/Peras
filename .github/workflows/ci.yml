@@ -65,6 +65,8 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
       - run: pnpm audit --audit-level low
+      # The documentation site: a broken link, anchor or unknown code label fails the build.
+      - run: pnpm run docs
 
   backends:
     # Decision 0001: the direct WebAssembly backend is checked against the Rust backend.

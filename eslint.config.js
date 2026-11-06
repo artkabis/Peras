@@ -13,6 +13,7 @@ export default defineConfig(
       "**/node_modules/**",
       "bench/bugs/**",
       "packages/*/e2e/fixtures/**",
+      "website/.pages/**",
     ],
   },
   js.configs.recommended,

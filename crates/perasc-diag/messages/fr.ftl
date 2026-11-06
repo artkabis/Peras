@@ -326,9 +326,9 @@ check-duplicate-fix = renomme ou supprime l’un des deux `{ $name }`
 
 # E0203
 check-unused = { $what ->
-    [parameter] le paramètre
-   *[other] la variable
-} `{ $name }` n’est jamais lu
+    [parameter] le paramètre `{ $name }` n’est jamais lu
+   *[other] la variable `{ $name }` n’est jamais lue
+}
 check-unused-label = jamais lu
 check-unused-why = Une valeur jamais lue est du code mort, et souvent un bug : une faute de frappe, ou un usage oublié. Un nom qui commence par `_` marque un paramètre comme volontairement inutilisé.
 check-unused-fix-parameter = s’il est inutilisé volontairement, nomme-le `_{ $name }`
