@@ -1645,10 +1645,24 @@ const fn ts_scalar(ty: Ty) -> &'static str {
     }
 }
 
+/// The variants of an enumeration as a TypeScript union of `{ kind, values }`.
+fn union(variants: &[(String, Vec<Shape>)]) -> String {
+    let cases: Vec<String> = variants
+        .iter()
+        .map(|(variant, fields)| {
+            let values: Vec<String> = fields.iter().map(ts_shape).collect();
+            format!("{{ kind: \"{variant}\"; values: [{}] }}", values.join(", "))
+        })
+        .collect();
+    cases.join(" | ")
+}
+
 /// The TypeScript type of a value: a scalar type, or a structure's name.
 fn ts_shape(shape: &Shape) -> String {
     match shape {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
+        // A result has no name of its own: its union is written in place.
+        Shape::Enum(name, variants) if name.is_empty() => format!("({})", union(variants)),
         Shape::Object(name, _) | Shape::Enum(name, _) => name.clone(),
         Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
         Shape::String(_) => "string".to_owned(),
@@ -1690,19 +1704,12 @@ fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
                 interface(field, out);
             }
         }
-        if out.iter().any(|(n, _)| n == name) {
+        if name.is_empty() || out.iter().any(|(n, _)| n == name) {
             return;
         }
-        let cases: Vec<String> = variants
-            .iter()
-            .map(|(variant, fields)| {
-                let values: Vec<String> = fields.iter().map(ts_shape).collect();
-                format!("{{ kind: \"{variant}\"; values: [{}] }}", values.join(", "))
-            })
-            .collect();
         out.push((
             name.clone(),
-            format!("export type {name} = {};\n", cases.join(" | ")),
+            format!("export type {name} = {};\n", union(variants)),
         ));
         return;
     }

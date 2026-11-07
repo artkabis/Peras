@@ -38,6 +38,10 @@ impl Lowering<'_> {
                 ("None".to_owned(), Vec::new()),
                 ("Some".to_owned(), vec![(**inner).clone()]),
             ]),
+            CheckTy::Result(ok, err) => Some(vec![
+                ("Ok".to_owned(), vec![(**ok).clone()]),
+                ("Err".to_owned(), vec![(**err).clone()]),
+            ]),
             _ => None,
         }
     }

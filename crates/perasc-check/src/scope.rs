@@ -41,6 +41,10 @@ pub enum Kind {
     Some,
     /// `None`, provided by the language.
     None,
+    /// `Ok`, provided by the language.
+    Ok,
+    /// `Err`, provided by the language.
+    Err,
 }
 
 /// A declared name.

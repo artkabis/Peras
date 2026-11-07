@@ -519,6 +519,21 @@ check-unreachable-arm-label = les bras précédents couvrent déjà ces valeurs
 check-unreachable-arm-why = Les bras sont essayés dans l’ordre : après `_`, un nom, ou une variante déjà couverte, il ne reste aucune valeur pour celui-ci. C’est du code mort, ou des bras dans le mauvais ordre.
 check-unreachable-arm-fix = retire le bras, ou place-le avant celui qui le couvre
 
+# E0225
+check-try-return = `?` sur { $kind ->
+    [option] une option
+   *[other] un résultat
+} dans une fonction qui renvoie `{ $ret }`
+check-try-return-label = renvoie tout de suite { $kind ->
+    [option] `None`
+   *[other] l’`Err`
+}
+check-try-return-why = `?` donne la valeur à l’intérieur, ou renvoie aussitôt ce qu’il ne peut pas donner : `None` pour une option, l’erreur pour un résultat. La fonction doit pouvoir renvoyer cela : une option, ou un résultat avec le même type d’erreur.
+check-try-return-fix = { $kind ->
+    [option] renvoie une `Option`, ou traite `None` avec `match` ou `unwrapOr`
+   *[other] renvoie un `Result` avec ce type d’erreur, ou traite l’erreur avec `match`
+}
+
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures

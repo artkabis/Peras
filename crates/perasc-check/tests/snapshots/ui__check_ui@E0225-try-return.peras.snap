@@ -1,0 +1,22 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0225-try-return.peras
+---
+diagnostics:
+  error[E0225] check-try-return { kind: "option", ret: "i32" }
+    primary 14:10-14:18: check-try-return-label { kind: "option" }
+    cause: check-try-return-why
+    fix: check-try-return-fix { kind: "option" }
+  error[E0225] check-try-return { kind: "result", ret: "i32" }
+    primary 14:21-14:30: check-try-return-label { kind: "result" }
+    cause: check-try-return-why
+    fix: check-try-return-fix { kind: "result" }
+  error[E0225] check-try-return { kind: "result", ret: "Result<i32, i32>" }
+    primary 18:13-18:22: check-try-return-label { kind: "result" }
+    cause: check-try-return-why
+    fix: check-try-return-fix { kind: "result" }
+  error[E0225] check-try-return { kind: "result", ret: "Option<i32>" }
+    primary 22:15-22:24: check-try-return-label { kind: "result" }
+    cause: check-try-return-why
+    fix: check-try-return-fix { kind: "result" }

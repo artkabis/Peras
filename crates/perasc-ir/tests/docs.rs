@@ -152,6 +152,7 @@ fn the_method_reference_lists_exactly_the_built_in_methods() {
         Ty::Array(Box::new(Ty::Int(IntTy::I32))),
         Ty::String,
         Ty::Option(Box::new(Ty::Int(IntTy::I32))),
+        Ty::Result(Box::new(Ty::Int(IntTy::I32)), Box::new(Ty::String)),
     ];
     let known: Vec<&str> = receivers.iter().flat_map(builtins::members).collect();
     for lang in ["en", "fr"] {

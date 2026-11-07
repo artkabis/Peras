@@ -156,6 +156,8 @@ pub enum Ty {
     Array(Box<Ty>),
     /// `Option<T>`
     Option(Box<Ty>),
+    /// `Result<T, E>`: `Ok(T)` or `Err(E)`.
+    Result(Box<Ty>, Box<Ty>),
     /// A structure, with its name for messages.
     Struct(StructId, String),
     /// An enumeration, with its name for messages.
@@ -222,6 +224,7 @@ impl fmt::Display for Ty {
             Self::Void => f.write_str("void"),
             Self::Array(t) => write!(f, "Array<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
+            Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
             Self::Struct(_, name) | Self::Enum(_, name) => f.write_str(name),
             Self::Fn(_, name) => write!(f, "fn {name}"),
             Self::Error => f.write_str("?"),

@@ -71,6 +71,7 @@ const fn why(code: ErrorCode) -> &'static str {
         222 => "check-match-missing-why",
         223 => "check-unknown-variant-why",
         224 => "check-unreachable-arm-why",
+        225 => "check-try-return-why",
         _ => "check-operator-why",
     }
 }
@@ -705,6 +706,30 @@ pub fn unreachable_arm(span: Span) -> Diagnostic {
         vec![primary(span, Message::new("check-unreachable-arm-label"))],
         Fix {
             message: Message::new("check-unreachable-arm-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0225`: `?` gives back `early`, which the function, returning `ret`, cannot.
+pub fn try_return(span: Span, early: &Ty, ret: Option<&Ty>) -> Diagnostic {
+    let ret = ret.map_or_else(|| "void".to_owned(), ToString::to_string);
+    let kind = if matches!(early, Ty::Option(_)) {
+        "option"
+    } else {
+        "result"
+    };
+    diagnostic(
+        codes::TRY_RETURN,
+        Message::new("check-try-return")
+            .text("kind", kind)
+            .text("ret", ret),
+        vec![primary(
+            span,
+            Message::new("check-try-return-label").text("kind", kind),
+        )],
+        Fix {
+            message: Message::new("check-try-return-fix").text("kind", kind),
             edits: Vec::new(),
         },
     )

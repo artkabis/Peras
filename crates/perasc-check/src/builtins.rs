@@ -84,6 +84,14 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             "copy" => simple(Ty::String),
             _ => None,
         },
+        Ty::Result(ok, _) => match name {
+            "isOk" | "isErr" => simple(Ty::Bool),
+            "unwrapOr" => Some(Method {
+                params: vec![(**ok).clone()],
+                ret: (**ok).clone(),
+            }),
+            _ => None,
+        },
         Ty::Option(inner) => match name {
             "isSome" | "isNone" => simple(Ty::Bool),
             "unwrapOr" => Some(Method {
@@ -115,6 +123,7 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
         Ty::Array(_) => names.extend(["length", "push", "pop", "copy"]),
         Ty::String => names.extend(["length", "copy"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
+        Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}
     }
     names

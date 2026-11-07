@@ -14,6 +14,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- **`Result<T, E>`** : `Ok(valeur)` ou `Err(erreur)`, `isOk`, `isErr`, `unwrapOr`, et `?`, qui renvoie l’erreur tout de suite ; la fonction doit renvoyer un résultat avec le même type d’erreur, ou une option pour `?` sur une option (`E0225`). L’erreur se déplace dans le retour, buffers compris.
+- L’exhaustivité et les bras inatteignables sont maintenant vérifiés par l’algorithme de Maranget, si bien que les motifs imbriqués comptent : `Err(Empty)` et `Err(NotADigit(_))` couvrent ensemble `Err`. Un type du module peut prendre le nom d’un type intégré, comme `Result`.
 - **Énumérations avec données, et `match`.** `enum Shape { Circle(f64), Rect(f64, f64), Empty }` ; les valeurs s’écrivent `Shape.Circle(1.0)`.
   - `match` décompose une valeur avec des motifs : `_`, noms, nombres et booléens, variantes avec leurs données, imbriqués ; les bras sont des valeurs ou des blocs, et `return`, `break`, `continue` y marchent.
   - Chaque `match` doit couvrir chaque valeur (`E0222`) ; une variante inconnue (`E0223`) et un bras qu’aucune valeur n’atteint (`E0224`) sont aussi des erreurs. Un `match` dont tous les bras renvoient termine la fonction.

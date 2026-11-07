@@ -386,7 +386,7 @@ impl Lowering<'_> {
             },
             _ => Vec::new(),
         };
-        if matches!(ret_ty, Some(CheckTy::Option(_))) {
+        if matches!(ret_ty, Some(CheckTy::Option(_) | CheckTy::Result(..))) {
             state.ret_option.clone_from(&ret_ty);
         }
         // The `inout` numbers come back after the result.

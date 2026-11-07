@@ -50,6 +50,14 @@ impl Checker<'_> {
                 self.fill_in(id, expected);
                 true
             }
+            // `Ok(x)` and `Err(e)` know only one side: the context gives the other.
+            (Ty::Result(ok, err), Ty::Result(want_ok, want_err))
+                if (**ok == Ty::Error || ok == want_ok)
+                    && (**err == Ty::Error || err == want_err) =>
+            {
+                self.fill_in(id, expected);
+                true
+            }
             _ => {
                 let conversion = self.conversion(id, actual, expected);
                 self.report(errors::mismatch(span, expected, actual, conversion));
@@ -196,7 +204,14 @@ impl Checker<'_> {
                 }
             }
             ExprKind::Try(inner) => match self.infer(*inner, None) {
-                Ty::Option(value) => *value,
+                Ty::Option(value) => {
+                    self.check_try(span, &Ty::Option(Box::new(Ty::Error)));
+                    *value
+                }
+                Ty::Result(value, error) => {
+                    self.check_try(span, &Ty::Result(Box::new(Ty::Error), error));
+                    *value
+                }
                 Ty::Error => Ty::Error,
                 other => {
                     self.report(errors::invalid_operator(span, "?", &other));
@@ -204,6 +219,22 @@ impl Checker<'_> {
                 }
             },
             ExprKind::Error => Ty::Error,
+        }
+    }
+
+    /// `E0225` unless the function returns what `?` returns early: an option
+    /// for an option, a result with the same error for a result.
+    fn check_try(&mut self, span: Span, early: &Ty) {
+        let ret = self.ret.as_ref().map(|(t, _)| t.clone());
+        let fits = match (&ret, early) {
+            (Some(Ty::Option(_)), Ty::Option(_)) | (Some(Ty::Error) | None, _) => true,
+            (Some(Ty::Result(_, have)), Ty::Result(_, want)) => {
+                have == want || **have == Ty::Error || **want == Ty::Error
+            }
+            _ => false,
+        };
+        if !fits {
+            self.report(errors::try_return(span, early, ret.as_ref()));
         }
     }
 
@@ -245,7 +276,7 @@ impl Checker<'_> {
         binding.used = true;
         match binding.kind {
             // A structure or `Some` alone is not a value: it must be called.
-            Kind::Struct(_) | Kind::Some => Ty::Error,
+            Kind::Struct(_) | Kind::Some | Kind::Ok | Kind::Err => Ty::Error,
             _ => binding.ty.clone(),
         }
     }
@@ -499,6 +530,33 @@ impl Checker<'_> {
                 };
                 self.check_args(args.get(1..).unwrap_or(&[]), &[]);
                 Ty::Option(Box::new(ty))
+            }
+            Kind::Ok | Kind::Err => {
+                self.arity(span, name, 1, args.len(), None);
+                let ok = kind == Kind::Ok;
+                let (want_ok, want_err) = match expected {
+                    Some(Ty::Result(o, e)) => (Some((**o).clone()), Some((**e).clone())),
+                    _ => (None, None),
+                };
+                let side = if ok {
+                    want_ok.clone()
+                } else {
+                    want_err.clone()
+                };
+                let given = match (args.first(), side) {
+                    (Some(&arg), Some(side)) => {
+                        self.expect(arg, &side);
+                        side
+                    }
+                    (Some(&arg), None) => self.infer(arg, None).defaulted(),
+                    (None, _) => Ty::Error,
+                };
+                self.check_args(args.get(1..).unwrap_or(&[]), &[]);
+                if ok {
+                    Ty::Result(Box::new(given), Box::new(want_err.unwrap_or(Ty::Error)))
+                } else {
+                    Ty::Result(Box::new(want_ok.unwrap_or(Ty::Error)), Box::new(given))
+                }
             }
             _ => {
                 let ty = self

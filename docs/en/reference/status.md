@@ -17,7 +17,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | `Array<T>` of any type                                  | <span class="status compiled">compiled</span> |
 | `String`, in UTF-8                                      | <span class="status compiled">compiled</span> |
 | enumerations with data, `match`, exhaustiveness checked | <span class="status compiled">compiled</span> |
-| `Result<T, E>`                                          | <span class="status planned">planned</span>   |
+| `Result<T, E>`, `Ok`, `Err`, `?`                        | <span class="status compiled">compiled</span> |
 | generics, interfaces and traits, methods on structures  | <span class="status planned">planned</span>   |
 | `Map`, `Set`, tuples, closures                          | <span class="status planned">planned</span>   |
 | `Rc<T>`, `Framebuffer`, pixel types, SIMD               | <span class="status planned">planned</span>   |

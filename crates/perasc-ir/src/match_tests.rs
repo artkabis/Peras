@@ -79,3 +79,34 @@ fn variants_holding_strings_and_arrays_never_leak() {
     // n = 3: 5 + 30 + 100 = 135; last "bb"; "xyz"; the copy pops "a".
     gives(source, &[(vec![Value::I32(3)], Value::I32(135_123))]);
 }
+
+#[test]
+fn results_carry_a_value_or_an_error_and_the_question_mark_returns_it() {
+    let source = "export fn f(n: i32): i32 {\n  return match (run(n)) {\n    Ok(v) => v,\n    Err(Negative) => -1,\n    Err(Odd(k)) => -100 - k,\n  };\n}\n\
+         enum Problem {\n  Negative,\n  Odd(i32),\n}\n\
+         fn check(n: i32): Result<i32, Problem> {\n  if (n < 0) {\n    return Err(Problem.Negative);\n  }\n  if (n % 2 != 0) {\n    return Err(Problem.Odd(n));\n  }\n  return Ok(n / 2);\n}\n\
+         fn run(n: i32): Result<i32, Problem> {\n  let names: Array<String> = [\"kept\"];\n  const half = check(n)?;\n  const quarter = check(half)?;\n  names.push(\"x\");\n  return Ok(quarter + names.length);\n}\n";
+    gives(
+        source,
+        &[
+            (vec![Value::I32(8)], Value::I32(4)),
+            (vec![Value::I32(-4)], Value::I32(-1)),
+            (vec![Value::I32(3)], Value::I32(-103)),
+            (vec![Value::I32(6)], Value::I32(-103)),
+        ],
+    );
+}
+
+#[test]
+fn errors_holding_strings_move_out_through_the_question_mark() {
+    let source = "export fn f(n: i32): i32 {\n  const r = outer(n);\n  if (r.isOk()) {\n    return r.unwrapOr(0);\n  }\n  return match (r) {\n    Ok(_) => 0,\n    Err(message) => -message.length,\n  };\n}\n\
+         fn inner(n: i32): Result<i32, String> {\n  if (n > 10) {\n    return Err(\"too large: \" + \"n\");\n  }\n  return Ok(n);\n}\n\
+         fn outer(n: i32): Result<i32, String> {\n  const v = inner(n)?;\n  return Ok(v * 2);\n}\n";
+    gives(
+        source,
+        &[
+            (vec![Value::I32(4)], Value::I32(8)),
+            (vec![Value::I32(11)], Value::I32(-12)),
+        ],
+    );
+}

@@ -61,4 +61,11 @@ export fn wrapped(a: i32): i32 {
 | `isSome()`, `isNone()` | whether a value is present | <span class="status compiled">compiled</span> |
 | `unwrapOr(fallback)`   | the value, or `fallback`   | <span class="status compiled">compiled</span> |
 
+## `Result<T, E>`
+
+| Method               | Gives                         | Status                                        |
+| -------------------- | ----------------------------- | --------------------------------------------- |
+| `isOk()`, `isErr()`  | which variant it is           | <span class="status compiled">compiled</span> |
+| `unwrapOr(fallback)` | the `Ok` value, or `fallback` | <span class="status compiled">compiled</span> |
+
 An unknown member is refused with the list of the ones that exist ([E0215](../errors/E0215.md)). Many more methods are planned: see the [roadmap](roadmap.md#phase-3-a-standard-library).

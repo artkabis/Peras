@@ -106,6 +106,7 @@ enum TypeDef {
     Plain(Ty),
     Array,
     Option,
+    Result,
 }
 
 struct Checker<'a> {
@@ -151,6 +152,7 @@ impl<'a> Checker<'a> {
         types.insert("void".to_owned(), TypeDef::Plain(Ty::Void));
         types.insert("Array".to_owned(), TypeDef::Array);
         types.insert("Option".to_owned(), TypeDef::Option);
+        types.insert("Result".to_owned(), TypeDef::Result);
         Self {
             ast,
             source,
@@ -247,6 +249,11 @@ impl<'a> Checker<'a> {
         if let Some(symbol) = none {
             self.declare(symbol, None, Kind::None, Ty::Option(Box::new(Ty::Error)));
         }
+        for (text, kind) in [("Ok", Kind::Ok), ("Err", Kind::Err)] {
+            if let Some(symbol) = self.ast.interner_symbol(text) {
+                self.declare(symbol, None, kind, Ty::Error);
+            }
+        }
 
         // Structures and enumerations first, so that any signature can name them.
         let items = &self.ast.items;
@@ -291,9 +298,9 @@ impl<'a> Checker<'a> {
             name: name.clone(),
             fields: Vec::new(),
         });
+        // A type of the module takes the place of a built-in one of that name.
         self.types
-            .entry(name.clone())
-            .or_insert_with(|| TypeDef::Plain(Ty::Struct(id, name.clone())));
+            .insert(name.clone(), TypeDef::Plain(Ty::Struct(id, name.clone())));
         self.declare(
             decl.name.symbol,
             Some(decl.name.span),
@@ -310,8 +317,7 @@ impl<'a> Checker<'a> {
             variants: Vec::new(),
         });
         self.types
-            .entry(name.clone())
-            .or_insert_with(|| TypeDef::Plain(Ty::Enum(id, name.clone())));
+            .insert(name.clone(), TypeDef::Plain(Ty::Enum(id, name.clone())));
         self.declare(
             decl.name.symbol,
             Some(decl.name.span),
@@ -356,6 +362,10 @@ impl<'a> Checker<'a> {
             Ty::Option(inner) => Some(vec![
                 ("None".to_owned(), Vec::new()),
                 ("Some".to_owned(), vec![(**inner).clone()]),
+            ]),
+            Ty::Result(ok, err) => Some(vec![
+                ("Ok".to_owned(), vec![(**ok).clone()]),
+                ("Err".to_owned(), vec![(**err).clone()]),
             ]),
             _ => None,
         }
@@ -510,6 +520,7 @@ impl<'a> Checker<'a> {
         let expected = match def {
             TypeDef::Plain(_) => 0,
             TypeDef::Array | TypeDef::Option => 1,
+            TypeDef::Result => 2,
         };
         if args.len() != expected {
             self.report(errors::type_argument_count(
@@ -524,6 +535,11 @@ impl<'a> Checker<'a> {
             TypeDef::Plain(t) => t,
             TypeDef::Array => Ty::Array(Box::new(self.type_arg(args))),
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
+            TypeDef::Result => {
+                let ok = self.type_arg(args);
+                let err = args.get(1).map_or(Ty::Error, |a| self.resolve_type(a));
+                Ty::Result(Box::new(ok), Box::new(err))
+            }
         }
     }
 

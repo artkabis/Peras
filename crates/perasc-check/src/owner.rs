@@ -772,6 +772,7 @@ impl Checker<'_> {
         match ty {
             Ty::Array(_) | Ty::String => true,
             Ty::Option(inner) => self.is_move_type(inner),
+            Ty::Result(ok, err) => self.is_move_type(ok) || self.is_move_type(err),
             Ty::Struct(id, _) => self
                 .structs
                 .get(id.0)

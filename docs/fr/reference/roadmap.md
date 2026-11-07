@@ -18,7 +18,7 @@ Les premiers types qui ont besoin de mémoire, sur les fondations déjà constru
 Ce qui permet à un programme de dire précisément ce que ses données peuvent être.
 
 - ~~**Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité~~ : fait, voir [énumérations et match](../guide/enums.md).
-- **`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs, pas des exceptions.
+- ~~**`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs~~ : fait, voir [les résultats](../guide/enums.md#les-résultats--des-erreurs-qui-sont-des-valeurs) ; les fonctions d’analyse comme `parse` arrivent avec la bibliothèque standard.
 - **Des génériques**, sur les fonctions et les structures, avec des contraintes.
 - **Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation.
 - Tuples, alias de types, constantes de module compilées.

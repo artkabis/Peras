@@ -16,6 +16,8 @@
 //! or trap is evaluated into a temporary before it; on the right of `&&` and
 //! `||` it runs only when the operand would; in a loop condition, at every turn.
 
+use std::collections::BTreeSet;
+
 use perasc_check::ty::{FloatTy, IntTy, StructId, Ty as CheckTy};
 use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Type, TypeKind};
 
@@ -55,6 +57,21 @@ impl Lowering<'_> {
                     .collect())
             }
             CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
+            // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
+            CheckTy::Result(ok, err) => {
+                let mut out = vec![("tag".to_owned(), Ty::I32)];
+                for (side, ty) in [("ok", ok), ("err", err)] {
+                    for (path, leaf) in self.leaves(ty)? {
+                        let path = if path.is_empty() {
+                            side.to_owned()
+                        } else {
+                            format!("{side}_{path}")
+                        };
+                        out.push((path, leaf));
+                    }
+                }
+                Ok(out)
+            }
             // A tag, then the scalars of every variant's data, in order.
             CheckTy::Enum(id, _) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -111,6 +128,12 @@ impl Lowering<'_> {
         match (text, args.as_slice()) {
             ("Option", [inner]) => return Ok(CheckTy::Option(Box::new(self.resolve(inner)?))),
             ("Array", [inner]) => return Ok(CheckTy::Array(Box::new(self.resolve(inner)?))),
+            ("Result", [ok, err]) => {
+                return Ok(CheckTy::Result(
+                    Box::new(self.resolve(ok)?),
+                    Box::new(self.resolve(err)?),
+                ));
+            }
             _ => {}
         }
         Ok(match (text, args.is_empty()) {
@@ -148,6 +171,13 @@ impl Lowering<'_> {
                 Shape::Object(name.clone(), fields)
             }
             CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
+            CheckTy::Result(ok, err) => Shape::Enum(
+                String::new(),
+                vec![
+                    ("Ok".to_owned(), vec![self.shape_passed(ok, pass)]),
+                    ("Err".to_owned(), vec![self.shape_passed(err, pass)]),
+                ],
+            ),
             CheckTy::Enum(id, name) => Shape::Enum(
                 name.clone(),
                 self.analysis
@@ -243,37 +273,7 @@ impl Lowering<'_> {
                     Vec::new()
                 }
             }
-            AstExpr::Call { callee, args } => match self.ast.expr(*callee).kind {
-                AstExpr::Name(symbol) => {
-                    let id = self.fns.get(&symbol).copied();
-                    let back = id
-                        .map(|id| self.writeback_places(state, id, args))
-                        .unwrap_or_default();
-                    let args = self.arguments(state, id, args);
-                    let values = if let Some(id) = id {
-                        self.call_results(state, id, args, &back)
-                    } else if self.ast.name(symbol) == "Some" {
-                        let mut out = vec![bool_const(true)];
-                        out.extend(args);
-                        out
-                    } else {
-                        // A constructor: its scalars are its arguments', in order.
-                        args
-                    };
-                    Self::fresh(state, values, mode)
-                }
-                AstExpr::Field { base, name } => {
-                    let method = self.ast.name(name.symbol);
-                    if let Some(values) = self.enum_value(state, id, base, method, args) {
-                        return Self::fresh(state, values, mode);
-                    }
-                    self.method_values(state, base, method, args, mode, span)
-                }
-                _ => {
-                    self.unsupported(span, "function-value");
-                    Vec::new()
-                }
-            },
+            AstExpr::Call { callee, args } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
             AstExpr::Binary {
@@ -308,6 +308,67 @@ impl Lowering<'_> {
             }
             _ => {
                 self.unsupported(span, "struct");
+                Vec::new()
+            }
+        }
+    }
+
+    /// A call, as the scalars of its value: a function's results, `Some`,
+    /// `Ok`, `Err`, a constructor, a variant or a method.
+    fn call_values(
+        &mut self,
+        state: &mut FnState,
+        id: ExprId,
+        callee: ExprId,
+        args: &[ExprId],
+        mode: Mode,
+    ) -> Vec<Expr> {
+        let span = self.ast.expr(id).span;
+        match self.ast.expr(callee).kind {
+            AstExpr::Name(symbol) => {
+                let function = self.fns.get(&symbol).copied();
+                let back = function
+                    .map(|f| self.writeback_places(state, f, args))
+                    .unwrap_or_default();
+                let args = self.arguments(state, function, args);
+                let values = if let Some(function) = function {
+                    self.call_results(state, function, args, &back)
+                } else if self.ast.name(symbol) == "Some" {
+                    let mut out = vec![bool_const(true)];
+                    out.extend(args);
+                    out
+                } else if let (name @ ("Ok" | "Err"), Some(CheckTy::Result(ok, err))) =
+                    (self.ast.name(symbol), self.check_type(id).cloned())
+                {
+                    // The tag, then `Ok`'s data, then `Err`'s.
+                    let is_ok = name == "Ok";
+                    let mut out = vec![Expr {
+                        kind: ExprKind::Const(Const::Int(i64::from(!is_ok))),
+                        ty: Ty::I32,
+                    }];
+                    if is_ok {
+                        out.extend(args);
+                        out.extend(self.zero_value(&err));
+                    } else {
+                        out.extend(self.zero_value(&ok));
+                        out.extend(args);
+                    }
+                    out
+                } else {
+                    // A constructor: its scalars are its arguments', in order.
+                    args
+                };
+                Self::fresh(state, values, mode)
+            }
+            AstExpr::Field { base, name } => {
+                let method = self.ast.name(name.symbol);
+                if let Some(values) = self.enum_value(state, id, base, method, args) {
+                    return Self::fresh(state, values, mode);
+                }
+                self.method_values(state, base, method, args, mode, span)
+            }
+            _ => {
+                self.unsupported(span, "function-value");
                 Vec::new()
             }
         }
@@ -354,6 +415,15 @@ impl Lowering<'_> {
             CheckTy::Option(inner) => {
                 let mut out = vec![bool_const(false)];
                 out.extend(self.zero_value(inner));
+                out
+            }
+            CheckTy::Result(ok, err) => {
+                let mut out = vec![Expr {
+                    kind: ExprKind::Const(Const::Int(0)),
+                    ty: Ty::I32,
+                }];
+                out.extend(self.zero_value(ok));
+                out.extend(self.zero_value(err));
                 out
             }
             CheckTy::Enum(id, _) => {
@@ -408,14 +478,34 @@ impl Lowering<'_> {
                 None => Vec::new(),
             };
         }
-        let mut fields = self.value_as(state, base, Mode::Borrow);
+        let fields = self.value_as(state, base, Mode::Borrow);
+        // A result is read as an option of its `Ok` data: present when the tag
+        // is 0.
+        let fields = match self.check_type(base) {
+            Some(CheckTy::Result(ok, _)) => {
+                let ok_width = self.leaves(ok).map_or(0, |l| l.len());
+                let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
+                let tag = fields.first().cloned().unwrap_or_else(|| bool_const(false));
+                let mut view = vec![super::binary(
+                    BinOp::Eq,
+                    tag,
+                    Expr {
+                        kind: ExprKind::Const(Const::Int(0)),
+                        ty: Ty::I32,
+                    },
+                )];
+                view.extend(fields.into_iter().skip(1).take(ok_width));
+                view
+            }
+            _ => fields,
+        };
         match method {
-            "isSome" | "isNone" => {
+            "isSome" | "isNone" | "isOk" | "isErr" => {
                 let some = Self::pick(state, fields, 0, 1);
                 let Some(some) = some.into_iter().next() else {
                     return Vec::new();
                 };
-                if method == "isSome" {
+                if matches!(method, "isSome" | "isOk") {
                     vec![some]
                 } else {
                     vec![Expr {
@@ -424,52 +514,61 @@ impl Lowering<'_> {
                     }]
                 }
             }
-            "unwrapOr" => {
-                // The receiver, then the fallback; then the value is chosen.
-                let mark = state.pre.len();
-                let fallback = self.arguments(state, None, args);
-                state.keep_before(mark, &mut fields);
-                let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
-                let Some((some, payload)) = fields.split_first() else {
-                    return Vec::new();
-                };
-                let mut out = Vec::new();
-                let mut then = Vec::new();
-                for (value, fallback) in payload.iter().zip(fallback) {
-                    if fallback.ty == Ty::Owned {
-                        // A buffer: the fallback, or a copy of the one inside.
-                        let temp = state.owned_temp(fallback);
-                        then.push(heap::release_stmt(temp));
-                        then.push(Stmt::Set(
-                            temp,
-                            Expr {
-                                kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
-                                ty: Ty::Owned,
-                            },
-                        ));
-                        out.push(Expr {
-                            kind: ExprKind::Local(temp),
-                            ty: Ty::Owned,
-                        });
-                        continue;
-                    }
-                    let temp = state.temp(fallback.ty);
-                    state.pre.push(Stmt::Set(temp, fallback));
-                    then.push(Stmt::Set(temp, value.clone()));
-                    out.push(super::local_expr(state, temp));
-                }
-                state.pre.push(Stmt::If {
-                    cond: some.clone(),
-                    then,
-                    otherwise: Vec::new(),
-                });
-                Self::fresh(state, out, mode)
-            }
+            "unwrapOr" => self.unwrap_or_values(state, fields, args, mode),
             _ => {
                 self.unsupported(span, "method");
                 Vec::new()
             }
         }
+    }
+
+    /// `option.unwrapOr(fallback)` on the scalars `fields` of the option.
+    fn unwrap_or_values(
+        &mut self,
+        state: &mut FnState,
+        mut fields: Vec<Expr>,
+        args: &[ExprId],
+        mode: Mode,
+    ) -> Vec<Expr> {
+        // The receiver, then the fallback; then the value is chosen.
+        let mark = state.pre.len();
+        let fallback = self.arguments(state, None, args);
+        state.keep_before(mark, &mut fields);
+        let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
+        let Some((some, payload)) = fields.split_first() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut then = Vec::new();
+        for (value, fallback) in payload.iter().zip(fallback) {
+            if fallback.ty == Ty::Owned {
+                // A buffer: the fallback, or a copy of the one inside.
+                let temp = state.owned_temp(fallback);
+                then.push(heap::release_stmt(temp));
+                then.push(Stmt::Set(
+                    temp,
+                    Expr {
+                        kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
+                        ty: Ty::Owned,
+                    },
+                ));
+                out.push(Expr {
+                    kind: ExprKind::Local(temp),
+                    ty: Ty::Owned,
+                });
+                continue;
+            }
+            let temp = state.temp(fallback.ty);
+            state.pre.push(Stmt::Set(temp, fallback));
+            then.push(Stmt::Set(temp, value.clone()));
+            out.push(super::local_expr(state, temp));
+        }
+        state.pre.push(Stmt::If {
+            cond: some.clone(),
+            then,
+            otherwise: Vec::new(),
+        });
+        Self::fresh(state, out, mode)
     }
 
     /// `x?`: the value of an option, or a return of `None` when it has none.
@@ -500,6 +599,9 @@ impl Lowering<'_> {
                 }
             })
             .collect();
+        if let Some(CheckTy::Result(ok, _)) = self.check_type(inner).cloned() {
+            return self.try_result(state, &ret, &ok, &fields);
+        }
         let Some((some, payload)) = fields.split_first() else {
             return Vec::new();
         };
@@ -518,6 +620,72 @@ impl Lowering<'_> {
             otherwise: Vec::new(),
         });
         Self::fresh(state, payload.to_vec(), Mode::Consume)
+    }
+
+    /// `x?` on a result: its `Ok` data, or a return of its error, moved into
+    /// the function's own result.
+    fn try_result(
+        &self,
+        state: &mut FnState,
+        ret: &CheckTy,
+        ok: &CheckTy,
+        fields: &[Expr],
+    ) -> Vec<Expr> {
+        let ok_width = self.leaves(ok).map_or(0, |l| l.len());
+        let Some((tag, data)) = fields.split_first() else {
+            return Vec::new();
+        };
+        let payload: Vec<Expr> = data.iter().take(ok_width).cloned().collect();
+        let error: Vec<Expr> = data.iter().skip(ok_width).cloned().collect();
+        // The error's buffers move into the return; everything else is released.
+        let moved: BTreeSet<u32> = error
+            .iter()
+            .filter_map(|e| match e.kind {
+                ExprKind::Local(l) if e.ty == Ty::Owned => Some(l.0),
+                _ => None,
+            })
+            .collect();
+        let CheckTy::Result(ret_ok, _) = ret else {
+            return Vec::new();
+        };
+        let mut early = vec![Expr {
+            kind: ExprKind::Const(Const::Int(1)),
+            ty: Ty::I32,
+        }];
+        early.extend(self.zero_value(ret_ok));
+        early.extend(error.iter().map(|e| match e.kind {
+            ExprKind::Local(l) if e.ty == Ty::Owned => Expr {
+                kind: ExprKind::Move(l),
+                ty: Ty::Owned,
+            },
+            _ => e.clone(),
+        }));
+        early.extend(state.writeback_values());
+        let mut then: Vec<Stmt> = state
+            .live
+            .iter()
+            .filter(|l| !moved.contains(l))
+            .map(|&l| heap::release_stmt(LocalId(l)))
+            .collect();
+        then.push(super::return_of(early));
+        state.pre.push(Stmt::If {
+            cond: super::binary(
+                BinOp::Ne,
+                tag.clone(),
+                Expr {
+                    kind: ExprKind::Const(Const::Int(0)),
+                    ty: Ty::I32,
+                },
+            ),
+            then,
+            otherwise: Vec::new(),
+        });
+        // On the `Ok` path, the error's empty buffers are released.
+        for &local in &moved {
+            let release = state.release(LocalId(local));
+            state.pre.push(release);
+        }
+        Self::fresh(state, payload, Mode::Consume)
     }
 
     /// `len` scalars from `offset`. The others are dropped, so any of them that
@@ -759,6 +927,7 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Array(_)
             | CheckTy::String
             | CheckTy::Enum(..)
+            | CheckTy::Result(..)
     )
 }
 

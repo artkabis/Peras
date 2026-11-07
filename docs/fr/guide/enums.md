@@ -1,4 +1,4 @@
-# Énumérations et match
+# Énumérations, match et résultats
 
 Une énumération est une valeur qui est l’une de plusieurs variantes, chacune avec ses données. `match` la décompose, et le compilateur vérifie que chaque variante est traitée : en oublier une est une erreur, pas un bug découvert en production. <span class="status compiled">compilé</span>
 
@@ -105,6 +105,52 @@ export fn describe(o: Option<i32>): i32 {
   };
 }
 ```
+
+## Les résultats : des erreurs qui sont des valeurs
+
+`Result<T, E>` est l’énumération de ce qui peut échouer : `Ok(valeur)` ou `Err(erreur)`. Une fonction qui peut échouer le dit dans son type, et son appelant ne peut pas oublier l’erreur : il doit la traiter avec `match`, ou la transmettre avec `?`.
+
+```peras build
+export enum ParseError {
+  Empty,
+  NotADigit(i32),
+}
+
+fn digit(code: i32): Result<i32, ParseError> {
+  if (code < 48 || code > 57) {
+    return Err(ParseError.NotADigit(code));
+  }
+  return Ok(code - 48);
+}
+
+export fn parse(codes: Array<i32>): Result<i32, ParseError> {
+  if (codes.length == 0) {
+    return Err(ParseError.Empty);
+  }
+  let n = 0;
+  for (const code of codes) {
+    n = n * 10 + digit(code)?;
+  }
+  return Ok(n);
+}
+
+export fn port(codes: Array<i32>): i32 {
+  return match (parse(codes)) {
+    Ok(n) => n,
+    Err(Empty) => -1,
+    Err(NotADigit(_)) => -2,
+  };
+}
+```
+
+`digit(code)?` donne le nombre dans un `Ok`, ou renvoie aussitôt l’`Err` depuis `parse`. `?` demande une fonction qui renvoie un `Result` avec le même type d’erreur, ou une `Option` pour `?` sur une option ([E0225](../errors/E0225.md)).
+
+| Méthode                 | Donne                             |
+| ----------------------- | --------------------------------- |
+| `r.isOk()`, `r.isErr()` | la variante                       |
+| `r.unwrapOr(secours)`   | la valeur de l’`Ok`, ou `secours` |
+
+En JavaScript, un résultat est `{ kind: "Ok", values: [valeur] }` ou `{ kind: "Err", values: [erreur] }`.
 
 ## La mémoire
 

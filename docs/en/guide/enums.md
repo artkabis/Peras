@@ -1,4 +1,4 @@
-# Enumerations and match
+# Enumerations, match and results
 
 An enumeration is a value that is one of several variants, each with its own data. `match` takes it apart, and the compiler checks that every variant is handled: forgetting one is an error, not a bug found in production. <span class="status compiled">compiled</span>
 
@@ -105,6 +105,52 @@ export fn describe(o: Option<i32>): i32 {
   };
 }
 ```
+
+## Results: errors as values
+
+`Result<T, E>` is the enumeration of what can fail: `Ok(value)` or `Err(error)`. A function that can fail says so in its type, and its caller cannot forget the error: it must `match` it, or pass it on with `?`.
+
+```peras build
+export enum ParseError {
+  Empty,
+  NotADigit(i32),
+}
+
+fn digit(code: i32): Result<i32, ParseError> {
+  if (code < 48 || code > 57) {
+    return Err(ParseError.NotADigit(code));
+  }
+  return Ok(code - 48);
+}
+
+export fn parse(codes: Array<i32>): Result<i32, ParseError> {
+  if (codes.length == 0) {
+    return Err(ParseError.Empty);
+  }
+  let n = 0;
+  for (const code of codes) {
+    n = n * 10 + digit(code)?;
+  }
+  return Ok(n);
+}
+
+export fn port(codes: Array<i32>): i32 {
+  return match (parse(codes)) {
+    Ok(n) => n,
+    Err(Empty) => -1,
+    Err(NotADigit(_)) => -2,
+  };
+}
+```
+
+`digit(code)?` gives the number inside an `Ok`, or returns the `Err` from `parse` at once. `?` needs a function that returns a `Result` with the same type of error, or an `Option` for `?` on an option ([E0225](../errors/E0225.md)).
+
+| Method                  | Gives                         |
+| ----------------------- | ----------------------------- |
+| `r.isOk()`, `r.isErr()` | which variant it is           |
+| `r.unwrapOr(fallback)`  | the `Ok` value, or `fallback` |
+
+In JavaScript, a result is `{ kind: "Ok", values: [value] }` or `{ kind: "Err", values: [error] }`.
 
 ## Memory
 

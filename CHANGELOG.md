@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **`Result<T, E>`**: `Ok(value)` or `Err(error)`, `isOk`, `isErr`, `unwrapOr`, and `?`, which returns the error early; the function must return a result with the same type of error, or an option for `?` on an option (`E0225`). The error moves into the return, buffers included.
+- Exhaustiveness and unreachable arms are now checked by the algorithm of Maranget, so nested patterns count: `Err(Empty)` and `Err(NotADigit(_))` together cover `Err`. A type of the module may take the name of a built-in one, such as `Result`.
 - **Enumerations with data, and `match`.** `enum Shape { Circle(f64), Rect(f64, f64), Empty }`; values are written `Shape.Circle(1.0)`.
   - `match` takes a value apart with patterns: `_`, names, numbers and booleans, variants with their data, nested; arms are values or blocks, and `return`, `break`, `continue` work inside.
   - Every `match` must cover every value (`E0222`); an unknown variant (`E0223`) and an arm no value can reach (`E0224`) are errors too. A `match` whose arms all return ends the function.

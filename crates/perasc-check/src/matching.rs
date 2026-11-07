@@ -13,19 +13,6 @@ use crate::scope::{self, Kind};
 use crate::ty::Ty;
 use crate::{Checker, errors};
 
-/// What a pattern covers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Covers {
-    /// Every value: `_`, a name.
-    All,
-    /// One variant; all of it when its data patterns cover everything.
-    Variant(usize, bool),
-    /// One boolean.
-    Bool(bool),
-    /// Some values only: a number, a variant with a refutable part.
-    Some,
-}
-
 impl Checker<'_> {
     /// `Enum.Variant` (`args` is `None`) or `Enum.Variant(args)`, when `base`
     /// names an enumeration; `None` otherwise.
@@ -105,34 +92,18 @@ impl Checker<'_> {
         expected: Option<&Ty>,
     ) -> Ty {
         let ty = self.infer(scrutinee, None).defaulted();
-        let variants = self.variants_of(&ty);
-        let mut covered = vec![false; variants.as_ref().map_or(0, Vec::len)];
-        let mut bools = [false, false];
-        let mut catch_all = false;
         let mut result: Option<Ty> = expected.filter(|t| **t != Ty::Void).cloned();
         let mut values = true;
+        let mut rows: Vec<Vec<Pat>> = Vec::new();
         for arm in arms {
             self.scopes.push();
-            let covers = self.pattern(&arm.pattern, &ty);
-            let reachable = !catch_all
-                && match covers {
-                    Covers::Variant(i, _) => !covered.get(i).copied().unwrap_or(false),
-                    Covers::Bool(b) => !bools[usize::from(b)],
-                    Covers::All | Covers::Some => true,
-                };
-            if !reachable && ty != Ty::Error {
+            let pat = self.pattern(&arm.pattern, &ty);
+            if ty != Ty::Error
+                && !self.useful(&rows, std::slice::from_ref(&pat), std::slice::from_ref(&ty))
+            {
                 self.report(errors::unreachable_arm(arm.pattern.span));
             }
-            match covers {
-                Covers::All => catch_all = true,
-                Covers::Variant(i, true) => {
-                    if let Some(slot) = covered.get_mut(i) {
-                        *slot = true;
-                    }
-                }
-                Covers::Bool(b) => bools[usize::from(b)] = true,
-                Covers::Variant(_, false) | Covers::Some => {}
-            }
+            rows.push(vec![pat]);
             match &arm.body {
                 ArmBody::Expr(value) => match &result {
                     Some(t) => self.expect(*value, t),
@@ -145,21 +116,8 @@ impl Checker<'_> {
             }
             self.pop_scope();
         }
-        if !catch_all && ty != Ty::Error {
-            let missing: Vec<String> = match &variants {
-                Some(variants) => variants
-                    .iter()
-                    .zip(&covered)
-                    .filter(|(_, c)| !**c)
-                    .map(|((name, fields), _)| pattern_text(name, fields.len()))
-                    .collect(),
-                None if ty == Ty::Bool => [false, true]
-                    .into_iter()
-                    .filter(|b| !bools[usize::from(*b)])
-                    .map(|b| b.to_string())
-                    .collect(),
-                None => vec!["_".to_owned()],
-            };
+        if ty != Ty::Error {
+            let missing = self.missing(&rows, &ty);
             if !missing.is_empty() {
                 let close = span.end.saturating_sub(1);
                 self.report(errors::non_exhaustive(span, &ty, &missing, close));
@@ -172,12 +130,105 @@ impl Checker<'_> {
         }
     }
 
+    /// The constructors of a type that has finitely many: its variants with
+    /// the types of their data, or `false` and `true`.
+    fn constructors(&self, ty: &Ty) -> Option<Vec<(String, Vec<Ty>)>> {
+        if *ty == Ty::Bool {
+            return Some(vec![
+                ("false".to_owned(), Vec::new()),
+                ("true".to_owned(), Vec::new()),
+            ]);
+        }
+        self.variants_of(ty)
+    }
+
+    /// The values of `ty` no row covers, as patterns to write: `Empty`,
+    /// `Err(_)`, `false`, or `_`.
+    fn missing(&self, rows: &[Vec<Pat>], ty: &Ty) -> Vec<String> {
+        let types = std::slice::from_ref(ty);
+        match self.constructors(ty) {
+            Some(constructors) => constructors
+                .iter()
+                .enumerate()
+                .filter(|(c, (_, fields))| {
+                    let row = vec![Pat::Any; fields.len()];
+                    self.useful(&specialize(rows, *c, fields.len()), &row, fields)
+                })
+                .map(|(_, (name, fields))| pattern_text(name, fields.len()))
+                .collect(),
+            None if self.useful(rows, &[Pat::Any], types) => vec!["_".to_owned()],
+            None => Vec::new(),
+        }
+    }
+
+    /// Whether a row of patterns matches a value no row of `matrix` matches:
+    /// the algorithm of Maranget, "Warnings for pattern matching" (2007).
+    fn useful(&self, matrix: &[Vec<Pat>], row: &[Pat], types: &[Ty]) -> bool {
+        let (Some(first), Some(ty)) = (row.first(), types.first()) else {
+            return matrix.is_empty();
+        };
+        let rest = row.get(1..).unwrap_or_default();
+        let rest_types = types.get(1..).unwrap_or_default();
+        let constructors = self.constructors(ty);
+        let fields_of = |c: usize| -> Vec<Ty> {
+            constructors
+                .as_ref()
+                .and_then(|cs| cs.get(c))
+                .map(|(_, f)| f.clone())
+                .unwrap_or_default()
+        };
+        let with =
+            |head: Vec<Pat>| -> Vec<Pat> { head.into_iter().chain(rest.iter().cloned()).collect() };
+        let with_types = |head: Vec<Ty>| -> Vec<Ty> {
+            head.into_iter().chain(rest_types.iter().cloned()).collect()
+        };
+        match first {
+            Pat::Ctor(c, args) => {
+                let fields = fields_of(*c);
+                self.useful(
+                    &specialize(matrix, *c, args.len()),
+                    &with(args.clone()),
+                    &with_types(fields),
+                )
+            }
+            Pat::Lit(value) => {
+                let kept: Vec<Vec<Pat>> = matrix
+                    .iter()
+                    .filter(|r| {
+                        matches!(r.first(), Some(Pat::Any)) || r.first() == Some(&Pat::Lit(*value))
+                    })
+                    .map(|r| r.get(1..).unwrap_or_default().to_vec())
+                    .collect();
+                self.useful(&kept, rest, rest_types)
+            }
+            Pat::Any => {
+                if let Some(cs) = &constructors {
+                    return cs.iter().enumerate().any(|(c, (_, fields))| {
+                        let row = with(vec![Pat::Any; fields.len()]);
+                        self.useful(
+                            &specialize(matrix, c, fields.len()),
+                            &row,
+                            &with_types(fields.clone()),
+                        )
+                    });
+                }
+                // Infinitely many values: only the rows matching anything remain.
+                let defaults: Vec<Vec<Pat>> = matrix
+                    .iter()
+                    .filter(|r| matches!(r.first(), Some(Pat::Any)))
+                    .map(|r| r.get(1..).unwrap_or_default().to_vec())
+                    .collect();
+                self.useful(&defaults, rest, rest_types)
+            }
+        }
+    }
+
     /// Checks a pattern against the type it matches, declaring the names it
-    /// gives; what it covers.
-    fn pattern(&mut self, pattern: &Pattern, ty: &Ty) -> Covers {
+    /// gives; the pattern, for the exhaustiveness check.
+    fn pattern(&mut self, pattern: &Pattern, ty: &Ty) -> Pat {
         let variants = self.variants_of(ty);
         match &pattern.kind {
-            PatternKind::Wildcard => Covers::All,
+            PatternKind::Wildcard => Pat::Any,
             PatternKind::Name(ident) => {
                 let text = self.name(ident.symbol).to_owned();
                 let found = variants
@@ -188,21 +239,24 @@ impl Checker<'_> {
                     if fields > 0 {
                         self.report(errors::argument_count(pattern.span, &text, fields, 0, None));
                     }
-                    return Covers::Variant(index, true);
+                    return Pat::Ctor(index, vec![Pat::Any; fields]);
                 }
                 self.declare(ident.symbol, Some(ident.span), Kind::Pattern, ty.clone());
-                Covers::All
+                Pat::Any
             }
             PatternKind::Literal(value) => {
                 if !(ty.is_integer() || *ty == Ty::Bool || *ty == Ty::Error) {
                     let span = self.ast.expr(*value).span;
                     self.report(errors::invalid_operator(span, "match", ty));
-                    return Covers::Some;
+                    return Pat::Any;
                 }
                 self.expect(*value, ty);
-                match self.ast.expr(*value).kind {
-                    ExprKind::Bool(b) => Covers::Bool(b),
-                    _ => Covers::Some,
+                if let ExprKind::Bool(b) = self.ast.expr(*value).kind {
+                    return Pat::Ctor(usize::from(b), Vec::new());
+                }
+                match self.literal_value(*value) {
+                    Some(n) => Pat::Lit(n),
+                    None => Pat::Any,
                 }
             }
             PatternKind::Variant {
@@ -215,7 +269,7 @@ impl Checker<'_> {
                         let text = self.name(name.symbol).to_owned();
                         self.report(errors::unknown_variant(name.span, ty, &text, None));
                     }
-                    return Covers::Some;
+                    return Pat::Any;
                 };
                 if let Some(qualifier) = qualifier {
                     let written = self.name(qualifier.symbol);
@@ -227,7 +281,8 @@ impl Checker<'_> {
                 let text = self.name(name.symbol).to_owned();
                 let Some(index) = variants.iter().position(|(n, _)| *n == text) else {
                     self.unknown_variant(ty, &text, name.span);
-                    return Covers::Some;
+                    // Matches nothing: the arms after it stay reachable.
+                    return Pat::Ctor(usize::MAX, Vec::new());
                 };
                 let types = variants
                     .get(index)
@@ -241,15 +296,62 @@ impl Checker<'_> {
                         fields.len(),
                         None,
                     ));
+                    return Pat::Any;
                 }
-                let mut full = true;
-                for (field, field_ty) in fields.iter().zip(&types) {
-                    full &= self.pattern(field, field_ty) == Covers::All;
-                }
-                Covers::Variant(index, full)
+                let args = fields
+                    .iter()
+                    .zip(&types)
+                    .map(|(field, field_ty)| self.pattern(field, field_ty))
+                    .collect();
+                Pat::Ctor(index, args)
             }
         }
     }
+
+    /// The value of an integer literal pattern, negated if written `-n`.
+    fn literal_value(&self, id: ExprId) -> Option<i128> {
+        match self.ast.expr(id).kind {
+            ExprKind::Int(n) => Some(i128::from(n)),
+            ExprKind::Paren(inner) => self.literal_value(inner),
+            ExprKind::Unary { operand, .. } => self.literal_value(operand).map(|n| -n),
+            _ => None,
+        }
+    }
+}
+
+/// A pattern as the exhaustiveness check sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Pat {
+    /// `_`, a name: anything.
+    Any,
+    /// The constructor of this index (a variant, `false` or `true`), with
+    /// patterns for its data.
+    Ctor(usize, Vec<Pat>),
+    /// One integer.
+    Lit(i128),
+}
+
+/// The rows of `matrix` that can match constructor `c`, with its data in
+/// place of their first pattern.
+fn specialize(matrix: &[Vec<Pat>], c: usize, arity: usize) -> Vec<Vec<Pat>> {
+    matrix
+        .iter()
+        .filter_map(|row| {
+            let rest = row.get(1..).unwrap_or_default();
+            match row.first() {
+                Some(Pat::Any) => Some(
+                    vec![Pat::Any; arity]
+                        .into_iter()
+                        .chain(rest.iter().cloned())
+                        .collect(),
+                ),
+                Some(Pat::Ctor(other, args)) if *other == c => {
+                    Some(args.iter().cloned().chain(rest.iter().cloned()).collect())
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// How a missing variant is written in an arm: `Circle(_)`, `Empty`.

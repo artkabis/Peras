@@ -61,4 +61,11 @@ export fn wrapped(a: i32): i32 {
 | `isSome()`, `isNone()` | si une valeur est présente | <span class="status compiled">compilé</span> |
 | `unwrapOr(secours)`    | la valeur, ou `secours`    | <span class="status compiled">compilé</span> |
 
+## `Result<T, E>`
+
+| Méthode             | Donne                             | État                                         |
+| ------------------- | --------------------------------- | -------------------------------------------- |
+| `isOk()`, `isErr()` | la variante                       | <span class="status compiled">compilé</span> |
+| `unwrapOr(secours)` | la valeur de l’`Ok`, ou `secours` | <span class="status compiled">compilé</span> |
+
 Un membre inconnu est refusé avec la liste de ceux qui existent ([E0215](../errors/E0215.md)). Beaucoup d’autres méthodes sont prévues : voir la [feuille de route](roadmap.md#phase-3--une-bibliothèque-standard).

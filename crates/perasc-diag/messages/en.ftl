@@ -519,6 +519,21 @@ check-unreachable-arm-label = earlier arms already cover these values
 check-unreachable-arm-why = Arms are tried in order: after `_`, a name, or a variant already covered, no value is left for this one. It is dead code, or arms in the wrong order.
 check-unreachable-arm-fix = remove the arm, or move it before the one that covers it
 
+# E0225
+check-try-return = `?` on { $kind ->
+    [option] an option
+   *[other] a result
+} in a function that returns `{ $ret }`
+check-try-return-label = returns early with { $kind ->
+    [option] `None`
+   *[other] the `Err`
+}
+check-try-return-why = `?` gives the value inside, or returns at once what it cannot give: `None` for an option, the error for a result. The function must be able to return that: an option, or a result with the same type of error.
+check-try-return-fix = { $kind ->
+    [option] return an `Option`, or handle `None` with `match` or `unwrapOr`
+   *[other] return a `Result` with this type of error, or handle the error with `match`
+}
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures

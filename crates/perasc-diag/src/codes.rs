@@ -114,6 +114,8 @@ pub const NON_EXHAUSTIVE_MATCH: ErrorCode = ErrorCode::new(222);
 pub const UNKNOWN_VARIANT: ErrorCode = ErrorCode::new(223);
 /// A `match` arm that no value can reach.
 pub const UNREACHABLE_ARM: ErrorCode = ErrorCode::new(224);
+/// `?` in a function that does not return what `?` gives back early.
+pub const TRY_RETURN: ErrorCode = ErrorCode::new(225);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -223,6 +225,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(NON_EXHAUSTIVE_MATCH, "check-match-missing", "E0222"),
     active!(UNKNOWN_VARIANT, "check-unknown-variant", "E0223"),
     active!(UNREACHABLE_ARM, "check-unreachable-arm", "E0224"),
+    active!(TRY_RETURN, "check-try-return", "E0225"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 
