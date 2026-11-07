@@ -1,0 +1,28 @@
+// E0231: generic code instantiated with ever larger types.
+fn nest<T>(x: sink T, n: i32): i32 {
+  if (n == 0) {
+    return 0;
+  }
+  return nest([x], n - 1);
+}
+
+export fn start(): i32 {
+  return nest(1, 3);
+}
+
+struct Pair<A, B> {
+  first: A;
+  second: B;
+}
+
+// Ever deeper structures count too.
+fn double<T>(x: sink T, n: i32): i32 {
+  if (n == 0) {
+    return 0;
+  }
+  return double(Pair(x, 1), n - 1);
+}
+
+export fn again(): i32 {
+  return double(1, 3);
+}

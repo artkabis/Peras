@@ -5,7 +5,7 @@ use perasc_syntax::ast::{AssignOp, Convention, ExprId, ExprKind, Stmt, StmtKind}
 
 use crate::errors::{self, ConditionFix, Immutable};
 use crate::scope::Kind;
-use crate::ty::Ty;
+use crate::ty::{Bound, Ty};
 use crate::{Checker, builtins};
 
 impl Checker<'_> {
@@ -40,9 +40,10 @@ impl Checker<'_> {
             StmtKind::Assign { target, op, value } => self.assign(*target, *op, *value),
             StmtKind::Step { target, .. } => {
                 let ty = self.place(*target);
-                if !ty.is_numeric() && ty != Ty::Error {
+                let numeric = ty.is_numeric() || self.satisfies_param(&ty, Bound::Numeric);
+                if !numeric && ty != Ty::Error {
                     let span = self.ast.expr(*target).span;
-                    self.report(errors::invalid_operator(span, "++", &ty));
+                    self.invalid_operator(span, "++", &ty, Bound::Numeric);
                 }
             }
             StmtKind::Block(block) => {
@@ -194,7 +195,8 @@ impl Checker<'_> {
         }
         // Compound: numbers, and `+=` on strings.
         let string_append = op == AssignOp::Add && ty == Ty::String;
-        if !ty.is_numeric() && !string_append && ty != Ty::Error {
+        let numeric = ty.is_numeric() || self.satisfies_param(&ty, Bound::Numeric);
+        if !numeric && !string_append && ty != Ty::Error {
             let span = self.ast.expr(target).span;
             let symbol = match op {
                 AssignOp::Add => "+=",
@@ -204,7 +206,7 @@ impl Checker<'_> {
                 AssignOp::Rem => "%=",
                 AssignOp::Assign => "=",
             };
-            self.report(errors::invalid_operator(span, symbol, &ty));
+            self.invalid_operator(span, symbol, &ty, Bound::Numeric);
             self.infer(value, None);
             return;
         }
@@ -220,6 +222,7 @@ impl Checker<'_> {
                 let Some(index) = self.scopes.lookup(*symbol) else {
                     return self.infer(target, None);
                 };
+                self.resolved.insert(target, index);
                 self.check_mutable(index, expr.span);
                 self.scopes
                     .bindings
@@ -239,7 +242,7 @@ impl Checker<'_> {
     }
 
     /// The binding a field or element access starts from: `buf` in `buf.samples[0]`.
-    fn root(&self, mut expr: ExprId) -> Option<usize> {
+    pub(crate) fn root(&self, mut expr: ExprId) -> Option<usize> {
         loop {
             match &self.ast.expr(expr).kind {
                 ExprKind::Name(symbol) => return self.scopes.lookup(*symbol),
@@ -251,7 +254,7 @@ impl Checker<'_> {
     }
 
     /// `E0205` when the binding cannot be modified.
-    fn check_mutable(&mut self, index: usize, span: Span) {
+    pub(crate) fn check_mutable(&mut self, index: usize, span: Span) {
         let Some(binding) = self.scopes.bindings.get(index) else {
             return;
         };

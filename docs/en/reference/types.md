@@ -46,16 +46,20 @@ The result of a function that returns nothing. <span class="status compiled">com
 
 ## `Array<T>`
 
-A growable list of values of type `T`, written `[a, b]`. See [collections](../guide/collections.md#arrayt). <span class="status checked">checked</span>
+A growable list of values of type `T`, written `[a, b]`, compiled when `T` is a number, `bool`, or a structure or option of them. See [collections](../guide/collections.md#arrayt). <span class="status compiled">compiled</span>
 
 ## `String`
 
-UTF-8 text, written `"…"`. <span class="status checked">checked</span>
+UTF-8 text, written `"…"`; its `length` counts bytes. See [collections](../guide/collections.md#string). <span class="status compiled">compiled</span>
 
 ## `Option<T>`
 
-`Some(value)` or `None`: a value that may be absent. Peras has no `null` and no `undefined`. <span class="status checked">checked</span>
+`Some(value)` or `None`: a value that may be absent. Peras has no `null` and no `undefined`; JavaScript sees an empty option as `undefined`. <span class="status compiled">compiled</span>
 
 ## Not in the language yet
 
-`Result<T, E>`, enumerations, unions, generics, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).
+Enumerations are on their own page: [enumerations and match](../guide/enums.md). Results are with them: `Result<T, E>`, `Ok(value)` or `Err(error)`. <span class="status compiled">compiled</span>
+
+Generic functions, structures and enumerations have their page: [generics](../guide/generics.md). <span class="status compiled">compiled</span>
+
+Unions, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).

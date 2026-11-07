@@ -1,0 +1,26 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0227-constraint-not-met.peras
+---
+diagnostics:
+  error[E0227] check-constraint { ty: "String", bound: "Ord" }
+    primary 22:17-22:18: check-constraint-label { ty: "String", param: "T" }
+    secondary 2:11-2:12: check-constraint-declared { param: "T", bound: "Ord" }
+    cause: check-constraint-why
+    fix: check-constraint-fix { param: "T", bound: "Ord" }
+  error[E0227] check-constraint { ty: "i32", bound: "Float" }
+    primary 26:16-26:17: check-constraint-label { ty: "i32", param: "T" }
+    secondary 9:10-9:11: check-constraint-declared { param: "T", bound: "Float" }
+    cause: check-constraint-why
+    fix: check-constraint-fix { param: "T", bound: "Float" }
+  error[E0227] check-constraint { ty: "String", bound: "Ord" }
+    primary 29:29-29:35: check-constraint-label { ty: "String", param: "T" }
+    secondary 13:15-13:16: check-constraint-declared { param: "T", bound: "Ord" }
+    cause: check-constraint-why
+    fix: check-constraint-fix { param: "T", bound: "Ord" }
+  error[E0227] check-constraint { ty: "Array<i32>", bound: "Copy" }
+    primary 34:20-34:22: check-constraint-label { ty: "Array<i32>", param: "T" }
+    secondary 17:14-17:15: check-constraint-declared { param: "T", bound: "Copy" }
+    cause: check-constraint-why
+    fix: check-constraint-fix { param: "T", bound: "Copy" }

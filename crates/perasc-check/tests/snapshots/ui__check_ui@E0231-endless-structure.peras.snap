@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0231-endless-structure.peras
+---
+diagnostics:
+  error[E0231] check-endless-instances { name: "Grow" }
+    primary 2:8-2:12: check-endless-instances-label
+    cause: check-endless-instances-why
+    fix: check-endless-instances-fix

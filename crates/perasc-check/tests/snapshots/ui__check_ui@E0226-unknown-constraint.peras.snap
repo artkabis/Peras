@@ -1,0 +1,15 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0226-unknown-constraint.peras
+---
+diagnostics:
+  error[E0226] check-unknown-constraint { name: "Ordd" }
+    primary 2:14-2:18: check-unknown-constraint-label
+    cause: check-unknown-constraint-why
+    fix: check-did-you-mean { name: "Ord" }
+      2:14-2:18 -> "Ord"
+  error[E0226] check-unknown-constraint { name: "Sortable" }
+    primary 9:20-9:28: check-unknown-constraint-label
+    cause: check-unknown-constraint-why
+    fix: check-unknown-constraint-fix

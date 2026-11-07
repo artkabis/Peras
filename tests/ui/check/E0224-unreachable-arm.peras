@@ -1,0 +1,22 @@
+// E0224: arms no value can reach.
+enum Shape {
+  Circle(f64),
+  Empty,
+}
+
+export fn test(s: Shape, n: i32): i32 {
+  const a = match (s) {
+    Circle(_) => 1,
+    Empty => 0,
+    Circle(_) => 2,
+  };
+  const b = match (n) {
+    _ => 0,
+    1 => 10,
+  };
+  const c = match (n) {
+    x => x,
+    2 => 20,
+  };
+  return a + b + c;
+}

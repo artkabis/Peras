@@ -1,0 +1,10 @@
+// E0231: a generic structure that contains itself with a larger type argument.
+struct Grow<T> {
+  inner: Option<Grow<Array<T>>>;
+}
+
+// Allowed: the same type arguments.
+struct List<T> {
+  value: T;
+  rest: Array<List<T>>;
+}

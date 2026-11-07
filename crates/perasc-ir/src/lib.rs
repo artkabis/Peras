@@ -93,6 +93,9 @@ pub struct LocalId(pub u32);
 pub struct Module {
     /// Functions, in source order.
     pub functions: Vec<Function>,
+    /// The bytes of each string literal, which [`BufOp::Literal`] copies into a
+    /// new buffer.
+    pub data: Vec<Vec<u8>>,
 }
 
 /// A function.
@@ -112,8 +115,8 @@ pub struct Function {
     /// fields. Such a function ends with [`Stmt::ReturnMany`], and is only called
     /// by [`Stmt::CallMany`].
     pub more: Vec<Ty>,
-    /// For an exported function that takes or returns structures: how
-    /// JavaScript sees them, as objects. `None` when every value is a scalar.
+    /// For an exported function that takes or returns structures or options:
+    /// how JavaScript sees them. `None` when every value is a scalar.
     pub shape: Option<JsShape>,
     /// The body.
     pub body: Vec<Stmt>,
@@ -126,6 +129,9 @@ pub struct JsShape {
     pub params: Vec<(String, Shape)>,
     /// The result; `None` for `void`.
     pub result: Option<Shape>,
+    /// The `inout` parameters whose numbers the function returns after its
+    /// result, to be written back into the objects JavaScript passed.
+    pub writeback: Vec<(String, Shape)>,
 }
 
 /// A value as JavaScript sees it.
@@ -135,6 +141,33 @@ pub enum Shape {
     Value(Ty),
     /// A structure: its name and its fields, whose scalars follow each other.
     Object(String, Vec<(String, Shape)>),
+    /// An `Option<T>`: a `bool` saying whether a value is there, then the
+    /// value's scalars. JavaScript sees the value, or `undefined`.
+    Option(Box<Shape>),
+    /// An `Array<T>`: one buffer handle. JavaScript sees an array, copied in
+    /// and, for a result or an `inout` parameter, copied back out.
+    Array(Elem, Pass),
+    /// A `String`: one buffer of UTF-8 bytes. JavaScript sees a string.
+    String(Pass),
+    /// An array of structures: one buffer per scalar of an element, its
+    /// columns. JavaScript sees an array of objects.
+    Records(Box<Shape>, Pass),
+    /// An enumeration: its name, and each variant with its data. JavaScript
+    /// sees `{ kind: "Variant", values: [...] }`.
+    Enum(String, Vec<(String, Vec<Shape>)>),
+}
+
+/// How a heap value is passed between JavaScript and WebAssembly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pass {
+    /// A parameter the function only reads.
+    Borrow,
+    /// A parameter the function may change: the changes are copied back.
+    Inout,
+    /// A parameter the function takes and releases.
+    Sink,
+    /// A result: the caller takes it.
+    Result,
 }
 
 impl Shape {
@@ -144,6 +177,26 @@ impl Shape {
         match self {
             Self::Value(ty) => vec![*ty],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
+            Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
+            Self::Enum(_, variants) => std::iter::once(Ty::I32)
+                .chain(
+                    variants
+                        .iter()
+                        .flat_map(|(_, f)| f.iter().flat_map(Self::scalars)),
+                )
+                .collect(),
+            Self::Array(_, Pass::Sink | Pass::Result) | Self::String(Pass::Sink | Pass::Result) => {
+                vec![Ty::Owned]
+            }
+            Self::Array(..) | Self::String(_) => vec![Ty::Borrowed],
+            Self::Records(element, pass) => {
+                let handle = if matches!(pass, Pass::Sink | Pass::Result) {
+                    Ty::Owned
+                } else {
+                    Ty::Borrowed
+                };
+                element.scalars().iter().map(|_| handle).collect()
+            }
         }
     }
 }
@@ -252,6 +305,8 @@ pub enum Stmt {
     Release(LocalId),
     /// Returns every result of a function with several, in order.
     ReturnMany(Vec<Expr>),
+    /// An operation on a buffer: see [`BufStmt`].
+    Buf(BufStmt, Vec<Expr>),
     /// Calls a function with several results and stores them, in order.
     CallMany {
         /// One local per result.
@@ -307,6 +362,158 @@ pub enum ExprKind {
     Move(LocalId),
     /// Lends the block of an `owned` local, as a `borrowed` argument.
     Borrow(LocalId),
+    /// A value computed from a buffer: see [`BufOp`].
+    Buf(BufOp, Vec<Expr>),
+}
+
+/// How an element is stored in a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Elem {
+    /// 4 bytes.
+    I32,
+    /// 8 bytes.
+    I64,
+    /// 4 bytes.
+    F32,
+    /// 8 bytes.
+    F64,
+    /// 4 bytes, 0 or 1.
+    Bool,
+    /// 1 byte, read as an `i32` from 0 to 255: the bytes of a string.
+    U8,
+    /// 4 bytes: a buffer the buffer owns, an element of an array of strings
+    /// or of arrays. Read, it is lent (`borrowed`); stored, it is taken
+    /// (`owned`), and the element it replaces is released.
+    Handle,
+}
+
+impl Elem {
+    /// Its size in bytes.
+    #[must_use]
+    pub const fn size(self) -> u32 {
+        match self {
+            Self::U8 => 1,
+            Self::I32 | Self::F32 | Self::Bool | Self::Handle => 4,
+            Self::I64 | Self::F64 => 8,
+        }
+    }
+
+    /// The value type of an element.
+    #[must_use]
+    pub const fn ty(self) -> Ty {
+        match self {
+            Self::I32 | Self::U8 => Ty::I32,
+            Self::Handle => Ty::Borrowed,
+            Self::I64 => Ty::I64,
+            Self::F32 => Ty::F32,
+            Self::F64 => Ty::F64,
+            Self::Bool => Ty::Bool,
+        }
+    }
+
+    /// The element type holding values of a type, if any.
+    #[must_use]
+    pub const fn of(ty: Ty) -> Option<Self> {
+        Some(match ty {
+            Ty::I32 => Self::I32,
+            Ty::I64 => Self::I64,
+            Ty::F32 => Self::F32,
+            Ty::F64 => Self::F64,
+            Ty::Bool => Self::Bool,
+            Ty::Owned => Self::Handle,
+            _ => return None,
+        })
+    }
+
+    /// The type of a value stored into an element: a handle is taken.
+    #[must_use]
+    pub const fn stored(self) -> Ty {
+        match self {
+            Self::Handle => Ty::Owned,
+            other => other.ty(),
+        }
+    }
+
+    /// Its name in the text form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::U8 => "u8",
+            Self::Handle => "handle",
+            other => other.ty().name(),
+        }
+    }
+}
+
+/// A buffer is a heap value with a length and a capacity, counted in elements,
+/// and its elements, contiguous: an `Array<T>` or the bytes of a `String`. Its
+/// handle stays the same when it grows. Operands that are buffers are `borrow`
+/// expressions or `borrowed` locals, except where [`BufStmt::Release`] says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufOp {
+    /// `[capacity]`: a new, empty `owned` buffer.
+    New(Elem),
+    /// `[buffer]`: its length, an `i32`.
+    Len,
+    /// `[buffer, index]`: the element at `index`, which the code has checked is
+    /// below the length ([`BufStmt::CheckIndex`]).
+    Get(Elem),
+    /// `[]`: a new `owned` buffer of bytes holding [`Module::data`] at this index.
+    Literal(u32),
+    /// `[buffer]`: a new `owned` copy, with copies of the buffers it owns.
+    Clone,
+    /// `[buffer, index]`: the buffer element at a checked index, taken: the
+    /// code then shortens the buffer below it ([`BufStmt::Truncate`]), so
+    /// that the buffer no longer owns it. This is `pop` on an array of strings.
+    Take,
+}
+
+/// A statement on a buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufStmt {
+    /// `[buffer, index, value]`: stores the element at a checked index.
+    Set(Elem),
+    /// `[buffer, value]`: adds an element at the end, growing the buffer.
+    Push(Elem),
+    /// `[buffer, length]`: sets a length no larger than the current one.
+    Truncate,
+    /// `[index, length]`: stops the program with an error unless
+    /// `0 <= index < length`.
+    CheckIndex,
+    /// `[move buffer]`: releases the buffer and its elements.
+    Release,
+    /// `[buffer, other]`: adds the elements of `other` at the end of `buffer`.
+    Append(Elem),
+}
+
+impl BufOp {
+    /// Its name in the text form.
+    #[must_use]
+    pub fn name(self) -> String {
+        match self {
+            Self::New(elem) => format!("buf.new.{}", elem.name()),
+            Self::Len => "buf.len".to_owned(),
+            Self::Get(elem) => format!("buf.get.{}", elem.name()),
+            Self::Literal(index) => format!("buf.literal #{index}"),
+            Self::Clone => "buf.clone".to_owned(),
+            Self::Take => "buf.take".to_owned(),
+        }
+    }
+}
+
+impl BufStmt {
+    /// Its name in the text form.
+    #[must_use]
+    pub fn name(self) -> String {
+        match self {
+            Self::Set(elem) => format!("buf.set.{}", elem.name()),
+            Self::Push(elem) => format!("buf.push.{}", elem.name()),
+            Self::Truncate => "buf.truncate".to_owned(),
+            Self::CheckIndex => "check_index".to_owned(),
+            Self::Release => "buf.release".to_owned(),
+            Self::Append(elem) => format!("buf.append.{}", elem.name()),
+        }
+    }
 }
 
 /// Prefix operators.
@@ -500,6 +707,10 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
             Stmt::Release(local) => {
                 let _ = writeln!(out, "{pad}release %{}", local.0);
             }
+            Stmt::Buf(op, args) => {
+                let args: Vec<String> = args.iter().map(expr).collect();
+                let _ = writeln!(out, "{pad}{} {}", op.name(), args.join(" "));
+            }
             Stmt::ReturnMany(values) => {
                 let values: Vec<String> = values.iter().map(expr).collect();
                 let _ = writeln!(out, "{pad}return {}", values.join(", "));
@@ -569,12 +780,26 @@ fn expr(e: &Expr) -> String {
         ExprKind::Alloc(size) => format!("(alloc {})", expr(size)),
         ExprKind::Move(l) => format!("(move %{})", l.0),
         ExprKind::Borrow(l) => format!("(borrow %{})", l.0),
+        ExprKind::Buf(op, args) => {
+            let args: Vec<String> = args.iter().map(expr).collect();
+            format!("({} {})", op.name(), args.join(" "))
+        }
     }
 }
 
 #[cfg(test)]
+mod array_tests;
+#[cfg(test)]
+mod generic_tests;
+#[cfg(test)]
+mod match_tests;
+#[cfg(test)]
 mod opt_tests;
 #[cfg(test)]
+mod option_tests;
+#[cfg(test)]
 mod own_tests;
+#[cfg(test)]
+mod string_tests;
 #[cfg(test)]
 mod struct_tests;

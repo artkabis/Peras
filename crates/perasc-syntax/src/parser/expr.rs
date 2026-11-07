@@ -10,7 +10,9 @@
 use perasc_diag::Span;
 
 use super::{NameOf, Parser, errors};
-use crate::ast::{BinaryOp, ExprId, ExprKind, UnaryOp};
+use crate::ast::{
+    Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, Pattern, PatternKind, Type, TypeKind, UnaryOp,
+};
 use crate::lexer::string_value;
 use crate::token::{Token, TokenKind};
 
@@ -140,6 +142,7 @@ impl Parser<'_> {
                 let span = self.since(token.span.start);
                 self.alloc(ExprKind::Paren(inner), span)
             }
+            TokenKind::Match => self.match_expr(),
             TokenKind::LBracket => {
                 self.bump();
                 let mut items = Vec::new();
@@ -171,6 +174,165 @@ impl Parser<'_> {
         }
     }
 
+    /// `match (value) { pattern => body, … }`: each body is a value, or a
+    /// block of statements; `,` after a block is optional.
+    fn match_expr(&mut self) -> ExprId {
+        let keyword = self.bump();
+        let scrutinee = match self.expect(TokenKind::LParen, "(") {
+            Some(paren) => {
+                let value = self.expr();
+                self.expect_close(paren, TokenKind::RParen, ")");
+                value
+            }
+            None => self.error_expr(keyword.span),
+        };
+        let mut arms = Vec::new();
+        if let Some(open) = self.expect(TokenKind::LBrace, "{") {
+            while !self.at(TokenKind::RBrace) && !self.at_eof() && !self.recovering {
+                let start = self.peek().span.start;
+                let Some(pattern) = self.pattern() else {
+                    break;
+                };
+                if self.expect(TokenKind::FatArrow, "=>").is_none() {
+                    break;
+                }
+                let body = if self.at(TokenKind::LBrace) {
+                    match self.block() {
+                        Some(block) => ArmBody::Block(block),
+                        None => break,
+                    }
+                } else {
+                    ArmBody::Expr(self.expr())
+                };
+                let block_body = matches!(body, ArmBody::Block(_));
+                arms.push(Arm {
+                    pattern,
+                    body,
+                    span: self.since(start),
+                });
+                if self.eat(TokenKind::Comma).is_none()
+                    && !block_body
+                    && !self.at(TokenKind::RBrace)
+                {
+                    self.expect(TokenKind::Comma, ",");
+                    break;
+                }
+            }
+            if !self.recovering {
+                self.expect_close(open, TokenKind::RBrace, "}");
+            }
+        }
+        let span = self.since(keyword.span.start);
+        self.alloc(ExprKind::Match { scrutinee, arms }, span)
+    }
+
+    /// A pattern: `_`, a name, a literal, or `Variant(p, …)`.
+    fn pattern(&mut self) -> Option<Pattern> {
+        let token = self.peek();
+        let start = token.span.start;
+        let kind = match token.kind {
+            TokenKind::Ident if self.text(token) == "_" => {
+                self.bump();
+                PatternKind::Wildcard
+            }
+            TokenKind::Ident => {
+                self.bump();
+                let first = Ident {
+                    symbol: self.ast.interner.intern(self.text(token)),
+                    span: token.span,
+                };
+                let (qualifier, name) = if self.eat(TokenKind::Dot).is_some() {
+                    let next = self.peek();
+                    if next.kind != TokenKind::Ident {
+                        let d = errors::expected_expression(next, self.text(next));
+                        self.error(d);
+                        self.recovering = true;
+                        return None;
+                    }
+                    self.bump();
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(self.text(next)),
+                        span: next.span,
+                    };
+                    (Some(first), name)
+                } else {
+                    (None, first)
+                };
+                if let Some(paren) = self.eat(TokenKind::LParen) {
+                    let mut fields = Vec::new();
+                    while !self.at(TokenKind::RParen) && !self.at_eof() {
+                        fields.push(self.pattern()?);
+                        if self.eat(TokenKind::Comma).is_none() {
+                            break;
+                        }
+                    }
+                    self.expect_close(paren, TokenKind::RParen, ")");
+                    PatternKind::Variant {
+                        qualifier,
+                        name,
+                        fields,
+                    }
+                } else if qualifier.is_some() {
+                    PatternKind::Variant {
+                        qualifier,
+                        name,
+                        fields: Vec::new(),
+                    }
+                } else {
+                    PatternKind::Name(name)
+                }
+            }
+            TokenKind::Int
+            | TokenKind::Float
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Minus => PatternKind::Literal(self.expr_bp(PREFIX)),
+            _ => {
+                if !self.recovering {
+                    let d = errors::expected_expression(token, self.text(token));
+                    self.error(d);
+                }
+                self.recovering = true;
+                return None;
+            }
+        };
+        Some(Pattern {
+            kind,
+            span: self.since(start),
+        })
+    }
+
+    /// `<Type, …>` followed by `(`, read ahead: when what follows `<` is
+    /// not that, nothing is consumed and `<` is a comparison.
+    fn type_arguments(&mut self) -> Option<Vec<Type>> {
+        if self.nth(1).kind != TokenKind::Ident {
+            return None;
+        }
+        let pos = self.pos;
+        let reported = self.diagnostics.len();
+        let recovering = self.recovering;
+        self.bump(); // `<`
+        let mut types = Vec::new();
+        let ok = loop {
+            let ty = self.ty();
+            if matches!(ty.kind, TypeKind::Error) || self.diagnostics.len() > reported {
+                break false;
+            }
+            types.push(ty);
+            if self.eat(TokenKind::Comma).is_some() {
+                continue;
+            }
+            break self.eat(TokenKind::Gt).is_some() && self.at(TokenKind::LParen);
+        };
+        if ok {
+            return Some(types);
+        }
+        self.pos = pos;
+        self.diagnostics.truncate(reported);
+        self.recovering = recovering;
+        None
+    }
+
     /// Calls, indexing, fields and `?`, which bind tighter than any operator.
     fn postfix(&mut self, mut expr: ExprId) -> ExprId {
         loop {
@@ -185,7 +347,32 @@ impl Parser<'_> {
                     self.bump();
                     let args = self.arguments(token);
                     let span = self.since(start);
-                    self.alloc(ExprKind::Call { callee: expr, args }, span)
+                    self.alloc(
+                        ExprKind::Call {
+                            callee: expr,
+                            types: Vec::new(),
+                            args,
+                        },
+                        span,
+                    )
+                }
+                // `larger<i64>(a, b)`: a comparison cannot be followed by
+                // another (`E0108`), so `name<…>(` is always a call.
+                TokenKind::Lt if matches!(self.ast.expr(expr).kind, ExprKind::Name(_)) => {
+                    let Some(types) = self.type_arguments() else {
+                        return expr;
+                    };
+                    let open = self.bump(); // `(`
+                    let args = self.arguments(open);
+                    let span = self.since(start);
+                    self.alloc(
+                        ExprKind::Call {
+                            callee: expr,
+                            types,
+                            args,
+                        },
+                        span,
+                    )
                 }
                 TokenKind::LBracket => {
                     self.bump();

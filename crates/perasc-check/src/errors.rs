@@ -52,7 +52,11 @@ const fn why(code: ErrorCode) -> &'static str {
         201 => "check-shadowing-why",
         202 => "check-duplicate-why",
         203 => "check-unused-why",
+        204 => "check-moved-why",
         205 => "check-immutable-why",
+        206 => "check-inout-marker-why",
+        207 => "check-alias-why",
+        209 => "check-move-out-why",
         210 => "check-mismatch-why",
         211 => "check-integer-for-float-why",
         212 => "check-out-of-range-why",
@@ -64,6 +68,16 @@ const fn why(code: ErrorCode) -> &'static str {
         218 => "check-return-why",
         219 => "check-missing-return-why",
         220 => "check-missing-return-type-why",
+        222 => "check-match-missing-why",
+        223 => "check-unknown-variant-why",
+        224 => "check-unreachable-arm-why",
+        225 => "check-try-return-why",
+        226 => "check-unknown-constraint-why",
+        227 => "check-constraint-why",
+        228 => "check-missing-constraint-why",
+        229 => "check-cannot-infer-why",
+        230 => "check-generic-export-why",
+        231 => "check-endless-instances-why",
         _ => "check-operator-why",
     }
 }
@@ -499,6 +513,362 @@ pub fn invalid_operator(span: Span, operator: &str, ty: &Ty) -> Diagnostic {
         )],
         Fix {
             message: Message::new("check-operator-fix").text("operator", operator),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `.copy()` inserted after an expression ending at `at`.
+fn copy_fix(at: Option<u32>, otherwise: &'static str) -> Fix {
+    match at {
+        Some(at) => Fix {
+            message: Message::new("check-fix-copy"),
+            edits: vec![insert(at, ".copy()")],
+        },
+        None => Fix {
+            message: Message::new(otherwise),
+            edits: Vec::new(),
+        },
+    }
+}
+
+/// `E0204`: `name` is used at `span` after it moved at `moved_at`.
+///
+/// The labels tell the value's history: where it was given, where it moved,
+/// where it is used again.
+pub fn moved(
+    span: Span,
+    name: &str,
+    moved_at: Span,
+    given: Option<Span>,
+    copyable: bool,
+) -> Diagnostic {
+    // The same place: a loop moved it in the previous turn.
+    let mut labels = if moved_at == span {
+        vec![primary(span, Message::new("check-moved-loop-label"))]
+    } else {
+        vec![
+            primary(span, Message::new("check-moved-label")),
+            secondary(moved_at, Message::new("check-moved-here-label")),
+        ]
+    };
+    if let Some(given) = given.filter(|g| *g != span && *g != moved_at) {
+        labels.insert(
+            0,
+            secondary(
+                given,
+                Message::new("check-moved-given-label").text("name", name),
+            ),
+        );
+    }
+    diagnostic(
+        codes::USE_AFTER_MOVE,
+        Message::new("check-moved").text("name", name),
+        labels,
+        copy_fix(copyable.then_some(moved_at.end), "check-moved-fix"),
+    )
+}
+
+/// `E0209`: a parameter that only borrows its value moves it.
+pub fn move_borrowed_parameter(span: Span, name: &str, sink_at: Option<u32>) -> Diagnostic {
+    let fix = match sink_at {
+        Some(at) => Fix {
+            message: Message::new("check-move-out-fix-sink").text("name", name),
+            edits: vec![insert(at, "sink ")],
+        },
+        None => Fix {
+            message: Message::new("check-move-out-fix"),
+            edits: Vec::new(),
+        },
+    };
+    diagnostic(
+        codes::MOVE_OUT_OF_BORROW,
+        Message::new("check-move-out")
+            .text("what", "parameter")
+            .text("name", name),
+        vec![primary(span, Message::new("check-move-out-label"))],
+        fix,
+    )
+}
+
+/// `E0209`: a field, an element or a module-level value moves.
+pub fn move_out(span: Span, what: &'static str, copyable: bool) -> Diagnostic {
+    diagnostic(
+        codes::MOVE_OUT_OF_BORROW,
+        Message::new("check-move-out")
+            .text("what", what)
+            .text("name", ""),
+        vec![primary(span, Message::new("check-move-out-label"))],
+        copy_fix(copyable.then_some(span.end), "check-move-out-fix"),
+    )
+}
+
+/// `E0206`: an `inout` argument without `&` (`missing`), or `&` on another.
+pub fn inout_marker(span: Span, missing: bool) -> Diagnostic {
+    let (kind, fix) = if missing {
+        (
+            "missing",
+            Fix {
+                message: Message::new("check-inout-marker-fix-add"),
+                edits: vec![insert(span.start, "&")],
+            },
+        )
+    } else {
+        (
+            "extra",
+            Fix {
+                message: Message::new("check-inout-marker-fix-remove"),
+                edits: vec![replace(Span::new(span.start, span.start + 1), "")],
+            },
+        )
+    };
+    diagnostic(
+        codes::INOUT_MARKER,
+        Message::new("check-inout-marker").text("kind", kind),
+        vec![primary(
+            span,
+            Message::new("check-inout-marker-label").text("kind", kind),
+        )],
+        fix,
+    )
+}
+
+/// `E0207`: `name` reached by the argument at `span` and the one at `other`.
+pub fn alias(
+    span: Span,
+    name: &str,
+    callee: &str,
+    other: Span,
+    copy_at: Option<u32>,
+) -> Diagnostic {
+    diagnostic(
+        codes::ALIASING,
+        Message::new("check-alias")
+            .text("name", name)
+            .text("callee", callee),
+        vec![
+            primary(span, Message::new("check-alias-label")),
+            secondary(other, Message::new("check-alias-other-label")),
+        ],
+        copy_fix(copy_at, "check-alias-fix"),
+    )
+}
+
+/// `E0207`: `name` changes at `span` while a `for…of` goes through it.
+pub fn changed_while_iterated(span: Span, name: &str, iterated: Span) -> Diagnostic {
+    diagnostic(
+        codes::ALIASING,
+        Message::new("check-alias-loop").text("name", name),
+        vec![
+            primary(span, Message::new("check-alias-loop-label")),
+            secondary(iterated, Message::new("check-alias-loop-iterated-label")),
+        ],
+        Fix {
+            message: Message::new("check-alias-loop-fix").text("name", name),
+            edits: vec![insert(iterated.end, ".copy()")],
+        },
+    )
+}
+
+/// `E0222`: the patterns `missing` are not covered; the arms close at `close`.
+pub fn non_exhaustive(span: Span, ty: &Ty, missing: &[String], close: u32) -> Diagnostic {
+    let list = missing.join(", ");
+    diagnostic(
+        codes::NON_EXHAUSTIVE_MATCH,
+        Message::new("check-match-missing")
+            .text("ty", ty.to_string())
+            .text("missing", list.clone()),
+        vec![
+            primary(
+                Span::new(close, close.saturating_add(1)),
+                Message::new("check-match-missing-label").text("missing", list),
+            ),
+            secondary(span, Message::new("check-match-missing-match-label")),
+        ],
+        Fix {
+            message: Message::new("check-match-missing-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0223`
+pub fn unknown_variant(span: Span, ty: &Ty, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_VARIANT,
+        Message::new("check-unknown-variant")
+            .text("ty", ty.to_string())
+            .text("name", name),
+        vec![primary(span, Message::new("check-unknown-variant-label"))],
+        suggestion_fix(span, suggestion, "check-unknown-variant-fix"),
+    )
+}
+
+/// `E0224`
+pub fn unreachable_arm(span: Span) -> Diagnostic {
+    diagnostic(
+        codes::UNREACHABLE_ARM,
+        Message::new("check-unreachable-arm"),
+        vec![primary(span, Message::new("check-unreachable-arm-label"))],
+        Fix {
+            message: Message::new("check-unreachable-arm-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0225`: `?` gives back `early`, which the function, returning `ret`, cannot.
+pub fn try_return(span: Span, early: &Ty, ret: Option<&Ty>) -> Diagnostic {
+    let ret = ret.map_or_else(|| "void".to_owned(), ToString::to_string);
+    let kind = if matches!(early, Ty::Option(_)) {
+        "option"
+    } else {
+        "result"
+    };
+    diagnostic(
+        codes::TRY_RETURN,
+        Message::new("check-try-return")
+            .text("kind", kind)
+            .text("ret", ret),
+        vec![primary(
+            span,
+            Message::new("check-try-return-label").text("kind", kind),
+        )],
+        Fix {
+            message: Message::new("check-try-return-fix").text("kind", kind),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0226`
+pub fn unknown_constraint(span: Span, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_CONSTRAINT,
+        Message::new("check-unknown-constraint").text("name", name),
+        vec![primary(
+            span,
+            Message::new("check-unknown-constraint-label"),
+        )],
+        suggestion_fix(span, suggestion, "check-unknown-constraint-fix"),
+    )
+}
+
+/// `E0227`: `ty`, given for `param`, does not meet `bound`.
+pub fn constraint_not_met(
+    span: Span,
+    ty: &Ty,
+    param: &str,
+    bound: &str,
+    declared: Span,
+) -> Diagnostic {
+    diagnostic(
+        codes::CONSTRAINT_NOT_MET,
+        Message::new("check-constraint")
+            .text("ty", ty.to_string())
+            .text("bound", bound),
+        vec![
+            primary(
+                span,
+                Message::new("check-constraint-label")
+                    .text("ty", ty.to_string())
+                    .text("param", param),
+            ),
+            secondary(
+                declared,
+                Message::new("check-constraint-declared")
+                    .text("param", param)
+                    .text("bound", bound),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-constraint-fix")
+                .text("param", param)
+                .text("bound", bound),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0228`: `op` on `param` needs `bound`, written at `insert_at`.
+pub fn missing_constraint(
+    span: Span,
+    op: &str,
+    param: &str,
+    bound: &str,
+    insert_at: u32,
+    bounded: bool,
+) -> Diagnostic {
+    let text = if bounded {
+        format!(" + {bound}")
+    } else {
+        format!(": {bound}")
+    };
+    diagnostic(
+        codes::MISSING_CONSTRAINT,
+        Message::new("check-missing-constraint")
+            .text("op", op)
+            .text("param", param),
+        vec![primary(
+            span,
+            Message::new("check-missing-constraint-label")
+                .text("op", op)
+                .text("bound", bound),
+        )],
+        Fix {
+            message: Message::new("check-missing-constraint-fix")
+                .text("param", param)
+                .text("bound", bound),
+            edits: vec![insert(insert_at, text)],
+        },
+    )
+}
+
+/// `E0229`: nothing tells which type `param` of `name` stands for.
+pub fn cannot_infer(span: Span, param: &str, name: &str, declared: Span) -> Diagnostic {
+    diagnostic(
+        codes::CANNOT_INFER,
+        Message::new("check-cannot-infer")
+            .text("param", param)
+            .text("name", name),
+        vec![
+            primary(
+                span,
+                Message::new("check-cannot-infer-label").text("param", param),
+            ),
+            secondary(
+                declared,
+                Message::new("check-cannot-infer-declared").text("param", param),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-cannot-infer-fix").text("param", param),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0230`
+pub fn generic_export(span: Span, name: &str) -> Diagnostic {
+    diagnostic(
+        codes::GENERIC_EXPORT,
+        Message::new("check-generic-export").text("name", name),
+        vec![primary(span, Message::new("check-generic-export-label"))],
+        Fix {
+            message: Message::new("check-generic-export-fix").text("name", name),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0231`
+pub fn endless_instances(span: Span, name: &str) -> Diagnostic {
+    diagnostic(
+        codes::ENDLESS_INSTANCES,
+        Message::new("check-endless-instances").text("name", name),
+        vec![primary(span, Message::new("check-endless-instances-label"))],
+        Fix {
+            message: Message::new("check-endless-instances-fix"),
             edits: Vec::new(),
         },
     )

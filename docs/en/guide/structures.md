@@ -122,4 +122,4 @@ export declare function flip(s: Segment): Segment;
 
 > Structures whose fields are numbers, booleans or structures compile. A field that is an array or a string is checked, not compiled yet.
 
-Next: [arrays, strings and options](collections.md).
+Next: [enumerations and match](enums.md).

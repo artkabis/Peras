@@ -1,0 +1,29 @@
+// E0225: `?` needs a function that can return what it gives back early.
+fn half(n: i32): Option<i32> {
+  return Some(n / 2);
+}
+
+fn parse(n: i32): Result<i32, String> {
+  if (n < 0) {
+    return Err("negative");
+  }
+  return Ok(n);
+}
+
+export fn plain(n: i32): i32 {
+  return half(n)? + parse(n)?;
+}
+
+fn other_error(n: i32): Result<i32, i32> {
+  return Ok(parse(n)?);
+}
+
+fn mixed(n: i32): Option<i32> {
+  return Some(parse(n)?);
+}
+
+// Allowed: the same kind, the same error.
+fn fine(n: i32): Result<i32, String> {
+  const a = parse(n)?;
+  return Ok(a + parse(a)?);
+}

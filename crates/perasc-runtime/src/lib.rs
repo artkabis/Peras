@@ -22,6 +22,10 @@
 /// The debug allocator, as a WebAssembly module.
 pub const DEBUG_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug.wasm"));
 
+/// Added to the element size of a buffer whose elements are buffers it owns:
+/// releasing or copying it releases or copies them too.
+pub const DEEP: u32 = 0x100;
+
 /// Smallest address the heap uses: lower addresses are never valid pointers.
 pub const HEAP_BASE: u32 = 4096;
 

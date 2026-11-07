@@ -7,6 +7,10 @@ export fn total(xs: Array<i32>, label: String): i32 {
   return sum + label.length + LIMIT;
 }
 
+export fn small(xs: Array<u8>, names: Array<String>): i32 {
+  return xs.length + names.length;
+}
+
 export fn wave(t: f64): f64 {
   return t.sin() % 1.0;
 }

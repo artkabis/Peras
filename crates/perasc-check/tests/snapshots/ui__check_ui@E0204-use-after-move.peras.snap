@@ -1,0 +1,39 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0204-use-after-move.peras
+---
+diagnostics:
+  error[E0204] check-moved { name: "xs" }
+    secondary 7:7-7:9: check-moved-given-label { name: "xs" }
+    primary 9:19-9:21: check-moved-label
+    secondary 8:18-8:20: check-moved-here-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      8:20-8:20 -> ".copy()"
+  error[E0204] check-moved { name: "xs" }
+    secondary 13:7-13:9: check-moved-given-label { name: "xs" }
+    primary 15:11-15:13: check-moved-label
+    secondary 14:12-14:14: check-moved-here-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      14:14-14:14 -> ".copy()"
+  error[E0204] check-moved { name: "xs" }
+    secondary 20:7-20:9: check-moved-given-label { name: "xs" }
+    primary 24:10-24:12: check-moved-label
+    secondary 22:10-22:12: check-moved-here-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      22:12-22:12 -> ".copy()"
+  error[E0204] check-moved { name: "xs" }
+    secondary 28:7-28:9: check-moved-given-label { name: "xs" }
+    primary 31:19-31:21: check-moved-loop-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      31:21-31:21 -> ".copy()"
+  error[E0204] check-moved { name: "b" }
+    secondary 37:7-37:8: check-moved-given-label { name: "b" }
+    primary 39:10-39:11: check-moved-label
+    secondary 38:11-38:12: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-fix

@@ -1,0 +1,38 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0207-aliasing.peras
+---
+diagnostics:
+  error[E0207] check-alias { name: "xs", callee: "append" }
+    primary 14:15-14:17: check-alias-label
+    secondary 14:11-14:13: check-alias-other-label
+    cause: check-alias-why
+    fix: check-fix-copy
+      14:17-14:17 -> ".copy()"
+  error[E0207] check-alias { name: "xs", callee: "both" }
+    primary 20:14-20:16: check-alias-label
+    secondary 20:9-20:11: check-alias-other-label
+    cause: check-alias-why
+    fix: check-alias-fix
+  error[E0207] check-alias { name: "p", callee: "append" }
+    primary 27:16-27:19: check-alias-label
+    secondary 27:11-27:14: check-alias-other-label
+    cause: check-alias-why
+    fix: check-alias-fix
+  error[E0207] check-alias-loop { name: "xs" }
+    primary 32:5-32:7: check-alias-loop-label
+    secondary 31:19-31:21: check-alias-loop-iterated-label
+    cause: check-alias-why
+    fix: check-alias-loop-fix { name: "xs" }
+      31:21-31:21 -> ".copy()"
+  error[E0207] check-alias { name: "n", callee: "bump" }
+    primary 43:3-43:4: check-alias-label
+    secondary 43:8-43:16: check-alias-other-label
+    cause: check-alias-why
+    fix: check-alias-fix
+  error[E0207] check-alias { name: "n", callee: "bump" }
+    primary 44:10-44:11: check-alias-label
+    secondary 44:14-44:22: check-alias-other-label
+    cause: check-alias-why
+    fix: check-alias-fix

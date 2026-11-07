@@ -64,15 +64,15 @@ fn declarations_and_loader_follow_the_types() {
     );
     let js = js_loader(&m, "m.wasm", None);
     assert!(
-        js.contains("export const f = (...args) => wasm.f(...args) !== 0;"),
+        js.contains("export const f = (...args) => $wasm.f(...args) !== 0;"),
         "{js}"
     );
     assert!(!js.contains("hidden"), "{js}");
     // vite-plugin-peras splits the loader on this exact line (`EXPORTS_MARKER` in
     // its source): changing it here means changing it there.
-    assert_eq!(EXPORTS_MARKER, "// perasc:exports (needs `instance`)");
+    assert_eq!(EXPORTS_MARKER, "// perasc:exports (needs `$instance`)");
     assert_eq!(IMPORTS_MARKER, "// perasc:imports");
-    assert_eq!(LOAD_MARKER, "// perasc:load (needs `imports`)");
+    assert_eq!(LOAD_MARKER, "// perasc:load (needs `$imports`)");
     let imports = js.find(IMPORTS_MARKER).unwrap_or(usize::MAX);
     let load = js.find(LOAD_MARKER).unwrap_or(0);
     let exports = js.find(EXPORTS_MARKER).unwrap_or(0);
@@ -81,7 +81,7 @@ fn declarations_and_loader_follow_the_types() {
     assert!(
         exports
             .trim_start()
-            .starts_with("const wasm = instance.exports;"),
+            .starts_with("const $wasm = $instance.exports;"),
         "{js}"
     );
 }
@@ -97,11 +97,11 @@ fn structures_cross_into_javascript_as_objects() {
     assert!(validated.is_ok(), "{:?}", validated.err());
     let js = js_loader(&m, "m.wasm", None);
     assert!(
-        js.contains("export const flip = (s) => { const r = wasm.flip(s.a.x, s.a.y, s.ok); return ({ a: ({ x: r[0], y: r[1] }), ok: r[2] !== 0 }); };"),
+        js.contains("export const flip = (s) => { const $r = $wasm.flip(s.a.x, s.a.y, s.ok); return ({ a: ({ x: $r[0], y: $r[1] }), ok: $r[2] !== 0 }); };"),
         "{js}"
     );
     assert!(
-        js.contains("export const len = (v) => { const r = wasm.len(v.x, v.y); return r; };"),
+        js.contains("export const len = (v) => { const $r = $wasm.len(v.x, v.y); return $r; };"),
         "{js}"
     );
     let types = dts(&m);

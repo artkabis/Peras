@@ -8,34 +8,20 @@ Les exemples de cette page montrent la syntaxe visée ; le compilateur les refus
 
 Les premiers types qui ont besoin de mémoire, sur les fondations déjà construites : le vérificateur de libérations et l’allocateur de débogage.
 
-- `Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`.
-- `String` compilé, en UTF-8.
-- `Option<T>` compilé.
-- Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés, l’historique d’une valeur montré dans les erreurs ([spécification](../spec.md#modèle-mémoire)).
+- ~~`Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`~~ : fait pour tous les types d’éléments, chaînes et tableaux compris, avec `copy()`.
+- ~~`String` compilé, en UTF-8~~ : fait, avec `+`, `+=`, `==`, `length` en octets et `copy()`.
+- ~~`Option<T>` compilé~~ : fait, avec `?` et l’arithmétique vérifiée.
+- ~~Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés~~ : fait ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)), avec `inout` sur tous les types, et l’historique d’une valeur dans les erreurs : où elle a été reçue, déplacée, puis utilisée.
 
 ## Phase 2 : un système de types complet
 
 Ce qui permet à un programme de dire précisément ce que ses données peuvent être.
 
-- **Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité : oublier un cas est une erreur.
-- **`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs, pas des exceptions.
-- **Des génériques**, sur les fonctions et les structures, avec des contraintes.
+- ~~**Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité~~ : fait, voir [énumérations et match](../guide/enums.md).
+- ~~**`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs~~ : fait, voir [les résultats](../guide/enums.md#les-résultats--des-erreurs-qui-sont-des-valeurs) ; les fonctions d’analyse comme `parse` arrivent avec la bibliothèque standard.
+- ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; les contraintes sont prédéfinies jusqu’à l’arrivée des interfaces.
 - **Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation.
 - Tuples, alias de types, constantes de module compilées.
-
-```peras planned
-enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-}
-
-fn area(s: Shape): f64 {
-  return match (s) {
-    Circle(r) => 3.14159 * r * r,
-    Rect(w, h) => w * h,
-  };
-}
-```
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

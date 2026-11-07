@@ -43,6 +43,10 @@ struct Heap {
     next_live: TypedFunc<i32, i32>,
     block_site: TypedFunc<i32, i32>,
     check_leaks: TypedFunc<(), ()>,
+    buf_new: TypedFunc<(i32, i32, i32), i32>,
+    buf_reserve: TypedFunc<(i32, i32, i32, i32), ()>,
+    buf_release: TypedFunc<(i32, i32), ()>,
+    buf_clone: TypedFunc<(i32, i32), i32>,
 }
 
 impl Heap {
@@ -91,6 +95,10 @@ impl Heap {
             next_live: instance.get_typed_func(&store, "next_live")?,
             block_site: instance.get_typed_func(&store, "block_site")?,
             check_leaks: instance.get_typed_func(&store, "check_leaks")?,
+            buf_new: instance.get_typed_func(&store, "buf_new")?,
+            buf_reserve: instance.get_typed_func(&store, "buf_reserve")?,
+            buf_release: instance.get_typed_func(&store, "buf_release")?,
+            buf_clone: instance.get_typed_func(&store, "buf_clone")?,
             memory,
             store,
         })
@@ -106,6 +114,29 @@ impl Heap {
     fn release(&mut self, ptr: u32, site: u32) -> Result<(), Reported> {
         let result = self.release.call(&mut self.store, (i(ptr), i(site)));
         self.outcome(result)
+    }
+
+    fn buf_new(&mut self, cap: u32, size: u32) -> Result<u32, Reported> {
+        let result = self.buf_new.call(&mut self.store, (i(cap), i(size), 7));
+        self.outcome(result).map(u)
+    }
+
+    fn buf_reserve(&mut self, h: u32, extra: u32, size: u32) -> Result<(), Reported> {
+        let result = self
+            .buf_reserve
+            .call(&mut self.store, (i(h), i(extra), i(size), 8));
+        self.outcome(result)
+    }
+
+    fn buf_release(&mut self, h: u32) -> Result<(), Reported> {
+        let result = self.buf_release.call(&mut self.store, (i(h), 9));
+        self.outcome(result)
+    }
+
+    /// A little-endian `u32` of memory.
+    fn word(&self, ptr: u32) -> u32 {
+        let b = self.bytes(ptr, 4);
+        u32::from_le_bytes([b[0], b[1], b[2], b[3]])
     }
 
     fn check_leaks(&mut self) -> Result<(), Reported> {
@@ -382,4 +413,87 @@ fn a_random_run_matches_the_model() {
     let mut expected: Vec<(u32, u32)> = live.iter().map(|&(ptr, _, _, site)| (ptr, site)).collect();
     expected.sort_unstable();
     assert_eq!(heap.live_blocks(), expected);
+}
+
+#[test]
+fn a_buffer_grows_keeping_its_elements_and_its_address() {
+    let mut heap = heap();
+    let h = heap.buf_new(0, 4).unwrap_or(0);
+    // Empty: no element block yet, only the 16-byte header.
+    assert_eq!(
+        (heap.word(h), heap.word(h + 4), heap.word(h + 8)),
+        (0, 0, 0)
+    );
+    assert_eq!(heap.live(), (1, 16));
+    for n in 0..100_u32 {
+        assert_eq!(heap.buf_reserve(h, 1, 4), Ok(()));
+        let data = heap.word(h + 8);
+        let len = heap.word(h);
+        heap.write(data + 4 * len, &(n * 3).to_le_bytes());
+        heap.write(h, &(len + 1).to_le_bytes());
+    }
+    let (len, cap, data) = (heap.word(h), heap.word(h + 4), heap.word(h + 8));
+    // The capacity doubled from 4: 4, 8, 16, 32, 64, 128.
+    assert_eq!((len, cap), (100, 128));
+    let values: Vec<u32> = (0..100).map(|n| heap.word(data + 4 * n)).collect();
+    assert_eq!(values, (0..100).map(|n| n * 3).collect::<Vec<_>>());
+    // Each growth released the old elements: the header and one element block.
+    assert_eq!(heap.live(), (2, 16 + 128 * 4));
+    assert_eq!(heap.buf_release(h), Ok(()));
+    assert_eq!(heap.live(), (0, 0));
+    assert_eq!(heap.check_leaks(), Ok(()));
+}
+
+#[test]
+fn a_buffer_with_room_does_not_move() {
+    let mut heap = heap();
+    let h = heap.buf_new(8, 8).unwrap_or(0);
+    let data = heap.word(h + 8);
+    assert_eq!(heap.buf_reserve(h, 8, 8), Ok(()));
+    assert_eq!(heap.word(h + 8), data);
+    assert_eq!(heap.buf_release(h), Ok(()));
+    // Releasing it again is caught, with the site of the release.
+    assert_eq!(
+        heap.buf_release(h).map_err(|r| (r.fault, r.free_site)),
+        Err((Some(Fault::DoubleRelease), 9))
+    );
+}
+
+#[test]
+fn a_buffer_too_large_for_one_block_is_refused() {
+    let mut heap = heap();
+    let h = heap.buf_new(0, 8).unwrap_or(0);
+    let refused = heap.buf_reserve(h, 0x1000_0000, 8);
+    assert_eq!(
+        refused.map_err(|r| (r.fault, r.alloc_site)),
+        Err((Some(Fault::TooLarge), 8))
+    );
+}
+
+#[test]
+fn a_deep_buffer_releases_and_copies_the_buffers_it_owns() {
+    let mut heap = heap();
+    // An array of three strings: a buffer of handles, each to a buffer of bytes.
+    let outer = heap.buf_new(3, 4 | perasc_runtime::DEEP).unwrap_or(0);
+    let data = heap.word(outer + 8);
+    for k in 0..3_u32 {
+        let inner = heap.buf_new(2, 1).unwrap_or(0);
+        heap.write(heap.word(inner + 8), b"ab");
+        heap.write(inner, &2_u32.to_le_bytes());
+        heap.write(data + 4 * k, &inner.to_le_bytes());
+    }
+    heap.write(outer, &3_u32.to_le_bytes());
+    assert_eq!(heap.live().0, 1 + 1 + 3 * 2);
+    let clone = heap
+        .buf_clone
+        .call(&mut heap.store, (i(outer), 5))
+        .map_or(0, u);
+    assert_eq!(heap.live().0, 2 * (1 + 1 + 3 * 2));
+    // The copy owns copies: its strings are other blocks with the same bytes.
+    let first = heap.word(heap.word(clone + 8));
+    assert_ne!(first, heap.word(data));
+    assert_eq!(heap.bytes(heap.word(first + 8), 2), b"ab");
+    assert_eq!(heap.buf_release(outer), Ok(()));
+    assert_eq!(heap.buf_release(clone), Ok(()));
+    assert_eq!(heap.live(), (0, 0));
 }

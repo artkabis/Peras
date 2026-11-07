@@ -206,6 +206,9 @@ impl Copy {
                     out.push(stmt.clone());
                 }
                 Stmt::Release(local) => out.push(Stmt::Release(shift(*local, self.base))),
+                Stmt::Buf(op, args) => {
+                    out.push(Stmt::Buf(*op, args.iter().map(|a| self.expr(a)).collect()));
+                }
             }
         }
         out
@@ -227,6 +230,9 @@ impl Copy {
             ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(self.expr(x))),
             ExprKind::Move(local) => ExprKind::Move(shift(*local, self.base)),
             ExprKind::Borrow(local) => ExprKind::Borrow(shift(*local, self.base)),
+            ExprKind::Buf(op, args) => {
+                ExprKind::Buf(*op, args.iter().map(|a| self.expr(a)).collect())
+            }
         };
         Expr { kind, ty: e.ty }
     }
@@ -244,7 +250,8 @@ fn hoistable(e: &Expr, id: FnId) -> bool {
         | ExprKind::Local(_)
         | ExprKind::Alloc(_)
         | ExprKind::Move(_)
-        | ExprKind::Borrow(_) => false,
+        | ExprKind::Borrow(_)
+        | ExprKind::Buf(..) => false,
         ExprKind::Binary(_, a, b) => {
             (hoistable(a, id) && is_simple(b)) || (is_simple(a) && hoistable(b, id))
         }
@@ -311,7 +318,9 @@ fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
             reads_only(x, assigned)
         }
         ExprKind::Binary(_, a, b) => reads_only(a, assigned) && reads_only(b, assigned),
-        ExprKind::Call(_, args) => args.iter().all(|a| reads_only(a, assigned)),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+            args.iter().all(|a| reads_only(a, assigned))
+        }
         ExprKind::Alloc(x) => reads_only(x, assigned),
     }
 }
@@ -322,9 +331,9 @@ fn size(stmts: &[Stmt]) -> usize {
         .iter()
         .map(|stmt| match stmt {
             Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => 1 + expr_size(e),
-            Stmt::ReturnMany(values) | Stmt::CallMany { args: values, .. } => {
-                1 + values.iter().map(expr_size).sum::<usize>()
-            }
+            Stmt::ReturnMany(values)
+            | Stmt::CallMany { args: values, .. }
+            | Stmt::Buf(_, values) => 1 + values.iter().map(expr_size).sum::<usize>(),
             Stmt::If {
                 cond,
                 then,
@@ -351,7 +360,7 @@ fn expr_size(e: &Expr) -> usize {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => expr_size(x),
         ExprKind::Binary(_, a, b) => expr_size(a) + expr_size(b),
-        ExprKind::Call(_, args) => args.iter().map(expr_size).sum(),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().map(expr_size).sum(),
     }
 }
 

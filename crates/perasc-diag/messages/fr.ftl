@@ -165,6 +165,10 @@ parse-expected-name = { $what ->
     [field] nom de champ attendu
     [attribute] nom d’attribut attendu
     [struct] nom de structure attendu
+    [enum] nom d’énumération attendu
+    [variant] nom de variante attendu
+    [type-parameter] nom de paramètre de type attendu
+    [constraint] nom de contrainte attendu
    *[other] nom attendu
 }, trouvé { $eof ->
     [1] la fin du fichier
@@ -334,6 +338,16 @@ check-unused-why = Une valeur jamais lue est du code mort, et souvent un bug : u
 check-unused-fix-parameter = s’il est inutilisé volontairement, nomme-le `_{ $name }`
 check-unused-fix-variable = supprime-la, ou utilise sa valeur
 
+# E0204
+check-moved = `{ $name }` est utilisé après avoir été déplacé
+check-moved-label = utilisé ici, après le déplacement
+check-moved-given-label = `{ $name }` reçoit sa valeur ici
+check-moved-here-label = déplacé ici
+check-moved-loop-label = déplacé ici au tour précédent de la boucle
+check-moved-why = Une valeur sur le tas, un tableau, une chaîne ou une structure qui en contient, a un seul propriétaire. L’affecter, la renvoyer ou la passer à un paramètre `sink` la déplace : l’ancien nom ne contient plus rien tant qu’il ne reçoit pas une nouvelle valeur.
+check-moved-fix = donne une nouvelle valeur à la variable avant de l’utiliser à nouveau
+check-fix-copy = déplace plutôt une copie, avec `.copy()`
+
 # E0205
 check-immutable = impossible de modifier { $kind ->
     [parameter] le paramètre
@@ -347,6 +361,43 @@ check-immutable-declared-label = { $kind ->
 check-immutable-why = Un `const` ne change jamais, et un paramètre est en lecture seule sauf s’il est passé `inout`, ce qui montre à l’appelant que la fonction le modifie.
 check-immutable-fix-const = déclare `{ $name }` avec `let`
 check-immutable-fix-parameter = passe `{ $name }` en `inout`
+
+# E0206
+check-inout-marker = { $kind ->
+    [missing] un argument `inout` s’écrit avec `&`
+   *[other] `&` ne marque que les arguments `inout`
+}
+check-inout-marker-label = { $kind ->
+    [missing] passé à un paramètre `inout` sans `&`
+   *[other] ce paramètre n’est pas `inout`
+}
+check-inout-marker-why = `&` à l’appel montre que la fonction peut modifier la variable. Il est exigé pour un paramètre `inout`, et refusé partout ailleurs, pour qu’il veuille toujours dire cela.
+check-inout-marker-fix-add = écris `&` devant l’argument
+check-inout-marker-fix-remove = retire le `&`
+
+# E0207
+check-alias = `{ $name }` est passé deux fois à `{ $callee }`, et l’un des deux le modifie
+check-alias-label = atteint de nouveau la même variable
+check-alias-other-label = atteinte une première fois ici
+check-alias-why = Un paramètre `inout` modifie sa variable sur place. Un autre argument qui atteindrait la même variable la verrait changer pendant l’appel : Peras le refuse.
+check-alias-fix = passe deux variables différentes
+check-alias-loop = `{ $name }` change pendant que `for…of` le parcourt
+check-alias-loop-label = modifié ici
+check-alias-loop-iterated-label = la boucle le parcourt
+check-alias-loop-fix = parcours une copie, `{ $name }.copy()`, pour modifier l’original
+
+# E0209
+check-move-out = impossible de déplacer { $what ->
+    [parameter] le paramètre `{ $name }`, qui ne fait qu’emprunter sa valeur
+    [field] un champ hors de sa structure
+    [element] un élément hors de son tableau
+    [binding] une valeur hors du `match` qui ne fait que la prêter
+   *[other] une valeur du niveau du module
+}
+check-move-out-label = déplacé ici
+check-move-out-why = Seul le propriétaire d’une valeur peut la déplacer. Un paramètre qui n’est pas `sink` emprunte la valeur de l’appelant, et un champ ou un élément appartient à ce qui le contient.
+check-move-out-fix = déplace une copie, avec `.copy()`, ou déplace le propriétaire en entier
+check-move-out-fix-sink = déclare `{ $name }` en `sink` : la fonction prend alors la valeur
 
 # E0210
 check-mismatch = types incompatibles : `{ $expected }` attendu, `{ $found }` trouvé
@@ -401,7 +452,7 @@ check-unknown-member-fix = vérifie le nom du champ ou de la méthode
 # E0216
 check-type-argument-count = `{ $name }` prend { $expected } argument(s) de type, { $found } trouvé(s)
 check-type-argument-count-label = { $expected } attendu(s)
-check-type-argument-count-why = `Array` et `Option` prennent exactement un argument de type, comme dans `Array<f32>` ; les autres types n’en prennent aucun.
+check-type-argument-count-why = Un type ou une fonction prend autant d’arguments de type qu’il a de paramètres de type : un pour `Array` et `Option`, comme dans `Array<f32>`, deux pour `Result`, le nombre déclaré pour un générique, et aucun pour les autres.
 check-type-argument-count-fix = écris `{ $name }` avec { $expected } argument(s) de type
 
 # E0217
@@ -451,6 +502,78 @@ check-operator-fix = convertis la valeur, ou utilise une autre opération
 
 ## Génération de code (E0900–E0999)
 
+# E0222
+check-match-missing = ce `match` sur `{ $ty }` ne couvre pas { $missing }
+check-match-missing-label = ajoute un bras pour { $missing }
+check-match-missing-match-label = toute valeur doit atteindre un bras
+check-match-missing-why = Un `match` doit traiter chaque valeur qu’il peut recevoir : chaque variante d’une énumération ou d’une option, `true` et `false`, et pour les nombres ou les chaînes un `_` final. Oublier un cas est précisément le bug qu’un `match` exhaustif sert à attraper.
+check-match-missing-fix = ajoute les bras manquants, ou un bras final `_ => …` volontairement
+
+# E0223
+check-unknown-variant = `{ $ty }` n’a pas de variante `{ $name }`
+check-unknown-variant-label = variante inconnue
+check-unknown-variant-why = Les variantes d’une énumération sont celles que sa déclaration liste ; une option a `None` et `Some`.
+check-unknown-variant-fix = utilise l’une des variantes que liste la déclaration
+
+# E0224
+check-unreachable-arm = ce bras ne peut jamais être atteint
+check-unreachable-arm-label = les bras précédents couvrent déjà ces valeurs
+check-unreachable-arm-why = Les bras sont essayés dans l’ordre : après `_`, un nom, ou une variante déjà couverte, il ne reste aucune valeur pour celui-ci. C’est du code mort, ou des bras dans le mauvais ordre.
+check-unreachable-arm-fix = retire le bras, ou place-le avant celui qui le couvre
+
+# E0225
+check-try-return = `?` sur { $kind ->
+    [option] une option
+   *[other] un résultat
+} dans une fonction qui renvoie `{ $ret }`
+check-try-return-label = renvoie tout de suite { $kind ->
+    [option] `None`
+   *[other] l’`Err`
+}
+check-try-return-why = `?` donne la valeur à l’intérieur, ou renvoie aussitôt ce qu’il ne peut pas donner : `None` pour une option, l’erreur pour un résultat. La fonction doit pouvoir renvoyer cela : une option, ou un résultat avec le même type d’erreur.
+check-try-return-fix = { $kind ->
+    [option] renvoie une `Option`, ou traite `None` avec `match` ou `unwrapOr`
+   *[other] renvoie un `Result` avec ce type d’erreur, ou traite l’erreur avec `match`
+}
+
+# E0226
+check-unknown-constraint = contrainte inconnue `{ $name }`
+check-unknown-constraint-label = pas une contrainte
+check-unknown-constraint-why = Un paramètre de type est contraint par ce que ses types doivent savoir faire : `Eq` (`==`), `Ord` (comparaisons), `Numeric` (arithmétique, pour entiers et flottants), `Integer`, `Float`, ou `Copy` (copié, pas déplacé).
+check-unknown-constraint-fix = utilise `Eq`, `Ord`, `Numeric`, `Integer`, `Float` ou `Copy`
+
+# E0227
+check-constraint = `{ $ty }` n’est pas `{ $bound }`
+check-constraint-label = `{ $param }` est `{ $ty }` ici
+check-constraint-declared = `{ $param }` doit être `{ $bound }`
+check-constraint-why = Une fonction ou un type générique fonctionne pour tout type qui respecte les contraintes de ses paramètres, et seulement pour ceux-là : son corps s’appuie dessus, donc un type qui n’en respecte pas une le ferait échouer.
+check-constraint-fix = donne à `{ $param }` un type qui est `{ $bound }`
+
+# E0228
+check-missing-constraint = `{ $op }` sur `{ $param }`, qui peut ne pas le permettre
+check-missing-constraint-label = `{ $op }` demande `{ $bound }`
+check-missing-constraint-why = Un corps générique est vérifié une fois, pour tous les types que ses paramètres peuvent représenter. Sans contrainte, un paramètre de type peut être n’importe quel type, et tous les types ne permettent pas toutes les opérations ; la contrainte affirme que si, et chaque appel est vérifié par rapport à elle.
+check-missing-constraint-fix = contrains le paramètre : `{ $param }: { $bound }`
+
+# E0229
+check-cannot-infer = impossible de savoir quel type représente `{ $param }` de `{ $name }`
+check-cannot-infer-label = `{ $param }` est inconnu ici
+check-cannot-infer-declared = `{ $param }` déclaré ici
+check-cannot-infer-why = Les arguments de type d’une fonction générique viennent de ses arguments, ou du type que l’appel doit avoir. Ici, rien ne dit lequel.
+check-cannot-infer-fix = donne un type au résultat, comme `let xs: Array<i32> = …`, ou passe une valeur de type `{ $param }`
+
+# E0230
+check-generic-export = la fonction exportée `{ $name }` est générique
+check-generic-export-label = exportée, avec des paramètres de type
+check-generic-export-why = Le code générique est compilé une fois par jeu d’arguments de type que le module utilise. JavaScript appelle une fonction exportée avec n’importe quelle valeur : il n’y a pas de copie unique à exporter.
+check-generic-export-fix = exporte une fonction non générique qui appelle `{ $name }` avec les types voulus
+
+# E0231
+check-endless-instances = `{ $name }` demanderait des copies sans fin
+check-endless-instances-label = instancié avec des types toujours plus grands
+check-endless-instances-why = Chaque jeu d’arguments de type donne une copie du code générique. Ici, une copie en demande une autre avec un type plus grand, comme quand `f<T>` appelle `f<Array<T>>`, ou qu’une structure se contient avec un argument de type plus grand : cela ne finit pas.
+check-endless-instances-fix = utilise les mêmes paramètres de type dans l’appel ou le champ récursif
+
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures
@@ -463,6 +586,11 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [float-remainder] `%` sur des flottants
     [string] les chaînes
     [array] les tableaux
+    [array-element] les tableaux d’autre chose que des nombres et des booléens
+    [heap-option] les options qui contiennent un tableau ou une chaîne
+    [inout-string] les chaînes `inout` des fonctions exportées, que JavaScript ne peut pas modifier
+    [inout-export] les nombres et options `inout` des fonctions exportées : JavaScript les passe par valeur
+    [deep-equality] `==` sur des tableaux de chaînes ou de tableaux
     [field] les champs
     [index] l’indexation
     [try] l’opérateur `?`
@@ -472,7 +600,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé
-gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite les fonctions sur `i32`, `i64`, `f32`, `f64` et `bool`, avec `if`, les boucles, les appels et les conversions numériques.
+gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite `i32`, `i64`, `f32`, `f64` et `bool`, les structures, les options, et les tableaux de nombres et de booléens, avec toutes les instructions, les appels et les conversions.
 gen-unsupported-fix = n’utilise pour l’instant que les constructions prises en charge dans ce module, ou limite-le à `perasc check`
 
 ## Rendu des diagnostics
@@ -493,3 +621,4 @@ runtime-invalid-release = { $release } libère quelque chose qui n’est pas un 
 runtime-double-release = le bloc alloué à { $alloc } est libéré une seconde fois, à { $release }
 runtime-use-after-release = le bloc alloué à { $alloc } a été modifié après que { $release } l’a libéré
 runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a été alloué à { $alloc }
+runtime-index = l’indice { $index } est hors limites : la longueur est { $length }

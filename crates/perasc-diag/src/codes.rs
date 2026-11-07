@@ -74,8 +74,16 @@ pub const SHADOWING: ErrorCode = ErrorCode::new(201);
 pub const DUPLICATE_DECLARATION: ErrorCode = ErrorCode::new(202);
 /// A variable or parameter whose value is never read.
 pub const UNUSED: ErrorCode = ErrorCode::new(203);
+/// A variable used after its heap value moved out of it.
+pub const USE_AFTER_MOVE: ErrorCode = ErrorCode::new(204);
 /// An assignment to a `const`, a `for…of` constant or a read-only parameter.
 pub const ASSIGN_TO_IMMUTABLE: ErrorCode = ErrorCode::new(205);
+/// An `inout` argument without `&`, or `&` on an argument that is not `inout`.
+pub const INOUT_MARKER: ErrorCode = ErrorCode::new(206);
+/// The same variable reached by two arguments of a call, one of them `inout`.
+pub const ALIASING: ErrorCode = ErrorCode::new(207);
+/// A heap value moved out of what only borrows it: a parameter, a field…
+pub const MOVE_OUT_OF_BORROW: ErrorCode = ErrorCode::new(209);
 /// A value of one type where another is expected.
 pub const MISMATCHED_TYPES: ErrorCode = ErrorCode::new(210);
 /// An integer literal where a float is expected.
@@ -100,6 +108,26 @@ pub const MISSING_RETURN: ErrorCode = ErrorCode::new(219);
 pub const MISSING_RETURN_TYPE: ErrorCode = ErrorCode::new(220);
 /// An operator applied to a type that does not support it.
 pub const INVALID_OPERATOR: ErrorCode = ErrorCode::new(221);
+/// A `match` that does not cover every value of its scrutinee.
+pub const NON_EXHAUSTIVE_MATCH: ErrorCode = ErrorCode::new(222);
+/// A variant that the enumeration does not have.
+pub const UNKNOWN_VARIANT: ErrorCode = ErrorCode::new(223);
+/// A `match` arm that no value can reach.
+pub const UNREACHABLE_ARM: ErrorCode = ErrorCode::new(224);
+/// `?` in a function that does not return what `?` gives back early.
+pub const TRY_RETURN: ErrorCode = ErrorCode::new(225);
+/// A constraint name that does not exist.
+pub const UNKNOWN_CONSTRAINT: ErrorCode = ErrorCode::new(226);
+/// A type argument that does not meet a constraint of its parameter.
+pub const CONSTRAINT_NOT_MET: ErrorCode = ErrorCode::new(227);
+/// An operation on a type parameter whose constraints do not allow it.
+pub const MISSING_CONSTRAINT: ErrorCode = ErrorCode::new(228);
+/// A type argument that nothing determines.
+pub const CANNOT_INFER: ErrorCode = ErrorCode::new(229);
+/// An exported generic function.
+pub const GENERIC_EXPORT: ErrorCode = ErrorCode::new(230);
+/// Generic code that instantiates itself with ever larger types.
+pub const ENDLESS_INSTANCES: ErrorCode = ErrorCode::new(231);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -189,7 +217,11 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(SHADOWING, "check-shadowing", "E0201"),
     active!(DUPLICATE_DECLARATION, "check-duplicate", "E0202"),
     active!(UNUSED, "check-unused", "E0203"),
+    active!(USE_AFTER_MOVE, "check-moved", "E0204"),
     active!(ASSIGN_TO_IMMUTABLE, "check-immutable", "E0205"),
+    active!(INOUT_MARKER, "check-inout-marker", "E0206"),
+    active!(ALIASING, "check-alias", "E0207"),
+    active!(MOVE_OUT_OF_BORROW, "check-move-out", "E0209"),
     active!(MISMATCHED_TYPES, "check-mismatch", "E0210"),
     active!(INTEGER_FOR_FLOAT, "check-integer-for-float", "E0211"),
     active!(LITERAL_OUT_OF_RANGE, "check-out-of-range", "E0212"),
@@ -202,6 +234,16 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(MISSING_RETURN, "check-missing-return", "E0219"),
     active!(MISSING_RETURN_TYPE, "check-missing-return-type", "E0220"),
     active!(INVALID_OPERATOR, "check-operator", "E0221"),
+    active!(NON_EXHAUSTIVE_MATCH, "check-match-missing", "E0222"),
+    active!(UNKNOWN_VARIANT, "check-unknown-variant", "E0223"),
+    active!(UNREACHABLE_ARM, "check-unreachable-arm", "E0224"),
+    active!(TRY_RETURN, "check-try-return", "E0225"),
+    active!(UNKNOWN_CONSTRAINT, "check-unknown-constraint", "E0226"),
+    active!(CONSTRAINT_NOT_MET, "check-constraint", "E0227"),
+    active!(MISSING_CONSTRAINT, "check-missing-constraint", "E0228"),
+    active!(CANNOT_INFER, "check-cannot-infer", "E0229"),
+    active!(GENERIC_EXPORT, "check-generic-export", "E0230"),
+    active!(ENDLESS_INSTANCES, "check-endless-instances", "E0231"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

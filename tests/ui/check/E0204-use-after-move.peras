@@ -1,0 +1,56 @@
+// E0204: a heap value used after it moved; what is allowed around it.
+struct Buffer { samples: Array<f32>; }
+fn take(xs: sink Array<i32>): i32 { return xs.length; }
+fn read(xs: Array<i32>): i32 { return xs.length; }
+
+export fn twice(): i32 {
+  let xs: Array<i32> = [1, 2, 3];
+  const n = take(xs);
+  return n + read(xs);
+}
+
+export fn after_assignment(): i32 {
+  let xs: Array<i32> = [1];
+  let ys = xs;
+  ys.push(xs.length);
+  return ys.length;
+}
+
+export fn one_branch(flag: bool): i32 {
+  let xs: Array<i32> = [1];
+  if (flag) {
+    take(xs);
+  }
+  return xs.length;
+}
+
+export fn in_a_loop(n: i32): i32 {
+  let xs: Array<i32> = [];
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    total += take(xs);
+  }
+  return total;
+}
+
+export fn whole_structure(): i32 {
+  let b = Buffer([1.0]);
+  let c = b;
+  return b.samples.length + c.samples.length;
+}
+
+// Allowed: a new value after the move, a move before `break`, moves of copies.
+export fn fine(n: i32): i32 {
+  let xs: Array<i32> = [1];
+  let total = take(xs);
+  xs = [2, 3];
+  for (let i = 0; i < n; i++) {
+    if (i == 2) {
+      total += take(xs);
+      break;
+    }
+    total += take(xs.copy());
+    xs = [i];
+  }
+  return total;
+}

@@ -14,12 +14,15 @@ Pour `geometry.peras` :
 
 ## Les types à la frontière
 
-| Peras               | JavaScript                                 |
-| ------------------- | ------------------------------------------ |
-| `i32`, `f32`, `f64` | `number`                                   |
-| `i64`               | `bigint`                                   |
-| `bool`              | `boolean`                                  |
-| une structure       | un simple objet, déclaré comme `interface` |
+| Peras               | JavaScript                                                                |
+| ------------------- | ------------------------------------------------------------------------- |
+| `i32`, `f32`, `f64` | `number`                                                                  |
+| `i64`               | `bigint`                                                                  |
+| `bool`              | `boolean`                                                                 |
+| une structure       | un simple objet, déclaré comme `interface`                                |
+| `Option<T>`         | la valeur, ou `undefined`                                                 |
+| `Array<T>`          | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie |
+| `String`            | une chaîne, copiée en UTF-8                                               |
 
 ```peras build
 export struct Rect {
@@ -43,7 +46,7 @@ area({ width: 3, height: 4 }); // 12
 big({ width: 30, height: 4 }); // true
 ```
 
-Le chargeur convertit à la frontière : un objet passé en argument est copié champ par champ, si bien que Peras n’en garde jamais de référence, et que les modifications faites par Peras ne l’atteignent jamais.
+Le chargeur convertit à la frontière : un objet passé en argument est copié champ par champ, si bien que Peras n’en garde jamais de référence, et que les modifications faites par Peras ne l’atteignent jamais. Un tableau est copié de la même façon, élément par élément ; seul un paramètre `inout` est recopié dans le tableau passé ([collections](collections.md#en-javascript)).
 
 ## Avec Vite
 
@@ -74,6 +77,12 @@ import { __perasHeap } from "./parser.peras";
 
 __perasHeap.live(); // blocs encore vivants
 __perasHeap.checkLeaks(); // lève une erreur s’il en reste
+```
+
+Un indice hors limites lève une `RangeError`, dans la langue choisie à la construction du module :
+
+```text
+RangeError: l’indice 3 est hors limites : la longueur est 3
 ```
 
 C’est la fin du guide. La [référence](../reference/status.md) liste tout ce que le langage offre aujourd’hui.

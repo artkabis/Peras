@@ -8,16 +8,50 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- Les **génériques**, sur les fonctions, les structures et les énumérations : `fn larger<T: Ord>(a: T, b: T): T`, `struct Pair<A, B>`, `enum Tree<T>`.
+  - Six contraintes prédéfinies : `Eq`, `Ord`, `Numeric`, `Integer`, `Float` et `Copy`. Un corps générique est vérifié une fois, pour tous les types que ses paramètres peuvent représenter : une opération que ses contraintes ne permettent pas est refusée, avec une correction qui ajoute la contrainte (`E0228`) ; une utilisation avec un type qui n’en respecte pas une est refusée (`E0227`), de même qu’une contrainte inconnue (`E0226`).
+  - Les arguments de type sont inférés des arguments et du type attendu, ou écrits à l’appel, `larger<i64>(a, b)` : les comparaisons enchaînées étant refusées, ce n’est jamais une comparaison. Quand rien ne les détermine, `E0229`.
+  - Une valeur d’un paramètre de type se déplace, sauf si le paramètre est `Copy` ; `Ord` et `Numeric` l’impliquent.
+  - Compilés par monomorphisation : une copie par jeu d’arguments de type utilisé par le module, nommée d’après eux (`larger__i64`), sans coût à l’exécution. Une fonction générique jamais appelée est vérifiée, pas compilée. Une fonction exportée ne peut pas être générique (`E0230`), et le code générique qui demanderait des copies pour des types toujours plus grands est refusé (`E0231`).
+  - Les structures et énumérations génériques arrivent en JavaScript comme des interfaces et des unions nommées d’après leurs arguments, `Pair_i32_String`.
+- `unwrapOr` avec une valeur de secours lue dans une variable contenant une chaîne ou un tableau ne produit plus de code refusé par le vérificateur : la valeur de secours est copiée.
 - Les **structures** se compilent, comme des valeurs : chacune est remplacée par ses champs scalaires, structures imbriquées aplaties, si bien qu’elle ne touche jamais le tas.
   - Un paramètre structure devient un paramètre par champ.
   - Une fonction qui renvoie une structure renvoie un résultat WebAssembly par champ, et un tuple dans le backend Rust.
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- **`Result<T, E>`** : `Ok(valeur)` ou `Err(erreur)`, `isOk`, `isErr`, `unwrapOr`, et `?`, qui renvoie l’erreur tout de suite ; la fonction doit renvoyer un résultat avec le même type d’erreur, ou une option pour `?` sur une option (`E0225`). L’erreur se déplace dans le retour, buffers compris.
+- L’exhaustivité et les bras inatteignables sont maintenant vérifiés par l’algorithme de Maranget, si bien que les motifs imbriqués comptent : `Err(Empty)` et `Err(NotADigit(_))` couvrent ensemble `Err`. Un type du module peut prendre le nom d’un type intégré, comme `Result`.
+- **Énumérations avec données, et `match`.** `enum Shape { Circle(f64), Rect(f64, f64), Empty }` ; les valeurs s’écrivent `Shape.Circle(1.0)`.
+  - `match` décompose une valeur avec des motifs : `_`, noms, nombres et booléens, variantes avec leurs données, imbriqués ; les bras sont des valeurs ou des blocs, et `return`, `break`, `continue` y marchent.
+  - Chaque `match` doit couvrir chaque valeur (`E0222`) ; une variante inconnue (`E0223`) et un bras qu’aucune valeur n’atteint (`E0224`) sont aussi des erreurs. Un `match` dont tous les bras renvoient termine la fonction.
+  - Les options se filtrent aussi (`Some(x)`, `None`), et une option ou une énumération peut désormais contenir des chaînes et des tableaux : les données des variantes non prises sont des buffers vides, si bien que la valeur possède toujours les mêmes. `pop()` sur un tableau de chaînes marche désormais.
+  - JavaScript voit `{ kind: "Circle", values: [1] }`, déclaré à TypeScript comme une union.
+- Les **tableaux de chaînes et de tableaux** se compilent, ainsi que les structures qui en contiennent dans des tableaux : un buffer peut posséder des buffers, que le runtime libère et copie avec lui, à toute profondeur. JavaScript les passe et les reçoit en tableaux et objets imbriqués.
+- E0204 raconte l’histoire de la valeur : où elle a reçu sa valeur, où elle a été déplacée, où elle est réutilisée.
+- Les **tableaux de structures et d’options** se compilent, en colonnes : un buffer par scalaire d’un élément, si bien que `points[i].x` et une boucle sur un seul champ ne touchent qu’un buffer. L’indexation, `points[i].x = v`, `push`, `pop`, `copy`, `==` et `for…of` marchent colonne par colonne ; JavaScript voit des tableaux d’objets.
+- **`inout`** marche sur tous les types : la fonction rend ses nombres en résultats supplémentaires, réécrits dans les variables de l’appelant ; tableaux et chaînes changent sur place. Depuis JavaScript, une structure passée `inout` est un objet dont les champs sont mis à jour. Une variable passée `inout` ne peut pas être lue ailleurs dans la même instruction (`E0207`), et deux champs différents d’une structure ne comptent plus comme des alias.
+- `?` libère maintenant les tableaux et les chaînes que la fonction détient avant de renvoyer `None` ; ils fuyaient avant.
+- Les **chaînes** se compilent, en UTF-8 : littéraux, `+`, `+=`, `==`, `!=`, `length` en octets et `copy()`. Un littéral est stocké une seule fois, en segment de données passif, et copié dans un nouveau buffer avec `memory.init` ; `+=` ajoute sur place. JavaScript passe et reçoit des chaînes, encodées et décodées en UTF-8. `==` compare aussi les tableaux, élément par élément.
+- Les **tableaux** se compilent, de nombres et de booléens, sur le tas : littéraux, `length`, lecture et affectation par indice, `push`, `pop`, `copy`, `for…of`.
+  - Chaque indice est vérifié ; un indice hors limites arrête le programme avec une `RangeError`, en anglais ou en français, avant de toucher la mémoire.
+  - Un tableau est un en-tête de 12 octets, qui garde son adresse, et ses éléments ; `push` double la place quand elle manque. L’allocateur de débogage tient les deux blocs, si bien que chaque bug mémoire reste détecté.
+  - JavaScript passe et reçoit des copies, en `number[]`, `bigint[]` ou `boolean[]` ; un paramètre `inout` est recopié.
+- La **possession** est vérifiée : une valeur sur le tas a un seul propriétaire, se déplace à l’affectation, au `return` et vers `sink`, et est empruntée sinon.
+  - Quatre nouvelles erreurs : une valeur utilisée après son déplacement ([E0204](docs/fr/errors/E0204.md)), `&` manquant ou en trop sur un argument `inout` ([E0206](docs/fr/errors/E0206.md)), deux arguments qui atteignent une variable que l’un modifie, ou un tableau modifié pendant que `for…of` le parcourt ([E0207](docs/fr/errors/E0207.md)), le déplacement de ce qui n’est qu’emprunté ([E0209](docs/fr/errors/E0209.md)). Chaque correction ajoute `.copy()`, `&` ou `sink` là où c’est possible.
+  - Le lowering insère chaque libération : en fin de portée, à la réaffectation, avant `return`, `break` et `continue`, et là où des chemins se rejoignent après un déplacement sur l’un d’eux. Le vérificateur de libérations prouve chacune ; les programmes de test ne laissent aucun bloc vivant, dans l’interpréteur et en WebAssembly sur l’allocateur de débogage.
+- Les **options** se compilent, sans le tas elles aussi : une `Option<T>` est un `bool` suivi des scalaires de `T`, n’importe quel `T` compilé, structures comprises.
+  - `Some`, `None`, `isSome`, `isNone`, `unwrapOr`, et `?`, qui renvoie `None` tout de suite depuis une fonction qui renvoie une option.
+  - `checkedAdd`, `checkedSub` et `checkedMul` sur `i32` et `i64` donnent `None` en cas de dépassement ; ils sont testés contre ceux de Rust sur les valeurs où le dépassement commence et s’arrête.
+  - `None` et `[]` prennent le type qu’attend leur contexte.
+  - JavaScript voit la valeur ou `undefined`, déclarée `T | undefined`.
+- Le chargeur JavaScript préfixe par `$` chaque nom qu’il déclare, ce par quoi un nom Peras ne peut pas commencer : une fonction ou un paramètre nommé `r`, `url` ou `runtime` ne casse plus le module.
 - L’IR vérifie la possession : poignées `owned` et `borrowed`, libérations explicites, et un vérificateur qui prouve que chaque bloc est libéré exactement une fois sur chaque chemin. L’allocateur de débogage est intégré aux modules qui utilisent le tas ; un bug mémoire lève une `PerasMemoryError` qui nomme les deux sites, en anglais ou en français. Rien dans le langage n’alloue encore.
 
 ### Banc d’essai
 
+- `overflows` exerce les options et l’arithmétique vérifiée ; les deux backends s’accordent avec la référence JavaScript.
 - `cmandel` calcule l’ensemble de Mandelbrot avec `struct Complex`. Les deux backends s’accordent avec la référence JavaScript. Le backend direct prend 15 ms contre 13 ms pour le code `f64` simple et pour Rust ; JavaScript, qui alloue un objet par nombre complexe, prend 49 ms. L’optimiseur ne touche pas encore aux fonctions à plusieurs résultats.
 
 ## 0.0.1 — 4 novembre 2026

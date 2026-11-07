@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0224-unreachable-arm.peras
+---
+diagnostics:
+  error[E0224] check-unreachable-arm
+    primary 11:5-11:14: check-unreachable-arm-label
+    cause: check-unreachable-arm-why
+    fix: check-unreachable-arm-fix
+  error[E0224] check-unreachable-arm
+    primary 15:5-15:6: check-unreachable-arm-label
+    cause: check-unreachable-arm-why
+    fix: check-unreachable-arm-fix
+  error[E0224] check-unreachable-arm
+    primary 19:5-19:6: check-unreachable-arm-label
+    cause: check-unreachable-arm-why
+    fix: check-unreachable-arm-fix

@@ -70,7 +70,7 @@ A parameter is read-only by default. Two conventions say more, and the compiler 
 | `x: inout T` | the function may modify the caller's value; the caller writes `&value` and no other alias exists during the call |
 | `x: sink T`  | the function takes `x`; the caller can no longer use it                                                          |
 
-```peras
+```peras build
 struct Counter {
   value: i32;
 }
@@ -87,7 +87,9 @@ export fn twice(): i32 {
 }
 ```
 
-> `inout` and `sink` are checked, not compiled yet; they arrive with the ownership checks ([memory](memory.md)).
+`inout` works on everything: an array or a string is changed in place, and the function gives its numbers back to the caller, who finds them in its variable after the call. During the call, nothing else in the statement may read that variable ([E0207](../errors/E0207.md)): `n += bump(&n)` is refused, since it would depend on the order of evaluation. The rules are on the [memory](memory.md) page.
+
+From JavaScript, a structure passed `inout` is an object whose fields are updated after the call. A number, an option or a string cannot be passed `inout` from JavaScript, which passes them by value; such a function can still be called from Peras.
 
 ## Built-in methods
 

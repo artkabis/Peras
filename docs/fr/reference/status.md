@@ -8,16 +8,20 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 
 ## Types
 
-| Fonctionnalité                                                | État                                         |
-| ------------------------------------------------------------- | -------------------------------------------- |
-| `i32`, `i64`, `f32`, `f64`, `bool`                            | <span class="status compiled">compilé</span> |
-| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                        | <span class="status checked">vérifié</span>  |
-| structures, imbriquées, en paramètres et en résultats         | <span class="status compiled">compilé</span> |
-| `Array<T>`, `String`, `Option<T>`                             | <span class="status checked">vérifié</span>  |
-| `Result<T, E>`, énumérations et unions, `match`               | <span class="status planned">prévu</span>    |
-| génériques, interfaces et traits, méthodes sur les structures | <span class="status planned">prévu</span>    |
-| `Map`, `Set`, tuples, fermetures                              | <span class="status planned">prévu</span>    |
-| `Rc<T>`, `Framebuffer`, types de pixels, SIMD                 | <span class="status planned">prévu</span>    |
+| Fonctionnalité                                            | État                                         |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `i32`, `i64`, `f32`, `f64`, `bool`                        | <span class="status compiled">compilé</span> |
+| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                    | <span class="status checked">vérifié</span>  |
+| structures, imbriquées, en paramètres et en résultats     | <span class="status compiled">compilé</span> |
+| `Option<T>`, `Some`, `None`, `?`                          | <span class="status compiled">compilé</span> |
+| `Array<T>` de tout type                                   | <span class="status compiled">compilé</span> |
+| `String`, en UTF-8                                        | <span class="status compiled">compilé</span> |
+| énumérations avec données, `match`, exhaustivité vérifiée | <span class="status compiled">compilé</span> |
+| `Result<T, E>`, `Ok`, `Err`, `?`                          | <span class="status compiled">compilé</span> |
+| génériques, contraintes `Eq`, `Ord`, `Numeric`, `Copy`…   | <span class="status compiled">compilé</span> |
+| interfaces et traits, méthodes sur les structures         | <span class="status planned">prévu</span>    |
+| `Map`, `Set`, tuples, fermetures                          | <span class="status planned">prévu</span>    |
+| `Rc<T>`, `Framebuffer`, types de pixels, SIMD             | <span class="status planned">prévu</span>    |
 
 ## Instructions et expressions
 
@@ -26,9 +30,11 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | `let`, `const`, affectations, `+=` et les autres, `++`, `--`    | <span class="status compiled">compilé</span>                                                                         |
 | opérateurs arithmétiques, de comparaison, bit à bit et logiques | <span class="status compiled">compilé</span>, sauf `%` sur les flottants <span class="status checked">vérifié</span> |
 | `if`, `while`, `for`, `break`, `continue`                       | <span class="status compiled">compilé</span>                                                                         |
-| `for…of`                                                        | <span class="status checked">vérifié</span>                                                                          |
+| `for…of`                                                        | <span class="status compiled">compilé</span>                                                                         |
 | fonctions, récursion, `export`                                  | <span class="status compiled">compilé</span>                                                                         |
-| paramètres `inout` et `sink`, `&` à l’appel                     | <span class="status checked">vérifié</span>                                                                          |
+| paramètres `sink`                                               | <span class="status compiled">compilé</span>                                                                         |
+| paramètres `inout`, `&` à l’appel                               | <span class="status compiled">compilé</span>                                                                         |
+| possession : déplacements, emprunts, alias refusés, libérations | <span class="status compiled">compilé</span>                                                                         |
 | `const` au niveau du module                                     | <span class="status checked">vérifié</span>                                                                          |
 | `import` entre modules                                          | <span class="status planned">prévu</span>                                                                            |
 

@@ -3,7 +3,7 @@
 use perasc_diag::Span;
 use perasc_syntax::ast::{Convention, Symbol};
 
-use crate::ty::{FnId, StructId, Ty};
+use crate::ty::{EnumId, FnId, StructId, Ty};
 
 /// What a name is bound to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,10 +33,18 @@ pub enum Kind {
     Fn(FnId),
     /// A structure, usable as a constructor.
     Struct(StructId),
+    /// An enumeration, whose variants are written `Name.Variant`.
+    Enum(EnumId),
+    /// A name a `match` pattern gives to a value, or a part of it.
+    Pattern,
     /// `Some`, provided by the language.
     Some,
     /// `None`, provided by the language.
     None,
+    /// `Ok`, provided by the language.
+    Ok,
+    /// `Err`, provided by the language.
+    Err,
 }
 
 /// A declared name.
@@ -58,10 +66,20 @@ pub struct Binding {
 
 impl Binding {
     /// Whether an unread binding is an error: variables and parameters only, and
-    /// never a name starting with `_`, which marks it unused on purpose.
+    /// never a name starting with `_`, which marks it unused on purpose. An
+    /// `inout` parameter only written is used: the caller reads it.
     #[must_use]
     pub fn must_be_used(&self) -> bool {
-        matches!(self.kind, Kind::Local { .. } | Kind::Param { .. }) && !self.name.starts_with('_')
+        let inout = matches!(
+            self.kind,
+            Kind::Param {
+                convention: Convention::Inout,
+                ..
+            }
+        );
+        matches!(self.kind, Kind::Local { .. } | Kind::Param { .. })
+            && !inout
+            && !self.name.starts_with('_')
     }
 }
 

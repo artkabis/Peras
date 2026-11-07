@@ -1,0 +1,16 @@
+// E0226: a constraint that does not exist, with the closest one suggested.
+fn larger<T: Ordd>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+fn other<T: Copy + Sortable>(a: T): T {
+  return a;
+}
+
+// Allowed: every constraint the language has.
+fn every<A: Eq, B: Ord, C: Numeric, D: Integer, E: Float, F: Copy + Eq>(a: A, b: B, c: C, d: D, e: E, f: F): bool {
+  return a == a && b < b && c + c == c && (d & d) == d && -e == e && f == f;
+}

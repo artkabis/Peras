@@ -1,0 +1,29 @@
+// E0228: an operation the constraints of a type parameter do not allow; the
+// fix inserts the constraint it needs.
+fn sum<T>(xs: Array<T>, start: T): T {
+  let total = start;
+  for (const x of xs) {
+    total += x;
+  }
+  return total;
+}
+
+fn same<T>(a: T, b: T): bool {
+  return a == b;
+}
+
+fn before<T: Eq>(a: T, b: T): bool {
+  return a < b;
+}
+
+fn negate<T: Numeric>(x: T): T {
+  return -x;
+}
+
+fn bits<T: Numeric>(x: T): T {
+  return x & x;
+}
+
+fn convert<T: Eq>(x: T): f64 {
+  return x.toF64();
+}

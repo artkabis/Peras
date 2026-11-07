@@ -6,16 +6,18 @@
 //! `inout` and the other constructs listed in `E0900`) is reported, every
 //! occurrence at once, instead of being miscompiled.
 
+mod heap;
+mod matching;
 mod values;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use perasc_check::Analysis;
 use perasc_check::ty::{FloatTy, IntTy, Ty as CheckTy};
 use perasc_diag::{Diagnostic, Fix, Label, Message, Span, codes};
 use perasc_syntax::ast::{
     AssignOp, Ast, BinaryOp, Convention, ExprId, ExprKind as AstExpr, FnDecl, ItemKind, StepOp,
-    Stmt as AstStmt, StmtKind, Symbol, Type, TypeKind, UnaryOp,
+    Stmt as AstStmt, StmtKind, Symbol, Type, UnaryOp,
 };
 
 use crate::{
@@ -33,42 +35,78 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         ast,
         analysis,
         fns: HashMap::new(),
+        generic: HashMap::new(),
+        instances: HashMap::new(),
+        args: Vec::new(),
         results: HashMap::new(),
+        conventions: HashMap::new(),
+        data: Vec::new(),
         diagnostics: Vec::new(),
     };
-    let mut index = 0u32;
-    for item in &ast.items {
-        match &item.kind {
-            ItemKind::Fn(decl) => {
-                let id = FnId(index);
-                lowering.fns.insert(decl.name.symbol, id);
-                // Its results, for its callers; a type not compiled yet is
-                // reported once, with the function itself.
-                let results = decl
-                    .ret
-                    .as_ref()
-                    .and_then(|t| lowering.resolve(t).ok())
-                    .and_then(|t| lowering.leaves(&t).ok())
-                    .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
-                    .unwrap_or_default();
-                lowering.results.insert(id, results);
-                index += 1;
-            }
-            // A structure is a type: its uses are lowered where they appear.
-            ItemKind::Struct(_) => {}
-            ItemKind::Global(local) => lowering.unsupported(local.name.span, "global"),
-        }
-    }
-    let functions = ast
+    // The functions of the module, in order, then the instances of the
+    // generic ones: what each is, and its type arguments.
+    let decls: Vec<&FnDecl> = ast
         .items
         .iter()
         .filter_map(|item| match &item.kind {
-            ItemKind::Fn(decl) => Some(lowering.function(decl)),
+            ItemKind::Fn(decl) => Some(decl),
             _ => None,
         })
         .collect();
+    let mut compiled: Vec<(&FnDecl, Vec<CheckTy>)> = Vec::new();
+    for (index, decl) in decls.iter().enumerate() {
+        let checked = perasc_check::ty::FnId(index);
+        if analysis.is_generic(checked) {
+            lowering.generic.insert(decl.name.symbol, index);
+            continue;
+        }
+        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+        lowering.fns.insert(decl.name.symbol, id);
+        compiled.push((decl, Vec::new()));
+    }
+    for (checked, args) in &analysis.instances {
+        let Some(&decl) = decls.get(checked.0) else {
+            continue;
+        };
+        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+        lowering.instances.insert((checked.0, args.clone()), id);
+        compiled.push((decl, args.clone()));
+    }
+    for (index, (decl, args)) in compiled.iter().enumerate() {
+        let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
+        lowering.args.clone_from(args);
+        lowering
+            .conventions
+            .insert(id, decl.params.iter().map(|p| p.convention).collect());
+        // Its results, for its callers; a type not compiled yet is
+        // reported once, with the function itself.
+        let mut results: Vec<Ty> = decl
+            .ret
+            .as_ref()
+            .and_then(|t| lowering.resolve(t).ok())
+            .and_then(|t| lowering.leaves(&t).ok())
+            .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
+            .unwrap_or_default();
+        results.extend(lowering.inout_numbers(decl));
+        lowering.results.insert(id, results);
+    }
+    for item in &ast.items {
+        if let ItemKind::Global(local) = &item.kind {
+            lowering.unsupported(local.name.span, "global");
+        }
+    }
+    let functions = compiled
+        .iter()
+        .map(|(decl, args)| {
+            lowering.args.clone_from(args);
+            lowering.function(decl)
+        })
+        .collect();
     if lowering.diagnostics.is_empty() {
-        Ok(Module { functions })
+        Ok(Module {
+            functions,
+            data: lowering.data,
+        })
     } else {
         let mut diagnostics = lowering.diagnostics;
         diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
@@ -79,9 +117,21 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
 struct Lowering<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
+    /// The functions that are not generic, by name.
     fns: HashMap<Symbol, FnId>,
+    /// The generic functions, by name: their index in the checker's table.
+    generic: HashMap<Symbol, usize>,
+    /// The instance compiled for each generic function and type arguments.
+    instances: HashMap<(usize, Vec<CheckTy>), FnId>,
+    /// The type arguments of the function being lowered: empty unless it is
+    /// an instance of a generic one.
+    args: Vec<CheckTy>,
     /// The scalar results of each function: several for a structure.
     results: HashMap<FnId, Vec<Ty>>,
+    /// How each function takes its parameters.
+    conventions: HashMap<FnId, Vec<Convention>>,
+    /// The bytes of the string literals, each once.
+    data: Vec<Vec<u8>>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -92,6 +142,9 @@ enum Binding {
     Scalar(LocalId),
     /// A structure: one local per scalar, in order.
     Struct(Vec<LocalId>),
+    /// The element a `for…of` reaches, when it holds buffers: its scalars,
+    /// read from the array at each use, since a lent buffer is never stored.
+    Lent(Vec<Expr>),
 }
 
 /// The state of one function being lowered.
@@ -101,9 +154,55 @@ struct FnState {
     /// Statements that must run before the statement being lowered: calls
     /// returning several results, and what keeps the order of evaluation.
     pre: Vec<Stmt>,
+    /// When the function returns an option: its type, for the `None` of `?`.
+    ret_option: Option<CheckTy>,
+    /// The numbers of the `inout` parameters, returned after the result so
+    /// that the caller writes them back.
+    writeback: Vec<LocalId>,
+    /// The `owned` locals declared in each open scope, parallel to `scopes`.
+    owned: Vec<Vec<LocalId>>,
+    /// The `owned` locals that hold a buffer here (see [`heap`]).
+    live: BTreeSet<u32>,
+    /// Whether the code here is unreachable: after `return`, `break`, `continue`.
+    gone: bool,
+    /// Temporaries holding buffers until the end of the statement.
+    drops: Vec<LocalId>,
+    /// The loops around the code being lowered, innermost last.
+    loops: Vec<heap::LoopFrame>,
 }
 
 impl FnState {
+    fn new() -> Self {
+        Self {
+            locals: Vec::new(),
+            scopes: vec![HashMap::new()],
+            pre: Vec::new(),
+            ret_option: None,
+            writeback: Vec::new(),
+            owned: vec![Vec::new()],
+            live: BTreeSet::new(),
+            gone: false,
+            drops: Vec::new(),
+            loops: Vec::new(),
+        }
+    }
+
+    /// Opens a scope.
+    fn open(&mut self) {
+        self.scopes.push(HashMap::new());
+        self.owned.push(Vec::new());
+    }
+
+    /// Closes the innermost scope, releasing what it still holds.
+    fn close(&mut self, out: &mut Vec<Stmt>) {
+        if !self.gone {
+            let depth = self.owned.len().saturating_sub(1);
+            self.release_scopes(depth, out);
+        }
+        self.scopes.pop();
+        self.owned.pop();
+    }
+
     fn add(&mut self, symbol: Symbol, name: &str, ty: Ty) -> LocalId {
         let id = self.local(name, ty);
         if let Some(scope) = self.scopes.last_mut() {
@@ -116,8 +215,22 @@ impl FnState {
     fn add_struct(&mut self, symbol: Symbol, name: &str, leaves: &[(String, Ty)]) -> Vec<LocalId> {
         let ids: Vec<LocalId> = leaves
             .iter()
-            .map(|(path, ty)| self.local(&format!("{name}_{path}"), *ty))
+            .map(|(path, ty)| {
+                let local = if path.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{name}_{path}")
+                };
+                self.local(&local, *ty)
+            })
             .collect();
+        for (&id, (_, ty)) in ids.iter().zip(leaves) {
+            if *ty == Ty::Owned
+                && let Some(scope) = self.owned.last_mut()
+            {
+                scope.push(id);
+            }
+        }
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(symbol, Binding::Struct(ids.clone()));
         }
@@ -180,21 +293,11 @@ impl Lowering<'_> {
 
     /// The IR type of a type written in source.
     fn written_type(&mut self, ty: &Type) -> Ty {
-        let TypeKind::Named { name, args } = &ty.kind else {
-            return Ty::Void;
-        };
-        let text = self.ast.name(name.symbol);
-        let found = match (text, args.is_empty()) {
-            ("i32", true) => Some(Ty::I32),
-            ("i64", true) => Some(Ty::I64),
-            ("f32", true) => Some(Ty::F32),
-            ("f64", true) => Some(Ty::F64),
-            ("bool", true) => Some(Ty::Bool),
-            ("void", true) => Some(Ty::Void),
-            _ => None,
-        };
-        found.unwrap_or_else(|| {
-            self.unsupported(ty.span, feature_of_type(text));
+        let found = self
+            .resolve(ty)
+            .and_then(|t| Self::ir_type(&t).ok_or_else(|| feature_of_check_type(&t)));
+        found.unwrap_or_else(|feature| {
+            self.unsupported(ty.span, feature);
             Ty::Void
         })
     }
@@ -202,69 +305,166 @@ impl Lowering<'_> {
     /// The type the checker gave an expression.
     fn type_of(&mut self, id: ExprId) -> Ty {
         let span = self.ast.expr(id).span;
-        match self.analysis.types.get(&id) {
-            Some(ty) => Self::ir_type(ty).unwrap_or_else(|| {
-                self.unsupported(span, feature_of_check_type(ty));
+        match self.check_type(id) {
+            Some(ty) => Self::ir_type(&ty).unwrap_or_else(|| {
+                self.unsupported(span, feature_of_check_type(&ty));
                 Ty::Void
             }),
             None => Ty::Void,
         }
     }
 
-    fn function(&mut self, decl: &FnDecl) -> Function {
-        let mut state = FnState {
-            locals: Vec::new(),
-            scopes: vec![HashMap::new()],
-            pre: Vec::new(),
+    /// `E0900` for a name that is not a local: a function used as a value,
+    /// or a module-level constant.
+    fn not_a_local(&mut self, symbol: Symbol, span: Span) {
+        let function = self.fns.contains_key(&symbol) || self.generic.contains_key(&symbol);
+        let feature = if function { "function-value" } else { "global" };
+        self.unsupported(span, feature);
+    }
+
+    /// The function a call by name reaches: the function itself, or the
+    /// instance of a generic one for the type arguments of this call.
+    fn callee(&self, call: ExprId, symbol: Symbol) -> Option<FnId> {
+        if let Some((checked, args)) = self.analysis.calls.get(&call) {
+            let args: Vec<CheckTy> = args
+                .iter()
+                .map(|t| self.analysis.subst(t, &self.args))
+                .collect();
+            return self.instances.get(&(checked.0, args)).copied();
+        }
+        self.fns.get(&symbol).copied()
+    }
+
+    /// A parameter: its locals, how JavaScript passes it, and whether its
+    /// numbers go back to the caller (`inout`).
+    fn param(
+        &mut self,
+        state: &mut FnState,
+        decl: &FnDecl,
+        param: &perasc_syntax::ast::Param,
+        shapes: &mut Vec<(String, crate::Shape)>,
+        writeback: &mut Vec<(String, crate::Shape)>,
+        has_struct: &mut bool,
+    ) {
+        let name = self.ast.name(param.name.symbol);
+        let Some(ty) = self.typed(&param.ty) else {
+            return;
         };
+        *has_struct |= values::is_aggregate(&ty);
+        let pass = match param.convention {
+            Convention::Let => crate::Pass::Borrow,
+            Convention::Inout => crate::Pass::Inout,
+            Convention::Sink => crate::Pass::Sink,
+        };
+        shapes.push((name.to_owned(), self.shape_passed(&ty, pass)));
+        match self.leaves(&ty) {
+            Ok(leaves) if values::is_aggregate(&ty) => {
+                // A parameter that is not `sink` only borrows its buffers;
+                // `inout` changes them in place, and returns its numbers.
+                let inout = param.convention == Convention::Inout;
+                // A JavaScript string cannot change, nor be given back to an
+                // option: there is nothing to copy back into.
+                if inout && decl.exported && self.holds_string(&ty) {
+                    self.unsupported(param.name.span, "inout-string");
+                }
+                if inout && decl.exported && matches!(ty, CheckTy::Option(_) | CheckTy::Enum(..)) {
+                    self.unsupported(param.name.span, "inout-export");
+                }
+                let numbers = leaves.iter().any(|(_, t)| !t.is_handle());
+                if inout && numbers {
+                    writeback.push((name.to_owned(), self.shape_passed(&ty, crate::Pass::Inout)));
+                }
+                let leaves: Vec<(String, Ty)> = leaves
+                    .into_iter()
+                    .map(|(path, t)| match (t, param.convention) {
+                        (Ty::Owned, Convention::Let | Convention::Inout) => (path, Ty::Borrowed),
+                        other => (path, other.0),
+                    })
+                    .collect();
+                let ids = state.add_struct(param.name.symbol, name, &leaves);
+                for id in ids {
+                    if state.is_owned(id) {
+                        state.live.insert(id.0);
+                    } else if inout && !state.is_borrowed(id) {
+                        state.writeback.push(id);
+                    }
+                }
+            }
+            Ok(leaves) => {
+                // A number passed `inout` from JavaScript has nowhere to go back.
+                if param.convention == Convention::Inout && decl.exported {
+                    self.unsupported(param.name.span, "inout-export");
+                }
+                let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
+                let id = state.add(param.name.symbol, name, leaf);
+                if param.convention == Convention::Inout {
+                    state.writeback.push(id);
+                }
+            }
+            Err(feature) => self.unsupported(param.ty.span, feature),
+        }
+    }
+
+    fn function(&mut self, decl: &FnDecl) -> Function {
+        let mut state = FnState::new();
         let errors_before = self.diagnostics.len();
         let mut shapes = Vec::new();
+        let mut writeback = Vec::new();
         let mut has_struct = false;
         for param in &decl.params {
-            if param.convention == Convention::Inout {
-                self.unsupported(param.name.span, "inout");
-            }
-            let name = self.ast.name(param.name.symbol);
-            let Some(ty) = self.typed(&param.ty) else {
-                continue;
-            };
-            has_struct |= matches!(ty, CheckTy::Struct(..));
-            shapes.push((name.to_owned(), self.shape(&ty)));
-            match self.leaves(&ty) {
-                Ok(leaves) if matches!(ty, CheckTy::Struct(..)) => {
-                    state.add_struct(param.name.symbol, name, &leaves);
-                }
-                Ok(leaves) => {
-                    let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
-                    state.add(param.name.symbol, name, leaf);
-                }
-                Err(feature) => self.unsupported(param.ty.span, feature),
-            }
+            self.param(
+                &mut state,
+                decl,
+                param,
+                &mut shapes,
+                &mut writeback,
+                &mut has_struct,
+            );
         }
         let param_count = u32::try_from(state.locals.len()).unwrap_or(u32::MAX);
         let ret_ty = decl.ret.as_ref().and_then(|t| self.typed(t));
-        has_struct |= matches!(ret_ty, Some(CheckTy::Struct(..)));
-        let results: Vec<Ty> = match &ret_ty {
+        has_struct |= ret_ty.as_ref().is_some_and(values::is_aggregate);
+        let mut results: Vec<Ty> = match &ret_ty {
             Some(ty) if *ty != CheckTy::Void => match self.leaves(ty) {
                 Ok(leaves) => leaves.into_iter().map(|(_, t)| t).collect(),
                 Err(_) => Vec::new(),
             },
             _ => Vec::new(),
         };
+        if matches!(ret_ty, Some(CheckTy::Option(_) | CheckTy::Result(..))) {
+            state.ret_option.clone_from(&ret_ty);
+        }
+        // The `inout` numbers come back after the result.
+        let inout_types: Vec<Ty> = state
+            .writeback
+            .iter()
+            .map(|&l| local_expr(&state, l).ty)
+            .collect();
+        results.extend(inout_types);
         let mut body = Vec::new();
         // A signature already reported: its body would only repeat the same cause
         // (`xs.length` for an unsupported `xs: Array<i32>`), so it is not lowered.
         if self.diagnostics.len() == errors_before {
             self.block(&mut state, &decl.body.stmts, &mut body);
+            // A `void` function that ends releases its `sink` parameters, and
+            // gives back its `inout` numbers.
+            if !state.gone {
+                state.release_scopes(0, &mut body);
+                if !state.writeback.is_empty() {
+                    let values = state.writeback_values();
+                    body.push(return_of(values));
+                }
+            }
         }
         let shape = (decl.exported && has_struct).then(|| JsShape {
             params: shapes,
             result: ret_ty
                 .filter(|t| *t != CheckTy::Void)
                 .map(|t| self.shape(&t)),
+            writeback,
         });
         Function {
-            name: self.ast.name(decl.name.symbol).to_owned(),
+            name: self.function_name(decl),
             exported: decl.exported,
             param_count,
             locals: state.locals,
@@ -273,6 +473,21 @@ impl Lowering<'_> {
             shape,
             body,
         }
+    }
+
+    /// The name of the function being lowered: an instance of a generic
+    /// function is named after its type arguments, `larger__i64`.
+    fn function_name(&self, decl: &FnDecl) -> String {
+        let name = self.ast.name(decl.name.symbol);
+        if self.args.is_empty() {
+            return name.to_owned();
+        }
+        let args: Vec<String> = self
+            .args
+            .iter()
+            .map(|t| identifier(&t.to_string()))
+            .collect();
+        format!("{name}__{}", args.join("_"))
     }
 
     /// The checker type of a type written in source; what is not compiled yet
@@ -288,11 +503,15 @@ impl Lowering<'_> {
     }
 
     fn block(&mut self, state: &mut FnState, stmts: &[AstStmt], out: &mut Vec<Stmt>) {
-        state.scopes.push(HashMap::new());
+        state.open();
         for stmt in stmts {
+            // What follows `return`, `break` or `continue` never runs.
+            if state.gone {
+                break;
+            }
             self.stmt(state, stmt, out);
         }
-        state.scopes.pop();
+        state.close(out);
     }
 
     /// A body: a block or a single statement, in its own scope.
@@ -305,27 +524,33 @@ impl Lowering<'_> {
     fn stmt(&mut self, state: &mut FnState, stmt: &AstStmt, out: &mut Vec<Stmt>) {
         match &stmt.kind {
             StmtKind::Local(local) => self.local(state, local, out),
-            StmtKind::Return(value) => {
-                let values = value.map(|v| self.value(state, v)).unwrap_or_default();
-                state.flush(out);
-                out.push(match values.len() {
-                    0 => Stmt::Return(None),
-                    1 => Stmt::Return(values.into_iter().next()),
-                    _ => Stmt::ReturnMany(values),
-                });
-            }
+            StmtKind::Return(value) => self.return_stmt(state, *value, out),
             StmtKind::Expr(e) => {
-                let values = self.value(state, *e);
+                let values = self.value_as(state, *e, heap::Mode::Borrow);
                 state.flush(out);
                 // A structure's scalars are kept only for their effects.
                 for value in values {
-                    if !matches!(value.kind, ExprKind::Local(_) | ExprKind::Const(_)) {
+                    if !heap::pure(&value) {
                         out.push(Stmt::Expr(value));
                     }
                 }
+                state.end_statement(out);
             }
             StmtKind::Assign { target, op, value } => {
-                self.assign_stmt(state, *target, *op, *value, out);
+                if self.is_element_place(*target) {
+                    self.index_assign(state, *target, assign_op(*op), Some(*value), out);
+                } else {
+                    self.assign_stmt(state, *target, *op, *value, out);
+                    state.end_statement(out);
+                }
+            }
+            StmtKind::Step { target, op } if self.is_element_place(*target) => {
+                let op = if *op == StepOp::Increment {
+                    BinOp::Add
+                } else {
+                    BinOp::Sub
+                };
+                self.index_assign(state, *target, Some(op), None, out);
             }
             StmtKind::Step { target, op } => {
                 let Some(locals) = self.place(state, *target) else {
@@ -348,24 +573,12 @@ impl Lowering<'_> {
                 cond,
                 then,
                 otherwise,
-            } => {
-                let cond = self.expr(state, *cond);
-                state.flush(out);
-                let then = self.body(state, then);
-                let otherwise = otherwise
-                    .as_ref()
-                    .map(|o| self.body(state, o))
-                    .unwrap_or_default();
-                out.push(Stmt::If {
-                    cond,
-                    then,
-                    otherwise,
-                });
-            }
+            } => self.if_stmt(state, *cond, then, otherwise.as_deref(), out),
             StmtKind::While { cond, body } => {
                 let (cond, before) = self.loop_condition(state, *cond);
-                let body = self.body(state, body);
-                out.push(Self::loop_with(cond, before, body, Vec::new()));
+                let lowered =
+                    self.loop_body(state, cond, before, body, Vec::new(), &mut Vec::new());
+                out.extend(lowered);
             }
             StmtKind::For {
                 init,
@@ -373,7 +586,7 @@ impl Lowering<'_> {
                 update,
                 body,
             } => {
-                state.scopes.push(HashMap::new());
+                state.open();
                 if let Some(init) = init {
                     self.stmt(state, init, out);
                 }
@@ -385,15 +598,107 @@ impl Lowering<'_> {
                 if let Some(update) = update {
                     self.stmt(state, update, &mut step);
                 }
-                let body = self.body(state, body);
-                state.scopes.pop();
-                out.push(Self::loop_with(cond, before, body, step));
+                let lowered = self.loop_body(state, cond, before, body, step, &mut Vec::new());
+                out.extend(lowered);
+                state.close(out);
             }
-            StmtKind::ForOf { name, .. } => self.unsupported(name.span, "for-of"),
-            StmtKind::Break => out.push(Stmt::Break),
-            StmtKind::Continue => out.push(Stmt::Continue),
+            StmtKind::ForOf {
+                name,
+                iterable,
+                body,
+                ..
+            } => self.for_of(state, name, *iterable, body, out),
+            StmtKind::Break => Self::break_stmt(state, out),
+            StmtKind::Continue => Self::continue_stmt(state, out),
             StmtKind::Error => {}
         }
+    }
+
+    /// `if (cond) then else otherwise`; where the branches meet, a buffer one
+    /// of them moved is released on the other (see [`heap`]).
+    fn if_stmt(
+        &mut self,
+        state: &mut FnState,
+        cond: ExprId,
+        then: &AstStmt,
+        otherwise: Option<&AstStmt>,
+        out: &mut Vec<Stmt>,
+    ) {
+        let cond = self.expr(state, cond);
+        let cond = state
+            .settle(vec![cond])
+            .pop()
+            .unwrap_or_else(|| zero(Ty::Bool));
+        state.flush(out);
+        let start = state.live.clone();
+        let mut then = self.body(state, then);
+        let after_then = (std::mem::replace(&mut state.live, start), state.gone);
+        state.gone = false;
+        let mut otherwise = otherwise.map(|o| self.body(state, o)).unwrap_or_default();
+        let after_else = (state.live.clone(), state.gone);
+        Self::merge(state, after_then, &mut then, after_else, &mut otherwise);
+        out.push(Stmt::If {
+            cond,
+            then,
+            otherwise,
+        });
+    }
+
+    /// `break`: releases what the loop's body holds; the rest is decided when
+    /// the whole loop is lowered.
+    fn break_stmt(state: &mut FnState, out: &mut Vec<Stmt>) {
+        if let Some(depth) = state.loops.last().map(|l| l.depth) {
+            state.release_scopes(depth, out);
+        }
+        let live = state.live.clone();
+        if let Some(frame) = state.loops.last_mut() {
+            frame.breaks.push(live);
+        }
+        // A block of its own, where the releases of this way out go.
+        out.push(Stmt::Block(vec![Stmt::Break]));
+        state.gone = true;
+    }
+
+    /// `continue`: the next turn must find the locals as the loop started.
+    fn continue_stmt(state: &mut FnState, out: &mut Vec<Stmt>) {
+        if let Some((depth, head)) = state.loops.last().map(|l| (l.depth, l.head.clone())) {
+            state.release_scopes(depth, out);
+            let extra: BTreeSet<u32> = state.live.difference(&head).copied().collect();
+            state.release_all(&extra, out);
+        }
+        out.push(Stmt::Continue);
+        state.gone = true;
+    }
+
+    /// `return value;`: the value first, then every buffer still held is
+    /// released, then the function returns.
+    fn return_stmt(&mut self, state: &mut FnState, value: Option<ExprId>, out: &mut Vec<Stmt>) {
+        let values = value.map(|v| self.value(state, v)).unwrap_or_default();
+        let values = state.settle(values);
+        let holding = !state.live.is_empty();
+        let values = if holding {
+            values
+                .into_iter()
+                .map(|v| {
+                    if heap::pure(&v) || matches!(v.kind, ExprKind::Const(_)) {
+                        v
+                    } else if v.ty == Ty::Owned {
+                        let temp = state.owned_temp(v);
+                        heap::moved(state, temp)
+                    } else {
+                        state.spill(v)
+                    }
+                })
+                .collect()
+        } else {
+            values
+        };
+        state.flush(out);
+        state.release_scopes(0, out);
+        let mut values = values;
+        values.extend(state.writeback_values());
+        out.push(return_of(values));
+        state.gone = true;
     }
 
     /// `let name = value;`, a scalar or a structure.
@@ -406,10 +711,10 @@ impl Lowering<'_> {
         let name = self.ast.name(local.name.symbol);
         let ty = match (&local.ty, local.init) {
             (Some(t), _) => self.typed(t),
-            (None, Some(init)) => self.check_type(init).cloned(),
+            (None, Some(init)) => self.check_type(init),
             (None, None) => None,
         };
-        if let Some(ty @ CheckTy::Struct(..)) = ty {
+        if let Some(ty) = ty.filter(values::is_aggregate) {
             let Ok(leaves) = self.leaves(&ty) else {
                 self.unsupported(local.name.span, "struct");
                 return;
@@ -421,6 +726,7 @@ impl Lowering<'_> {
             state.flush(out);
             let ids = state.add_struct(local.name.symbol, name, &leaves);
             Self::assign(state, &ids, values, out);
+            state.end_statement(out);
             return;
         }
         let ty = match (&local.ty, local.init) {
@@ -435,6 +741,7 @@ impl Lowering<'_> {
         state.flush(out);
         let id = state.add(local.name.symbol, name, ty);
         out.push(Stmt::Set(id, value));
+        state.end_statement(out);
     }
 
     /// `target = value`, or `target op= value`, on a variable or a field.
@@ -446,6 +753,10 @@ impl Lowering<'_> {
         value: ExprId,
         out: &mut Vec<Stmt>,
     ) {
+        if op == AssignOp::Add && self.is_buffer(value) {
+            self.append(state, target, value, out);
+            return;
+        }
         let Some(locals) = self.place(state, target) else {
             return;
         };
@@ -463,6 +774,10 @@ impl Lowering<'_> {
     /// A loop condition, `None` for `true`, and the statements it needs first.
     fn loop_condition(&mut self, state: &mut FnState, cond: ExprId) -> (Option<Expr>, Vec<Stmt>) {
         let cond = self.expr(state, cond);
+        let cond = state
+            .settle(vec![cond])
+            .pop()
+            .unwrap_or_else(|| zero(Ty::Bool));
         let before = std::mem::take(&mut state.pre);
         let cond = (cond.kind != ExprKind::Const(Const::Bool(true))).then_some(cond);
         (cond, before)
@@ -495,17 +810,18 @@ impl Lowering<'_> {
 
     /// The locals an assignment or increment writes: a variable, or a field of
     /// a structure variable, as many scalars as it has.
-    fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
+    pub(super) fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
         let expr = self.ast.expr(target);
         match &expr.kind {
             AstExpr::Name(symbol) => match state.lookup(*symbol)? {
                 Binding::Scalar(local) => Some(vec![local]),
                 Binding::Struct(locals) => Some(locals),
+                Binding::Lent(_) => None,
             },
             AstExpr::Paren(inner) => self.place(state, *inner),
             AstExpr::Field { base, name } => {
                 let locals = self.place(state, *base)?;
-                let base_ty = self.check_type(*base).cloned()?;
+                let base_ty = self.check_type(*base)?;
                 let (offset, len, _) = self.field(&base_ty, self.ast.name(name.symbol))?;
                 Some(locals.into_iter().skip(offset).take(len).collect())
             }
@@ -517,8 +833,8 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
-        if self.is_struct(id) {
-            // Structures go through `value`: never a single scalar.
+        if self.is_aggregate(id) {
+            // Structures and options go through `value`: never a single scalar.
             let span = self.ast.expr(id).span;
             self.unsupported(span, "struct");
             return zero(Ty::Void);
@@ -532,13 +848,7 @@ impl Lowering<'_> {
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => {
                 let Some(Binding::Scalar(local)) = state.lookup(*symbol) else {
-                    // Not a local: a function used as a value, or a module-level constant.
-                    let feature = if self.fns.contains_key(symbol) {
-                        "function-value"
-                    } else {
-                        "global"
-                    };
-                    self.unsupported(span, feature);
+                    self.not_a_local(*symbol, span);
                     return zero(ty);
                 };
                 ExprKind::Local(local)
@@ -560,6 +870,11 @@ impl Lowering<'_> {
                     ExprKind::Unary(op, Box::new(self.expr(state, *operand)))
                 }
             }
+            AstExpr::Binary { op, lhs, rhs }
+                if matches!(op, BinaryOp::Eq | BinaryOp::Ne) && self.is_buffer(*lhs) =>
+            {
+                return self.buffer_eq(state, *lhs, *rhs, *op == BinaryOp::Eq, span);
+            }
             AstExpr::Binary { op, lhs, rhs } => {
                 let lhs = self.expr(state, *lhs);
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
@@ -575,15 +890,20 @@ impl Lowering<'_> {
                 }
                 ExprKind::Binary(bin_op(*op), Box::new(lhs), Box::new(rhs))
             }
-            AstExpr::Call { callee, args } => return self.call(state, *callee, args, ty, span),
+            AstExpr::Call { callee, args, .. } => {
+                return self.call(state, id, *callee, args, ty, span);
+            }
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
+            AstExpr::Field { base, .. } if self.is_buffer(*base) => {
+                return self.array_length(state, *base);
+            }
             AstExpr::Field { base, name } => {
-                if !self.is_struct(*base) {
+                if !self.is_aggregate(*base) {
                     return self.not_yet(span, "field", ty);
                 }
                 let fields = self.value(state, *base);
-                let base_ty = self.check_type(*base).cloned();
+                let base_ty = self.check_type(*base);
                 let picked = base_ty.and_then(|t| self.field(&t, self.ast.name(name.symbol)));
                 let Some((offset, len, _)) = picked else {
                     return zero(ty);
@@ -593,8 +913,21 @@ impl Lowering<'_> {
                     .next()
                     .unwrap_or_else(|| zero(ty));
             }
-            AstExpr::Index { .. } => return self.not_yet(span, "index", ty),
-            AstExpr::Try(_) => return self.not_yet(span, "try", ty),
+            AstExpr::Index { base, index } => return self.index_get(state, *base, *index, span),
+            AstExpr::Match { scrutinee, arms } => {
+                return self
+                    .match_values(state, id, *scrutinee, arms, heap::Mode::Borrow)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty));
+            }
+            AstExpr::Try(inner) => {
+                return self
+                    .try_values(state, *inner, span)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty));
+            }
             AstExpr::Error => return zero(ty),
         };
         Expr { kind, ty }
@@ -604,10 +937,17 @@ impl Lowering<'_> {
     /// `b` would: `t = a; if (t) { …; t = b }` for `&&`.
     fn short_circuit(&mut self, state: &mut FnState, op: BinaryOp, lhs: Expr, rhs: ExprId) -> Expr {
         let outer = std::mem::take(&mut state.pre);
+        let live = state.live.clone();
         let rhs = self.expr(state, rhs);
         let inner = std::mem::replace(&mut state.pre, outer);
         let op = bin_op(op);
-        if inner.is_empty() {
+        // Buffers moved by the right side, which may not run: released when it
+        // does not.
+        let moved: Vec<Stmt> = live
+            .difference(&state.live)
+            .map(|&l| heap::release_stmt(LocalId(l)))
+            .collect();
+        if inner.is_empty() && moved.is_empty() {
             return binary(op, lhs, rhs);
         }
         let t = state.temp(Ty::Bool);
@@ -626,7 +966,7 @@ impl Lowering<'_> {
         state.pre.push(Stmt::If {
             cond,
             then,
-            otherwise: Vec::new(),
+            otherwise: moved,
         });
         t_expr
     }
@@ -639,6 +979,7 @@ impl Lowering<'_> {
     fn call(
         &mut self,
         state: &mut FnState,
+        call: ExprId,
         callee: ExprId,
         args: &[ExprId],
         ty: Ty,
@@ -646,7 +987,7 @@ impl Lowering<'_> {
     ) -> Expr {
         match &self.ast.expr(callee).kind {
             AstExpr::Name(symbol) => {
-                let Some(&id) = self.fns.get(symbol) else {
+                let Some(id) = self.callee(call, *symbol) else {
                     // A structure constructor or `Some`.
                     let feature = if self.ast.name(*symbol) == "Some" {
                         "option"
@@ -655,8 +996,16 @@ impl Lowering<'_> {
                     };
                     return self.not_yet(span, feature, ty);
                 };
-                let args = self.arguments(state, args);
-                self.call_results(state, id, args)
+                let back = self.writeback_places(state, id, args);
+                let args = self.arguments(state, Some(id), args);
+                self.call_results(state, id, args, &back)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty))
+            }
+            AstExpr::Field { base, name } if self.is_aggregate(*base) => {
+                let method = self.ast.name(name.symbol);
+                self.method_values(state, *base, method, args, heap::Mode::Borrow, span)
                     .into_iter()
                     .next()
                     .unwrap_or_else(|| zero(ty))
@@ -718,14 +1067,18 @@ impl Lowering<'_> {
 }
 
 /// The feature name for a type written in source that is not compiled yet.
-fn feature_of_type(name: &str) -> &'static str {
-    match name {
-        "Array" => "array",
-        "Option" => "option",
-        "String" => "string",
-        "i8" | "i16" | "u8" | "u16" | "u32" | "u64" => "integer-type",
-        _ => "struct",
+/// A name made of letters, digits and `_`: `Pair<i32, f64>` gives
+/// `Pair_i32_f64`, for the names of instances in the backends.
+pub(crate) fn identifier(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
     }
+    out.trim_end_matches('_').to_owned()
 }
 
 fn feature_of_check_type(ty: &CheckTy) -> &'static str {
@@ -768,6 +1121,15 @@ fn one(ty: Ty) -> Expr {
     Expr {
         kind: ExprKind::Const(value),
         ty,
+    }
+}
+
+/// `return`, with none, one or several values.
+fn return_of(mut values: Vec<Expr>) -> Stmt {
+    match values.len() {
+        0 => Stmt::Return(None),
+        1 => Stmt::Return(values.pop()),
+        _ => Stmt::ReturnMany(values),
     }
 }
 

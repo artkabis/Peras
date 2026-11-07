@@ -8,34 +8,20 @@ The examples on this page show the intended syntax; the compiler refuses them to
 
 The first types that need memory, on the foundations already built: the release verifier and the debug allocator.
 
-- `Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`.
-- `String` compiled, in UTF-8.
-- `Option<T>` compiled.
-- Ownership checks: moves, `inout` and `sink`, aliasing refused, the history of a value shown in errors ([spec](../spec.md#memory-model)).
+- ~~`Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`~~: done for every element type, strings and arrays included, with `copy()`.
+- ~~`String` compiled, in UTF-8~~: done, with `+`, `+=`, `==`, `length` in bytes and `copy()`.
+- ~~`Option<T>` compiled~~: done, with `?` and checked arithmetic.
+- ~~Ownership checks: moves, `inout` and `sink`, aliasing refused~~: done ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)), with `inout` on every type, and the history of a value in errors: where it was given, moved, then used.
 
 ## Phase 2: a complete type system
 
 What lets a program say precisely what its data can be.
 
-- **Enumerations with data, and `match`**, checked for exhaustiveness: forgetting a case is an error.
-- **`Result<T, E>` and `?`**, for errors that are values, not exceptions.
-- **Generics**, on functions and structures, with constraints.
+- ~~**Enumerations with data, and `match`**, checked for exhaustiveness~~: done, see [enumerations and match](../guide/enums.md).
+- ~~**`Result<T, E>` and `?`**, for errors that are values~~: done, see [results](../guide/enums.md#results-errors-as-values); parsing functions such as `parse` come with the standard library.
+- ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); the constraints are built in until interfaces come.
 - **Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time.
 - Tuples, type aliases, module-level constants compiled.
-
-```peras planned
-enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-}
-
-fn area(s: Shape): f64 {
-  return match (s) {
-    Circle(r) => 3.14159 * r * r,
-    Rect(w, h) => w * h,
-  };
-}
-```
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

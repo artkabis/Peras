@@ -1,0 +1,25 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0209-move-out-of-borrow.peras
+---
+diagnostics:
+  error[E0209] check-move-out { what: "parameter", name: "xs" }
+    primary 6:10-6:12: check-move-out-label
+    cause: check-move-out-why
+    fix: check-move-out-fix-sink { name: "xs" }
+      5:20-5:20 -> "sink "
+  error[E0209] check-move-out { what: "parameter", name: "xs" }
+    primary 10:15-10:17: check-move-out-label
+    cause: check-move-out-why
+    fix: check-move-out-fix
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 14:10-14:19: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      14:19-14:19 -> ".copy()"
+  error[E0209] check-move-out { what: "element", name: "" }
+    primary 18:15-18:21: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      18:21-18:21 -> ".copy()"

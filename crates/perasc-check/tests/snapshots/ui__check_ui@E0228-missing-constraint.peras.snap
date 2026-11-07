@@ -1,0 +1,36 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0228-missing-constraint.peras
+---
+diagnostics:
+  error[E0228] check-missing-constraint { op: "+=", param: "T" }
+    primary 6:5-6:10: check-missing-constraint-label { op: "+=", bound: "Numeric" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Numeric" }
+      3:9-3:9 -> ": Numeric"
+  error[E0228] check-missing-constraint { op: "==", param: "T" }
+    primary 12:10-12:11: check-missing-constraint-label { op: "==", bound: "Eq" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Eq" }
+      11:10-11:10 -> ": Eq"
+  error[E0228] check-missing-constraint { op: "<", param: "T" }
+    primary 16:10-16:11: check-missing-constraint-label { op: "<", bound: "Ord" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Ord" }
+      15:16-15:16 -> " + Ord"
+  error[E0228] check-missing-constraint { op: "-", param: "T" }
+    primary 20:10-20:12: check-missing-constraint-label { op: "-", bound: "Float" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Float" }
+      19:21-19:21 -> " + Float"
+  error[E0228] check-missing-constraint { op: "&", param: "T" }
+    primary 24:10-24:11: check-missing-constraint-label { op: "&", bound: "Integer" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Integer" }
+      23:19-23:19 -> " + Integer"
+  error[E0228] check-missing-constraint { op: ".toF64()", param: "T" }
+    primary 28:12-28:17: check-missing-constraint-label { op: ".toF64()", bound: "Numeric" }
+    cause: check-missing-constraint-why
+    fix: check-missing-constraint-fix { param: "T", bound: "Numeric" }
+      27:17-27:17 -> " + Numeric"

@@ -1,0 +1,27 @@
+// Enumerations with data, and match: values, blocks, every kind of pattern.
+export enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Empty,
+}
+
+export fn area(s: Shape): f64 {
+  return match (s) {
+    Circle(r) => 3.14159 * r * r,
+    Shape.Rect(w, _) => w * 2.0,
+    Empty => 0.0,
+  };
+}
+
+fn kind(n: i32): i32 {
+  match (n) {
+    0 => {
+      return 10;
+    }
+    -1 => {
+      return 20;
+    }
+    _ => {}
+  }
+  return 0;
+}

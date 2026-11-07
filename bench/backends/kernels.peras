@@ -88,3 +88,22 @@ export fn cmandel(size: i32): i32 {
   }
   return inside;
 }
+
+// Checked arithmetic: options as a bool and a value, no heap. For each factor
+// k, how many steps x = x * k + 1 take from 1 before they overflow an i32.
+fn grow(x: i32, k: i32): Option<i32> {
+  const y = x.checkedMul(k)?;
+  return y.checkedAdd(1);
+}
+
+export fn overflows(n: i32): i32 {
+  let total = 0;
+  for (let k = 2; k < n + 2; k++) {
+    let next = grow(1, k);
+    while (next.isSome()) {
+      total++;
+      next = grow(next.unwrapOr(0), k);
+    }
+  }
+  return total;
+}

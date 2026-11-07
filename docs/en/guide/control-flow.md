@@ -49,7 +49,7 @@ export fn sum_to(n: i32): i64 {
 
 Walks the elements of an array:
 
-```peras
+```peras build
 export fn total(prices: Array<f64>): f64 {
   let sum = 0.0;
   for (const price of prices) {
@@ -59,7 +59,7 @@ export fn total(prices: Array<f64>): f64 {
 }
 ```
 
-> `for…of` is checked, not compiled yet: it comes with arrays.
+The loop reads the length again at each turn. During the loop, the array cannot grow, shrink or be replaced ([E0207](../errors/E0207.md)); its elements can change.
 
 ## `break` and `continue`
 

@@ -39,6 +39,12 @@ pub fn field(receiver: &Ty, name: &str) -> Option<Ty> {
     }
 }
 
+/// Whether a method converts a number to another type, as `toF64`.
+#[must_use]
+pub fn is_conversion(name: &str) -> bool {
+    CONVERSIONS.iter().any(|(n, _)| *n == name)
+}
+
 /// A method of a built-in type.
 #[must_use]
 pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
@@ -77,6 +83,19 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                 ret: Ty::Void,
             }),
             "pop" => simple(Ty::Option(element.clone())),
+            "copy" => simple(me.clone()),
+            _ => None,
+        },
+        Ty::String => match name {
+            "copy" => simple(Ty::String),
+            _ => None,
+        },
+        Ty::Result(ok, _) => match name {
+            "isOk" | "isErr" => simple(Ty::Bool),
+            "unwrapOr" => Some(Method {
+                params: vec![(**ok).clone()],
+                ret: (**ok).clone(),
+            }),
             _ => None,
         },
         Ty::Option(inner) => match name {
@@ -107,9 +126,10 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
                 names.extend(CHECKED);
             }
         }
-        Ty::Array(_) => names.extend(["length", "push", "pop"]),
-        Ty::String => names.push("length"),
+        Ty::Array(_) => names.extend(["length", "push", "pop", "copy"]),
+        Ty::String => names.extend(["length", "copy"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
+        Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}
     }
     names

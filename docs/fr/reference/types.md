@@ -46,16 +46,20 @@ Le résultat d’une fonction qui ne renvoie rien. <span class="status compiled"
 
 ## `Array<T>`
 
-Une liste extensible de valeurs de type `T`, écrite `[a, b]`. Voir [les collections](../guide/collections.md#arrayt). <span class="status checked">vérifié</span>
+Une liste extensible de valeurs de type `T`, écrite `[a, b]`, compilée quand `T` est un nombre, `bool`, ou une structure ou une option de ceux-ci. Voir [les collections](../guide/collections.md#arrayt). <span class="status compiled">compilé</span>
 
 ## `String`
 
-Du texte en UTF-8, écrit `"…"`. <span class="status checked">vérifié</span>
+Du texte en UTF-8, écrit `"…"` ; sa `length` compte des octets. Voir [les collections](../guide/collections.md#string). <span class="status compiled">compilé</span>
 
 ## `Option<T>`
 
-`Some(valeur)` ou `None` : une valeur qui peut être absente. Peras n’a ni `null` ni `undefined`. <span class="status checked">vérifié</span>
+`Some(valeur)` ou `None` : une valeur qui peut être absente. Peras n’a ni `null` ni `undefined` ; JavaScript voit une option vide comme `undefined`. <span class="status compiled">compilé</span>
 
 ## Pas encore dans le langage
 
-`Result<T, E>`, énumérations, unions, génériques, tuples, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).
+Les énumérations ont leur page : [énumérations et match](../guide/enums.md). Les résultats y sont aussi : `Result<T, E>`, `Ok(valeur)` ou `Err(erreur)`. <span class="status compiled">compilé</span>
+
+Les fonctions, structures et énumérations génériques ont leur page : [génériques](../guide/generics.md). <span class="status compiled">compilé</span>
+
+Unions, tuples, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).

@@ -10,11 +10,13 @@
 use std::fmt::Write as _;
 
 use perasc_ir::{
-    BinOp, Const, Expr, ExprKind, Function, JsShape, MathOp, Module, Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, JsShape, MathOp, Module, Pass,
+    Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
-    BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function as WasmFunction,
-    FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I, TypeSection, ValType,
+    BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
+    Function as WasmFunction, FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I,
+    MemArg, MemArgTarget, MemoryType, TypeSection, ValType,
 };
 
 /// The value type of an IR type; `None` for `void`.
@@ -31,6 +33,22 @@ const fn val_type(ty: Ty) -> Option<ValType> {
 
 /// Module that a module using the heap imports its allocator from.
 pub const RUNTIME_MODULE: &str = "peras_rt";
+
+/// The functions a module using the heap imports from [`RUNTIME_MODULE`], in
+/// order: their indices come before the module's own functions.
+const ALLOC: u32 = 0;
+const RELEASE: u32 = 1;
+const BUF_NEW: u32 = 2;
+const BUF_RESERVE: u32 = 3;
+const BUF_RELEASE: u32 = 4;
+const BOUNDS: u32 = 5;
+const BUF_CLONE: u32 = 6;
+const IMPORTED: u32 = 7;
+/// Added to an element size: the elements are buffers the buffer owns
+/// (`perasc_runtime::DEEP`).
+const DEEP: i32 = 0x100;
+/// The function types of the imports, which come first in the type section.
+const IMPORT_TYPES: u32 = 4;
 
 /// A compiled module, and what its allocation sites are.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,18 +79,42 @@ pub fn compile_module(module: &Module) -> Compiled {
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
     let heap = module.uses_heap();
-    let offset = if heap { 2 } else { 0 };
+    let offset = if heap { IMPORTED } else { 0 };
+    let type_offset = if heap { IMPORT_TYPES } else { 0 };
     if heap {
-        types
-            .ty()
-            .function([ValType::I32, ValType::I32], [ValType::I32]);
-        types.ty().function([ValType::I32, ValType::I32], []);
-        imports.import(RUNTIME_MODULE, "alloc", EntityType::Function(0));
-        imports.import(RUNTIME_MODULE, "release", EntityType::Function(1));
+        use ValType::I32 as T;
+        types.ty().function([T, T], [T]);
+        types.ty().function([T, T], []);
+        types.ty().function([T, T, T], [T]);
+        types.ty().function([T, T, T, T], []);
+        for (name, ty) in [
+            ("alloc", 0),
+            ("release", 1),
+            ("buf_new", 2),
+            ("buf_reserve", 3),
+            ("buf_release", 1),
+            ("bounds", 1),
+            ("buf_clone", 0),
+        ] {
+            imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
+        }
+        // The allocator's memory, which buffers live in.
+        imports.import(
+            RUNTIME_MODULE,
+            "memory",
+            EntityType::Memory(MemoryType {
+                minimum: 1,
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
     }
     let mut sites = Vec::new();
-    for (index, function) in module.functions.iter().enumerate() {
-        let index = u32::try_from(index).unwrap_or(u32::MAX) + offset;
+    for (position, function) in module.functions.iter().enumerate() {
+        let position = u32::try_from(position).unwrap_or(u32::MAX);
+        let index = position + offset;
         let params: Vec<ValType> = function.params().filter_map(|l| val_type(l.ty)).collect();
         let results: Vec<ValType> = function
             .results()
@@ -80,19 +122,37 @@ pub fn compile_module(module: &Module) -> Compiled {
             .filter_map(val_type)
             .collect();
         types.ty().function(params, results);
-        // Its type comes after the two import types, as its index after the imports.
-        functions.function(index);
+        // Its type comes after the import types, as its index after the imports.
+        functions.function(position + type_offset);
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
-        code.function(&FnEncoder::encode(function, offset, &mut sites));
+        code.function(&FnEncoder::encode(
+            function,
+            offset,
+            &mut sites,
+            &module.data,
+        ));
     }
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
     if heap {
         wasm.section(&imports);
     }
-    wasm.section(&functions).section(&exports).section(&code);
+    wasm.section(&functions).section(&exports);
+    // String literals: passive segments, copied into a new buffer when used.
+    let segments = u32::try_from(module.data.len()).unwrap_or(u32::MAX);
+    if segments > 0 {
+        wasm.section(&DataCountSection { count: segments });
+    }
+    wasm.section(&code);
+    if segments > 0 {
+        let mut data = DataSection::new();
+        for bytes in &module.data {
+            data.passive(bytes.iter().copied());
+        }
+        wasm.section(&data);
+    }
     Compiled {
         wasm: wasm.finish(),
         sites,
@@ -125,13 +185,26 @@ struct FnEncoder<'a> {
     releases: u32,
     /// Every site of the module so far.
     sites: &'a mut Vec<String>,
-    /// Scratch locals for integer `abs`, indexed after the function's own locals.
+    /// Scratch locals, indexed after the function's own locals: for integer
+    /// `abs`, a checked index, and the value a `buf.push` stores.
     temp_i32: u32,
     temp_i64: u32,
+    temp_len: u32,
+    temp_f32: u32,
+    temp_f64: u32,
+    /// The buffer a string literal is copied into.
+    temp_buffer: u32,
+    /// The bytes of each literal, for their lengths.
+    data: &'a [Vec<u8>],
 }
 
 impl<'a> FnEncoder<'a> {
-    fn encode(function: &'a Function, offset: u32, sites: &'a mut Vec<String>) -> WasmFunction {
+    fn encode(
+        function: &'a Function,
+        offset: u32,
+        sites: &'a mut Vec<String>,
+        data: &'a [Vec<u8>],
+    ) -> WasmFunction {
         let params = usize::try_from(function.param_count).unwrap_or(0);
         let mut locals: Vec<(u32, ValType)> = function
             .locals
@@ -140,8 +213,16 @@ impl<'a> FnEncoder<'a> {
             .filter_map(|l| val_type(l.ty).map(|t| (1, t)))
             .collect();
         let count = u32::try_from(function.locals.len()).unwrap_or(u32::MAX);
-        locals.push((1, ValType::I32));
-        locals.push((1, ValType::I64));
+        for ty in [
+            ValType::I32,
+            ValType::I64,
+            ValType::I32,
+            ValType::F32,
+            ValType::F64,
+            ValType::I32,
+        ] {
+            locals.push((1, ty));
+        }
         let mut encoder = Self {
             out: WasmFunction::new(locals),
             frames: Vec::new(),
@@ -152,6 +233,11 @@ impl<'a> FnEncoder<'a> {
             sites,
             temp_i32: count,
             temp_i64: count + 1,
+            temp_len: count + 2,
+            temp_f32: count + 3,
+            temp_f64: count + 4,
+            temp_buffer: count + 5,
+            data,
         };
         encoder.stmts(&function.body);
         if function.ret != Ty::Void {
@@ -267,8 +353,9 @@ impl<'a> FnEncoder<'a> {
                 self.releases += 1;
                 let number = self.site(format!("{} (release {})", self.name, self.releases));
                 self.emit(&I::I32Const(number));
-                self.emit(&I::Call(1));
+                self.emit(&I::Call(RELEASE));
             }
+            Stmt::Buf(op, args) => self.buf_stmt(*op, args),
             Stmt::Break => {
                 let depth = self.depth(Frame::Break);
                 self.emit(&I::Br(depth));
@@ -342,11 +429,11 @@ impl<'a> FnEncoder<'a> {
             }
             ExprKind::Alloc(size) => {
                 self.expr(size);
-                self.allocs += 1;
-                let number = self.site(format!("{} (alloc {})", self.name, self.allocs));
+                let number = self.alloc_site();
                 self.emit(&I::I32Const(number));
-                self.emit(&I::Call(0));
+                self.emit(&I::Call(ALLOC));
             }
+            ExprKind::Buf(op, args) => self.buf_op(*op, args),
             ExprKind::Unary(op, operand) => self.unary(*op, operand, e.ty),
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
             ExprKind::Call(id, args) => {
@@ -362,6 +449,214 @@ impl<'a> FnEncoder<'a> {
                 }
             }
             ExprKind::Math(op, operand) => self.math(*op, operand),
+        }
+    }
+
+    /// A new allocation site of this function.
+    fn alloc_site(&mut self) -> i32 {
+        self.allocs += 1;
+        self.site(format!("{} (alloc {})", self.name, self.allocs))
+    }
+
+    /// The address of element `index` of a buffer: its elements, plus
+    /// `index * size`. `buffer` is a local: evaluating it twice costs nothing.
+    fn element_address(&mut self, buffer: &Expr, index: &Expr, elem: Elem) {
+        self.expr(buffer);
+        self.emit(&I::I32Load(mem(8, 4)));
+        self.expr(index);
+        self.scale(elem);
+        self.emit(&I::I32Add);
+    }
+
+    /// Multiplies the `i32` on the stack by the size of an element.
+    fn scale(&mut self, elem: Elem) {
+        let shift = elem.size().trailing_zeros();
+        if shift > 0 {
+            self.emit(&I::I32Const(i32::try_from(shift).unwrap_or(0)));
+            self.emit(&I::I32Shl);
+        }
+    }
+
+    fn buf_op(&mut self, op: BufOp, args: &[Expr]) {
+        match (op, args) {
+            (BufOp::New(elem), [cap]) => {
+                self.expr(cap);
+                let deep = if elem == Elem::Handle { DEEP } else { 0 };
+                self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1) | deep));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_NEW));
+            }
+            (BufOp::Len, [buffer]) => {
+                self.expr(buffer);
+                self.emit(&I::I32Load(mem(0, 4)));
+            }
+            (BufOp::Get(elem), [buffer, index]) => {
+                self.element_address(buffer, index, elem);
+                self.emit(&load(elem));
+            }
+            (BufOp::Take, [buffer, index]) => {
+                self.element_address(buffer, index, Elem::Handle);
+                self.emit(&I::I32Load(mem(0, 4)));
+            }
+            (BufOp::Clone, [buffer]) => {
+                self.expr(buffer);
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_CLONE));
+            }
+            (BufOp::Literal(segment), []) => {
+                let len = self
+                    .data
+                    .get(usize::try_from(segment).unwrap_or(usize::MAX))
+                    .map_or(0, Vec::len);
+                let len = i32::try_from(len).unwrap_or(i32::MAX);
+                // h = buf_new(len, 1); memory.init into its bytes; length = len
+                self.emit(&I::I32Const(len));
+                self.emit(&I::I32Const(1));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_NEW));
+                self.emit(&I::LocalTee(self.temp_buffer));
+                self.emit(&I::I32Load(mem(8, 4)));
+                self.emit(&I::I32Const(0));
+                self.emit(&I::I32Const(len));
+                self.emit(&I::MemoryInit {
+                    mem: 0,
+                    data_index: segment,
+                });
+                self.emit(&I::LocalGet(self.temp_buffer));
+                self.emit(&I::I32Const(len));
+                self.emit(&I::I32Store(mem(0, 4)));
+                self.emit(&I::LocalGet(self.temp_buffer));
+            }
+            // The verifier refuses any other shape.
+            _ => self.emit(&I::Unreachable),
+        }
+    }
+
+    /// Stores a buffer into an element of an array of buffers; the buffer it
+    /// replaces is released.
+    fn replace_element(&mut self, buffer: &Expr, index: &Expr, value: &Expr) {
+        // The new buffer first; then the one it replaces is released.
+        self.expr(value);
+        self.emit(&I::LocalSet(self.temp_buffer));
+        self.element_address(buffer, index, Elem::Handle);
+        self.emit(&I::LocalTee(self.temp_len));
+        self.emit(&I::I32Load(mem(0, 4)));
+        self.releases += 1;
+        let site = self.site(format!("{} (release {})", self.name, self.releases));
+        self.emit(&I::I32Const(site));
+        self.emit(&I::Call(BUF_RELEASE));
+        self.emit(&I::LocalGet(self.temp_len));
+        self.emit(&I::LocalGet(self.temp_buffer));
+        self.emit(&I::I32Store(mem(0, 4)));
+    }
+
+    /// Adds the elements of `other` at the end of `buffer`.
+    fn append(&mut self, buffer: &Expr, other: &Expr, elem: Elem) {
+        let width = i32::try_from(elem.size()).unwrap_or(1);
+        let other_len = Expr {
+            kind: ExprKind::Buf(BufOp::Len, vec![other.clone()]),
+            ty: Ty::I32,
+        };
+        let len = Expr {
+            kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
+            ty: Ty::I32,
+        };
+        // Room first: it may move the elements, of `other` too when
+        // both are the same buffer.
+        self.expr(buffer);
+        self.expr(&other_len);
+        self.emit(&I::I32Const(width));
+        let site = self.alloc_site();
+        self.emit(&I::I32Const(site));
+        self.emit(&I::Call(BUF_RESERVE));
+        self.element_address(buffer, &len, elem);
+        self.expr(other);
+        self.emit(&I::I32Load(mem(8, 4)));
+        self.expr(&other_len);
+        self.scale(elem);
+        self.emit(&I::MemoryCopy {
+            src_mem: 0,
+            dst_mem: 0,
+        });
+        self.expr(buffer);
+        self.expr(&len);
+        self.expr(&other_len);
+        self.emit(&I::I32Add);
+        self.emit(&I::I32Store(mem(0, 4)));
+    }
+
+    fn buf_stmt(&mut self, op: BufStmt, args: &[Expr]) {
+        match (op, args) {
+            (BufStmt::Set(Elem::Handle), [buffer, index, value]) => {
+                self.replace_element(buffer, index, value);
+            }
+            (BufStmt::Set(elem), [buffer, index, value]) => {
+                self.element_address(buffer, index, elem);
+                self.expr(value);
+                self.emit(&store(elem));
+            }
+            (BufStmt::Push(elem), [buffer, value]) => {
+                // The value first, as written; then room, then the store.
+                let temp = match elem.ty() {
+                    Ty::I64 => self.temp_i64,
+                    Ty::F32 => self.temp_f32,
+                    Ty::F64 => self.temp_f64,
+                    _ => self.temp_i32,
+                };
+                self.expr(value);
+                self.emit(&I::LocalSet(temp));
+                self.expr(buffer);
+                self.emit(&I::I32Const(1));
+                self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1)));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_RESERVE));
+                let len = Expr {
+                    kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
+                    ty: Ty::I32,
+                };
+                self.element_address(buffer, &len, elem);
+                self.emit(&I::LocalGet(temp));
+                self.emit(&store(elem));
+                self.expr(buffer);
+                self.expr(&len);
+                self.emit(&I::I32Const(1));
+                self.emit(&I::I32Add);
+                self.emit(&I::I32Store(mem(0, 4)));
+            }
+            (BufStmt::Append(elem), [buffer, other]) => self.append(buffer, other, elem),
+            (BufStmt::Truncate, [buffer, len]) => {
+                self.expr(buffer);
+                self.expr(len);
+                self.emit(&I::I32Store(mem(0, 4)));
+            }
+            (BufStmt::CheckIndex, [index, len]) => {
+                // Unsigned: a negative index is out of bounds too.
+                self.expr(index);
+                self.emit(&I::LocalTee(self.temp_i32));
+                self.expr(len);
+                self.emit(&I::LocalTee(self.temp_len));
+                self.emit(&I::I32GeU);
+                self.emit(&I::If(BlockType::Empty));
+                self.frames.push(Frame::Other);
+                self.emit(&I::LocalGet(self.temp_i32));
+                self.emit(&I::LocalGet(self.temp_len));
+                self.emit(&I::Call(BOUNDS));
+                self.emit(&I::Unreachable);
+                self.frames.pop();
+                self.emit(&I::End);
+            }
+            (BufStmt::Release, [buffer]) => {
+                self.expr(buffer);
+                self.releases += 1;
+                let number = self.site(format!("{} (release {})", self.name, self.releases));
+                self.emit(&I::I32Const(number));
+                self.emit(&I::Call(BUF_RELEASE));
+            }
+            _ => self.emit(&I::Unreachable),
         }
     }
 
@@ -479,6 +774,36 @@ impl<'a> FnEncoder<'a> {
     }
 }
 
+/// A memory access at `offset`, aligned to `size` bytes.
+const fn mem(offset: u64, size: u32) -> MemArg {
+    MemArg {
+        offset,
+        align: size.trailing_zeros(),
+        target: MemArgTarget::Memory(0),
+        ordering: None,
+    }
+}
+
+const fn load(elem: Elem) -> I<'static> {
+    match elem {
+        Elem::U8 => I::I32Load8U(mem(0, 1)),
+        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Load(mem(0, 4)),
+        Elem::I64 => I::I64Load(mem(0, 8)),
+        Elem::F32 => I::F32Load(mem(0, 4)),
+        Elem::F64 => I::F64Load(mem(0, 8)),
+    }
+}
+
+const fn store(elem: Elem) -> I<'static> {
+    match elem {
+        Elem::U8 => I::I32Store8(mem(0, 1)),
+        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Store(mem(0, 4)),
+        Elem::I64 => I::I64Store(mem(0, 8)),
+        Elem::F32 => I::F32Store(mem(0, 4)),
+        Elem::F64 => I::F64Store(mem(0, 8)),
+    }
+}
+
 /// An `f64` constant as `f32`, rounded to nearest as in Rust's `as`.
 #[allow(clippy::cast_possible_truncation)]
 const fn narrow(v: f64) -> f32 {
@@ -581,10 +906,12 @@ const fn conversion(from: Ty, to: Ty) -> Option<I<'static>> {
 /// with. `vite-plugin-peras` keeps the imports and the exports, and replaces the
 /// part between [`LOAD_MARKER`] and [`EXPORTS_MARKER`]: do not change them.
 pub const IMPORTS_MARKER: &str = "// perasc:imports";
-/// The first line of the part that loads the module into `instance`.
-pub const LOAD_MARKER: &str = "// perasc:load (needs `imports`)";
-/// The line after which the loader only needs `instance`.
-pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `instance`)";
+/// The first line of the part that loads the module into `$instance`.
+/// Every name the loader declares starts with `$`, which a Peras name cannot:
+/// an exported function or a parameter never hides one.
+pub const LOAD_MARKER: &str = "// perasc:load (needs `$imports`)";
+/// The line after which the loader only needs `$instance`.
+pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `$instance`)";
 
 /// What a loader needs to link the debug allocator into a module using the heap.
 #[derive(Debug, Clone, Copy)]
@@ -596,6 +923,8 @@ pub struct Runtime<'a> {
     /// The message of each fault kind, kind 1 first, in the user's language,
     /// with `{alloc}`, `{release}`, `{count}` and `{size}` to fill in.
     pub faults: &'a [String],
+    /// The message of an index out of bounds, with `{index}` and `{length}`.
+    pub bounds: &'a str,
 }
 
 /// A JavaScript ES module that loads the `.wasm` file next to it and exports its
@@ -613,37 +942,44 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
-        None => js.push_str("const imports = {};\n"),
+        None => js.push_str("const $imports = {};\n"),
     }
     let _ = write!(
         js,
         "{LOAD_MARKER}\n\
-         const url = new URL(\"./{wasm_file}\", import.meta.url);\n\
-         const bytes = url.protocol === \"file:\"\n  \
-         ? await (await import(\"node:fs/promises\")).readFile(url)\n  \
-         : await (await fetch(url)).arrayBuffer();\n\
-         const {{ instance }} = await WebAssembly.instantiate(bytes, imports);\n\
+         const $url = new URL(\"./{wasm_file}\", import.meta.url);\n\
+         const $bytes = $url.protocol === \"file:\"\n  \
+         ? await (await import(\"node:fs/promises\")).readFile($url)\n  \
+         : await (await fetch($url)).arrayBuffer();\n\
+         const {{ instance: $instance }} = await WebAssembly.instantiate($bytes, $imports);\n\
          {EXPORTS_MARKER}\n\
-         const wasm = instance.exports;\n"
+         const $wasm = $instance.exports;\n"
     );
+    if module
+        .functions
+        .iter()
+        .any(|f| f.exported && f.shape.is_some())
+    {
+        js.push_str(VALUE_HELPERS);
+    }
     for f in module.functions.iter().filter(|f| f.exported) {
         if let Some(shape) = &f.shape {
             js.push_str(&object_wrapper(&f.name, shape));
         } else if f.ret == Ty::Bool {
             let _ = writeln!(
                 js,
-                "export const {0} = (...args) => wasm.{0}(...args) !== 0;",
+                "export const {0} = (...args) => $wasm.{0}(...args) !== 0;",
                 f.name
             );
         } else {
-            let _ = writeln!(js, "export const {0} = wasm.{0};", f.name);
+            let _ = writeln!(js, "export const {0} = $wasm.{0};", f.name);
         }
     }
     if heap {
         js.push_str(
             "export const __perasHeap = {\n  \
-             live: () => runtime.live_count(),\n  \
-             checkLeaks: () => runtime.check_leaks(),\n};\n",
+             live: () => $runtime.live_count(),\n  \
+             checkLeaks: () => $runtime.check_leaks(),\n};\n",
         );
     }
     js
@@ -654,44 +990,351 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
 /// WebAssembly returns as an array when there are several, become an object.
 fn object_wrapper(name: &str, shape: &JsShape) -> String {
     let params: Vec<&str> = shape.params.iter().map(|(n, _)| n.as_str()).collect();
-    let mut args = Vec::new();
+    let mut marshal = Marshal::default();
     for (param, value) in &shape.params {
-        flatten(param, value, &mut args);
+        flatten(param, value, false, &mut marshal);
     }
-    let call = format!("wasm.{name}({})", args.join(", "));
-    let body = match &shape.result {
-        None => call,
-        Some(result) => {
-            let many = result.scalars().len() > 1;
-            let mut index = 0;
-            let value = rebuild(result, many, &mut index);
-            format!("{{ const r = {call}; return {value}; }}")
-        }
+    let call = format!("$wasm.{name}({})", marshal.args.join(", "));
+    // WebAssembly returns the result, then the numbers of the `inout` objects.
+    let back: usize = shape.writeback.iter().map(|(_, s)| numbers(s)).sum();
+    let given = shape.result.as_ref().map_or(0, |r| r.scalars().len());
+    let many = given + back > 1;
+    let mut index = 0;
+    let value = shape
+        .result
+        .as_ref()
+        .map(|result| rebuild(result, many, &mut index));
+    let mut assigns = Vec::new();
+    for (param, value) in &shape.writeback {
+        write_back(param, value, many, &mut index, &mut assigns);
+    }
+    let assigns = assigns.join(" ");
+    // `$` cannot start a Peras name, so `$r` never hides a parameter.
+    let body = match (value, assigns.is_empty()) {
+        (None, true) if marshal.pre.is_empty() => call,
+        (None, true) => format!("{call};"),
+        (None, false) => format!("const $r = {call}; {assigns}"),
+        (Some(value), true) => format!("const $r = {call}; return {value};"),
+        (Some(value), false) => format!("const $r = {call}; {assigns} return {value};"),
+    };
+    if marshal.pre.is_empty() {
+        let body = if body.ends_with(';') {
+            format!("{{ {body} }}")
+        } else {
+            body
+        };
+        return format!("export const {name} = ({}) => {body};\n", params.join(", "));
+    }
+    // Arrays are copied into buffers first, and released afterwards, also when
+    // the call throws.
+    let pre = marshal.pre.join(" ");
+    let body = if marshal.post.is_empty() {
+        format!("{{ {pre} {body} }}")
+    } else {
+        format!(
+            "{{ {pre} try {{ {body} }} finally {{ {} }} }}",
+            marshal.post.join(" ")
+        )
     };
     format!("export const {name} = ({}) => {body};\n", params.join(", "))
 }
 
-/// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
-fn flatten(path: &str, shape: &Shape, out: &mut Vec<String>) {
+/// The columns of an array of structures: their kinds as JavaScript reads
+/// them (`bool` as a number, turned back by `!== 0`), and a function building
+/// element `i` from the columns `c`.
+/// The names of the variants of an enumeration, as a JavaScript array.
+fn variant_names(variants: &[(String, Vec<Shape>)]) -> String {
+    let names: Vec<String> = variants.iter().map(|(v, _)| format!("\"{v}\"")).collect();
+    format!("[{}]", names.join(", "))
+}
+
+fn rows(element: &Shape) -> (String, String) {
+    let mut columns = Vec::new();
+    record_columns("v", element, 0, false, &mut columns);
+    let kinds: Vec<String> = columns
+        .iter()
+        .map(|(_, kind)| {
+            let kind = if kind == "bool" { "i32" } else { kind.as_str() };
+            format!("\"{kind}\"")
+        })
+        .collect();
+    let mut index = 0;
+    let object = rebuild_at(element, &mut index, &|k| format!("c[{k}][i]"), false);
+    (kinds.join(", "), format!("(c, i) => {object}"))
+}
+
+/// The columns of an array of `shape`, for an element at `path`: the
+/// JavaScript expression of each stored number, and its kind. A string or an
+/// array inside an element becomes a new buffer, stored as a pointer (`ptr`),
+/// which the column owns.
+fn record_columns(
+    path: &str,
+    shape: &Shape,
+    depth: usize,
+    optional: bool,
+    out: &mut Vec<(String, String)>,
+) {
     match shape {
-        Shape::Value(_) => out.push(path.to_owned()),
+        Shape::Value(ty) => {
+            let elem = Elem::of(*ty).unwrap_or(Elem::I32);
+            let value = if optional {
+                let zero = match ty {
+                    Ty::I64 => "0n",
+                    Ty::Bool => "false",
+                    _ => "0",
+                };
+                format!("({path} ?? {zero})")
+            } else {
+                path.to_owned()
+            };
+            out.push((value, elem_kind(elem).to_owned()));
+        }
         Shape::Object(_, fields) => {
+            let dot = if optional { "?." } else { "." };
             for (field, value) in fields {
-                flatten(&format!("{path}.{field}"), value, out);
+                record_columns(&format!("{path}{dot}{field}"), value, depth, optional, out);
+            }
+        }
+        Shape::Option(inner) => {
+            out.push((format!("{path} !== undefined"), "bool".to_owned()));
+            record_columns(path, inner, depth, true, out);
+        }
+        Shape::Enum(_, variants) => {
+            out.push((
+                format!("$tagOf({path}.kind, {})", variant_names(variants)),
+                "i32".to_owned(),
+            ));
+            for (variant, fields) in variants {
+                for (j, field) in fields.iter().enumerate() {
+                    let part =
+                        format!("({path}.kind === \"{variant}\" ? {path}.values[{j}] : undefined)");
+                    record_columns(&part, field, depth, true, out);
+                }
+            }
+        }
+        Shape::String(_) => {
+            let text = if optional {
+                format!("({path} ?? \"\")")
+            } else {
+                path.to_owned()
+            };
+            out.push((format!("$toStr({text})"), "ptr".to_owned()));
+        }
+        Shape::Array(elem, _) => {
+            let values = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            out.push((
+                format!("$toBuf({values}, \"{}\")", elem_kind(*elem)),
+                "ptr".to_owned(),
+            ));
+        }
+        Shape::Records(inner, _) => {
+            let item = format!("w{depth}");
+            let path = &if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            let mut columns = Vec::new();
+            record_columns(&item, inner, depth + 1, false, &mut columns);
+            for (column, kind) in columns {
+                out.push((
+                    format!("$toBuf({path}.map(({item}) => {column}), \"{kind}\")"),
+                    "ptr".to_owned(),
+                ));
             }
         }
     }
 }
 
-/// A result rebuilt from `r`, the WebAssembly result: an array when `many`.
+/// How many numbers an `inout` value gives back: its scalars, not its buffers,
+/// which are changed in place.
+fn numbers(shape: &Shape) -> usize {
+    match shape {
+        Shape::Value(_) => 1,
+        Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
+        Shape::Option(inner) => 1 + numbers(inner),
+        Shape::Enum(..) => shape.scalars().len(),
+        Shape::Array(..) | Shape::String(_) | Shape::Records(..) => 0,
+    }
+}
+
+/// `p.x = $r[1];` for each number of an `inout` object, in order.
+fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mut Vec<String>) {
+    match shape {
+        Shape::Value(_) => {
+            let value = rebuild(shape, many, index);
+            out.push(format!("{path} = {value};"));
+        }
+        Shape::Object(_, fields) => {
+            for (field, value) in fields {
+                write_back(&format!("{path}.{field}"), value, many, index, out);
+            }
+        }
+        // perasc refuses options passed `inout` from JavaScript.
+        Shape::Option(_)
+        | Shape::Enum(..)
+        | Shape::Array(..)
+        | Shape::String(_)
+        | Shape::Records(..) => {}
+    }
+}
+
+/// What calling a function from JavaScript needs: the arguments, and the
+/// statements before and after the call for the arrays among them.
+#[derive(Default)]
+struct Marshal {
+    args: Vec<String>,
+    pre: Vec<String>,
+    post: Vec<String>,
+}
+
+/// The name the loader's helpers give an element type.
+const fn elem_kind(elem: Elem) -> &'static str {
+    match elem {
+        Elem::I32 => "i32",
+        Elem::I64 => "i64",
+        Elem::F32 => "f32",
+        Elem::F64 => "f64",
+        Elem::Bool => "bool",
+        Elem::U8 => "u8",
+        Elem::Handle => "ptr",
+    }
+}
+
+/// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
+/// Inside an option, which JavaScript passes as `undefined` when it is empty,
+/// fields are read with `?.` and an absent scalar is zero.
+fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
+    match shape {
+        Shape::Array(elem, pass) => {
+            let buffer = format!("$a{}", out.pre.len());
+            let kind = elem_kind(*elem);
+            let values = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            out.pre
+                .push(format!("const {buffer} = $toBuf({values}, \"{kind}\");"));
+            if *pass == Pass::Inout {
+                out.post
+                    .push(format!("$copyBack({path}, {buffer}, \"{kind}\");"));
+            }
+            // A `sink` parameter is released by the function itself.
+            if *pass != Pass::Sink {
+                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+            }
+            out.args.push(buffer);
+        }
+        Shape::Records(element, pass) => {
+            // One column per scalar of an element: `(v) => v.x`, or a new
+            // buffer for a string or an array inside it.
+            let mut columns = Vec::new();
+            record_columns("v", element, 0, false, &mut columns);
+            let mut buffers = Vec::new();
+            for (column, kind) in &columns {
+                let buffer = format!("$a{}", out.pre.len());
+                let rows = if optional {
+                    format!("({path} ?? [])")
+                } else {
+                    path.to_owned()
+                };
+                out.pre.push(format!(
+                    "const {buffer} = $toBuf({rows}.map((v) => {column}), \"{kind}\");"
+                ));
+                buffers.push(buffer);
+            }
+            if *pass == Pass::Inout {
+                let (kinds, build) = rows(element);
+                out.post.push(format!(
+                    "$setRows({path}, [{}], [{kinds}], {build});",
+                    buffers.join(", ")
+                ));
+            }
+            // Releasing a column of buffers releases the buffers too.
+            if *pass != Pass::Sink {
+                for buffer in &buffers {
+                    out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+                }
+            }
+            out.args.extend(buffers);
+        }
+        Shape::Enum(_, variants) => {
+            let names = variant_names(variants);
+            out.args.push(format!("$tagOf({path}.kind, {names})"));
+            for (variant, fields) in variants {
+                for (j, field) in fields.iter().enumerate() {
+                    let part =
+                        format!("({path}.kind === \"{variant}\" ? {path}.values[{j}] : undefined)");
+                    flatten(&part, field, true, out);
+                }
+            }
+        }
+        Shape::String(pass) => {
+            let buffer = format!("$a{}", out.pre.len());
+            let text = if optional {
+                format!("({path} ?? \"\")")
+            } else {
+                path.to_owned()
+            };
+            out.pre.push(format!("const {buffer} = $toStr({text});"));
+            // JavaScript strings never change: `inout` is not exported (perasc
+            // refuses it), and a `sink` parameter is released by the function.
+            if *pass != Pass::Sink {
+                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+            }
+            out.args.push(buffer);
+        }
+        Shape::Value(ty) if optional => {
+            let zero = match ty {
+                Ty::I64 => "0n",
+                Ty::Bool => "false",
+                _ => "0",
+            };
+            out.args.push(format!("({path} ?? {zero})"));
+        }
+        Shape::Value(_) => out.args.push(path.to_owned()),
+        Shape::Object(_, fields) => {
+            let dot = if optional { "?." } else { "." };
+            for (field, value) in fields {
+                flatten(&format!("{path}{dot}{field}"), value, optional, out);
+            }
+        }
+        Shape::Option(inner) => {
+            out.args.push(format!("{path} !== undefined"));
+            flatten(path, inner, true, out);
+        }
+    }
+}
+
+/// A result rebuilt from `$r`, the WebAssembly result: an array when `many`.
 fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
+    let at = |k: usize| {
+        if many {
+            format!("$r[{k}]")
+        } else {
+            "$r".to_owned()
+        }
+    };
+    rebuild_at(shape, index, &at, true)
+}
+
+/// A value rebuilt from scalars that `at` reads by their position. The
+/// buffers it reaches are released when `owned`; otherwise their owner,
+/// a column of an array, releases them afterwards.
+fn rebuild_at(
+    shape: &Shape,
+    index: &mut usize,
+    at: &dyn Fn(usize) -> String,
+    owned: bool,
+) -> String {
     match shape {
         Shape::Value(ty) => {
-            let scalar = if many {
-                format!("r[{index}]")
-            } else {
-                "r".to_owned()
-            };
+            let scalar = at(*index);
             *index += 1;
             if *ty == Ty::Bool {
                 format!("{scalar} !== 0")
@@ -702,9 +1345,56 @@ fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
         Shape::Object(_, fields) => {
             let fields: Vec<String> = fields
                 .iter()
-                .map(|(field, value)| format!("{field}: {}", rebuild(value, many, index)))
+                .map(|(field, value)| format!("{field}: {}", rebuild_at(value, index, at, owned)))
                 .collect();
             format!("({{ {} }})", fields.join(", "))
+        }
+        Shape::Array(elem, _) => {
+            let handle = at(*index);
+            *index += 1;
+            let take = if owned { "$take" } else { "$fromBuf" };
+            format!("{take}({handle}, \"{}\")", elem_kind(*elem))
+        }
+        Shape::Records(element, _) => {
+            let (kinds, build) = rows(element);
+            let mut columns = Vec::new();
+            record_columns("v", element, 0, false, &mut columns);
+            let count = columns.len();
+            let handles: Vec<String> = (0..count).map(|k| at(*index + k)).collect();
+            *index += count;
+            let take = if owned { "$takeRows" } else { "$readRows" };
+            format!("{take}([{}], [{kinds}], {build})", handles.join(", "))
+        }
+        Shape::String(_) => {
+            let handle = at(*index);
+            *index += 1;
+            let take = if owned { "$takeStr" } else { "$readStr" };
+            format!("{take}({handle})")
+        }
+        Shape::Option(inner) => {
+            // Both read, so that a buffer inside is released even when empty.
+            let some = rebuild_at(&Shape::Value(Ty::Bool), index, at, owned);
+            let value = rebuild_at(inner, index, at, owned);
+            format!("$opt({some}, {value})")
+        }
+        Shape::Enum(_, variants) => {
+            let tag = at(*index);
+            *index += 1;
+            let payloads: Vec<String> = variants
+                .iter()
+                .map(|(_, fields)| {
+                    let values: Vec<String> = fields
+                        .iter()
+                        .map(|f| rebuild_at(f, index, at, owned))
+                        .collect();
+                    format!("[{}]", values.join(", "))
+                })
+                .collect();
+            format!(
+                "$variant({tag}, {}, [{}])",
+                variant_names(variants),
+                payloads.join(", ")
+            )
         }
     }
 }
@@ -716,31 +1406,127 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         .chain(runtime.sites.iter().cloned())
         .map(|s| js_string(&s))
         .collect();
-    format!(
+    let imports = format!(
         "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
-         const faults = [{faults}];\n\
-         const sites = [{sites}];\n\
-         const site = (n) => sites[n] ?? \"?\";\n\
-         const fault = (kind, ptr, allocSite, releaseSite) => {{\n  \
-         const text = (faults[kind - 1] ?? `memory fault ${{kind}}`)\n    \
-         .replaceAll(\"{{alloc}}\", site(allocSite))\n    \
-         .replaceAll(\"{{release}}\", site(releaseSite))\n    \
+         const $faults = [{faults}];\n\
+         const $sites = [{sites}];\n\
+         const $site = (n) => $sites[n] ?? \"?\";\n\
+         const $fault = (kind, ptr, allocSite, releaseSite) => {{\n  \
+         const text = ($faults[kind - 1] ?? `memory fault ${{kind}}`)\n    \
+         .replaceAll(\"{{alloc}}\", $site(allocSite))\n    \
+         .replaceAll(\"{{release}}\", $site(releaseSite))\n    \
          .replaceAll(\"{{count}}\", String(releaseSite))\n    \
          .replaceAll(\"{{size}}\", String(ptr >>> 0));\n  \
          const error = new Error(text);\n  \
          error.name = \"PerasMemoryError\";\n  \
-         Object.assign(error, {{ kind, allocSite: site(allocSite), releaseSite: site(releaseSite) }});\n  \
+         Object.assign(error, {{ kind, allocSite: $site(allocSite), releaseSite: $site(releaseSite) }});\n  \
          throw error;\n\
          }};\n\
-         const allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
-         const runtime = (await WebAssembly.instantiate(allocator, {{ peras: {{ fault }} }})).instance.exports;\n\
-         const imports = {{ {module}: {{ alloc: runtime.alloc, release: runtime.release }} }};\n",
+         const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault }} }})).instance.exports;\n\
+         const $bounds = (index, length) => {{\n  \
+         throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
+         }};\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, memory: $runtime.memory }} }};\n\
+",
+        bounds = js_string(runtime.bounds),
         faults = faults.join(", "),
         sites = sites.join(", "),
         allocator = base64(runtime.allocator),
         module = RUNTIME_MODULE,
-    )
+    );
+    imports + HEAP_HELPERS
 }
+
+/// The loader's helpers for options and enumerations: every part is read,
+/// so that the buffers inside are released, then one is chosen.
+const VALUE_HELPERS: &str = "const $opt = (some, value) => (some ? value : undefined);
+const $variant = (tag, names, payloads) => ({ kind: names[tag], values: payloads[tag] });
+const $tagOf = (kind, names) => {
+  const tag = names.indexOf(kind);
+  if (tag < 0) throw new TypeError(`unknown variant ${String(kind)}`);
+  return tag;
+};
+";
+
+/// The loader's helpers for arrays and strings, which cross the boundary as
+/// copies: into a new buffer, and out of one.
+const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and out of one.\n\
+         const $kinds = { i32: [4, \"getInt32\", \"setInt32\"], i64: [8, \"getBigInt64\", \"setBigInt64\"], f32: [4, \"getFloat32\", \"setFloat32\"], f64: [8, \"getFloat64\", \"setFloat64\"], bool: [4, \"getInt32\", \"setInt32\"], u8: [1, \"getUint8\", \"setUint8\"], ptr: [4, \"getInt32\", \"setInt32\"] };\n\
+         const $toBuf = (values, kind) => {\n  \
+         const [size, , set] = $kinds[kind];\n  \
+         const n = values.length;\n  \
+         // A column of pointers owns the buffers they point to (DEEP).\n  \
+         const h = $runtime.buf_new(n, kind === \"ptr\" ? size | 0x100 : size, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         const data = view.getUint32(h + 8, true);\n  \
+         for (let i = 0; i < n; i++) view[set](data + i * size, kind === \"bool\" ? (values[i] ? 1 : 0) : values[i], true);\n  \
+         view.setUint32(h, n, true);\n  \
+         return h;\n\
+         };\n\
+         const $fromBuf = (h, kind) => {\n  \
+         const [size, get] = $kinds[kind];\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         const n = view.getUint32(h, true);\n  \
+         const data = view.getUint32(h + 8, true);\n  \
+         const out = new Array(n);\n  \
+         for (let i = 0; i < n; i++) {\n    \
+         const v = view[get](data + i * size, true);\n    \
+         out[i] = kind === \"bool\" ? v !== 0 : v;\n  \
+         }\n  \
+         return out;\n\
+         };\n\
+         const $take = (h, kind) => {\n  \
+         const out = $fromBuf(h, kind);\n  \
+         $runtime.buf_release(h, 0);\n  \
+         return out;\n\
+         };\n\
+         // Strings cross as UTF-8 bytes.\n\
+         const $encoder = new TextEncoder();\n\
+         const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
+         const $toStr = (text) => {\n  \
+         const bytes = $encoder.encode(text);\n  \
+         const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
+         view.setUint32(h, bytes.length, true);\n  \
+         return h;\n\
+         };\n\
+         const $readStr = (h) => {\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         const n = view.getUint32(h, true);\n  \
+         return $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n\
+         };\n\
+         const $takeStr = (h) => {\n  \
+         const text = $readStr(h);\n  \
+         $runtime.buf_release(h, 0);\n  \
+         return text;\n\
+         };\n\
+         // Arrays of structures: one buffer per field, rebuilt into objects.\n\
+         // The buffers inside are read first; releasing the columns releases them.\n\
+         const $readRows = (handles, kinds, build) => {\n  \
+         const c = handles.map((h, k) => $fromBuf(h, kinds[k]));\n  \
+         const n = c.length > 0 ? c[0].length : 0;\n  \
+         const out = new Array(n);\n  \
+         for (let i = 0; i < n; i++) out[i] = build(c, i);\n  \
+         return out;\n\
+         };\n\
+         const $takeRows = (handles, kinds, build) => {\n  \
+         const out = $readRows(handles, kinds, build);\n  \
+         for (const h of handles) $runtime.buf_release(h, 0);\n  \
+         return out;\n\
+         };\n\
+         const $setRows = (values, handles, kinds, build) => {\n  \
+         const c = handles.map((h, k) => $fromBuf(h, kinds[k]));\n  \
+         const n = c.length > 0 ? c[0].length : 0;\n  \
+         values.length = n;\n  \
+         for (let i = 0; i < n; i++) values[i] = build(c, i);\n\
+         };\n\
+         const $copyBack = (values, h, kind) => {\n  \
+         const out = $fromBuf(h, kind);\n  \
+         values.length = out.length;\n  \
+         for (let i = 0; i < out.length; i++) values[i] = out[i];\n\
+         };\n";
 
 /// A JavaScript string literal.
 fn js_string(text: &str) -> String {
@@ -859,17 +1645,74 @@ const fn ts_scalar(ty: Ty) -> &'static str {
     }
 }
 
+/// The variants of an enumeration as a TypeScript union of `{ kind, values }`.
+fn union(variants: &[(String, Vec<Shape>)]) -> String {
+    let cases: Vec<String> = variants
+        .iter()
+        .map(|(variant, fields)| {
+            let values: Vec<String> = fields.iter().map(ts_shape).collect();
+            format!("{{ kind: \"{variant}\"; values: [{}] }}", values.join(", "))
+        })
+        .collect();
+    cases.join(" | ")
+}
+
 /// The TypeScript type of a value: a scalar type, or a structure's name.
 fn ts_shape(shape: &Shape) -> String {
     match shape {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
-        Shape::Object(name, _) => name.clone(),
+        // A result has no name of its own: its union is written in place.
+        Shape::Enum(name, variants) if name.is_empty() => format!("({})", union(variants)),
+        Shape::Object(name, _) | Shape::Enum(name, _) => name.clone(),
+        Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
+        Shape::String(_) => "string".to_owned(),
+        Shape::Records(element, pass) => {
+            let item = ts_shape(element);
+            // `(number | undefined)[]`, not `number | undefined[]`.
+            let item = if item.contains('|') {
+                format!("({item})")
+            } else {
+                item
+            };
+            if matches!(pass, Pass::Borrow | Pass::Sink) {
+                format!("readonly {item}[]")
+            } else {
+                format!("{item}[]")
+            }
+        }
+        Shape::Array(elem, pass) => {
+            let item = ts_scalar(elem.ty());
+            // An array the function does not change can be read-only.
+            if matches!(pass, Pass::Borrow | Pass::Sink) {
+                format!("readonly {item}[]")
+            } else {
+                format!("{item}[]")
+            }
+        }
     }
 }
 
 /// `export interface Point { x: number; y: number; }`, for a structure and the
 /// structures in it, each once.
 fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
+    if let Shape::Option(inner) | Shape::Records(inner, _) = shape {
+        return interface(inner, out);
+    }
+    if let Shape::Enum(name, variants) = shape {
+        for (_, fields) in variants {
+            for field in fields {
+                interface(field, out);
+            }
+        }
+        if name.is_empty() || out.iter().any(|(n, _)| n == name) {
+            return;
+        }
+        out.push((
+            name.clone(),
+            format!("export type {name} = {};\n", union(variants)),
+        ));
+        return;
+    }
     let Shape::Object(name, fields) = shape else {
         return;
     };

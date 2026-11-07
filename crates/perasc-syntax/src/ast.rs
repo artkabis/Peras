@@ -124,6 +124,80 @@ pub enum ItemKind {
     Global(Local),
     /// `struct Name { field: Type; … }`
     Struct(StructDecl),
+    /// `enum Name { Variant, Variant(Type, …), … }`
+    Enum(EnumDecl),
+}
+
+/// An enumeration: a value that is one of its variants, each with its data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    /// Preceded by `export`.
+    pub exported: bool,
+    /// The enumeration name.
+    pub name: Ident,
+    /// Its type parameters, `<T>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
+    /// Its variants, in order.
+    pub variants: Vec<Variant>,
+}
+
+/// A variant: `Circle(f64)`, or `Empty` without data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variant {
+    /// Its name.
+    pub name: Ident,
+    /// The types of its data, in order.
+    pub fields: Vec<Type>,
+}
+
+/// One arm of a `match`: `pattern => body`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Arm {
+    /// What the value must look like.
+    pub pattern: Pattern,
+    /// What the arm gives or does.
+    pub body: ArmBody,
+    /// The whole arm.
+    pub span: Span,
+}
+
+/// The body of an arm: a value, or statements.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArmBody {
+    /// `pattern => value`
+    Expr(ExprId),
+    /// `pattern => { statements }`
+    Block(Block),
+}
+
+/// A pattern of a `match` arm.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pattern {
+    /// Its shape.
+    pub kind: PatternKind,
+    /// Where it is.
+    pub span: Span,
+}
+
+/// The shapes of pattern.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PatternKind {
+    /// `_`: anything.
+    Wildcard,
+    /// A name: a variant without data when the value's type has one by that
+    /// name, otherwise anything, given that name.
+    Name(Ident),
+    /// A number or a boolean, possibly negated.
+    Literal(ExprId),
+    /// `Variant(p, …)` or `Enum.Variant(p, …)`.
+    Variant {
+        /// The enumeration, when written.
+        qualifier: Option<Ident>,
+        /// The variant.
+        name: Ident,
+        /// Patterns for its data.
+        fields: Vec<Pattern>,
+    },
 }
 
 /// A structure declaration.
@@ -133,6 +207,8 @@ pub struct StructDecl {
     pub exported: bool,
     /// The structure name.
     pub name: Ident,
+    /// Its type parameters, `<A, B>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
     /// Fields, in order.
     pub fields: Vec<Field>,
 }
@@ -157,6 +233,8 @@ pub struct FnDecl {
     pub is_async: bool,
     /// The function name.
     pub name: Ident,
+    /// Its type parameters, `<T: Ord>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
     /// Parameters, in order.
     pub params: Vec<Param>,
     /// From `(` to `)`: a missing return type is inserted after it.
@@ -165,6 +243,15 @@ pub struct FnDecl {
     pub ret: Option<Type>,
     /// The body.
     pub body: Block,
+}
+
+/// A type parameter: `T`, or `T: Ord + Copy` with its constraints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    /// Its name.
+    pub name: Ident,
+    /// The constraints its types must meet, in order.
+    pub bounds: Vec<Ident>,
 }
 
 /// How an argument is passed.
@@ -394,6 +481,8 @@ pub enum ExprKind {
     Call {
         /// What is called.
         callee: ExprId,
+        /// Type arguments written, `larger<i64>(…)`; usually inferred.
+        types: Vec<Type>,
         /// Arguments, in order.
         args: Vec<ExprId>,
     },
@@ -413,6 +502,13 @@ pub enum ExprKind {
     },
     /// `value?`: returns early on an error.
     Try(ExprId),
+    /// `match (value) { pattern => body, … }`
+    Match {
+        /// The value matched.
+        scrutinee: ExprId,
+        /// The arms, tried in order.
+        arms: Vec<Arm>,
+    },
     /// An expression that failed to parse, already reported.
     Error,
 }
@@ -553,9 +649,54 @@ impl Ast {
                     line.push(')');
                     let _ = writeln!(out, "{line}");
                 }
+                ItemKind::Enum(en) => {
+                    let mut line = format!("(enum {}", self.name(en.name.symbol));
+                    if en.exported {
+                        line.push_str(" export");
+                    }
+                    for variant in &en.variants {
+                        let fields: Vec<String> =
+                            variant.fields.iter().map(|t| self.ty(t)).collect();
+                        let _ = write!(
+                            line,
+                            " ({}{}{})",
+                            self.name(variant.name.symbol),
+                            if fields.is_empty() { "" } else { " " },
+                            fields.join(" ")
+                        );
+                    }
+                    line.push(')');
+                    let _ = writeln!(out, "{line}");
+                }
             }
         }
         out
+    }
+
+    /// A pattern as an S-expression.
+    #[must_use]
+    pub fn pattern(&self, pattern: &Pattern) -> String {
+        match &pattern.kind {
+            PatternKind::Wildcard => "_".to_owned(),
+            PatternKind::Name(name) => self.name(name.symbol).to_owned(),
+            PatternKind::Literal(e) => self.sexpr(*e),
+            PatternKind::Variant {
+                qualifier,
+                name,
+                fields,
+            } => {
+                let mut out = String::from("(");
+                if let Some(q) = qualifier {
+                    let _ = write!(out, "{}.", self.name(q.symbol));
+                }
+                out.push_str(self.name(name.symbol));
+                for field in fields {
+                    let _ = write!(out, " {}", self.pattern(field));
+                }
+                out.push(')');
+                out
+            }
+        }
     }
 
     fn dump_fn(&self, out: &mut String, f: &FnDecl) {
@@ -760,7 +901,7 @@ impl Ast {
                     self.sexpr(*rhs)
                 )
             }
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call { callee, args, .. } => {
                 let mut s = format!("(call {}", self.sexpr(*callee));
                 for arg in args {
                     let _ = write!(s, " {}", self.sexpr(*arg));
@@ -775,6 +916,20 @@ impl Ast {
                 format!("(index {} {})", self.sexpr(*base), self.sexpr(*index))
             }
             ExprKind::Try(inner) => format!("(? {})", self.sexpr(*inner)),
+            ExprKind::Match { scrutinee, arms } => {
+                let mut out = format!("(match {}", self.sexpr(*scrutinee));
+                for arm in arms {
+                    let body = match &arm.body {
+                        ArmBody::Expr(e) => self.sexpr(*e),
+                        ArmBody::Block(block) => {
+                            format!("(block {} statements)", block.stmts.len())
+                        }
+                    };
+                    let _ = write!(out, " ({} => {body})", self.pattern(&arm.pattern));
+                }
+                out.push(')');
+                out
+            }
             ExprKind::Error => "<error>".to_owned(),
         }
     }

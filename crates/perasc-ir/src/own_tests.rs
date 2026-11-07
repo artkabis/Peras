@@ -140,6 +140,7 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
                 ],
             ),
         ],
+        data: Vec::new(),
     }
 }
 

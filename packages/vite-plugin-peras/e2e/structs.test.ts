@@ -25,6 +25,7 @@ interface Geo {
   flip(s: Segment): Segment;
   swapped(x: number, y: number): number;
   walk(n: number): number;
+  stretch(s: Segment, k: number): number;
 }
 
 async function load(): Promise<{ geo: Geo; dts: string }> {
@@ -48,6 +49,13 @@ describe("structures in JavaScript", () => {
     const { geo: m } = await load();
     expect(m.swapped(3, 4)).toBe(1403);
     expect(m.walk(5)).toBe(15);
+  });
+
+  it("passed inout, have their fields updated in place", async () => {
+    const { geo: m } = await load();
+    const s = { from: { x: 1, y: 2 }, to: { x: 3, y: 4 }, closed: false };
+    expect(m.stretch(s, 2)).toBe(6);
+    expect(s).toEqual({ from: { x: 1, y: 2 }, to: { x: 6, y: 8 }, closed: true });
   });
 
   it("are declared to TypeScript as interfaces", async () => {

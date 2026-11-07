@@ -169,6 +169,13 @@ impl<'a> Checker<'a> {
                 all_empty(&state, "when the function returns")?;
                 return Ok(None);
             }
+            // A buffer statement reads its operands; `buf.release` moves its
+            // buffer out, which `verify` requires to be a `move`.
+            Stmt::Buf(_, args) => {
+                for arg in args {
+                    expr(arg, &mut state)?;
+                }
+            }
             Stmt::Release(local) => {
                 if !holds(&state, *local) {
                     return Err(format!(
@@ -289,7 +296,7 @@ fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
         | ExprKind::Alloc(x) => {
             expr(x, state)?;
         }
-        ExprKind::Call(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
             for arg in args {
                 expr(arg, state)?;
             }
