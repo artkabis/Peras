@@ -60,4 +60,6 @@ UTF-8 text, written `"…"`; its `length` counts bytes. See [collections](../gui
 
 Enumerations are on their own page: [enumerations and match](../guide/enums.md). Results are with them: `Result<T, E>`, `Ok(value)` or `Err(error)`. <span class="status compiled">compiled</span>
 
-Unions, generics, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).
+Generic functions, structures and enumerations have their page: [generics](../guide/generics.md). <span class="status compiled">compiled</span>
+
+Unions, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).

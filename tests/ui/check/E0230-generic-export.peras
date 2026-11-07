@@ -1,0 +1,19 @@
+// E0230: an exported function cannot be generic.
+export fn larger<T: Ord>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+// Allowed: an exported function that calls a generic one.
+fn smaller<T: Ord>(a: T, b: T): T {
+  if (a < b) {
+    return a;
+  }
+  return b;
+}
+
+export fn smallerInt(a: i32, b: i32): i32 {
+  return smaller(a, b);
+}

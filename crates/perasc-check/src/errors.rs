@@ -72,6 +72,12 @@ const fn why(code: ErrorCode) -> &'static str {
         223 => "check-unknown-variant-why",
         224 => "check-unreachable-arm-why",
         225 => "check-try-return-why",
+        226 => "check-unknown-constraint-why",
+        227 => "check-constraint-why",
+        228 => "check-missing-constraint-why",
+        229 => "check-cannot-infer-why",
+        230 => "check-generic-export-why",
+        231 => "check-endless-instances-why",
         _ => "check-operator-why",
     }
 }
@@ -730,6 +736,139 @@ pub fn try_return(span: Span, early: &Ty, ret: Option<&Ty>) -> Diagnostic {
         )],
         Fix {
             message: Message::new("check-try-return-fix").text("kind", kind),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0226`
+pub fn unknown_constraint(span: Span, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_CONSTRAINT,
+        Message::new("check-unknown-constraint").text("name", name),
+        vec![primary(
+            span,
+            Message::new("check-unknown-constraint-label"),
+        )],
+        suggestion_fix(span, suggestion, "check-unknown-constraint-fix"),
+    )
+}
+
+/// `E0227`: `ty`, given for `param`, does not meet `bound`.
+pub fn constraint_not_met(
+    span: Span,
+    ty: &Ty,
+    param: &str,
+    bound: &str,
+    declared: Span,
+) -> Diagnostic {
+    diagnostic(
+        codes::CONSTRAINT_NOT_MET,
+        Message::new("check-constraint")
+            .text("ty", ty.to_string())
+            .text("bound", bound),
+        vec![
+            primary(
+                span,
+                Message::new("check-constraint-label")
+                    .text("ty", ty.to_string())
+                    .text("param", param),
+            ),
+            secondary(
+                declared,
+                Message::new("check-constraint-declared")
+                    .text("param", param)
+                    .text("bound", bound),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-constraint-fix")
+                .text("param", param)
+                .text("bound", bound),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0228`: `op` on `param` needs `bound`, written at `insert_at`.
+pub fn missing_constraint(
+    span: Span,
+    op: &str,
+    param: &str,
+    bound: &str,
+    insert_at: u32,
+    bounded: bool,
+) -> Diagnostic {
+    let text = if bounded {
+        format!(" + {bound}")
+    } else {
+        format!(": {bound}")
+    };
+    diagnostic(
+        codes::MISSING_CONSTRAINT,
+        Message::new("check-missing-constraint")
+            .text("op", op)
+            .text("param", param),
+        vec![primary(
+            span,
+            Message::new("check-missing-constraint-label")
+                .text("op", op)
+                .text("bound", bound),
+        )],
+        Fix {
+            message: Message::new("check-missing-constraint-fix")
+                .text("param", param)
+                .text("bound", bound),
+            edits: vec![insert(insert_at, text)],
+        },
+    )
+}
+
+/// `E0229`: nothing tells which type `param` of `name` stands for.
+pub fn cannot_infer(span: Span, param: &str, name: &str, declared: Span) -> Diagnostic {
+    diagnostic(
+        codes::CANNOT_INFER,
+        Message::new("check-cannot-infer")
+            .text("param", param)
+            .text("name", name),
+        vec![
+            primary(
+                span,
+                Message::new("check-cannot-infer-label").text("param", param),
+            ),
+            secondary(
+                declared,
+                Message::new("check-cannot-infer-declared").text("param", param),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-cannot-infer-fix").text("param", param),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0230`
+pub fn generic_export(span: Span, name: &str) -> Diagnostic {
+    diagnostic(
+        codes::GENERIC_EXPORT,
+        Message::new("check-generic-export").text("name", name),
+        vec![primary(span, Message::new("check-generic-export-label"))],
+        Fix {
+            message: Message::new("check-generic-export-fix").text("name", name),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0231`
+pub fn endless_instances(span: Span, name: &str) -> Diagnostic {
+    diagnostic(
+        codes::ENDLESS_INSTANCES,
+        Message::new("check-endless-instances").text("name", name),
+        vec![primary(span, Message::new("check-endless-instances-label"))],
+        Fix {
+            message: Message::new("check-endless-instances-fix"),
             edits: Vec::new(),
         },
     )

@@ -10,7 +10,9 @@
 use perasc_diag::Span;
 
 use super::{NameOf, Parser, errors};
-use crate::ast::{Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, Pattern, PatternKind, UnaryOp};
+use crate::ast::{
+    Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, Pattern, PatternKind, Type, TypeKind, UnaryOp,
+};
 use crate::lexer::string_value;
 use crate::token::{Token, TokenKind};
 
@@ -300,6 +302,37 @@ impl Parser<'_> {
         })
     }
 
+    /// `<Type, …>` followed by `(`, read ahead: when what follows `<` is
+    /// not that, nothing is consumed and `<` is a comparison.
+    fn type_arguments(&mut self) -> Option<Vec<Type>> {
+        if self.nth(1).kind != TokenKind::Ident {
+            return None;
+        }
+        let pos = self.pos;
+        let reported = self.diagnostics.len();
+        let recovering = self.recovering;
+        self.bump(); // `<`
+        let mut types = Vec::new();
+        let ok = loop {
+            let ty = self.ty();
+            if matches!(ty.kind, TypeKind::Error) || self.diagnostics.len() > reported {
+                break false;
+            }
+            types.push(ty);
+            if self.eat(TokenKind::Comma).is_some() {
+                continue;
+            }
+            break self.eat(TokenKind::Gt).is_some() && self.at(TokenKind::LParen);
+        };
+        if ok {
+            return Some(types);
+        }
+        self.pos = pos;
+        self.diagnostics.truncate(reported);
+        self.recovering = recovering;
+        None
+    }
+
     /// Calls, indexing, fields and `?`, which bind tighter than any operator.
     fn postfix(&mut self, mut expr: ExprId) -> ExprId {
         loop {
@@ -314,7 +347,32 @@ impl Parser<'_> {
                     self.bump();
                     let args = self.arguments(token);
                     let span = self.since(start);
-                    self.alloc(ExprKind::Call { callee: expr, args }, span)
+                    self.alloc(
+                        ExprKind::Call {
+                            callee: expr,
+                            types: Vec::new(),
+                            args,
+                        },
+                        span,
+                    )
+                }
+                // `larger<i64>(a, b)`: a comparison cannot be followed by
+                // another (`E0108`), so `name<…>(` is always a call.
+                TokenKind::Lt if matches!(self.ast.expr(expr).kind, ExprKind::Name(_)) => {
+                    let Some(types) = self.type_arguments() else {
+                        return expr;
+                    };
+                    let open = self.bump(); // `(`
+                    let args = self.arguments(open);
+                    let span = self.since(start);
+                    self.alloc(
+                        ExprKind::Call {
+                            callee: expr,
+                            types,
+                            args,
+                        },
+                        span,
+                    )
                 }
                 TokenKind::LBracket => {
                     self.bump();

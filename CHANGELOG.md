@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **Generics**, on functions, structures and enumerations: `fn larger<T: Ord>(a: T, b: T): T`, `struct Pair<A, B>`, `enum Tree<T>`.
+  - Six built-in constraints: `Eq`, `Ord`, `Numeric`, `Integer`, `Float` and `Copy`. A generic body is checked once, for every type its parameters may stand for: an operation its constraints do not allow is refused, with a fix that adds the constraint (`E0228`); a use with a type that does not meet one is refused (`E0227`), as is an unknown constraint (`E0226`).
+  - Type arguments are inferred from the arguments and from the type expected, or written at the call, `larger<i64>(a, b)`: since chained comparisons are refused, this is never a comparison. When nothing determines them, `E0229`.
+  - A value of a type parameter moves, unless the parameter is `Copy`; `Ord` and `Numeric` imply it.
+  - Compiled by monomorphization: one copy per set of type arguments the module uses, named after them (`larger__i64`), with no cost at run time. A generic function never called is checked, not compiled. Exported functions cannot be generic (`E0230`), and generic code that would need copies for ever larger types is refused (`E0231`).
+  - Generic structures and enumerations reach JavaScript as interfaces and unions named after their arguments, `Pair_i32_String`.
+- `unwrapOr` with a fallback read from a variable holding a string or an array no longer produces code the verifier rejects: the fallback is copied.
 - **Structures** compile, as values: each one is replaced by its scalar fields, nested structures flattened, so it never touches the heap.
   - A structure parameter becomes one parameter per field.
   - A function returning a structure returns one WebAssembly result per field, and a tuple in the Rust backend.

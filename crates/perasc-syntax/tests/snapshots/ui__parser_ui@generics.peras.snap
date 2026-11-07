@@ -1,0 +1,23 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/generics.peras
+---
+ast:
+  (struct Pair (first A) (second B))
+  (enum Tree (Leaf T) (Node T T))
+  (fn larger (params (a T) (b T)) -> T
+    (if (> a b)
+      (block
+        (return a)
+      )
+    )
+    (return b)
+  )
+  (fn run export (params (a i32) (b i32)) -> bool
+    (const big (call larger (call (. a toI64)) (call (. b toI64))))
+    (const nested: Array<Array<i32>> [])
+    (return (&& (&& (&& (< big 3) (< a b)) (> b (paren a))) (== (. nested length) 0)))
+  )
+diagnostics:
+  none

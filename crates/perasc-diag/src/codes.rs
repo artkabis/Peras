@@ -116,6 +116,18 @@ pub const UNKNOWN_VARIANT: ErrorCode = ErrorCode::new(223);
 pub const UNREACHABLE_ARM: ErrorCode = ErrorCode::new(224);
 /// `?` in a function that does not return what `?` gives back early.
 pub const TRY_RETURN: ErrorCode = ErrorCode::new(225);
+/// A constraint name that does not exist.
+pub const UNKNOWN_CONSTRAINT: ErrorCode = ErrorCode::new(226);
+/// A type argument that does not meet a constraint of its parameter.
+pub const CONSTRAINT_NOT_MET: ErrorCode = ErrorCode::new(227);
+/// An operation on a type parameter whose constraints do not allow it.
+pub const MISSING_CONSTRAINT: ErrorCode = ErrorCode::new(228);
+/// A type argument that nothing determines.
+pub const CANNOT_INFER: ErrorCode = ErrorCode::new(229);
+/// An exported generic function.
+pub const GENERIC_EXPORT: ErrorCode = ErrorCode::new(230);
+/// Generic code that instantiates itself with ever larger types.
+pub const ENDLESS_INSTANCES: ErrorCode = ErrorCode::new(231);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -226,6 +238,12 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(UNKNOWN_VARIANT, "check-unknown-variant", "E0223"),
     active!(UNREACHABLE_ARM, "check-unreachable-arm", "E0224"),
     active!(TRY_RETURN, "check-try-return", "E0225"),
+    active!(UNKNOWN_CONSTRAINT, "check-unknown-constraint", "E0226"),
+    active!(CONSTRAINT_NOT_MET, "check-constraint", "E0227"),
+    active!(MISSING_CONSTRAINT, "check-missing-constraint", "E0228"),
+    active!(CANNOT_INFER, "check-cannot-infer", "E0229"),
+    active!(GENERIC_EXPORT, "check-generic-export", "E0230"),
+    active!(ENDLESS_INSTANCES, "check-endless-instances", "E0231"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

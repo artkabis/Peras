@@ -120,7 +120,7 @@ impl Lowering<'_> {
         arms: &[Arm],
         mode: Mode,
     ) -> Vec<Expr> {
-        let Some(ty) = self.check_type(scrutinee).cloned() else {
+        let Some(ty) = self.check_type(scrutinee) else {
             return Vec::new();
         };
         // The value matched, lent; its numbers copied, so that an arm
@@ -139,7 +139,7 @@ impl Lowering<'_> {
             })
             .collect();
         // The result, in temporaries every arm fills.
-        let result_ty = self.check_type(id).cloned().unwrap_or(CheckTy::Void);
+        let result_ty = self.check_type(id).unwrap_or(CheckTy::Void);
         let results: Vec<LocalId> = if result_ty == CheckTy::Void {
             Vec::new()
         } else {

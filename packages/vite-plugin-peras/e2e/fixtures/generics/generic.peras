@@ -1,0 +1,62 @@
+// Generic code behind exported functions: one copy per type, and generic
+// structures and enumerations seen from JavaScript.
+struct Pair<A, B> {
+  first: A;
+  second: B;
+}
+
+enum Maybe<T> {
+  Just(T),
+  Nothing,
+}
+
+fn larger<T: Ord>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+fn sum<T: Numeric>(xs: Array<T>, start: T): T {
+  let acc = start;
+  for (const x of xs) {
+    acc += x;
+  }
+  return acc;
+}
+
+fn pair<A, B>(a: sink A, b: sink B): Pair<A, B> {
+  return Pair(a, b);
+}
+
+fn last<T>(xs: inout Array<T>): Option<T> {
+  return xs.pop();
+}
+
+export fn largerInt(a: i32, b: i32): i32 {
+  return larger(a, b);
+}
+
+export fn largerFloat(a: f64, b: f64): f64 {
+  return larger(a, b);
+}
+
+export fn total(xs: Array<i64>, floats: Array<f64>): f64 {
+  return sum(xs, 0).toF64() + sum(floats, 0.0);
+}
+
+export fn named(n: i32, name: String): Pair<i32, String> {
+  return pair(n, name.copy());
+}
+
+export fn half(n: i32): Maybe<i32> {
+  if (n % 2 == 0) {
+    return Maybe.Just(n / 2);
+  }
+  return Maybe.Nothing;
+}
+
+export fn lastWord(words: Array<String>): String {
+  let copy = words.copy();
+  return last(&copy).unwrapOr("none");
+}

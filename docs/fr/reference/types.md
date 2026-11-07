@@ -60,4 +60,6 @@ Du texte en UTF-8, écrit `"…"` ; sa `length` compte des octets. Voir [les col
 
 Les énumérations ont leur page : [énumérations et match](../guide/enums.md). Les résultats y sont aussi : `Result<T, E>`, `Ok(valeur)` ou `Err(erreur)`. <span class="status compiled">compilé</span>
 
-Unions, génériques, tuples, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).
+Les fonctions, structures et énumérations génériques ont leur page : [génériques](../guide/generics.md). <span class="status compiled">compilé</span>
+
+Unions, tuples, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).

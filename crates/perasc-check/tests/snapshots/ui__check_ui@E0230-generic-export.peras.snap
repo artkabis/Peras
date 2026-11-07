@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0230-generic-export.peras
+---
+diagnostics:
+  error[E0230] check-generic-export { name: "larger" }
+    primary 2:11-2:17: check-generic-export-label
+    cause: check-generic-export-why
+    fix: check-generic-export-fix { name: "larger" }

@@ -167,6 +167,8 @@ parse-expected-name = expected { $what ->
     [struct] a structure name
     [enum] an enumeration name
     [variant] a variant name
+    [type-parameter] a type parameter name
+    [constraint] a constraint name
    *[other] a name
 }, found { $eof ->
     [1] the end of the file
@@ -450,7 +452,7 @@ check-unknown-member-fix = check the name of the field or method
 # E0216
 check-type-argument-count = `{ $name }` takes { $expected } type arguments, found { $found }
 check-type-argument-count-label = expects { $expected }
-check-type-argument-count-why = `Array` and `Option` take exactly one type argument, as in `Array<f32>`; other types take none.
+check-type-argument-count-why = A type or a function takes as many type arguments as it has type parameters: one for `Array` and `Option`, as in `Array<f32>`, two for `Result`, the number declared for a generic one, and none for the others.
 check-type-argument-count-fix = write `{ $name }` with { $expected } type arguments
 
 # E0217
@@ -533,6 +535,44 @@ check-try-return-fix = { $kind ->
     [option] return an `Option`, or handle `None` with `match` or `unwrapOr`
    *[other] return a `Result` with this type of error, or handle the error with `match`
 }
+
+# E0226
+check-unknown-constraint = unknown constraint `{ $name }`
+check-unknown-constraint-label = not a constraint
+check-unknown-constraint-why = A type parameter is constrained by what its types must be able to do: `Eq` (`==`), `Ord` (comparisons), `Numeric` (arithmetic, for integers and floats), `Integer`, `Float`, or `Copy` (copied, not moved).
+check-unknown-constraint-fix = use `Eq`, `Ord`, `Numeric`, `Integer`, `Float` or `Copy`
+
+# E0227
+check-constraint = `{ $ty }` is not `{ $bound }`
+check-constraint-label = `{ $param }` is `{ $ty }` here
+check-constraint-declared = `{ $param }` must be `{ $bound }`
+check-constraint-why = A generic function or type works for every type that meets the constraints of its parameters, and only for those: its body relies on them, so a type that does not meet one would make it fail.
+check-constraint-fix = give `{ $param }` a type that is `{ $bound }`
+
+# E0228
+check-missing-constraint = `{ $op }` on `{ $param }`, which may not support it
+check-missing-constraint-label = `{ $op }` needs `{ $bound }`
+check-missing-constraint-why = A generic body is checked once, for every type its parameters may stand for. Without a constraint, a type parameter can be any type, and not every type supports every operation; the constraint says it does, and each call is checked against it.
+check-missing-constraint-fix = constrain the parameter: `{ $param }: { $bound }`
+
+# E0229
+check-cannot-infer = cannot tell which type `{ $param }` of `{ $name }` stands for
+check-cannot-infer-label = `{ $param }` is unknown here
+check-cannot-infer-declared = `{ $param }` declared here
+check-cannot-infer-why = The type arguments of a generic function come from its arguments, or from the type the call must have. Here neither says what it is.
+check-cannot-infer-fix = give the result a type, as in `let xs: Array<i32> = …`, or pass a value of type `{ $param }`
+
+# E0230
+check-generic-export = exported function `{ $name }` is generic
+check-generic-export-label = exported, with type parameters
+check-generic-export-why = Generic code is compiled once per set of type arguments the module uses. JavaScript calls an exported function with any value, so there is no single copy to export.
+check-generic-export-fix = export a function that is not generic and calls `{ $name }` with the types needed
+
+# E0231
+check-endless-instances = `{ $name }` would need endless copies
+check-endless-instances-label = instantiated with ever larger types
+check-endless-instances-why = Each set of type arguments gives a copy of the generic code. Here a copy needs another with a larger type, as when `f<T>` calls `f<Array<T>>`, or a structure contains itself with a larger type argument: there is no end.
+check-endless-instances-fix = use the same type parameters in the recursive call or field
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

@@ -167,6 +167,8 @@ parse-expected-name = { $what ->
     [struct] nom de structure attendu
     [enum] nom d’énumération attendu
     [variant] nom de variante attendu
+    [type-parameter] nom de paramètre de type attendu
+    [constraint] nom de contrainte attendu
    *[other] nom attendu
 }, trouvé { $eof ->
     [1] la fin du fichier
@@ -450,7 +452,7 @@ check-unknown-member-fix = vérifie le nom du champ ou de la méthode
 # E0216
 check-type-argument-count = `{ $name }` prend { $expected } argument(s) de type, { $found } trouvé(s)
 check-type-argument-count-label = { $expected } attendu(s)
-check-type-argument-count-why = `Array` et `Option` prennent exactement un argument de type, comme dans `Array<f32>` ; les autres types n’en prennent aucun.
+check-type-argument-count-why = Un type ou une fonction prend autant d’arguments de type qu’il a de paramètres de type : un pour `Array` et `Option`, comme dans `Array<f32>`, deux pour `Result`, le nombre déclaré pour un générique, et aucun pour les autres.
 check-type-argument-count-fix = écris `{ $name }` avec { $expected } argument(s) de type
 
 # E0217
@@ -533,6 +535,44 @@ check-try-return-fix = { $kind ->
     [option] renvoie une `Option`, ou traite `None` avec `match` ou `unwrapOr`
    *[other] renvoie un `Result` avec ce type d’erreur, ou traite l’erreur avec `match`
 }
+
+# E0226
+check-unknown-constraint = contrainte inconnue `{ $name }`
+check-unknown-constraint-label = pas une contrainte
+check-unknown-constraint-why = Un paramètre de type est contraint par ce que ses types doivent savoir faire : `Eq` (`==`), `Ord` (comparaisons), `Numeric` (arithmétique, pour entiers et flottants), `Integer`, `Float`, ou `Copy` (copié, pas déplacé).
+check-unknown-constraint-fix = utilise `Eq`, `Ord`, `Numeric`, `Integer`, `Float` ou `Copy`
+
+# E0227
+check-constraint = `{ $ty }` n’est pas `{ $bound }`
+check-constraint-label = `{ $param }` est `{ $ty }` ici
+check-constraint-declared = `{ $param }` doit être `{ $bound }`
+check-constraint-why = Une fonction ou un type générique fonctionne pour tout type qui respecte les contraintes de ses paramètres, et seulement pour ceux-là : son corps s’appuie dessus, donc un type qui n’en respecte pas une le ferait échouer.
+check-constraint-fix = donne à `{ $param }` un type qui est `{ $bound }`
+
+# E0228
+check-missing-constraint = `{ $op }` sur `{ $param }`, qui peut ne pas le permettre
+check-missing-constraint-label = `{ $op }` demande `{ $bound }`
+check-missing-constraint-why = Un corps générique est vérifié une fois, pour tous les types que ses paramètres peuvent représenter. Sans contrainte, un paramètre de type peut être n’importe quel type, et tous les types ne permettent pas toutes les opérations ; la contrainte affirme que si, et chaque appel est vérifié par rapport à elle.
+check-missing-constraint-fix = contrains le paramètre : `{ $param }: { $bound }`
+
+# E0229
+check-cannot-infer = impossible de savoir quel type représente `{ $param }` de `{ $name }`
+check-cannot-infer-label = `{ $param }` est inconnu ici
+check-cannot-infer-declared = `{ $param }` déclaré ici
+check-cannot-infer-why = Les arguments de type d’une fonction générique viennent de ses arguments, ou du type que l’appel doit avoir. Ici, rien ne dit lequel.
+check-cannot-infer-fix = donne un type au résultat, comme `let xs: Array<i32> = …`, ou passe une valeur de type `{ $param }`
+
+# E0230
+check-generic-export = la fonction exportée `{ $name }` est générique
+check-generic-export-label = exportée, avec des paramètres de type
+check-generic-export-why = Le code générique est compilé une fois par jeu d’arguments de type que le module utilise. JavaScript appelle une fonction exportée avec n’importe quelle valeur : il n’y a pas de copie unique à exporter.
+check-generic-export-fix = exporte une fonction non générique qui appelle `{ $name }` avec les types voulus
+
+# E0231
+check-endless-instances = `{ $name }` demanderait des copies sans fin
+check-endless-instances-label = instancié avec des types toujours plus grands
+check-endless-instances-why = Chaque jeu d’arguments de type donne une copie du code générique. Ici, une copie en demande une autre avec un type plus grand, comme quand `f<T>` appelle `f<Array<T>>`, ou qu’une structure se contient avec un argument de type plus grand : cela ne finit pas.
+check-endless-instances-fix = utilise les mêmes paramètres de type dans l’appel ou le champ récursif
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

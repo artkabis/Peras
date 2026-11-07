@@ -1,0 +1,16 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0229-cannot-infer.peras
+---
+diagnostics:
+  error[E0229] check-cannot-infer { param: "T", name: "empty" }
+    primary 12:14-12:21: check-cannot-infer-label { param: "T" }
+    secondary 3:10-3:11: check-cannot-infer-declared { param: "T" }
+    cause: check-cannot-infer-why
+    fix: check-cannot-infer-fix { param: "T" }
+  error[E0229] check-cannot-infer { param: "T", name: "none" }
+    primary 17:10-17:16: check-cannot-infer-label { param: "T" }
+    secondary 7:9-7:10: check-cannot-infer-declared { param: "T" }
+    cause: check-cannot-infer-why
+    fix: check-cannot-infer-fix { param: "T" }

@@ -121,11 +121,21 @@ impl<'c, 'a> Owner<'c, 'a> {
 
     pub(crate) fn module(&mut self) {
         let ast = self.checker.ast;
+        let mut index = 0;
         for item in &ast.items {
             if let ItemKind::Fn(decl) = &item.kind {
+                // Its type parameters: a value of one moves unless it is `Copy`.
+                self.checker.generics = self
+                    .checker
+                    .fns
+                    .get(index)
+                    .map(|f| f.generics.clone())
+                    .unwrap_or_default();
                 self.function(decl);
+                index += 1;
             }
         }
+        self.checker.generics.clear();
     }
 
     fn function(&mut self, decl: &FnDecl) {
@@ -443,7 +453,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                     self.expr(item, Use::Consume, path);
                 }
             }
-            ExprKind::Call { callee, args } => self.call(*callee, args, span, path),
+            ExprKind::Call { callee, args, .. } => self.call(*callee, args, span, path),
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::String(_)
@@ -771,6 +781,10 @@ impl Checker<'_> {
     pub(crate) fn is_move_type(&self, ty: &Ty) -> bool {
         match ty {
             Ty::Array(_) | Ty::String => true,
+            // Any type, unless its constraints say it is copied.
+            Ty::Param(i, _) => self
+                .param_of(*i)
+                .is_none_or(|p| !p.meets(crate::ty::Bound::Copy)),
             Ty::Option(inner) => self.is_move_type(inner),
             Ty::Result(ok, err) => self.is_move_type(ok) || self.is_move_type(err),
             Ty::Struct(id, _) => self

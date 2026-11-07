@@ -7,11 +7,12 @@
 //! `f64` is an error whose fix inserts the explicit `.toF64()`.
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Symbol, UnaryOp};
+use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Symbol, Type, UnaryOp};
 
 use crate::errors::{self, Conversion};
+use crate::generics::GenericUse;
 use crate::scope::{self, Kind};
-use crate::ty::{IntTy, Ty};
+use crate::ty::{Bound, IntTy, Ty};
 use crate::{Checker, builtins};
 
 impl Checker<'_> {
@@ -22,7 +23,7 @@ impl Checker<'_> {
     }
 
     /// Whether `actual` can be used where `expected` is, reporting why not.
-    fn coerce(&mut self, id: ExprId, actual: &Ty, expected: &Ty) -> bool {
+    pub(crate) fn coerce(&mut self, id: ExprId, actual: &Ty, expected: &Ty) -> bool {
         if actual == expected || matches!(actual, Ty::Error) || matches!(expected, Ty::Error) {
             return true;
         }
@@ -180,9 +181,13 @@ impl Checker<'_> {
             ExprKind::Paren(inner) => self.infer(*inner, expected),
             ExprKind::Unary { op, operand } => self.unary(*op, *operand, span, expected),
             ExprKind::Binary { op, lhs, rhs } => self.binary(*op, *lhs, *rhs, span, expected),
-            ExprKind::Call { callee, args } => self.call(*callee, args, span, expected),
+            ExprKind::Call {
+                callee,
+                types,
+                args,
+            } => self.call(id, *callee, types, args, span, expected),
             ExprKind::Field { base, name } => {
-                if let Some(ty) = self.enum_variant(*base, name, None, span) {
+                if let Some(ty) = self.enum_variant(*base, name, None, span, expected) {
                     return ty;
                 }
                 let base_ty = self.infer(*base, None);
@@ -320,10 +325,16 @@ impl Checker<'_> {
             UnaryOp::Neg => {
                 let ty = self.infer(operand, expected);
                 let unsigned = matches!(ty, Ty::Int(int) if !int.signed());
-                if (ty.is_numeric() && !unsigned) || ty == Ty::Error {
+                // A parameter may stand for an unsigned integer: only a
+                // `Float` one can be negated.
+                let negatable = match &ty {
+                    Ty::Param(..) => self.satisfies(&ty, Bound::Float),
+                    _ => ty.is_numeric() && !unsigned,
+                };
+                if negatable || ty == Ty::Error {
                     ty
                 } else {
-                    self.report(errors::invalid_operator(span, "-", &ty));
+                    self.invalid_operator(span, "-", &ty, Bound::Float);
                     Ty::Error
                 }
             }
@@ -336,10 +347,10 @@ impl Checker<'_> {
             }
             UnaryOp::BitNot => {
                 let ty = self.infer(operand, expected);
-                if ty.is_integer() || ty == Ty::Error {
+                if ty.is_integer() || ty == Ty::Error || self.satisfies_param(&ty, Bound::Integer) {
                     ty
                 } else {
-                    self.report(errors::invalid_operator(span, "~", &ty));
+                    self.invalid_operator(span, "~", &ty, Bound::Integer);
                     Ty::Error
                 }
             }
@@ -372,9 +383,9 @@ impl Checker<'_> {
         // An operand the operator cannot take at all: say so, rather than
         // "mismatched types" against the other operand.
         for (side, ty) in [(lhs, &lt), (rhs, &rt)] {
-            if !operand_allowed(op, ty) {
+            if !self.operand_allowed(op, ty) {
                 let side_span = self.ast.expr(side).span;
-                self.report(errors::invalid_operator(side_span, op.symbol(), ty));
+                self.invalid_operator(side_span, op.symbol(), ty, needed_bound(op));
                 return if op.is_comparison() {
                     Ty::Bool
                 } else {
@@ -385,9 +396,9 @@ impl Checker<'_> {
         let Some(common) = self.unify(lhs, &lt, rhs, &rt) else {
             return Ty::Error;
         };
-        let allowed = operand_allowed(op, &common);
+        let allowed = self.operand_allowed(op, &common);
         if !allowed && common != Ty::Error {
-            self.report(errors::invalid_operator(span, op.symbol(), &common));
+            self.invalid_operator(span, op.symbol(), &common, needed_bound(op));
             return Ty::Error;
         }
         if op.is_comparison() { Ty::Bool } else { common }
@@ -437,17 +448,32 @@ impl Checker<'_> {
 
     // --- Calls, fields and methods ------------------------------------------
 
-    fn call(&mut self, callee: ExprId, args: &[ExprId], span: Span, expected: Option<&Ty>) -> Ty {
+    fn call(
+        &mut self,
+        id: ExprId,
+        callee: ExprId,
+        types: &[Type],
+        args: &[ExprId],
+        span: Span,
+        expected: Option<&Ty>,
+    ) -> Ty {
         let callee_expr = self.ast.expr(callee);
         match &callee_expr.kind {
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(callee, index);
                 }
-                self.call_name(*symbol, callee_expr.span, args, span, expected)
+                let written: Vec<Ty> = types.iter().map(|t| self.resolve_type(t)).collect();
+                let call = Call {
+                    id,
+                    name_span: callee_expr.span,
+                    span,
+                    types: (!types.is_empty()).then_some(written),
+                };
+                self.call_name(*symbol, &call, args, expected)
             }
             ExprKind::Field { base, name } => {
-                if let Some(ty) = self.enum_variant(*base, name, Some(args), span) {
+                if let Some(ty) = self.enum_variant(*base, name, Some(args), span, expected) {
                     return ty;
                 }
                 let receiver = self.infer(*base, None);
@@ -475,11 +501,11 @@ impl Checker<'_> {
     fn call_name(
         &mut self,
         symbol: Symbol,
-        name_span: Span,
+        call: &Call,
         args: &[ExprId],
-        span: Span,
         expected: Option<&Ty>,
     ) -> Ty {
+        let (name_span, span) = (call.name_span, call.span);
         let Some(index) = self.scopes.lookup(symbol) else {
             self.read_name(symbol, name_span);
             self.check_args(args, &[]);
@@ -494,25 +520,10 @@ impl Checker<'_> {
         };
         let name = self.name(symbol);
         match kind {
-            Kind::Fn(id) => {
-                let (params, ret, declared) = match self.fns.get(id.0) {
-                    Some(sig) => (sig.params.clone(), sig.ret.clone(), Some(sig.name_span)),
-                    None => return Ty::Error,
-                };
-                self.arity(span, name, params.len(), args.len(), declared);
-                self.check_args(args, &params);
-                ret
-            }
+            Kind::Fn(id) => self.call_fn(id, name, call, args, expected),
             Kind::Struct(id) => {
-                let fields: Vec<Ty> = self
-                    .structs
-                    .get(id.0)
-                    .map(|s| s.fields.iter().map(|(_, t)| t.clone()).collect())
-                    .unwrap_or_default();
                 let declared = self.scopes.bindings.get(index).and_then(|b| b.span);
-                self.arity(span, name, fields.len(), args.len(), declared);
-                self.check_args(args, &fields);
-                Ty::Struct(id, name.to_owned())
+                self.construct(id, name, declared, call, args, expected)
             }
             Kind::Some => {
                 self.arity(span, name, 1, args.len(), None);
@@ -573,6 +584,106 @@ impl Checker<'_> {
         }
     }
 
+    /// A call to a function of the module, generic or not.
+    fn call_fn(
+        &mut self,
+        id: crate::ty::FnId,
+        name: &str,
+        call: &Call,
+        args: &[ExprId],
+        expected: Option<&Ty>,
+    ) -> Ty {
+        let (params, ret, declared, generics) = match self.fns.get(id.0) {
+            Some(sig) => (
+                sig.params.clone(),
+                sig.ret.clone(),
+                Some(sig.name_span),
+                sig.generics.clone(),
+            ),
+            None => return Ty::Error,
+        };
+        self.arity(call.span, name, params.len(), args.len(), declared);
+        if !self.type_argument_count(call, name, generics.len()) {
+            self.check_args(args, &[]);
+            return Ty::Error;
+        }
+        if generics.is_empty() {
+            self.check_args(args, &params);
+            return ret;
+        }
+        let use_ = GenericUse {
+            name,
+            span: call.span,
+            generics: &generics,
+            params: &params,
+            ret: &ret,
+        };
+        let (types, ret) = self.infer_generic(&use_, call.types.as_deref(), args, expected);
+        self.calls.insert(call.id, (id, types));
+        ret
+    }
+
+    /// A structure built from its fields: `Point(1.0, 2.0)`, or `Pair(1, "a")`,
+    /// whose type arguments come from the fields.
+    fn construct(
+        &mut self,
+        id: crate::ty::StructId,
+        name: &str,
+        declared: Option<Span>,
+        call: &Call,
+        args: &[ExprId],
+        expected: Option<&Ty>,
+    ) -> Ty {
+        let (fields, generics): (Vec<Ty>, _) = self
+            .structs
+            .get(id.0)
+            .map(|s| {
+                (
+                    s.fields.iter().map(|(_, t)| t.clone()).collect(),
+                    s.generics.clone(),
+                )
+            })
+            .unwrap_or_default();
+        self.arity(call.span, name, fields.len(), args.len(), declared);
+        if !self.type_argument_count(call, name, generics.len()) {
+            self.check_args(args, &[]);
+            return Ty::Error;
+        }
+        if generics.is_empty() {
+            self.check_args(args, &fields);
+            return Ty::Struct(id, name.to_owned());
+        }
+        let own = Self::identity(&generics);
+        let ret = self.struct_instance(id, own);
+        let use_ = GenericUse {
+            name,
+            span: call.span,
+            generics: &generics,
+            params: &fields,
+            ret: &ret,
+        };
+        self.infer_generic(&use_, call.types.as_deref(), args, expected)
+            .1
+    }
+
+    /// `E0216` when the type arguments written are not as many as the type
+    /// parameters; whether they are.
+    fn type_argument_count(&mut self, call: &Call, name: &str, expected: usize) -> bool {
+        let Some(types) = &call.types else {
+            return true;
+        };
+        if types.len() == expected {
+            return true;
+        }
+        self.report(errors::type_argument_count(
+            call.span,
+            name,
+            expected,
+            types.len(),
+        ));
+        false
+    }
+
     /// `E0214` when the number of arguments is wrong.
     fn arity(
         &mut self,
@@ -614,7 +725,22 @@ impl Checker<'_> {
             return Ty::Error;
         }
         let text = self.name(name);
-        let Some(method) = builtins::method(receiver, text) else {
+        // A `Numeric` parameter converts to any number, as numbers do.
+        let as_number = if self.satisfies_param(receiver, Bound::Numeric) {
+            &Ty::Float(crate::ty::FloatTy::F64)
+        } else {
+            receiver
+        };
+        let method = builtins::method(as_number, text)
+            .filter(|_| as_number == receiver || builtins::is_conversion(text));
+        // A conversion on a parameter that may not be a number.
+        if method.is_none() && matches!(receiver, Ty::Param(..)) && builtins::is_conversion(text) {
+            let op = format!(".{text}()");
+            self.invalid_operator(name_span, &op, receiver, Bound::Numeric);
+            self.check_args(args, &[]);
+            return Ty::Error;
+        }
+        let Some(method) = method else {
             self.unknown_member(receiver, text, name_span);
             self.check_args(args, &[]);
             return Ty::Error;
@@ -656,6 +782,60 @@ impl Checker<'_> {
             member,
             suggestion.as_deref(),
         ));
+    }
+}
+
+/// A call by name: the expression, the name, the whole call.
+struct Call {
+    id: ExprId,
+    name_span: Span,
+    span: Span,
+    /// The type arguments written, when they are.
+    types: Option<Vec<Ty>>,
+}
+
+/// The constraint a type parameter needs for `op`.
+const fn needed_bound(op: BinaryOp) -> Bound {
+    match op {
+        BinaryOp::Eq | BinaryOp::Ne => Bound::Eq,
+        BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => Bound::Ord,
+        BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor | BinaryOp::Shl | BinaryOp::Shr => {
+            Bound::Integer
+        }
+        _ => Bound::Numeric,
+    }
+}
+
+impl Checker<'_> {
+    /// Whether one operand of this type can ever be valid for `op`: for a
+    /// type parameter, whether its constraints allow it.
+    fn operand_allowed(&self, op: BinaryOp, ty: &Ty) -> bool {
+        match ty {
+            Ty::Param(..) if matches!(op, BinaryOp::And | BinaryOp::Or) => false,
+            // `+` joins strings too, but a parameter that is `Numeric` is not one.
+            Ty::Param(..) => self.satisfies(ty, needed_bound(op)),
+            _ => operand_allowed(op, ty),
+        }
+    }
+
+    /// `E0221`, or `E0228` with the constraint to add when the operand is a
+    /// type parameter.
+    pub(crate) fn invalid_operator(&mut self, span: Span, op: &str, ty: &Ty, bound: Bound) {
+        if let Ty::Param(i, name) = ty
+            && let Some(param) = self.param_of(*i)
+        {
+            let d = errors::missing_constraint(
+                span,
+                op,
+                name,
+                bound.name(),
+                param.insert_at,
+                !param.bounds.is_empty(),
+            );
+            self.report(d);
+            return;
+        }
+        self.report(errors::invalid_operator(span, op, ty));
     }
 }
 

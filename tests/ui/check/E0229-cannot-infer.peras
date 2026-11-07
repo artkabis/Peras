@@ -1,0 +1,26 @@
+// E0229: a type argument that neither the arguments nor the expected type
+// determine.
+fn empty<T>(): Array<T> {
+  return [];
+}
+
+fn none<T>(): Option<T> {
+  return None;
+}
+
+export fn count(): i32 {
+  const xs = empty();
+  return xs.length;
+}
+
+export fn nothing(): bool {
+  return none().isSome();
+}
+
+// Allowed: the type expected, or written.
+export fn fine(): i32 {
+  const xs: Array<i32> = empty();
+  const n = empty<f64>();
+  const o: Option<String> = none();
+  return xs.length + n.length + o.unwrapOr("").length;
+}

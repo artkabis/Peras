@@ -456,7 +456,9 @@ impl Lowering<'_> {
 
     /// The columns of an array expression, or `E0900` if they are not compiled.
     fn columns_of(&mut self, id: ExprId, span: Span) -> Option<Vec<Elem>> {
-        let columns = self.columns(self.check_type(id)).filter(|c| !c.is_empty());
+        let columns = self
+            .columns(self.check_type(id).as_ref())
+            .filter(|c| !c.is_empty());
         if columns.is_none() {
             self.unsupported(span, "array-element");
         }
@@ -589,7 +591,7 @@ impl Lowering<'_> {
         // Which columns the place covers.
         let (mut offset, mut count) = (0, columns.len());
         for (owner, name) in fields.iter().rev() {
-            let Some(ty) = self.check_type(*owner).cloned() else {
+            let Some(ty) = self.check_type(*owner) else {
                 return;
             };
             let Some((at, len, _)) = self.field(&ty, name) else {
@@ -765,7 +767,7 @@ impl Lowering<'_> {
             return;
         };
         let element = match self.check_type(iterable) {
-            Some(CheckTy::Array(inner)) => (**inner).clone(),
+            Some(CheckTy::Array(inner)) => *inner,
             _ => CheckTy::Int(perasc_check::ty::IntTy::U8),
         };
         let buffers = self.value_as(state, iterable, Mode::Borrow);

@@ -8,6 +8,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- Les **génériques**, sur les fonctions, les structures et les énumérations : `fn larger<T: Ord>(a: T, b: T): T`, `struct Pair<A, B>`, `enum Tree<T>`.
+  - Six contraintes prédéfinies : `Eq`, `Ord`, `Numeric`, `Integer`, `Float` et `Copy`. Un corps générique est vérifié une fois, pour tous les types que ses paramètres peuvent représenter : une opération que ses contraintes ne permettent pas est refusée, avec une correction qui ajoute la contrainte (`E0228`) ; une utilisation avec un type qui n’en respecte pas une est refusée (`E0227`), de même qu’une contrainte inconnue (`E0226`).
+  - Les arguments de type sont inférés des arguments et du type attendu, ou écrits à l’appel, `larger<i64>(a, b)` : les comparaisons enchaînées étant refusées, ce n’est jamais une comparaison. Quand rien ne les détermine, `E0229`.
+  - Une valeur d’un paramètre de type se déplace, sauf si le paramètre est `Copy` ; `Ord` et `Numeric` l’impliquent.
+  - Compilés par monomorphisation : une copie par jeu d’arguments de type utilisé par le module, nommée d’après eux (`larger__i64`), sans coût à l’exécution. Une fonction générique jamais appelée est vérifiée, pas compilée. Une fonction exportée ne peut pas être générique (`E0230`), et le code générique qui demanderait des copies pour des types toujours plus grands est refusé (`E0231`).
+  - Les structures et énumérations génériques arrivent en JavaScript comme des interfaces et des unions nommées d’après leurs arguments, `Pair_i32_String`.
+- `unwrapOr` avec une valeur de secours lue dans une variable contenant une chaîne ou un tableau ne produit plus de code refusé par le vérificateur : la valeur de secours est copiée.
 - Les **structures** se compilent, comme des valeurs : chacune est remplacée par ses champs scalaires, structures imbriquées aplaties, si bien qu’elle ne touche jamais le tas.
   - Un paramètre structure devient un paramètre par champ.
   - Une fonction qui renvoie une structure renvoie un résultat WebAssembly par champ, et un tuple dans le backend Rust.

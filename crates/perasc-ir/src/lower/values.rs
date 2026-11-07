@@ -18,8 +18,8 @@
 
 use std::collections::BTreeSet;
 
-use perasc_check::ty::{FloatTy, IntTy, StructId, Ty as CheckTy};
-use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Type, TypeKind};
+use perasc_check::ty::{IntTy, Ty as CheckTy};
+use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Type};
 
 use super::heap::{self, Mode};
 use super::{FnState, Lowering};
@@ -112,40 +112,14 @@ impl Lowering<'_> {
     /// The checker type of a type written in source, or the feature that is not
     /// compiled yet.
     pub(super) fn resolve(&self, ty: &Type) -> Result<CheckTy, &'static str> {
-        let TypeKind::Named { name, args } = &ty.kind else {
-            return Err("struct");
-        };
-        let text = self.ast.name(name.symbol);
-        if let Some(index) = self.analysis.structs.iter().position(|(n, _)| n == text) {
-            return Ok(CheckTy::Struct(StructId(index), text.to_owned()));
-        }
-        if let Some(index) = self.analysis.enums.iter().position(|(n, _)| n == text) {
-            return Ok(CheckTy::Enum(
-                perasc_check::ty::EnumId(index),
-                text.to_owned(),
-            ));
-        }
-        match (text, args.as_slice()) {
-            ("Option", [inner]) => return Ok(CheckTy::Option(Box::new(self.resolve(inner)?))),
-            ("Array", [inner]) => return Ok(CheckTy::Array(Box::new(self.resolve(inner)?))),
-            ("Result", [ok, err]) => {
-                return Ok(CheckTy::Result(
-                    Box::new(self.resolve(ok)?),
-                    Box::new(self.resolve(err)?),
-                ));
-            }
-            _ => {}
-        }
-        Ok(match (text, args.is_empty()) {
-            ("i32", true) => CheckTy::Int(IntTy::I32),
-            ("i64", true) => CheckTy::Int(IntTy::I64),
-            ("f32", true) => CheckTy::Float(FloatTy::F32),
-            ("f64", true) => CheckTy::Float(FloatTy::F64),
-            ("bool", true) => CheckTy::Bool,
-            ("String", true) => CheckTy::String,
-            ("void", true) => CheckTy::Void,
-            _ => return Err(super::feature_of_type(text)),
-        })
+        let written = self
+            .analysis
+            .written
+            .get(&(ty.span.start, ty.span.end))
+            .ok_or("struct")?;
+        let resolved = self.analysis.subst(written, &self.args);
+        compiled(&resolved)?;
+        Ok(resolved)
     }
 
     /// How JavaScript sees a value of this type, as a result.
@@ -168,7 +142,7 @@ impl Lowering<'_> {
                             .collect()
                     })
                     .unwrap_or_default();
-                Shape::Object(name.clone(), fields)
+                Shape::Object(super::identifier(name), fields)
             }
             CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
             CheckTy::Result(ok, err) => Shape::Enum(
@@ -179,7 +153,7 @@ impl Lowering<'_> {
                 ],
             ),
             CheckTy::Enum(id, name) => Shape::Enum(
-                name.clone(),
+                super::identifier(name),
                 self.analysis
                     .enums
                     .get(id.0)
@@ -223,13 +197,16 @@ impl Lowering<'_> {
     }
 
     /// The type the checker gave an expression.
-    pub(super) fn check_type(&self, id: ExprId) -> Option<&CheckTy> {
-        self.analysis.types.get(&id)
+    pub(super) fn check_type(&self, id: ExprId) -> Option<CheckTy> {
+        self.analysis
+            .types
+            .get(&id)
+            .map(|t| self.analysis.subst(t, &self.args))
     }
 
     /// Whether the checker typed an expression as a structure or an option.
     pub(super) fn is_aggregate(&self, id: ExprId) -> bool {
-        self.check_type(id).is_some_and(is_aggregate)
+        self.check_type(id).as_ref().is_some_and(is_aggregate)
     }
 
     /// The scalars of any expression, taken by a new owner: one for a scalar,
@@ -273,7 +250,7 @@ impl Lowering<'_> {
                     Vec::new()
                 }
             }
-            AstExpr::Call { callee, args } => self.call_values(state, id, *callee, args, mode),
+            AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
             AstExpr::Binary {
@@ -299,7 +276,7 @@ impl Lowering<'_> {
             AstExpr::Field { base, name } => {
                 // A field is read from its structure, which keeps it.
                 let fields = self.value_as(state, *base, Mode::Borrow);
-                let base_ty = self.check_type(*base).cloned();
+                let base_ty = self.check_type(*base);
                 let picked = base_ty.and_then(|t| self.field(&t, self.ast.name(name.symbol)));
                 match picked {
                     Some((offset, len, _)) => Self::pick(state, fields, offset, len),
@@ -326,7 +303,7 @@ impl Lowering<'_> {
         let span = self.ast.expr(id).span;
         match self.ast.expr(callee).kind {
             AstExpr::Name(symbol) => {
-                let function = self.fns.get(&symbol).copied();
+                let function = self.callee(id, symbol);
                 let back = function
                     .map(|f| self.writeback_places(state, f, args))
                     .unwrap_or_default();
@@ -338,7 +315,7 @@ impl Lowering<'_> {
                     out.extend(args);
                     out
                 } else if let (name @ ("Ok" | "Err"), Some(CheckTy::Result(ok, err))) =
-                    (self.ast.name(symbol), self.check_type(id).cloned())
+                    (self.ast.name(symbol), self.check_type(id))
                 {
                     // The tag, then `Ok`'s data, then `Err`'s.
                     let is_ok = name == "Ok";
@@ -377,7 +354,7 @@ impl Lowering<'_> {
     /// `None`, of the type the checker gave it: `false`, then zeros.
     fn none(&self, id: ExprId) -> Vec<Expr> {
         self.check_type(id)
-            .map(|t| self.zero_value(t))
+            .map(|t| self.zero_value(&t))
             .unwrap_or_default()
     }
 
@@ -483,7 +460,7 @@ impl Lowering<'_> {
         // is 0.
         let fields = match self.check_type(base) {
             Some(CheckTy::Result(ok, _)) => {
-                let ok_width = self.leaves(ok).map_or(0, |l| l.len());
+                let ok_width = self.leaves(&ok).map_or(0, |l| l.len());
                 let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
                 let tag = fields.first().cloned().unwrap_or_else(|| bool_const(false));
                 let mut view = vec![super::binary(
@@ -541,6 +518,15 @@ impl Lowering<'_> {
         let mut out = Vec::new();
         let mut then = Vec::new();
         for (value, fallback) in payload.iter().zip(fallback) {
+            // A fallback read from a variable that keeps it: a copy.
+            let fallback = if fallback.ty == Ty::Borrowed {
+                Expr {
+                    kind: ExprKind::Buf(crate::BufOp::Clone, vec![fallback]),
+                    ty: Ty::Owned,
+                }
+            } else {
+                fallback
+            };
             if fallback.ty == Ty::Owned {
                 // A buffer: the fallback, or a copy of the one inside.
                 let temp = state.owned_temp(fallback);
@@ -599,7 +585,7 @@ impl Lowering<'_> {
                 }
             })
             .collect();
-        if let Some(CheckTy::Result(ok, _)) = self.check_type(inner).cloned() {
+        if let Some(CheckTy::Result(ok, _)) = self.check_type(inner) {
             return self.try_result(state, &ret, &ok, &fields);
         }
         let Some((some, payload)) = fields.split_first() else {
@@ -1018,5 +1004,23 @@ fn reads(e: &Expr, local: LocalId) -> bool {
         | ExprKind::Alloc(x) => reads(x, local),
         ExprKind::Binary(_, a, b) => reads(a, local) || reads(b, local),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().any(|a| reads(a, local)),
+    }
+}
+
+/// Whether the backends compile values of this type; the feature to report
+/// when they do not.
+fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
+    match ty {
+        CheckTy::Int(IntTy::I32 | IntTy::I64)
+        | CheckTy::Float(_)
+        | CheckTy::Bool
+        | CheckTy::String
+        | CheckTy::Void
+        | CheckTy::Struct(..)
+        | CheckTy::Enum(..) => Ok(()),
+        CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
+        CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
+        CheckTy::Int(_) => Err("integer-type"),
+        _ => Err("struct"),
     }
 }

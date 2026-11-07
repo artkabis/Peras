@@ -164,6 +164,9 @@ pub enum Ty {
     Enum(EnumId, String),
     /// A function used as a value, with its name for messages.
     Fn(FnId, String),
+    /// A type parameter of the function, structure or enumeration being
+    /// checked: its index among them, and its name.
+    Param(u32, String),
     /// A type already reported as wrong: compatible with everything, so one
     /// mistake gives one error.
     Error,
@@ -225,9 +228,78 @@ impl fmt::Display for Ty {
             Self::Array(t) => write!(f, "Array<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
-            Self::Struct(_, name) | Self::Enum(_, name) => f.write_str(name),
+            Self::Struct(_, name) | Self::Enum(_, name) | Self::Param(_, name) => f.write_str(name),
             Self::Fn(_, name) => write!(f, "fn {name}"),
             Self::Error => f.write_str("?"),
+        }
+    }
+}
+
+/// A constraint on a type parameter: what its types can do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Bound {
+    /// `==` and `!=`.
+    Eq,
+    /// `<`, `<=`, `>`, `>=`, and `==`.
+    Ord,
+    /// Arithmetic, comparisons and conversions: integers and floats.
+    Numeric,
+    /// What numbers do, and bitwise operators: integers only.
+    Integer,
+    /// What numbers do, and negation: floats only.
+    Float,
+    /// Copied instead of moved: no heap value inside.
+    Copy,
+}
+
+impl Bound {
+    /// Every constraint, for name lookup and suggestions.
+    pub const ALL: [Self; 6] = [
+        Self::Eq,
+        Self::Ord,
+        Self::Numeric,
+        Self::Integer,
+        Self::Float,
+        Self::Copy,
+    ];
+
+    /// Its name in source.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Eq => "Eq",
+            Self::Ord => "Ord",
+            Self::Numeric => "Numeric",
+            Self::Integer => "Integer",
+            Self::Float => "Float",
+            Self::Copy => "Copy",
+        }
+    }
+
+    /// The constraint of this name.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|b| b.name() == name)
+    }
+
+    /// Whether a type meeting this constraint meets `other` too: a number is
+    /// ordered, an ordered type can be compared for equality.
+    #[must_use]
+    pub const fn implies(self, other: Self) -> bool {
+        match self {
+            Self::Eq => matches!(other, Self::Eq),
+            Self::Copy => matches!(other, Self::Copy),
+            // Only numbers are ordered, and they are copied.
+            Self::Ord => matches!(other, Self::Ord | Self::Eq | Self::Copy),
+            Self::Numeric => matches!(other, Self::Numeric | Self::Ord | Self::Eq | Self::Copy),
+            Self::Integer => matches!(
+                other,
+                Self::Integer | Self::Numeric | Self::Ord | Self::Eq | Self::Copy
+            ),
+            Self::Float => matches!(
+                other,
+                Self::Float | Self::Numeric | Self::Ord | Self::Eq | Self::Copy
+            ),
         }
     }
 }

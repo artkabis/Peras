@@ -22,6 +22,7 @@ impl Checker<'_> {
         name: &Ident,
         args: Option<&[ExprId]>,
         span: Span,
+        expected: Option<&Ty>,
     ) -> Option<Ty> {
         let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
             return None;
@@ -34,6 +35,14 @@ impl Checker<'_> {
         binding.used = true;
         self.resolved.insert(base, index);
         let ty = Ty::Enum(id, binding.name.clone());
+        let generics = self
+            .enums
+            .get(id.0)
+            .map(|e| e.generics.clone())
+            .unwrap_or_default();
+        if !generics.is_empty() {
+            return Some(self.generic_variant(id, &generics, name, args, span, expected));
+        }
         let variants = self.variants_of(&ty).unwrap_or_default();
         let text = self.name(name.symbol).to_owned();
         let Some((_, fields)) = variants.iter().find(|(v, _)| *v == text) else {
@@ -62,6 +71,48 @@ impl Checker<'_> {
             }
         }
         Some(ty)
+    }
+
+    /// A variant of a generic enumeration: its type arguments inferred from
+    /// its data and the type expected, as for a call.
+    fn generic_variant(
+        &mut self,
+        id: crate::ty::EnumId,
+        generics: &[crate::generics::GenericParam],
+        name: &Ident,
+        args: Option<&[ExprId]>,
+        span: Span,
+        expected: Option<&Ty>,
+    ) -> Ty {
+        let own = Self::identity(generics);
+        let template = self.enum_instance(id, own);
+        let text = self.name(name.symbol).to_owned();
+        let variants = self.variants_of(&template).unwrap_or_default();
+        let Some((_, fields)) = variants.iter().find(|(v, _)| *v == text) else {
+            self.unknown_variant(&template, &text, name.span);
+            for &arg in args.unwrap_or(&[]) {
+                self.infer(arg, None);
+            }
+            return Ty::Error;
+        };
+        let args = args.unwrap_or(&[]);
+        if args.len() != fields.len() {
+            self.report(errors::argument_count(
+                span,
+                &text,
+                fields.len(),
+                args.len(),
+                None,
+            ));
+        }
+        let use_ = crate::generics::GenericUse {
+            name: &text,
+            span,
+            generics,
+            params: fields,
+            ret: &template,
+        };
+        self.infer_generic(&use_, None, args, expected).1
     }
 
     /// `E0223`, with the closest variant name.
@@ -273,7 +324,11 @@ impl Checker<'_> {
                 };
                 if let Some(qualifier) = qualifier {
                     let written = self.name(qualifier.symbol);
-                    if written != ty.to_string() {
+                    // `Tree.Leaf` matches a `Tree<i32>`: the qualifier names the
+                    // generic enumeration, without its arguments.
+                    let shown = ty.to_string();
+                    let base = shown.split('<').next().unwrap_or_default();
+                    if written != base {
                         let found = Ty::Struct(crate::ty::StructId(usize::MAX), written.to_owned());
                         self.report(errors::mismatch(qualifier.span, ty, &found, None));
                     }

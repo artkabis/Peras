@@ -135,6 +135,8 @@ pub struct EnumDecl {
     pub exported: bool,
     /// The enumeration name.
     pub name: Ident,
+    /// Its type parameters, `<T>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
     /// Its variants, in order.
     pub variants: Vec<Variant>,
 }
@@ -205,6 +207,8 @@ pub struct StructDecl {
     pub exported: bool,
     /// The structure name.
     pub name: Ident,
+    /// Its type parameters, `<A, B>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
     /// Fields, in order.
     pub fields: Vec<Field>,
 }
@@ -229,6 +233,8 @@ pub struct FnDecl {
     pub is_async: bool,
     /// The function name.
     pub name: Ident,
+    /// Its type parameters, `<T: Ord>`; empty when it has none.
+    pub generics: Vec<TypeParam>,
     /// Parameters, in order.
     pub params: Vec<Param>,
     /// From `(` to `)`: a missing return type is inserted after it.
@@ -237,6 +243,15 @@ pub struct FnDecl {
     pub ret: Option<Type>,
     /// The body.
     pub body: Block,
+}
+
+/// A type parameter: `T`, or `T: Ord + Copy` with its constraints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    /// Its name.
+    pub name: Ident,
+    /// The constraints its types must meet, in order.
+    pub bounds: Vec<Ident>,
 }
 
 /// How an argument is passed.
@@ -466,6 +481,8 @@ pub enum ExprKind {
     Call {
         /// What is called.
         callee: ExprId,
+        /// Type arguments written, `larger<i64>(…)`; usually inferred.
+        types: Vec<Type>,
         /// Arguments, in order.
         args: Vec<ExprId>,
     },
@@ -884,7 +901,7 @@ impl Ast {
                     self.sexpr(*rhs)
                 )
             }
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call { callee, args, .. } => {
                 let mut s = format!("(call {}", self.sexpr(*callee));
                 for arg in args {
                     let _ = write!(s, " {}", self.sexpr(*arg));

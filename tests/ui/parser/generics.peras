@@ -1,0 +1,24 @@
+// Generics: type parameters with constraints, generic structures and
+// enumerations, and type arguments written at a call.
+struct Pair<A, B> {
+  first: A;
+  second: B;
+}
+
+enum Tree<T: Copy> {
+  Leaf(T),
+  Node(T, T),
+}
+
+fn larger<T: Ord + Copy>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+export fn run(a: i32, b: i32): bool {
+  const big = larger<i64>(a.toI64(), b.toI64());
+  const nested: Array<Array<i32>> = [];
+  return big < 3 && a < b && b > (a) && nested.length == 0;
+}

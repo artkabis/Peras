@@ -14,7 +14,7 @@ use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
     Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, Item, ItemKind, Local, Param,
-    Stmt, StmtKind, StructDecl, Type, TypeKind, Variant,
+    Stmt, StmtKind, StructDecl, Type, TypeKind, TypeParam, Variant,
 };
 use crate::lexer::lex;
 use crate::token::{Token, TokenKind};
@@ -64,6 +64,8 @@ enum NameOf {
     Struct,
     Enum,
     Variant,
+    TypeParameter,
+    Constraint,
 }
 
 impl NameOf {
@@ -77,6 +79,8 @@ impl NameOf {
             Self::Struct => "struct",
             Self::Enum => "enum",
             Self::Variant => "variant",
+            Self::TypeParameter => "type-parameter",
+            Self::Constraint => "constraint",
         }
     }
 }
@@ -517,6 +521,7 @@ impl<'src> Parser<'src> {
         }
         self.bump(); // `fn`, or `function` already reported.
         let name = self.ident(NameOf::Function)?;
+        let generics = self.generics();
         let params_start = self.peek().span.start;
         let params = self.params()?;
         let params_span = self.since(params_start);
@@ -531,6 +536,7 @@ impl<'src> Parser<'src> {
                 exported,
                 is_async,
                 name,
+                generics,
                 params,
                 params_span,
                 ret,
@@ -590,10 +596,40 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// `<T, U: Ord + Copy>` after the name of a function, a structure or an
+    /// enumeration; nothing when there is no `<`.
+    fn generics(&mut self) -> Vec<TypeParam> {
+        let mut out = Vec::new();
+        let Some(open) = self.eat(TokenKind::Lt) else {
+            return out;
+        };
+        while !self.at(TokenKind::Gt) && !self.at_eof() {
+            let Some(name) = self.ident(NameOf::TypeParameter) else {
+                break;
+            };
+            let mut bounds = Vec::new();
+            if self.eat(TokenKind::Colon).is_some() {
+                while let Some(bound) = self.ident(NameOf::Constraint) {
+                    bounds.push(bound);
+                    if self.eat(TokenKind::Plus).is_none() {
+                        break;
+                    }
+                }
+            }
+            out.push(TypeParam { name, bounds });
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        self.expect_close(open, TokenKind::Gt, ">");
+        out
+    }
+
     /// `struct Name { field: Type; … }`, fields separated by `;` or `,`.
     fn struct_decl(&mut self, exported: bool) -> Option<StructDecl> {
         self.bump(); // `struct`
         let name = self.ident(NameOf::Struct)?;
+        let generics = self.generics();
         let open = self.expect(TokenKind::LBrace, "{")?;
         let mut fields = Vec::new();
         while !self.at(TokenKind::RBrace) && !self.at_eof() {
@@ -627,6 +663,7 @@ impl<'src> Parser<'src> {
         Some(StructDecl {
             exported,
             name,
+            generics,
             fields,
         })
     }
@@ -635,6 +672,7 @@ impl<'src> Parser<'src> {
     fn enum_decl(&mut self, exported: bool) -> Option<EnumDecl> {
         self.bump(); // `enum`
         let name = self.ident(NameOf::Enum)?;
+        let generics = self.generics();
         let open = self.expect(TokenKind::LBrace, "{")?;
         let mut variants = Vec::new();
         while !self.at(TokenKind::RBrace) && !self.at_eof() {
@@ -672,6 +710,7 @@ impl<'src> Parser<'src> {
         Some(EnumDecl {
             exported,
             name,
+            generics,
             variants,
         })
     }

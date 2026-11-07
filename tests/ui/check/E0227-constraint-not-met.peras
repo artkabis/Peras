@@ -1,0 +1,40 @@
+// E0227: a type argument that does not meet a constraint of its parameter.
+fn larger<T: Ord>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+fn halve<T: Float>(x: T): T {
+  return -x;
+}
+
+struct Sorted<T: Ord> {
+  items: Array<T>;
+}
+
+fn duplicate<T: Copy>(x: T): Array<T> {
+  return [x, x];
+}
+
+export fn strings(a: String, b: String): String {
+  return larger(a, b);
+}
+
+export fn integer(): i32 {
+  return halve(4);
+}
+
+export fn written(s: Sorted<String>): i32 {
+  return s.items.length;
+}
+
+export fn heap(xs: Array<i32>): i32 {
+  return duplicate(xs).length;
+}
+
+// Allowed: numbers are ordered, and copied.
+export fn fine(): f64 {
+  return larger(1, 2).toF64() + halve(2.5) + duplicate(1.5).length.toF64();
+}

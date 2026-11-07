@@ -17,7 +17,7 @@ use perasc_check::ty::{FloatTy, IntTy, Ty as CheckTy};
 use perasc_diag::{Diagnostic, Fix, Label, Message, Span, codes};
 use perasc_syntax::ast::{
     AssignOp, Ast, BinaryOp, Convention, ExprId, ExprKind as AstExpr, FnDecl, ItemKind, StepOp,
-    Stmt as AstStmt, StmtKind, Symbol, Type, TypeKind, UnaryOp,
+    Stmt as AstStmt, StmtKind, Symbol, Type, UnaryOp,
 };
 
 use crate::{
@@ -35,45 +35,71 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         ast,
         analysis,
         fns: HashMap::new(),
+        generic: HashMap::new(),
+        instances: HashMap::new(),
+        args: Vec::new(),
         results: HashMap::new(),
         conventions: HashMap::new(),
         data: Vec::new(),
         diagnostics: Vec::new(),
     };
-    let mut index = 0u32;
-    for item in &ast.items {
-        match &item.kind {
-            ItemKind::Fn(decl) => {
-                let id = FnId(index);
-                lowering.fns.insert(decl.name.symbol, id);
-                lowering
-                    .conventions
-                    .insert(id, decl.params.iter().map(|p| p.convention).collect());
-                // Its results, for its callers; a type not compiled yet is
-                // reported once, with the function itself.
-                let mut results: Vec<Ty> = decl
-                    .ret
-                    .as_ref()
-                    .and_then(|t| lowering.resolve(t).ok())
-                    .and_then(|t| lowering.leaves(&t).ok())
-                    .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
-                    .unwrap_or_default();
-                results.extend(lowering.inout_numbers(decl));
-                lowering.results.insert(id, results);
-                index += 1;
-            }
-            // A structure or an enumeration is a type: its uses are lowered
-            // where they appear.
-            ItemKind::Struct(_) | ItemKind::Enum(_) => {}
-            ItemKind::Global(local) => lowering.unsupported(local.name.span, "global"),
-        }
-    }
-    let functions = ast
+    // The functions of the module, in order, then the instances of the
+    // generic ones: what each is, and its type arguments.
+    let decls: Vec<&FnDecl> = ast
         .items
         .iter()
         .filter_map(|item| match &item.kind {
-            ItemKind::Fn(decl) => Some(lowering.function(decl)),
+            ItemKind::Fn(decl) => Some(decl),
             _ => None,
+        })
+        .collect();
+    let mut compiled: Vec<(&FnDecl, Vec<CheckTy>)> = Vec::new();
+    for (index, decl) in decls.iter().enumerate() {
+        let checked = perasc_check::ty::FnId(index);
+        if analysis.is_generic(checked) {
+            lowering.generic.insert(decl.name.symbol, index);
+            continue;
+        }
+        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+        lowering.fns.insert(decl.name.symbol, id);
+        compiled.push((decl, Vec::new()));
+    }
+    for (checked, args) in &analysis.instances {
+        let Some(&decl) = decls.get(checked.0) else {
+            continue;
+        };
+        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+        lowering.instances.insert((checked.0, args.clone()), id);
+        compiled.push((decl, args.clone()));
+    }
+    for (index, (decl, args)) in compiled.iter().enumerate() {
+        let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
+        lowering.args.clone_from(args);
+        lowering
+            .conventions
+            .insert(id, decl.params.iter().map(|p| p.convention).collect());
+        // Its results, for its callers; a type not compiled yet is
+        // reported once, with the function itself.
+        let mut results: Vec<Ty> = decl
+            .ret
+            .as_ref()
+            .and_then(|t| lowering.resolve(t).ok())
+            .and_then(|t| lowering.leaves(&t).ok())
+            .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
+            .unwrap_or_default();
+        results.extend(lowering.inout_numbers(decl));
+        lowering.results.insert(id, results);
+    }
+    for item in &ast.items {
+        if let ItemKind::Global(local) = &item.kind {
+            lowering.unsupported(local.name.span, "global");
+        }
+    }
+    let functions = compiled
+        .iter()
+        .map(|(decl, args)| {
+            lowering.args.clone_from(args);
+            lowering.function(decl)
         })
         .collect();
     if lowering.diagnostics.is_empty() {
@@ -91,7 +117,15 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
 struct Lowering<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
+    /// The functions that are not generic, by name.
     fns: HashMap<Symbol, FnId>,
+    /// The generic functions, by name: their index in the checker's table.
+    generic: HashMap<Symbol, usize>,
+    /// The instance compiled for each generic function and type arguments.
+    instances: HashMap<(usize, Vec<CheckTy>), FnId>,
+    /// The type arguments of the function being lowered: empty unless it is
+    /// an instance of a generic one.
+    args: Vec<CheckTy>,
     /// The scalar results of each function: several for a structure.
     results: HashMap<FnId, Vec<Ty>>,
     /// How each function takes its parameters.
@@ -259,21 +293,11 @@ impl Lowering<'_> {
 
     /// The IR type of a type written in source.
     fn written_type(&mut self, ty: &Type) -> Ty {
-        let TypeKind::Named { name, args } = &ty.kind else {
-            return Ty::Void;
-        };
-        let text = self.ast.name(name.symbol);
-        let found = match (text, args.is_empty()) {
-            ("i32", true) => Some(Ty::I32),
-            ("i64", true) => Some(Ty::I64),
-            ("f32", true) => Some(Ty::F32),
-            ("f64", true) => Some(Ty::F64),
-            ("bool", true) => Some(Ty::Bool),
-            ("void", true) => Some(Ty::Void),
-            _ => None,
-        };
-        found.unwrap_or_else(|| {
-            self.unsupported(ty.span, feature_of_type(text));
+        let found = self
+            .resolve(ty)
+            .and_then(|t| Self::ir_type(&t).ok_or_else(|| feature_of_check_type(&t)));
+        found.unwrap_or_else(|feature| {
+            self.unsupported(ty.span, feature);
             Ty::Void
         })
     }
@@ -281,13 +305,34 @@ impl Lowering<'_> {
     /// The type the checker gave an expression.
     fn type_of(&mut self, id: ExprId) -> Ty {
         let span = self.ast.expr(id).span;
-        match self.analysis.types.get(&id) {
-            Some(ty) => Self::ir_type(ty).unwrap_or_else(|| {
-                self.unsupported(span, feature_of_check_type(ty));
+        match self.check_type(id) {
+            Some(ty) => Self::ir_type(&ty).unwrap_or_else(|| {
+                self.unsupported(span, feature_of_check_type(&ty));
                 Ty::Void
             }),
             None => Ty::Void,
         }
+    }
+
+    /// `E0900` for a name that is not a local: a function used as a value,
+    /// or a module-level constant.
+    fn not_a_local(&mut self, symbol: Symbol, span: Span) {
+        let function = self.fns.contains_key(&symbol) || self.generic.contains_key(&symbol);
+        let feature = if function { "function-value" } else { "global" };
+        self.unsupported(span, feature);
+    }
+
+    /// The function a call by name reaches: the function itself, or the
+    /// instance of a generic one for the type arguments of this call.
+    fn callee(&self, call: ExprId, symbol: Symbol) -> Option<FnId> {
+        if let Some((checked, args)) = self.analysis.calls.get(&call) {
+            let args: Vec<CheckTy> = args
+                .iter()
+                .map(|t| self.analysis.subst(t, &self.args))
+                .collect();
+            return self.instances.get(&(checked.0, args)).copied();
+        }
+        self.fns.get(&symbol).copied()
     }
 
     /// A parameter: its locals, how JavaScript passes it, and whether its
@@ -419,7 +464,7 @@ impl Lowering<'_> {
             writeback,
         });
         Function {
-            name: self.ast.name(decl.name.symbol).to_owned(),
+            name: self.function_name(decl),
             exported: decl.exported,
             param_count,
             locals: state.locals,
@@ -428,6 +473,21 @@ impl Lowering<'_> {
             shape,
             body,
         }
+    }
+
+    /// The name of the function being lowered: an instance of a generic
+    /// function is named after its type arguments, `larger__i64`.
+    fn function_name(&self, decl: &FnDecl) -> String {
+        let name = self.ast.name(decl.name.symbol);
+        if self.args.is_empty() {
+            return name.to_owned();
+        }
+        let args: Vec<String> = self
+            .args
+            .iter()
+            .map(|t| identifier(&t.to_string()))
+            .collect();
+        format!("{name}__{}", args.join("_"))
     }
 
     /// The checker type of a type written in source; what is not compiled yet
@@ -651,7 +711,7 @@ impl Lowering<'_> {
         let name = self.ast.name(local.name.symbol);
         let ty = match (&local.ty, local.init) {
             (Some(t), _) => self.typed(t),
-            (None, Some(init)) => self.check_type(init).cloned(),
+            (None, Some(init)) => self.check_type(init),
             (None, None) => None,
         };
         if let Some(ty) = ty.filter(values::is_aggregate) {
@@ -761,7 +821,7 @@ impl Lowering<'_> {
             AstExpr::Paren(inner) => self.place(state, *inner),
             AstExpr::Field { base, name } => {
                 let locals = self.place(state, *base)?;
-                let base_ty = self.check_type(*base).cloned()?;
+                let base_ty = self.check_type(*base)?;
                 let (offset, len, _) = self.field(&base_ty, self.ast.name(name.symbol))?;
                 Some(locals.into_iter().skip(offset).take(len).collect())
             }
@@ -788,13 +848,7 @@ impl Lowering<'_> {
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => {
                 let Some(Binding::Scalar(local)) = state.lookup(*symbol) else {
-                    // Not a local: a function used as a value, or a module-level constant.
-                    let feature = if self.fns.contains_key(symbol) {
-                        "function-value"
-                    } else {
-                        "global"
-                    };
-                    self.unsupported(span, feature);
+                    self.not_a_local(*symbol, span);
                     return zero(ty);
                 };
                 ExprKind::Local(local)
@@ -836,7 +890,9 @@ impl Lowering<'_> {
                 }
                 ExprKind::Binary(bin_op(*op), Box::new(lhs), Box::new(rhs))
             }
-            AstExpr::Call { callee, args } => return self.call(state, *callee, args, ty, span),
+            AstExpr::Call { callee, args, .. } => {
+                return self.call(state, id, *callee, args, ty, span);
+            }
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Field { base, .. } if self.is_buffer(*base) => {
@@ -847,7 +903,7 @@ impl Lowering<'_> {
                     return self.not_yet(span, "field", ty);
                 }
                 let fields = self.value(state, *base);
-                let base_ty = self.check_type(*base).cloned();
+                let base_ty = self.check_type(*base);
                 let picked = base_ty.and_then(|t| self.field(&t, self.ast.name(name.symbol)));
                 let Some((offset, len, _)) = picked else {
                     return zero(ty);
@@ -923,6 +979,7 @@ impl Lowering<'_> {
     fn call(
         &mut self,
         state: &mut FnState,
+        call: ExprId,
         callee: ExprId,
         args: &[ExprId],
         ty: Ty,
@@ -930,7 +987,7 @@ impl Lowering<'_> {
     ) -> Expr {
         match &self.ast.expr(callee).kind {
             AstExpr::Name(symbol) => {
-                let Some(&id) = self.fns.get(symbol) else {
+                let Some(id) = self.callee(call, *symbol) else {
                     // A structure constructor or `Some`.
                     let feature = if self.ast.name(*symbol) == "Some" {
                         "option"
@@ -1010,14 +1067,18 @@ impl Lowering<'_> {
 }
 
 /// The feature name for a type written in source that is not compiled yet.
-fn feature_of_type(name: &str) -> &'static str {
-    match name {
-        "Array" => "array",
-        "Option" => "option",
-        "String" => "string",
-        "i8" | "i16" | "u8" | "u16" | "u32" | "u64" => "integer-type",
-        _ => "struct",
+/// A name made of letters, digits and `_`: `Pair<i32, f64>` gives
+/// `Pair_i32_f64`, for the names of instances in the backends.
+pub(crate) fn identifier(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
     }
+    out.trim_end_matches('_').to_owned()
 }
 
 fn feature_of_check_type(ty: &CheckTy) -> &'static str {
