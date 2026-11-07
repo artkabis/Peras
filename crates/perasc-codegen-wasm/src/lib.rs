@@ -14,9 +14,9 @@ use perasc_ir::{
     Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
-    BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function as WasmFunction,
-    FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I, MemArg, MemArgTarget,
-    MemoryType, TypeSection, ValType,
+    BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
+    Function as WasmFunction, FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I,
+    MemArg, MemArgTarget, MemoryType, TypeSection, ValType,
 };
 
 /// The value type of an IR type; `None` for `void`.
@@ -122,14 +122,32 @@ pub fn compile_module(module: &Module) -> Compiled {
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
-        code.function(&FnEncoder::encode(function, offset, &mut sites));
+        code.function(&FnEncoder::encode(
+            function,
+            offset,
+            &mut sites,
+            &module.data,
+        ));
     }
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
     if heap {
         wasm.section(&imports);
     }
-    wasm.section(&functions).section(&exports).section(&code);
+    wasm.section(&functions).section(&exports);
+    // String literals: passive segments, copied into a new buffer when used.
+    let segments = u32::try_from(module.data.len()).unwrap_or(u32::MAX);
+    if segments > 0 {
+        wasm.section(&DataCountSection { count: segments });
+    }
+    wasm.section(&code);
+    if segments > 0 {
+        let mut data = DataSection::new();
+        for bytes in &module.data {
+            data.passive(bytes.iter().copied());
+        }
+        wasm.section(&data);
+    }
     Compiled {
         wasm: wasm.finish(),
         sites,
@@ -169,10 +187,19 @@ struct FnEncoder<'a> {
     temp_len: u32,
     temp_f32: u32,
     temp_f64: u32,
+    /// The buffer a string literal is copied into.
+    temp_buffer: u32,
+    /// The bytes of each literal, for their lengths.
+    data: &'a [Vec<u8>],
 }
 
 impl<'a> FnEncoder<'a> {
-    fn encode(function: &'a Function, offset: u32, sites: &'a mut Vec<String>) -> WasmFunction {
+    fn encode(
+        function: &'a Function,
+        offset: u32,
+        sites: &'a mut Vec<String>,
+        data: &'a [Vec<u8>],
+    ) -> WasmFunction {
         let params = usize::try_from(function.param_count).unwrap_or(0);
         let mut locals: Vec<(u32, ValType)> = function
             .locals
@@ -187,6 +214,7 @@ impl<'a> FnEncoder<'a> {
             ValType::I32,
             ValType::F32,
             ValType::F64,
+            ValType::I32,
         ] {
             locals.push((1, ty));
         }
@@ -203,6 +231,8 @@ impl<'a> FnEncoder<'a> {
             temp_len: count + 2,
             temp_f32: count + 3,
             temp_f64: count + 4,
+            temp_buffer: count + 5,
+            data,
         };
         encoder.stmts(&function.body);
         if function.ret != Ty::Void {
@@ -459,6 +489,31 @@ impl<'a> FnEncoder<'a> {
                 self.element_address(buffer, index, elem);
                 self.emit(&load(elem));
             }
+            (BufOp::Literal(segment), []) => {
+                let len = self
+                    .data
+                    .get(usize::try_from(segment).unwrap_or(usize::MAX))
+                    .map_or(0, Vec::len);
+                let len = i32::try_from(len).unwrap_or(i32::MAX);
+                // h = buf_new(len, 1); memory.init into its bytes; length = len
+                self.emit(&I::I32Const(len));
+                self.emit(&I::I32Const(1));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_NEW));
+                self.emit(&I::LocalTee(self.temp_buffer));
+                self.emit(&I::I32Load(mem(8, 4)));
+                self.emit(&I::I32Const(0));
+                self.emit(&I::I32Const(len));
+                self.emit(&I::MemoryInit {
+                    mem: 0,
+                    data_index: segment,
+                });
+                self.emit(&I::LocalGet(self.temp_buffer));
+                self.emit(&I::I32Const(len));
+                self.emit(&I::I32Store(mem(0, 4)));
+                self.emit(&I::LocalGet(self.temp_buffer));
+            }
             // The verifier refuses any other shape.
             _ => self.emit(&I::Unreachable),
         }
@@ -497,6 +552,39 @@ impl<'a> FnEncoder<'a> {
                 self.expr(buffer);
                 self.expr(&len);
                 self.emit(&I::I32Const(1));
+                self.emit(&I::I32Add);
+                self.emit(&I::I32Store(mem(0, 4)));
+            }
+            (BufStmt::Append(elem), [buffer, other]) => {
+                let width = i32::try_from(elem.size()).unwrap_or(1);
+                let other_len = Expr {
+                    kind: ExprKind::Buf(BufOp::Len, vec![other.clone()]),
+                    ty: Ty::I32,
+                };
+                let len = Expr {
+                    kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
+                    ty: Ty::I32,
+                };
+                // Room first: it may move the elements, of `other` too when
+                // both are the same buffer.
+                self.expr(buffer);
+                self.expr(&other_len);
+                self.emit(&I::I32Const(width));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_RESERVE));
+                self.element_address(buffer, &len, elem);
+                self.expr(other);
+                self.emit(&I::I32Load(mem(8, 4)));
+                self.expr(&other_len);
+                self.scale(elem);
+                self.emit(&I::MemoryCopy {
+                    src_mem: 0,
+                    dst_mem: 0,
+                });
+                self.expr(buffer);
+                self.expr(&len);
+                self.expr(&other_len);
                 self.emit(&I::I32Add);
                 self.emit(&I::I32Store(mem(0, 4)));
             }
@@ -934,6 +1022,16 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             }
             out.args.push(buffer);
         }
+        Shape::String(pass) => {
+            let buffer = format!("$a{}", out.pre.len());
+            out.pre.push(format!("const {buffer} = $toStr({path});"));
+            // JavaScript strings never change: `inout` is not exported (perasc
+            // refuses it), and a `sink` parameter is released by the function.
+            if *pass != Pass::Sink {
+                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+            }
+            out.args.push(buffer);
+        }
         Shape::Value(ty) if optional => {
             let zero = match ty {
                 Ty::I64 => "0n",
@@ -987,6 +1085,15 @@ fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
             };
             *index += 1;
             format!("$take({handle}, \"{}\")", elem_kind(*elem))
+        }
+        Shape::String(_) => {
+            let handle = if many {
+                format!("$r[{index}]")
+            } else {
+                "$r".to_owned()
+            };
+            *index += 1;
+            format!("$takeStr({handle})")
         }
         Shape::Option(inner) => {
             let some = rebuild(&Shape::Value(Ty::Bool), many, index);
@@ -1053,6 +1160,24 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          const out = $fromBuf(h, kind);\n  \
          $runtime.buf_release(h, 0);\n  \
          return out;\n\
+         }};\n\
+         // Strings cross as UTF-8 bytes.\n\
+         const $encoder = new TextEncoder();\n\
+         const $decoder = new TextDecoder(\"utf-8\", {{ fatal: true }});\n\
+         const $toStr = (text) => {{\n  \
+         const bytes = $encoder.encode(text);\n  \
+         const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
+         view.setUint32(h, bytes.length, true);\n  \
+         return h;\n\
+         }};\n\
+         const $takeStr = (h) => {{\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         const n = view.getUint32(h, true);\n  \
+         const text = $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n  \
+         $runtime.buf_release(h, 0);\n  \
+         return text;\n\
          }};\n\
          const $copyBack = (values, h, kind) => {{\n  \
          const out = $fromBuf(h, kind);\n  \
@@ -1190,6 +1315,7 @@ fn ts_shape(shape: &Shape) -> String {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
         Shape::Object(name, _) => name.clone(),
         Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
+        Shape::String(_) => "string".to_owned(),
         Shape::Array(elem, pass) => {
             let item = ts_scalar(elem.ty());
             // An array the function does not change can be read-only.

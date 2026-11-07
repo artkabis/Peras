@@ -1,6 +1,6 @@
 # Tableaux, chaînes et options
 
-Les options et les tableaux sont compilés. Les chaînes font partie du langage et sont entièrement vérifiées, mais pas encore compilées : `perasc check` les accepte, `perasc build` signale [E0900](../errors/E0900.md). Elles viennent ensuite.
+Les options, les tableaux et les chaînes sont compilés. Tableaux et chaînes vivent sur le tas, avec un seul propriétaire chacun : la page [mémoire](memory.md) en donne les règles.
 
 ## `Array<T>`
 
@@ -80,9 +80,9 @@ TypeScript voit `number[]`, `bigint[]` pour `i64` et `boolean[]` pour `bool` ; u
 
 ## `String`
 
-Du texte en UTF-8, écrit entre guillemets doubles avec les échappements habituels (`\n`, `\t`, `\"`, `\\`, `\u{1F600}`) :
+Du texte en UTF-8, écrit entre guillemets doubles avec les échappements habituels (`\n`, `\t`, `\"`, `\\`, `\u{1F600}`). Une chaîne vit sur le tas, comme un tableau, et suit les mêmes règles : un seul propriétaire, déplacée par l’affectation, libérée par le compilateur. <span class="status compiled">compilé</span>
 
-```peras
+```peras build
 export fn greeting(name: String): String {
   return "Hello, " + name;
 }
@@ -90,9 +90,27 @@ export fn greeting(name: String): String {
 export fn is_empty(s: String): bool {
   return s.length == 0;
 }
+
+export fn repeat(s: String, n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    out += s;
+  }
+  return out;
+}
 ```
 
-`+` joint deux chaînes, `==` et `!=` les comparent, `s.length` donne la longueur. Le fait qu’une longueur compte des octets ou des caractères sera fixé quand les chaînes seront compilées.
+| Opération      | Donne                                  |
+| -------------- | -------------------------------------- |
+| `a + b`        | une nouvelle chaîne, `a` puis `b`      |
+| `s += t`       | ajoute `t` à la fin de `s`, sur place  |
+| `a == b`, `!=` | si les deux contiennent le même texte  |
+| `s.length`     | le nombre d’**octets** en UTF-8        |
+| `s.copy()`     | une nouvelle chaîne avec le même texte |
+
+**`length` compte des octets**, comme en Rust et comme la mémoire qu’occupe la chaîne : `"é".length` vaut 2, un emoji 4. La `length` de JavaScript compte plutôt des unités UTF-16 ; les méthodes sur les caractères arrivent avec la [bibliothèque standard](../reference/roadmap.md#phase-3--une-bibliothèque-standard).
+
+Un littéral est stocké une seule fois dans le module, et copié dans un nouveau buffer là où il sert. En JavaScript, une chaîne passe la frontière par copie, encodée et décodée en UTF-8 ; TypeScript voit `string`. Une fonction exportée ne peut pas prendre une chaîne `inout`, puisqu’une chaîne JavaScript ne change jamais.
 
 Les caractères invisibles qui peuvent réordonner ce que vous lisez, l’attaque « Trojan Source », sont refusés dans le code source ([E0007](../errors/E0007.md)).
 

@@ -356,6 +356,16 @@ impl Machine<'_> {
                 Value::Handle(self.allocated)
             }
             (BufOp::New(_), _) => return Err(Trap::BadAlloc),
+            (BufOp::Literal(index), []) => {
+                let bytes = usize::try_from(index)
+                    .ok()
+                    .and_then(|i| self.module.data.get(i))
+                    .ok_or(Trap::Unreachable)?;
+                let elements = bytes.iter().map(|&b| Value::I32(i32::from(b))).collect();
+                self.allocated += 1;
+                self.heap.insert(self.allocated, elements);
+                Value::Handle(self.allocated)
+            }
             (BufOp::Len, [buf]) => {
                 let len = self.elements(*buf)?.len();
                 Value::I32(i32::try_from(len).unwrap_or(i32::MAX))
@@ -378,6 +388,10 @@ impl Machine<'_> {
                 *slot = stored(elem, *value);
             }
             (BufStmt::Push(elem), [buf, value]) => self.elements(*buf)?.push(stored(elem, *value)),
+            (BufStmt::Append(_), [buf, other]) => {
+                let added = self.elements(*other)?.clone();
+                self.elements(*buf)?.extend(added);
+            }
             (BufStmt::Truncate, [buf, Value::I32(len)]) => {
                 let elements = self.elements(*buf)?;
                 let len = usize::try_from(*len).map_err(|_| Trap::Unchecked)?;

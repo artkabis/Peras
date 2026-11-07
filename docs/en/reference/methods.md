@@ -49,10 +49,10 @@ export fn wrapped(a: i32): i32 {
 
 ## `String`
 
-| Member   | Gives                           | Status                                      |
-| -------- | ------------------------------- | ------------------------------------------- |
-| `length` | the length                      | <span class="status checked">checked</span> |
-| `copy()` | a new string with the same text | <span class="status checked">checked</span> |
+| Member   | Gives                           | Status                                        |
+| -------- | ------------------------------- | --------------------------------------------- |
+| `length` | the length                      | <span class="status compiled">compiled</span> |
+| `copy()` | a new string with the same text | <span class="status compiled">compiled</span> |
 
 ## `Option<T>`
 

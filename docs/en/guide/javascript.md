@@ -22,6 +22,7 @@ For `geometry.peras`:
 | a structure         | a plain object, declared as an `interface` |
 | `Option<T>`         | the value, or `undefined`                  |
 | `Array<T>`          | an array, copied in and out                |
+| `String`            | a string, copied as UTF-8                  |
 
 ```peras build
 export struct Rect {

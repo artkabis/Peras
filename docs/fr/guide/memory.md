@@ -2,7 +2,7 @@
 
 En mode possédé, Peras gère la mémoire sans ramasse-miettes et sans que vous écriviez `free` : chaque valeur a un seul propriétaire, et elle est libérée quand la portée de son propriétaire se termine.
 
-> Les nombres, les booléens, les structures qui en contiennent et les options n’ont besoin de rien de tout cela : ils vivent dans les variables locales de WebAssembly, pas sur le tas. Les tableaux vivent sur le tas, et le compilateur leur applique tout ce que décrit cette page. Les chaînes viennent ensuite, avec les mêmes règles.
+> Les nombres, les booléens, les structures qui en contiennent et les options n’ont besoin de rien de tout cela : ils vivent dans les variables locales de WebAssembly, pas sur le tas. Les tableaux et les chaînes vivent sur le tas, et le compilateur leur applique tout ce que décrit cette page.
 
 ## Un propriétaire par valeur
 
@@ -78,11 +78,11 @@ Ici, `xs` est libéré par `total` sur le chemin qui sort par `break`, et dès l
 
 ## Où vivent les valeurs
 
-| Valeur                        | Emplacement                                                   |
-| ----------------------------- | ------------------------------------------------------------- |
-| nombres, `bool`               | les variables locales de WebAssembly : aucune adresse mémoire |
-| structures, options           | leurs champs, comme variables locales                         |
-| `Array` (et bientôt `String`) | le tas, dans la mémoire linéaire du module                    |
+| Valeur              | Emplacement                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| nombres, `bool`     | les variables locales de WebAssembly : aucune adresse mémoire |
+| structures, options | leurs champs, comme variables locales                         |
+| `Array`, `String`   | le tas, dans la mémoire linéaire du module                    |
 
 ## Ce qui vous protège
 

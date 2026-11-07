@@ -59,7 +59,10 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "fn f(_o: Option<Array<i32>>): i32 { return 0; }",
             "heap-option",
         ),
-        ("fn f(): String { return \"a\"; }", "string"),
+        (
+            "export fn f(s: inout String): void { s += \"a\"; }",
+            "inout-string",
+        ),
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
         ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
         (

@@ -1,6 +1,6 @@
 # Arrays, strings and options
 
-Options and arrays are compiled. Strings are part of the language and fully checked, but not compiled yet: `perasc check` accepts them, `perasc build` reports [E0900](../errors/E0900.md). They come next.
+Options, arrays and strings are compiled. Arrays and strings live on the heap, with one owner each: the [memory](memory.md) page has the rules.
 
 ## `Array<T>`
 
@@ -80,9 +80,9 @@ TypeScript sees `number[]`, `bigint[]` for `i64` and `boolean[]` for `bool`; a p
 
 ## `String`
 
-Text, in UTF-8, written between double quotes with the usual escapes (`\n`, `\t`, `\"`, `\\`, `\u{1F600}`):
+Text, in UTF-8, written between double quotes with the usual escapes (`\n`, `\t`, `\"`, `\\`, `\u{1F600}`). A string lives on the heap, like an array, and follows the same rules: one owner, moved by assignment, released by the compiler. <span class="status compiled">compiled</span>
 
-```peras
+```peras build
 export fn greeting(name: String): String {
   return "Hello, " + name;
 }
@@ -90,9 +90,27 @@ export fn greeting(name: String): String {
 export fn is_empty(s: String): bool {
   return s.length == 0;
 }
+
+export fn repeat(s: String, n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    out += s;
+  }
+  return out;
+}
 ```
 
-`+` joins two strings, `==` and `!=` compare them, `s.length` gives the length. Whether a length counts bytes or characters is decided when strings compile.
+| Operation      | Gives                                |
+| -------------- | ------------------------------------ |
+| `a + b`        | a new string, `a` then `b`           |
+| `s += t`       | adds `t` at the end of `s`, in place |
+| `a == b`, `!=` | whether the two hold the same text   |
+| `s.length`     | the number of **bytes** in UTF-8     |
+| `s.copy()`     | a new string with the same text      |
+
+**`length` counts bytes**, as in Rust and in the memory the string occupies: `"é".length` is 2, an emoji 4. JavaScript's `length` counts UTF-16 units instead; methods over characters come with the [standard library](../reference/roadmap.md#phase-3-a-standard-library).
+
+A literal is stored once in the module, and copied into a new buffer where it is used. In JavaScript, a string crosses the boundary as a copy, encoded and decoded as UTF-8; TypeScript sees `string`. An exported function cannot take a string `inout`, since a JavaScript string never changes.
 
 Invisible characters that can reorder what you read, the "Trojan Source" attack, are refused in source code ([E0007](../errors/E0007.md)).
 

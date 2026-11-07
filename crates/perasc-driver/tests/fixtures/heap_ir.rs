@@ -94,6 +94,7 @@ pub fn work() -> Module {
     };
     Module {
         functions: vec![work, peek],
+        data: Vec::new(),
     }
 }
 
@@ -127,5 +128,6 @@ fn one(name: &str, body: Vec<Stmt>) -> Module {
             shape: None,
             body,
         }],
+        data: Vec::new(),
     }
 }

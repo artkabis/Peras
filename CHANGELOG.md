@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **Strings** compile, in UTF-8: literals, `+`, `+=`, `==`, `!=`, `length` in bytes and `copy()`. A literal is stored once, as a passive data segment, and copied into a new buffer with `memory.init`; `+=` appends in place. JavaScript passes and receives strings, encoded and decoded as UTF-8. `==` also compares arrays, element by element.
 - **Arrays** compile, of numbers and booleans, on the heap: literals, `length`, indexing and assignment through an index, `push`, `pop`, `copy`, `for…of`.
   - Every index is checked; one out of bounds stops the program with a `RangeError`, in English or French, before memory is touched.
   - An array is a 12-byte header, which keeps its address, and its elements; `push` doubles the room when it runs out. The debug allocator holds both blocks, so every memory bug stays caught.

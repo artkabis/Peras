@@ -15,7 +15,8 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | structures, imbriquées, en paramètres et en résultats         | <span class="status compiled">compilé</span> |
 | `Option<T>`, `Some`, `None`, `?`                              | <span class="status compiled">compilé</span> |
 | `Array<T>` de nombres et de booléens                          | <span class="status compiled">compilé</span> |
-| `Array<T>` d’autres types, `String`                           | <span class="status checked">vérifié</span>  |
+| `String`, en UTF-8                                            | <span class="status compiled">compilé</span> |
+| `Array<T>` d’autres types                                     | <span class="status checked">vérifié</span>  |
 | `Result<T, E>`, énumérations et unions, `match`               | <span class="status planned">prévu</span>    |
 | génériques, interfaces et traits, méthodes sur les structures | <span class="status planned">prévu</span>    |
 | `Map`, `Set`, tuples, fermetures                              | <span class="status planned">prévu</span>    |

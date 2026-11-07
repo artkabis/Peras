@@ -50,7 +50,7 @@ Une liste extensible de valeurs de type `T`, écrite `[a, b]`, compilée quand `
 
 ## `String`
 
-Du texte en UTF-8, écrit `"…"`. <span class="status checked">vérifié</span>
+Du texte en UTF-8, écrit `"…"` ; sa `length` compte des octets. Voir [les collections](../guide/collections.md#string). <span class="status compiled">compilé</span>
 
 ## `Option<T>`
 

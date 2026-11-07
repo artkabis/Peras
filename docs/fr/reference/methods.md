@@ -49,10 +49,10 @@ export fn wrapped(a: i32): i32 {
 
 ## `String`
 
-| Membre   | Donne                                  | État                                        |
-| -------- | -------------------------------------- | ------------------------------------------- |
-| `length` | la longueur                            | <span class="status checked">vérifié</span> |
-| `copy()` | une nouvelle chaîne avec le même texte | <span class="status checked">vérifié</span> |
+| Membre   | Donne                                  | État                                         |
+| -------- | -------------------------------------- | -------------------------------------------- |
+| `length` | la longueur                            | <span class="status compiled">compilé</span> |
+| `copy()` | une nouvelle chaîne avec le même texte | <span class="status compiled">compilé</span> |
 
 ## `Option<T>`
 

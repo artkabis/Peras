@@ -58,10 +58,20 @@ pub struct Binding {
 
 impl Binding {
     /// Whether an unread binding is an error: variables and parameters only, and
-    /// never a name starting with `_`, which marks it unused on purpose.
+    /// never a name starting with `_`, which marks it unused on purpose. An
+    /// `inout` parameter only written is used: the caller reads it.
     #[must_use]
     pub fn must_be_used(&self) -> bool {
-        matches!(self.kind, Kind::Local { .. } | Kind::Param { .. }) && !self.name.starts_with('_')
+        let inout = matches!(
+            self.kind,
+            Kind::Param {
+                convention: Convention::Inout,
+                ..
+            }
+        );
+        matches!(self.kind, Kind::Local { .. } | Kind::Param { .. })
+            && !inout
+            && !self.name.starts_with('_')
     }
 }
 

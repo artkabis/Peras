@@ -47,6 +47,7 @@ impl Lowering<'_> {
                 Some(_) => Ok(vec![(String::new(), Ty::Owned)]),
                 None => Err("array-element"),
             },
+            CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
             CheckTy::Option(inner) => {
                 let mut out = vec![("some".to_owned(), Ty::Bool)];
                 let inner_leaves = self.leaves(inner)?;
@@ -91,6 +92,7 @@ impl Lowering<'_> {
             ("f32", true) => CheckTy::Float(FloatTy::F32),
             ("f64", true) => CheckTy::Float(FloatTy::F64),
             ("bool", true) => CheckTy::Bool,
+            ("String", true) => CheckTy::String,
             ("void", true) => CheckTy::Void,
             _ => return Err(super::feature_of_type(text)),
         })
@@ -119,6 +121,7 @@ impl Lowering<'_> {
                 Shape::Object(name.clone(), fields)
             }
             CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
+            CheckTy::String => Shape::String(pass),
             CheckTy::Array(inner) => Shape::Array(
                 Self::ir_type(inner).and_then(Elem::of).unwrap_or(Elem::I32),
                 pass,
@@ -219,6 +222,12 @@ impl Lowering<'_> {
                 }
             },
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
+            AstExpr::String(text) => self.string_literal(state, text, mode),
+            AstExpr::Binary {
+                op: perasc_syntax::ast::BinaryOp::Add,
+                lhs,
+                rhs,
+            } => self.concat(state, *lhs, *rhs, mode),
             AstExpr::Array(items) => {
                 let built = self.array_literal(state, id, items);
                 Self::fresh(state, built.into_iter().collect(), mode)
@@ -259,7 +268,7 @@ impl Lowering<'_> {
         mode: Mode,
         span: perasc_diag::Span,
     ) -> Vec<Expr> {
-        if matches!(self.check_type(base), Some(CheckTy::Array(_))) {
+        if self.is_buffer(base) {
             return self.array_method(state, base, method, args, mode, span);
         }
         if !self.is_aggregate(base) {
@@ -545,7 +554,7 @@ impl FnState {
 pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
     matches!(
         ty,
-        CheckTy::Struct(..) | CheckTy::Option(_) | CheckTy::Array(_)
+        CheckTy::Struct(..) | CheckTy::Option(_) | CheckTy::Array(_) | CheckTy::String
     )
 }
 

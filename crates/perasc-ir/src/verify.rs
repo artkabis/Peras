@@ -81,7 +81,9 @@ impl<'a> Verifier<'a> {
     fn handed_over(&mut self, value: &Expr) {
         match &value.kind {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
-            ExprKind::Alloc(_) | ExprKind::Call(..) | ExprKind::Buf(BufOp::New(_), _) => {
+            ExprKind::Alloc(_)
+            | ExprKind::Call(..)
+            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_), _) => {
                 self.expr(value);
             }
             _ => self.problem(&format!(
@@ -140,6 +142,13 @@ impl<'a> Verifier<'a> {
                 self.operands("buf.new", args, &[Ty::I32]);
                 Ty::Owned
             }
+            BufOp::Literal(index) => {
+                self.operands("buf.literal", args, &[]);
+                if usize::try_from(index).map_or(true, |i| i >= self.module.data.len()) {
+                    self.problem(&format!("buf.literal #{index} has no data"));
+                }
+                Ty::Owned
+            }
             BufOp::Len => {
                 self.buffer(args.first());
                 self.operands("buf.len", rest, &[]);
@@ -172,6 +181,13 @@ impl<'a> Verifier<'a> {
                 self.operands("buf.truncate", rest, &[Ty::I32]);
             }
             BufStmt::CheckIndex => self.operands("check_index", args, &[Ty::I32, Ty::I32]),
+            BufStmt::Append(_) => {
+                self.buffer(args.first());
+                self.buffer(args.get(1));
+                if args.len() != 2 {
+                    self.problem("buf.append takes two buffers");
+                }
+            }
             BufStmt::Release => match args {
                 [
                     Expr {

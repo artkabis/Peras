@@ -193,11 +193,169 @@ fn new_buffer(capacity: Expr, elem: Elem) -> Expr {
 }
 
 impl Lowering<'_> {
-    /// The element type of an array type, if it is compiled.
+    /// The element type of a buffer type, if it is compiled: an array's, or
+    /// the bytes of a string.
     pub(super) fn element(ty: Option<&CheckTy>) -> Option<Elem> {
         match ty {
             Some(CheckTy::Array(inner)) => Self::ir_type(inner).and_then(Elem::of),
+            Some(CheckTy::String) => Some(Elem::U8),
             _ => None,
+        }
+    }
+
+    /// Whether a type holds a string, which JavaScript cannot change in place.
+    pub(super) fn holds_string(&self, ty: &CheckTy) -> bool {
+        match ty {
+            CheckTy::String => true,
+            CheckTy::Struct(id, _) => self
+                .analysis
+                .structs
+                .get(id.0)
+                .is_some_and(|(_, fields)| fields.iter().any(|(_, f)| self.holds_string(f))),
+            _ => false,
+        }
+    }
+
+    /// Whether a type is a buffer: an array or a string.
+    pub(super) fn is_buffer(&self, id: ExprId) -> bool {
+        matches!(
+            self.check_type(id),
+            Some(CheckTy::Array(_) | CheckTy::String)
+        )
+    }
+
+    /// A string literal: its bytes, stored once in the module.
+    pub(super) fn string_literal(
+        &mut self,
+        state: &mut FnState,
+        text: &str,
+        mode: Mode,
+    ) -> Vec<Expr> {
+        let bytes = text.as_bytes().to_vec();
+        let index = self.data.iter().position(|d| *d == bytes).unwrap_or_else(|| {
+            self.data.push(bytes);
+            self.data.len() - 1
+        });
+        let literal = Expr {
+            kind: ExprKind::Buf(
+                BufOp::Literal(u32::try_from(index).unwrap_or(u32::MAX)),
+                Vec::new(),
+            ),
+            ty: Ty::Owned,
+        };
+        Self::fresh(state, vec![literal], mode)
+    }
+
+    /// `a + b` on strings: a new buffer with room for both, then each appended.
+    pub(super) fn concat(
+        &mut self,
+        state: &mut FnState,
+        lhs: ExprId,
+        rhs: ExprId,
+        mode: Mode,
+    ) -> Vec<Expr> {
+        let Some(a) = self.buffer(state, lhs) else {
+            return Vec::new();
+        };
+        let Some(b) = self.buffer(state, rhs) else {
+            return Vec::new();
+        };
+        let room = super::binary(BinOp::Add, len(&a), len(&b));
+        let joined = state.owned_temp(new_buffer(room, Elem::U8));
+        state.pre.push(Stmt::Buf(
+            BufStmt::Append(Elem::U8),
+            vec![borrowed(joined), a],
+        ));
+        state.pre.push(Stmt::Buf(
+            BufStmt::Append(Elem::U8),
+            vec![borrowed(joined), b],
+        ));
+        let joined_value = Expr {
+            kind: ExprKind::Local(joined),
+            ty: Ty::Owned,
+        };
+        Self::fresh(state, vec![joined_value], mode)
+    }
+
+    /// `target += other` on a string: appended in place.
+    pub(super) fn append(
+        &mut self,
+        state: &mut FnState,
+        target: ExprId,
+        other: ExprId,
+        out: &mut Vec<Stmt>,
+    ) {
+        // The target is a place: the variable or field that holds the string.
+        let Some(&local) = self.place(state, target).as_ref().and_then(|l| l.first()) else {
+            return;
+        };
+        let buffer = if state.is_owned(local) {
+            borrowed(local)
+        } else {
+            super::local_expr(state, local)
+        };
+        let Some(other) = self.buffer(state, other) else {
+            return;
+        };
+        state
+            .pre
+            .push(Stmt::Buf(BufStmt::Append(Elem::U8), vec![buffer, other]));
+        state.flush(out);
+        state.end_statement(out);
+    }
+
+    /// `a == b` and `a != b` on strings and arrays: the same length, and the
+    /// same elements in order.
+    pub(super) fn buffer_eq(
+        &mut self,
+        state: &mut FnState,
+        lhs: ExprId,
+        rhs: ExprId,
+        equal: bool,
+        span: Span,
+    ) -> Expr {
+        let Some(elem) = Self::element(self.check_type(lhs)) else {
+            self.unsupported(span, "array-element");
+            return int(0);
+        };
+        let (Some(a), Some(b)) = (self.buffer(state, lhs), self.buffer(state, rhs)) else {
+            return int(0);
+        };
+        let n = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(n, len(&a)));
+        let n = super::local_expr(state, n);
+        let same = state.temp(Ty::Bool);
+        state.pre.push(Stmt::Set(
+            same,
+            super::binary(BinOp::Eq, n.clone(), len(&b)),
+        ));
+        let same_expr = super::local_expr(state, same);
+        let i = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(i, int(0)));
+        let i_expr = super::local_expr(state, i);
+        state.pre.push(Stmt::Loop {
+            cond: Some(super::binary(
+                BinOp::And,
+                same_expr.clone(),
+                super::binary(BinOp::Lt, i_expr.clone(), n),
+            )),
+            body: vec![Stmt::Set(
+                same,
+                super::binary(
+                    BinOp::Eq,
+                    get(&a, i_expr.clone(), elem),
+                    get(&b, i_expr.clone(), elem),
+                ),
+            )],
+            step: vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))],
+        });
+        if equal {
+            same_expr
+        } else {
+            Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(same_expr)),
+                ty: Ty::Bool,
+            }
         }
     }
 

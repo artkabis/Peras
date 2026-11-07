@@ -8,15 +8,23 @@ diagnostics:
     primary 2:7-2:12: gen-unsupported-label { feature: "global" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix
-  error[E0900] gen-unsupported { feature: "string" }
-    primary 4:40-4:46: gen-unsupported-label { feature: "string" }
+  error[E0900] gen-unsupported { feature: "global" }
+    primary 7:31-7:36: gen-unsupported-label { feature: "global" }
+    cause: gen-unsupported-why
+    fix: gen-unsupported-fix
+  error[E0900] gen-unsupported { feature: "integer-type" }
+    primary 10:21-10:30: gen-unsupported-label { feature: "integer-type" }
+    cause: gen-unsupported-why
+    fix: gen-unsupported-fix
+  error[E0900] gen-unsupported { feature: "array-element" }
+    primary 10:39-10:52: gen-unsupported-label { feature: "array-element" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix
   error[E0900] gen-unsupported { feature: "method" }
-    primary 11:10-11:17: gen-unsupported-label { feature: "method" }
+    primary 15:10-15:17: gen-unsupported-label { feature: "method" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix
   error[E0900] gen-unsupported { feature: "float-remainder" }
-    primary 11:10-11:23: gen-unsupported-label { feature: "float-remainder" }
+    primary 15:10-15:23: gen-unsupported-label { feature: "float-remainder" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix

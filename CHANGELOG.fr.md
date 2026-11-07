@@ -14,6 +14,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- Les **chaînes** se compilent, en UTF-8 : littéraux, `+`, `+=`, `==`, `!=`, `length` en octets et `copy()`. Un littéral est stocké une seule fois, en segment de données passif, et copié dans un nouveau buffer avec `memory.init` ; `+=` ajoute sur place. JavaScript passe et reçoit des chaînes, encodées et décodées en UTF-8. `==` compare aussi les tableaux, élément par élément.
 - Les **tableaux** se compilent, de nombres et de booléens, sur le tas : littéraux, `length`, lecture et affectation par indice, `push`, `pop`, `copy`, `for…of`.
   - Chaque indice est vérifié ; un indice hors limites arrête le programme avec une `RangeError`, en anglais ou en français, avant de toucher la mémoire.
   - Un tableau est un en-tête de 12 octets, qui garde son adresse, et ses éléments ; `push` double la place quand elle manque. L’allocateur de débogage tient les deux blocs, si bien que chaque bug mémoire reste détecté.

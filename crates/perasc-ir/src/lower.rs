@@ -36,6 +36,7 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         fns: HashMap::new(),
         results: HashMap::new(),
         conventions: HashMap::new(),
+        data: Vec::new(),
         diagnostics: Vec::new(),
     };
     let mut index = 0u32;
@@ -73,7 +74,10 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         })
         .collect();
     if lowering.diagnostics.is_empty() {
-        Ok(Module { functions })
+        Ok(Module {
+            functions,
+            data: lowering.data,
+        })
     } else {
         let mut diagnostics = lowering.diagnostics;
         diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
@@ -89,6 +93,8 @@ struct Lowering<'a> {
     results: HashMap<FnId, Vec<Ty>>,
     /// How each function takes its parameters.
     conventions: HashMap<FnId, Vec<Convention>>,
+    /// The bytes of the string literals, each once.
+    data: Vec<Vec<u8>>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -298,6 +304,13 @@ impl Lowering<'_> {
                     let all_heap = leaves.iter().all(|(_, t)| *t == Ty::Owned);
                     if param.convention == Convention::Inout && !all_heap {
                         self.unsupported(param.name.span, "inout");
+                    }
+                    // A JavaScript string cannot change: it has nothing to copy back into.
+                    if param.convention == Convention::Inout
+                        && decl.exported
+                        && self.holds_string(&ty)
+                    {
+                        self.unsupported(param.name.span, "inout-string");
                     }
                     let leaves: Vec<(String, Ty)> = leaves
                         .into_iter()
@@ -633,6 +646,10 @@ impl Lowering<'_> {
         value: ExprId,
         out: &mut Vec<Stmt>,
     ) {
+        if op == AssignOp::Add && self.is_buffer(value) {
+            self.append(state, target, value, out);
+            return;
+        }
         let Some(locals) = self.place(state, target) else {
             return;
         };
@@ -686,7 +703,7 @@ impl Lowering<'_> {
 
     /// The locals an assignment or increment writes: a variable, or a field of
     /// a structure variable, as many scalars as it has.
-    fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
+    pub(super) fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
         let expr = self.ast.expr(target);
         match &expr.kind {
             AstExpr::Name(symbol) => match state.lookup(*symbol)? {
@@ -751,6 +768,11 @@ impl Lowering<'_> {
                     ExprKind::Unary(op, Box::new(self.expr(state, *operand)))
                 }
             }
+            AstExpr::Binary { op, lhs, rhs }
+                if matches!(op, BinaryOp::Eq | BinaryOp::Ne) && self.is_buffer(*lhs) =>
+            {
+                return self.buffer_eq(state, *lhs, *rhs, *op == BinaryOp::Eq, span);
+            }
             AstExpr::Binary { op, lhs, rhs } => {
                 let lhs = self.expr(state, *lhs);
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
@@ -769,9 +791,7 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args } => return self.call(state, *callee, args, ty, span),
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
-            AstExpr::Field { base, .. }
-                if matches!(self.check_type(*base), Some(CheckTy::Array(_))) =>
-            {
+            AstExpr::Field { base, .. } if self.is_buffer(*base) => {
                 return self.array_length(state, *base);
             }
             AstExpr::Field { base, name } => {

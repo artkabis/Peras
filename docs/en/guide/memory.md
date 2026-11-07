@@ -2,7 +2,7 @@
 
 In owned mode, Peras manages memory without a garbage collector and without you writing `free`: every value has one owner, and is released when its owner's scope ends.
 
-> Numbers, booleans, structures of them and options need none of this: they live in WebAssembly's locals, not on the heap. Arrays live on the heap, and the compiler applies everything on this page to them. Strings come next, with the same rules.
+> Numbers, booleans, structures of them and options need none of this: they live in WebAssembly's locals, not on the heap. Arrays and strings live on the heap, and the compiler applies everything on this page to them.
 
 ## One owner per value
 
@@ -78,11 +78,11 @@ Here `xs` is released by `total` on the path that breaks, and as soon as the loo
 
 ## Where values live
 
-| Value                       | Place                                        |
-| --------------------------- | -------------------------------------------- |
-| numbers, `bool`             | WebAssembly locals: no memory address at all |
-| structures, options         | their fields, as locals                      |
-| `Array` (and soon `String`) | the heap, in the module's linear memory      |
+| Value               | Place                                        |
+| ------------------- | -------------------------------------------- |
+| numbers, `bool`     | WebAssembly locals: no memory address at all |
+| structures, options | their fields, as locals                      |
+| `Array`, `String`   | the heap, in the module's linear memory      |
 
 ## What protects you
 

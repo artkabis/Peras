@@ -1,0 +1,44 @@
+export struct User {
+  name: String;
+  age: i32;
+}
+
+export fn greeting(name: String): String {
+  return "Hello, " + name + "!";
+}
+
+export fn is_empty(s: String): bool {
+  return s.length == 0;
+}
+
+export fn same(a: String, b: String): bool {
+  return a == b;
+}
+
+export fn repeat(s: String, n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    out += s;
+  }
+  return out;
+}
+
+export fn emoji(): String {
+  return "café \u{1F600}";
+}
+
+export fn rename(u: sink User, name: String): User {
+  let v = u;
+  v.name = name.copy();
+  return v;
+}
+
+export fn arrays_equal(a: Array<i32>, b: Array<i32>): bool {
+  return a == b && !(a != b);
+}
+
+export fn doubled(s: String): String {
+  let t = s.copy();
+  t += t;
+  return t;
+}

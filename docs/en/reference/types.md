@@ -50,7 +50,7 @@ A growable list of values of type `T`, written `[a, b]`, compiled when `T` is a 
 
 ## `String`
 
-UTF-8 text, written `"…"`. <span class="status checked">checked</span>
+UTF-8 text, written `"…"`; its `length` counts bytes. See [collections](../guide/collections.md#string). <span class="status compiled">compiled</span>
 
 ## `Option<T>`
 

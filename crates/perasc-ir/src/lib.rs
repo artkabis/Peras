@@ -93,6 +93,9 @@ pub struct LocalId(pub u32);
 pub struct Module {
     /// Functions, in source order.
     pub functions: Vec<Function>,
+    /// The bytes of each string literal, which [`BufOp::Literal`] copies into a
+    /// new buffer.
+    pub data: Vec<Vec<u8>>,
 }
 
 /// A function.
@@ -141,6 +144,8 @@ pub enum Shape {
     /// An `Array<T>`: one buffer handle. JavaScript sees an array, copied in
     /// and, for a result or an `inout` parameter, copied back out.
     Array(Elem, Pass),
+    /// A `String`: one buffer of UTF-8 bytes. JavaScript sees a string.
+    String(Pass),
 }
 
 /// How a heap value is passed between JavaScript and WebAssembly.
@@ -164,8 +169,10 @@ impl Shape {
             Self::Value(ty) => vec![*ty],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
             Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
-            Self::Array(_, Pass::Sink | Pass::Result) => vec![Ty::Owned],
-            Self::Array(..) => vec![Ty::Borrowed],
+            Self::Array(_, Pass::Sink | Pass::Result) | Self::String(Pass::Sink | Pass::Result) => {
+                vec![Ty::Owned]
+            }
+            Self::Array(..) | Self::String(_) => vec![Ty::Borrowed],
         }
     }
 }
@@ -411,6 +418,8 @@ pub enum BufOp {
     /// `[buffer, index]`: the element at `index`, which the code has checked is
     /// below the length ([`BufStmt::CheckIndex`]).
     Get(Elem),
+    /// `[]`: a new `owned` buffer of bytes holding [`Module::data`] at this index.
+    Literal(u32),
 }
 
 /// A statement on a buffer.
@@ -427,6 +436,8 @@ pub enum BufStmt {
     CheckIndex,
     /// `[move buffer]`: releases the buffer and its elements.
     Release,
+    /// `[buffer, other]`: adds the elements of `other` at the end of `buffer`.
+    Append(Elem),
 }
 
 impl BufOp {
@@ -437,6 +448,7 @@ impl BufOp {
             Self::New(elem) => format!("buf.new.{}", elem.name()),
             Self::Len => "buf.len".to_owned(),
             Self::Get(elem) => format!("buf.get.{}", elem.name()),
+            Self::Literal(index) => format!("buf.literal #{index}"),
         }
     }
 }
@@ -451,6 +463,7 @@ impl BufStmt {
             Self::Truncate => "buf.truncate".to_owned(),
             Self::CheckIndex => "check_index".to_owned(),
             Self::Release => "buf.release".to_owned(),
+            Self::Append(elem) => format!("buf.append.{}", elem.name()),
         }
     }
 }
@@ -734,5 +747,7 @@ mod opt_tests;
 mod option_tests;
 #[cfg(test)]
 mod own_tests;
+#[cfg(test)]
+mod string_tests;
 #[cfg(test)]
 mod struct_tests;

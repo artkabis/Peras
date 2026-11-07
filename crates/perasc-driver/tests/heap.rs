@@ -197,3 +197,21 @@ fn peras_arrays_run_on_the_debug_allocator_without_a_leak() {
     // Out of bounds: the program stops, through `bounds`, before any access.
     assert!(m.call("pick", 3).is_err());
 }
+
+/// Strings: literals copied from passive data segments, appended and
+/// compared, on the debug allocator, without a leak.
+#[test]
+fn peras_strings_run_on_the_debug_allocator_without_a_leak() {
+    let source = "export fn build(n: i32): i32 {\n  let s = \"\";\n  for (let i = 0; i < n; i++) {\n    s += \"héllo \";\n  }\n  const t = s + s;\n  if (t == s + s) {\n    return t.length;\n  }\n  return -1;\n}\n\
+         export fn differ(n: i32): i32 {\n  let a = \"abc\";\n  if (n > 0) {\n    a = \"abd\";\n  }\n  if (a == \"abc\") {\n    return 1;\n  }\n  return 0;\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    let mut m = linked(&module);
+    // "héllo " is 7 bytes; doubled.
+    assert_eq!(m.call("build", 1000), Ok(Some(14_000)));
+    assert_eq!(m.call("build", 0), Ok(Some(0)));
+    assert_eq!(m.call("differ", 0), Ok(Some(1)));
+    assert_eq!(m.call("differ", 1), Ok(Some(0)));
+    assert_eq!(m.runtime("live_count"), Ok(0));
+    assert_eq!(m.check_leaks(), Ok(()));
+}
