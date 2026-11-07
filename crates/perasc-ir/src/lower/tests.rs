@@ -50,8 +50,8 @@ fn every_unsupported_construct_is_reported_with_its_name() {
     for (source, feature) in [
         // A structure is compiled; one holding a type that is not, is reported.
         (
-            "struct P { xs: Array<String>; }\nfn f(_p: P): i32 { return 0; }",
-            "array-element",
+            "fn f(a: Array<String>, b: Array<String>): bool { return a == b; }",
+            "deep-equality",
         ),
         ("const LIMIT = 3;", "global"),
         (
@@ -69,8 +69,8 @@ fn every_unsupported_construct_is_reported_with_its_name() {
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
         ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
         (
-            "fn f(xs: Array<Array<i32>>): i32 { return xs.length; }",
-            "array-element",
+            "fn f(xs: Array<String>): bool { let ys = xs.copy(); return ys.pop().isSome(); }",
+            "heap-option",
         ),
         ("fn f(x: f64): f64 { return x.sin(); }", "method"),
     ] {

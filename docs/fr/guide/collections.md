@@ -42,7 +42,7 @@ export fn scale(xs: inout Array<f64>, k: f64): void {
 
 **Les indices sont vérifiés.** Un indice hors de `0` à `xs.length - 1` arrête le programme avec une `RangeError`, avant de toucher la mémoire. `push` fait de la place au besoin, en la doublant, si bien qu’ajouter des éléments un par un coûte un temps constant chacun, en moyenne.
 
-Un tableau contient des nombres, des booléens, des structures de ceux-ci, ou des options de ceux-ci. Un tableau de structures garde un buffer par champ, ses colonnes : `points[i].x` lit un nombre dans la colonne `x`, et une boucle sur `x` seul ne touche rien d’autre. Les tableaux de chaînes et de tableaux sont vérifiés, pas encore compilés.
+Un tableau contient n’importe quel type : nombres, booléens, chaînes, tableaux, structures, options de nombres. Un tableau de structures garde un buffer par champ, ses colonnes : `points[i].x` lit un nombre dans la colonne `x`, et une boucle sur `x` seul ne touche rien d’autre. Un tableau de chaînes ou de tableaux les possède : le libérer les libère, et `copy()` les copie aussi. Deux limites restent : `pop()` sur un tableau de chaînes ou de tableaux, qui donnerait une option en contenant une, et `==` entre de tels tableaux.
 
 ```peras build
 struct Point {

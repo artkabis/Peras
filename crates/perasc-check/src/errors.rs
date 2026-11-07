@@ -523,19 +523,38 @@ fn copy_fix(at: Option<u32>, otherwise: &'static str) -> Fix {
 }
 
 /// `E0204`: `name` is used at `span` after it moved at `moved_at`.
-pub fn moved(span: Span, name: &str, moved_at: Span, copyable: bool) -> Diagnostic {
+///
+/// The labels tell the value's history: where it was given, where it moved,
+/// where it is used again.
+pub fn moved(
+    span: Span,
+    name: &str,
+    moved_at: Span,
+    given: Option<Span>,
+    copyable: bool,
+) -> Diagnostic {
+    // The same place: a loop moved it in the previous turn.
+    let mut labels = if moved_at == span {
+        vec![primary(span, Message::new("check-moved-loop-label"))]
+    } else {
+        vec![
+            primary(span, Message::new("check-moved-label")),
+            secondary(moved_at, Message::new("check-moved-here-label")),
+        ]
+    };
+    if let Some(given) = given.filter(|g| *g != span && *g != moved_at) {
+        labels.insert(
+            0,
+            secondary(
+                given,
+                Message::new("check-moved-given-label").text("name", name),
+            ),
+        );
+    }
     diagnostic(
         codes::USE_AFTER_MOVE,
         Message::new("check-moved").text("name", name),
-        // The same place: a loop moved it in the previous turn.
-        if moved_at == span {
-            vec![primary(span, Message::new("check-moved-loop-label"))]
-        } else {
-            vec![
-                primary(span, Message::new("check-moved-label")),
-                secondary(moved_at, Message::new("check-moved-here-label")),
-            ]
-        },
+        labels,
         copy_fix(copyable.then_some(moved_at.end), "check-moved-fix"),
     )
 }

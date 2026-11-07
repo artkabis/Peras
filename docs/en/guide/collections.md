@@ -42,7 +42,7 @@ export fn scale(xs: inout Array<f64>, k: f64): void {
 
 **Indices are checked.** An index outside `0` to `xs.length - 1` stops the program with a `RangeError`, before any memory is touched. `push` makes room as needed, doubling it, so that adding elements one by one costs a constant time each, on average.
 
-An array holds numbers, booleans, structures of them, or options of them. An array of structures keeps one buffer per field, its columns: `points[i].x` reads one number from the `x` column, and a loop over `x` alone touches nothing else. Arrays of strings and of arrays are checked, not compiled yet.
+An array holds any type: numbers, booleans, strings, arrays, structures, options of numbers. An array of structures keeps one buffer per field, its columns: `points[i].x` reads one number from the `x` column, and a loop over `x` alone touches nothing else. An array of strings or of arrays owns them: releasing it releases them, and `copy()` copies them too. Two limits remain: `pop()` on an array of strings or arrays, which would give an option holding one, and `==` between such arrays.
 
 ```peras build
 struct Point {

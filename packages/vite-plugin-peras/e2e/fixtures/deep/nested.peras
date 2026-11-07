@@ -1,0 +1,55 @@
+export struct User {
+  name: String;
+  tags: Array<i32>;
+  age: i32;
+}
+
+export struct Path {
+  label: String;
+  points: Array<Point>;
+}
+
+export struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn shout(names: Array<String>): Array<String> {
+  let out: Array<String> = [];
+  for (const n of names) {
+    out.push(n + "!");
+  }
+  return out;
+}
+
+export fn matrix(n: i32): Array<Array<i32>> {
+  let rows: Array<Array<i32>> = [];
+  for (let i = 0; i < n; i++) {
+    let row: Array<i32> = [];
+    for (let j = 0; j < n; j++) {
+      row.push(i * n + j);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+export fn older(users: inout Array<User>): void {
+  for (let i = 0; i < users.length; i++) {
+    users[i].age += 1;
+    users[i].name += "+";
+    users[i].tags.push(users[i].age);
+  }
+}
+
+export fn lengths(paths: Array<Path>): Array<i32> {
+  let out: Array<i32> = [];
+  for (const p of paths) {
+    out.push(p.label.length * 100 + p.points.length);
+  }
+  return out;
+}
+
+export fn echo(paths: Array<Path>): Array<Path> {
+  return paths.copy();
+}

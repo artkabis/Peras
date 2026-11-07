@@ -337,6 +337,7 @@ check-unused-fix-variable = supprime-la, ou utilise sa valeur
 # E0204
 check-moved = `{ $name }` est utilisé après avoir été déplacé
 check-moved-label = utilisé ici, après le déplacement
+check-moved-given-label = `{ $name }` reçoit sa valeur ici
 check-moved-here-label = déplacé ici
 check-moved-loop-label = déplacé ici au tour précédent de la boucle
 check-moved-why = Une valeur sur le tas, un tableau, une chaîne ou une structure qui en contient, a un seul propriétaire. L’affecter, la renvoyer ou la passer à un paramètre `sink` la déplace : l’ancien nom ne contient plus rien tant qu’il ne reçoit pas une nouvelle valeur.
@@ -512,6 +513,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [heap-option] les options qui contiennent un tableau ou une chaîne
     [inout-string] les chaînes `inout` des fonctions exportées, que JavaScript ne peut pas modifier
     [inout-export] les nombres et options `inout` des fonctions exportées : JavaScript les passe par valeur
+    [deep-equality] `==` sur des tableaux de chaînes ou de tableaux
     [field] les champs
     [index] l’indexation
     [try] l’opérateur `?`

@@ -196,6 +196,8 @@ impl Lowering<'_> {
                             }
                         })
                         .collect()
+                } else if let Some(super::Binding::Lent(values)) = state.lookup(*symbol) {
+                    values
                 } else if self.ast.name(*symbol) == "None" {
                     self.none(id)
                 } else {

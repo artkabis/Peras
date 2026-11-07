@@ -337,6 +337,7 @@ check-unused-fix-variable = remove it, or use its value
 # E0204
 check-moved = `{ $name }` is used after it was moved
 check-moved-label = used here, after the move
+check-moved-given-label = `{ $name }` receives its value here
 check-moved-here-label = moved here
 check-moved-loop-label = moved here in the previous turn of the loop
 check-moved-why = A value on the heap, an array, a string, or a structure holding one, has a single owner. Assigning it, returning it or passing it to a `sink` parameter moves it: the old name holds nothing until it is given a new value.
@@ -512,6 +513,7 @@ gen-unsupported = code generation does not support { $feature ->
     [heap-option] options holding an array or a string
     [inout-string] `inout` strings in exported functions, which JavaScript cannot change
     [inout-export] `inout` numbers and options in exported functions: JavaScript passes them by value
+    [deep-equality] `==` on arrays of strings or of arrays
     [field] fields
     [index] indexing
     [try] the `?` operator

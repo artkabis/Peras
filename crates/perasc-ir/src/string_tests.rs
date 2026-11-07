@@ -77,3 +77,18 @@ fn strings_in_structures_move_and_are_released() {
         ],
     );
 }
+
+#[test]
+fn arrays_of_strings_own_their_strings() {
+    let source = "export fn f(n: i32): i32 {\n  let names: Array<String> = [\"ann\", \"bo\"];\n  for (let i = 0; i < n; i++) {\n    names.push(\"x\" + \"y\");\n  }\n  names[0] = \"zoe!\";\n  names[1] += \"b\";\n  let copy = names.copy();\n  copy[0] += \"?\";\n  let total = 0;\n  for (const s of names) {\n    total += s.length;\n  }\n  return total * 100 + copy[0].length * 10 + copy.length;\n}\n";
+    // n = 2: "zoe!", "bob", "xy", "xy": 11 bytes; the copy's first is "zoe!?".
+    gives(source, &[(vec![Value::I32(2)], Value::I32(1154))]);
+}
+
+#[test]
+fn arrays_of_arrays_and_of_structures_holding_strings() {
+    let source = "export fn f(n: i32): i32 {\n  let rows: Array<Array<i32>> = [];\n  for (let i = 0; i < n; i++) {\n    let row: Array<i32> = [];\n    for (let j = 0; j <= i; j++) {\n      row.push(j);\n    }\n    rows.push(row);\n  }\n  rows[0].push(41);\n  let users: Array<User> = [User(\"ann\", 30)];\n  users.push(User(\"bob\" + \"by\", 40));\n  users[1].age += 2;\n  let total = rows[0][1] + rows[n - 1].length;\n  for (const u of users) {\n    total += u.name.length * 100 + u.age;\n  }\n  return total;\n}\n\
+         struct User {\n  name: String;\n  age: i32;\n}\n";
+    // rows[0] = [0, 41], rows[3] has 4; users: 300 + 30, 500 + 42.
+    gives(source, &[(vec![Value::I32(4)], Value::I32(917))]);
+}

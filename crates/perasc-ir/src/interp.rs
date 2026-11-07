@@ -79,6 +79,7 @@ pub fn run_with_heap(
                 fuel: 50_000_000,
                 depth: 0,
                 heap: std::collections::BTreeMap::new(),
+                deep: std::collections::BTreeSet::new(),
                 allocated: 0,
             };
             let value = machine.call(id, &args)?;
@@ -102,6 +103,8 @@ struct Machine<'a> {
     depth: usize,
     /// Live blocks, with their elements when they are buffers.
     heap: std::collections::BTreeMap<u32, Vec<Value>>,
+    /// The buffers whose elements are buffers they own.
+    deep: std::collections::BTreeSet<u32>,
     allocated: u32,
 }
 
@@ -350,11 +353,15 @@ impl Machine<'_> {
 
     fn buf_op(&mut self, op: BufOp, values: &[Value]) -> Result<Value, Trap> {
         Ok(match (op, values) {
-            (BufOp::New(_), [Value::I32(cap)]) if *cap >= 0 => {
+            (BufOp::New(elem), [Value::I32(cap)]) if *cap >= 0 => {
                 self.allocated += 1;
                 self.heap.insert(self.allocated, Vec::new());
+                if elem == Elem::Handle {
+                    self.deep.insert(self.allocated);
+                }
                 Value::Handle(self.allocated)
             }
+            (BufOp::Clone, [buf]) => self.clone_buffer(*buf)?,
             (BufOp::New(_), _) => return Err(Trap::BadAlloc),
             (BufOp::Literal(index), []) => {
                 let bytes = usize::try_from(index)
@@ -378,14 +385,51 @@ impl Machine<'_> {
         })
     }
 
+    /// Releases a buffer, and the buffers it owns.
+    fn free(&mut self, block: u32) -> Result<(), Trap> {
+        let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
+        if self.deep.remove(&block) {
+            for element in elements {
+                if let Value::Handle(inner) = element {
+                    self.free(inner)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// A copy of a buffer, with copies of the buffers it owns.
+    fn clone_buffer(&mut self, buf: Value) -> Result<Value, Trap> {
+        let mut elements = self.elements(buf)?.clone();
+        let Value::Handle(block) = buf else {
+            return Err(Trap::UseAfterRelease);
+        };
+        let deep = self.deep.contains(&block);
+        if deep {
+            for element in &mut elements {
+                *element = self.clone_buffer(*element)?;
+            }
+        }
+        self.allocated += 1;
+        self.heap.insert(self.allocated, elements);
+        if deep {
+            self.deep.insert(self.allocated);
+        }
+        Ok(Value::Handle(self.allocated))
+    }
+
     fn buf_stmt(&mut self, op: BufStmt, values: &[Value]) -> Result<(), Trap> {
         match (op, values) {
-            (BufStmt::Release, [Value::Handle(block)]) if self.heap.remove(block).is_some() => {}
+            (BufStmt::Release, [Value::Handle(block)]) => self.free(*block)?,
             (BufStmt::Release, _) => return Err(Trap::DoubleRelease),
             (BufStmt::Set(elem), [buf, Value::I32(index), value]) => {
                 let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
                 let slot = self.elements(*buf)?.get_mut(index).ok_or(Trap::Unchecked)?;
-                *slot = stored(elem, *value);
+                let old = std::mem::replace(slot, stored(elem, *value));
+                // The element replaced is released.
+                if let (Elem::Handle, Value::Handle(old)) = (elem, old) {
+                    self.free(old)?;
+                }
             }
             (BufStmt::Push(elem), [buf, value]) => self.elements(*buf)?.push(stored(elem, *value)),
             (BufStmt::Append(_), [buf, other]) => {

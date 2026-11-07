@@ -8,10 +8,10 @@ The examples on this page show the intended syntax; the compiler refuses them to
 
 The first types that need memory, on the foundations already built: the release verifier and the debug allocator.
 
-- ~~`Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`~~: done for numbers, booleans, structures and options, with `copy()`; arrays of strings and of arrays remain.
+- ~~`Array<T>` compiled: indexing with bounds checks, `push`, `pop`, `for…of`~~: done for every element type, strings and arrays included, with `copy()`.
 - ~~`String` compiled, in UTF-8~~: done, with `+`, `+=`, `==`, `length` in bytes and `copy()`.
 - ~~`Option<T>` compiled~~: done, with `?` and checked arithmetic.
-- ~~Ownership checks: moves, `inout` and `sink`, aliasing refused~~: done ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)), with `inout` on every type; the history of a value in errors remains.
+- ~~Ownership checks: moves, `inout` and `sink`, aliasing refused~~: done ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)), with `inout` on every type, and the history of a value in errors: where it was given, moved, then used.
 
 ## Phase 2: a complete type system
 

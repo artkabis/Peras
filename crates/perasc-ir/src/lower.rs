@@ -106,6 +106,9 @@ enum Binding {
     Scalar(LocalId),
     /// A structure: one local per scalar, in order.
     Struct(Vec<LocalId>),
+    /// The element a `for…of` reaches, when it holds buffers: its scalars,
+    /// read from the array at each use, since a lent buffer is never stored.
+    Lent(Vec<Expr>),
 }
 
 /// The state of one function being lowered.
@@ -751,6 +754,7 @@ impl Lowering<'_> {
             AstExpr::Name(symbol) => match state.lookup(*symbol)? {
                 Binding::Scalar(local) => Some(vec![local]),
                 Binding::Struct(locals) => Some(locals),
+                Binding::Lent(_) => None,
             },
             AstExpr::Paren(inner) => self.place(state, *inner),
             AstExpr::Field { base, name } => {

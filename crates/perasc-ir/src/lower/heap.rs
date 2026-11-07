@@ -349,6 +349,10 @@ impl Lowering<'_> {
         let Some(columns) = self.columns_of(lhs, span) else {
             return int(0);
         };
+        if columns.contains(&Elem::Handle) {
+            self.unsupported(span, "deep-equality");
+            return int(0);
+        }
         let a = self.value_as(state, lhs, Mode::Borrow);
         let b = self.value_as(state, rhs, Mode::Borrow);
         let (Some(a0), Some(b0)) = (a.first(), b.first()) else {
@@ -597,6 +601,28 @@ impl Lowering<'_> {
         let buffers = self.value_as(state, base, Mode::Borrow);
         let index = self.expr(state, index);
         let index = state.spill(index);
+        // `names[i] += s`: the string element grows in place.
+        if let (Some(BinOp::Add), Some(&Elem::Handle), Some(value)) =
+            (op, columns.get(offset), value)
+        {
+            let Some(other) = self.buffer(state, value) else {
+                return;
+            };
+            let Some(buffer) = buffers.get(offset) else {
+                return;
+            };
+            state.pre.push(Stmt::Buf(
+                BufStmt::CheckIndex,
+                vec![index.clone(), len(buffer)],
+            ));
+            let element = get(buffer, index, Elem::Handle);
+            state
+                .pre
+                .push(Stmt::Buf(BufStmt::Append(Elem::U8), vec![element, other]));
+            state.flush(out);
+            state.end_statement(out);
+            return;
+        }
         let values: Vec<Expr> = match value {
             Some(value) => self.value(state, value),
             None => columns
@@ -658,6 +684,11 @@ impl Lowering<'_> {
                 }
                 Vec::new()
             }
+            "pop" if columns.contains(&Elem::Handle) => {
+                // The element would be an option holding a buffer.
+                self.unsupported(span, "heap-option");
+                Vec::new()
+            }
             "pop" => {
                 // n = len; if (n > 0) { v = xs[n - 1]; truncate to n - 1 }
                 let n = state.temp(Ty::I32);
@@ -686,41 +717,15 @@ impl Lowering<'_> {
                 out
             }
             "copy" => {
-                // t = new(len); for (i = 0; i < len; i++) push(t, xs[i])
-                let n = state.temp(Ty::I32);
-                state.pre.push(Stmt::Set(n, len(&first)));
-                let n = super::local_expr(state, n);
-                let copies: Vec<LocalId> = columns
-                    .iter()
-                    .map(|&elem| state.owned_temp(new_buffer(n.clone(), elem)))
-                    .collect();
-                let i = state.temp(Ty::I32);
-                state.pre.push(Stmt::Set(i, int(0)));
-                let i_expr = super::local_expr(state, i);
-                let body = copies
-                    .iter()
-                    .zip(&buffers)
-                    .zip(&columns)
-                    .map(|((&copy, buffer), &elem)| {
-                        Stmt::Buf(
-                            BufStmt::Push(elem),
-                            vec![borrowed(copy), get(buffer, i_expr.clone(), elem)],
-                        )
-                    })
-                    .collect();
-                state.pre.push(Stmt::Loop {
-                    cond: Some(super::binary(BinOp::Lt, i_expr.clone(), n)),
-                    body,
-                    step: vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))],
-                });
-                let fresh_columns = copies
+                // Each column copied by the runtime, with the buffers it owns.
+                let copies = buffers
                     .into_iter()
-                    .map(|column| Expr {
-                        kind: ExprKind::Local(column),
+                    .map(|buffer| Expr {
+                        kind: ExprKind::Buf(BufOp::Clone, vec![buffer]),
                         ty: Ty::Owned,
                     })
                     .collect();
-                Self::fresh(state, fresh_columns, mode)
+                Self::fresh(state, copies, mode)
             }
             _ => {
                 self.unsupported(span, "method");
@@ -757,19 +762,33 @@ impl Lowering<'_> {
         let i_expr = super::local_expr(state, i);
         state.open();
         let text = self.ast.name(name.symbol);
-        let locals = if super::values::is_aggregate(&element) {
-            let leaves = self.leaves(&element).unwrap_or_default();
-            state.add_struct(name.symbol, text, &leaves)
+        let mut turn: Vec<Stmt> = Vec::new();
+        if columns.contains(&Elem::Handle) {
+            // An element holding buffers is read where it is used: a lent
+            // buffer cannot sit in a local.
+            let values = buffers
+                .iter()
+                .zip(&columns)
+                .map(|(buffer, &elem)| get(buffer, i_expr.clone(), elem))
+                .collect();
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.insert(name.symbol, super::Binding::Lent(values));
+            }
         } else {
-            let ty = columns.first().map_or(Ty::I32, |e| e.ty());
-            vec![state.add(name.symbol, text, ty)]
-        };
-        let mut turn: Vec<Stmt> = locals
-            .iter()
-            .zip(&buffers)
-            .zip(&columns)
-            .map(|((&x, buffer), &elem)| Stmt::Set(x, get(buffer, i_expr.clone(), elem)))
-            .collect();
+            let locals = if super::values::is_aggregate(&element) {
+                let leaves = self.leaves(&element).unwrap_or_default();
+                state.add_struct(name.symbol, text, &leaves)
+            } else {
+                let ty = columns.first().map_or(Ty::I32, |e| e.ty());
+                vec![state.add(name.symbol, text, ty)]
+            };
+            turn = locals
+                .iter()
+                .zip(&buffers)
+                .zip(&columns)
+                .map(|((&x, buffer), &elem)| Stmt::Set(x, get(buffer, i_expr.clone(), elem)))
+                .collect();
+        }
         let cond = super::binary(BinOp::Lt, i_expr.clone(), len(&first));
         let step = vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))];
         let lowered = self.loop_body(state, Some(cond), Vec::new(), body, step, &mut turn);

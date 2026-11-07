@@ -36,6 +36,9 @@ type Moved = BTreeMap<usize, Span>;
 #[derive(Clone, Default)]
 struct Path {
     moved: Moved,
+    /// Where each variable last received its value, for the history an
+    /// error shows: given here, moved there, used again here.
+    given: BTreeMap<usize, Span>,
     /// The path left by `return`, `break` or `continue`.
     gone: bool,
 }
@@ -209,6 +212,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 // A new variable, also at each turn of a loop.
                 if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
                     path.moved.remove(&binding);
+                    path.given.insert(binding, local.name.span);
                 }
             }
             StmtKind::Return(value) => {
@@ -343,6 +347,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         if let Some(update) = update {
             let mut after = Path {
                 moved: back.iter().flatten().map(|(k, v)| (*k, *v)).collect(),
+                given: path.given.clone(),
                 gone: false,
             };
             self.stmt(update, &mut after);
@@ -360,6 +365,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 if let Some(&binding) = self.checker.resolved.get(&target) {
                     self.not_iterated(binding, expr.span);
                     path.moved.remove(&binding);
+                    path.given.insert(binding, expr.span);
                 }
             }
             ExprKind::Paren(inner) => self.target(*inner, op, path),
@@ -440,7 +446,14 @@ impl<'c, 'a> Owner<'c, 'a> {
         if let Some(&moved_at) = path.moved.get(&binding) {
             let name = self.binding_name(binding);
             let copyable = self.copyable(binding);
-            self.report(errors::moved(span, &name, moved_at, copyable));
+            let given = path.given.get(&binding).copied().or_else(|| {
+                self.checker
+                    .scopes
+                    .bindings
+                    .get(binding)
+                    .and_then(|b| b.span)
+            });
+            self.report(errors::moved(span, &name, moved_at, given, copyable));
             return;
         }
         if mode == Use::Read || !self.moves(id) {

@@ -46,6 +46,7 @@ struct Heap {
     buf_new: TypedFunc<(i32, i32, i32), i32>,
     buf_reserve: TypedFunc<(i32, i32, i32, i32), ()>,
     buf_release: TypedFunc<(i32, i32), ()>,
+    buf_clone: TypedFunc<(i32, i32), i32>,
 }
 
 impl Heap {
@@ -97,6 +98,7 @@ impl Heap {
             buf_new: instance.get_typed_func(&store, "buf_new")?,
             buf_reserve: instance.get_typed_func(&store, "buf_reserve")?,
             buf_release: instance.get_typed_func(&store, "buf_release")?,
+            buf_clone: instance.get_typed_func(&store, "buf_clone")?,
             memory,
             store,
         })
@@ -417,12 +419,12 @@ fn a_random_run_matches_the_model() {
 fn a_buffer_grows_keeping_its_elements_and_its_address() {
     let mut heap = heap();
     let h = heap.buf_new(0, 4).unwrap_or(0);
-    // Empty: no element block yet, only the 12-byte header.
+    // Empty: no element block yet, only the 16-byte header.
     assert_eq!(
         (heap.word(h), heap.word(h + 4), heap.word(h + 8)),
         (0, 0, 0)
     );
-    assert_eq!(heap.live(), (1, 12));
+    assert_eq!(heap.live(), (1, 16));
     for n in 0..100_u32 {
         assert_eq!(heap.buf_reserve(h, 1, 4), Ok(()));
         let data = heap.word(h + 8);
@@ -436,7 +438,7 @@ fn a_buffer_grows_keeping_its_elements_and_its_address() {
     let values: Vec<u32> = (0..100).map(|n| heap.word(data + 4 * n)).collect();
     assert_eq!(values, (0..100).map(|n| n * 3).collect::<Vec<_>>());
     // Each growth released the old elements: the header and one element block.
-    assert_eq!(heap.live(), (2, 12 + 128 * 4));
+    assert_eq!(heap.live(), (2, 16 + 128 * 4));
     assert_eq!(heap.buf_release(h), Ok(()));
     assert_eq!(heap.live(), (0, 0));
     assert_eq!(heap.check_leaks(), Ok(()));
@@ -466,4 +468,32 @@ fn a_buffer_too_large_for_one_block_is_refused() {
         refused.map_err(|r| (r.fault, r.alloc_site)),
         Err((Some(Fault::TooLarge), 8))
     );
+}
+
+#[test]
+fn a_deep_buffer_releases_and_copies_the_buffers_it_owns() {
+    let mut heap = heap();
+    // An array of three strings: a buffer of handles, each to a buffer of bytes.
+    let outer = heap.buf_new(3, 4 | perasc_runtime::DEEP).unwrap_or(0);
+    let data = heap.word(outer + 8);
+    for k in 0..3_u32 {
+        let inner = heap.buf_new(2, 1).unwrap_or(0);
+        heap.write(heap.word(inner + 8), b"ab");
+        heap.write(inner, &2_u32.to_le_bytes());
+        heap.write(data + 4 * k, &inner.to_le_bytes());
+    }
+    heap.write(outer, &3_u32.to_le_bytes());
+    assert_eq!(heap.live().0, 1 + 1 + 3 * 2);
+    let clone = heap
+        .buf_clone
+        .call(&mut heap.store, (i(outer), 5))
+        .map_or(0, u);
+    assert_eq!(heap.live().0, 2 * (1 + 1 + 3 * 2));
+    // The copy owns copies: its strings are other blocks with the same bytes.
+    let first = heap.word(heap.word(clone + 8));
+    assert_ne!(first, heap.word(data));
+    assert_eq!(heap.bytes(heap.word(first + 8), 2), b"ab");
+    assert_eq!(heap.buf_release(outer), Ok(()));
+    assert_eq!(heap.buf_release(clone), Ok(()));
+    assert_eq!(heap.live(), (0, 0));
 }

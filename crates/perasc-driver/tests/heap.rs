@@ -41,7 +41,14 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, DEBUG_ALLOCATOR)?)?;
     let mut linker = Linker::new(&engine);
-    for name in ["alloc", "release", "buf_new", "buf_reserve", "buf_release"] {
+    for name in [
+        "alloc",
+        "release",
+        "buf_new",
+        "buf_reserve",
+        "buf_release",
+        "buf_clone",
+    ] {
         let func = allocator
             .get_func(&store, name)
             .ok_or_else(|| wasmi::Error::new(name))?;
@@ -212,6 +219,22 @@ fn peras_strings_run_on_the_debug_allocator_without_a_leak() {
     assert_eq!(m.call("build", 0), Ok(Some(0)));
     assert_eq!(m.call("differ", 0), Ok(Some(1)));
     assert_eq!(m.call("differ", 1), Ok(Some(0)));
+    assert_eq!(m.runtime("live_count"), Ok(0));
+    assert_eq!(m.check_leaks(), Ok(()));
+}
+
+/// Arrays of strings and of arrays: buffers that own buffers, released and
+/// copied deeply by the runtime, without a leak.
+#[test]
+fn arrays_of_buffers_release_and_copy_what_they_own() {
+    let source = "export fn wordy(n: i32): i32 {\n  let words: Array<String> = [];\n  for (let i = 0; i < n; i++) {\n    words.push(\"w\" + \"é\");\n  }\n  let copy = words.copy();\n  copy[0] = \"replaced\";\n  words[n - 1] += \"!\";\n  let total = 0;\n  for (const w of words) {\n    total += w.length;\n  }\n  return total + copy[0].length * 1000;\n}\n\
+         export fn table(n: i32): i32 {\n  let rows: Array<Array<i32>> = [];\n  for (let i = 0; i < n; i++) {\n    let row: Array<i32> = [];\n    for (let j = 0; j < n; j++) {\n      row.push(i * j);\n    }\n    rows.push(row);\n  }\n  rows = rows.copy();\n  return rows[n - 1][n - 1];\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    let mut m = linked(&module);
+    // 100 words of 3 bytes, one with "!", and "replaced" in the copy.
+    assert_eq!(m.call("wordy", 100), Ok(Some(8301)));
+    assert_eq!(m.call("table", 30), Ok(Some(841)));
     assert_eq!(m.runtime("live_count"), Ok(0));
     assert_eq!(m.check_leaks(), Ok(()));
 }

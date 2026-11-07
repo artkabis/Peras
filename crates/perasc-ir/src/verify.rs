@@ -83,7 +83,7 @@ impl<'a> Verifier<'a> {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
             ExprKind::Alloc(_)
             | ExprKind::Call(..)
-            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_), _) => {
+            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone, _) => {
                 self.expr(value);
             }
             _ => self.problem(&format!(
@@ -120,6 +120,10 @@ impl<'a> Verifier<'a> {
                 if self.local_type(local.0) == Some(Ty::Owned) => {}
             Some((ExprKind::Local(local), Ty::Borrowed))
                 if self.local_type(local.0) == Some(Ty::Borrowed) => {}
+            // An element of an array of buffers, lent.
+            Some((ExprKind::Buf(BufOp::Get(crate::Elem::Handle), args), Ty::Borrowed)) => {
+                self.buf_expr(BufOp::Get(crate::Elem::Handle), args, Ty::Borrowed);
+            }
             other => self.problem(&format!("a buffer operand must be borrowed, not {other:?}")),
         }
     }
@@ -131,7 +135,12 @@ impl<'a> Verifier<'a> {
             self.problem(&format!("{what} on {given:?}, expected {types:?}"));
         }
         for arg in args {
-            self.expr(arg);
+            // A buffer stored into an element is handed over to the array.
+            if arg.ty == Ty::Owned {
+                self.handed_over(arg);
+            } else {
+                self.expr(arg);
+            }
         }
     }
 
@@ -140,6 +149,11 @@ impl<'a> Verifier<'a> {
         let expected = match op {
             BufOp::New(_) => {
                 self.operands("buf.new", args, &[Ty::I32]);
+                Ty::Owned
+            }
+            BufOp::Clone => {
+                self.buffer(args.first());
+                self.operands("buf.clone", rest, &[]);
                 Ty::Owned
             }
             BufOp::Literal(index) => {
@@ -170,11 +184,11 @@ impl<'a> Verifier<'a> {
         match op {
             BufStmt::Set(elem) => {
                 self.buffer(args.first());
-                self.operands("buf.set", rest, &[Ty::I32, elem.ty()]);
+                self.operands("buf.set", rest, &[Ty::I32, elem.stored()]);
             }
             BufStmt::Push(elem) => {
                 self.buffer(args.first());
-                self.operands("buf.push", rest, &[elem.ty()]);
+                self.operands("buf.push", rest, &[elem.stored()]);
             }
             BufStmt::Truncate => {
                 self.buffer(args.first());

@@ -371,6 +371,10 @@ pub enum Elem {
     Bool,
     /// 1 byte, read as an `i32` from 0 to 255: the bytes of a string.
     U8,
+    /// 4 bytes: a buffer the buffer owns, an element of an array of strings
+    /// or of arrays. Read, it is lent (`borrowed`); stored, it is taken
+    /// (`owned`), and the element it replaces is released.
+    Handle,
 }
 
 impl Elem {
@@ -379,7 +383,7 @@ impl Elem {
     pub const fn size(self) -> u32 {
         match self {
             Self::U8 => 1,
-            Self::I32 | Self::F32 | Self::Bool => 4,
+            Self::I32 | Self::F32 | Self::Bool | Self::Handle => 4,
             Self::I64 | Self::F64 => 8,
         }
     }
@@ -389,6 +393,7 @@ impl Elem {
     pub const fn ty(self) -> Ty {
         match self {
             Self::I32 | Self::U8 => Ty::I32,
+            Self::Handle => Ty::Borrowed,
             Self::I64 => Ty::I64,
             Self::F32 => Ty::F32,
             Self::F64 => Ty::F64,
@@ -405,8 +410,18 @@ impl Elem {
             Ty::F32 => Self::F32,
             Ty::F64 => Self::F64,
             Ty::Bool => Self::Bool,
+            Ty::Owned => Self::Handle,
             _ => return None,
         })
+    }
+
+    /// The type of a value stored into an element: a handle is taken.
+    #[must_use]
+    pub const fn stored(self) -> Ty {
+        match self {
+            Self::Handle => Ty::Owned,
+            other => other.ty(),
+        }
     }
 
     /// Its name in the text form.
@@ -414,6 +429,7 @@ impl Elem {
     pub const fn name(self) -> &'static str {
         match self {
             Self::U8 => "u8",
+            Self::Handle => "handle",
             other => other.ty().name(),
         }
     }
@@ -434,6 +450,8 @@ pub enum BufOp {
     Get(Elem),
     /// `[]`: a new `owned` buffer of bytes holding [`Module::data`] at this index.
     Literal(u32),
+    /// `[buffer]`: a new `owned` copy, with copies of the buffers it owns.
+    Clone,
 }
 
 /// A statement on a buffer.
@@ -463,6 +481,7 @@ impl BufOp {
             Self::Len => "buf.len".to_owned(),
             Self::Get(elem) => format!("buf.get.{}", elem.name()),
             Self::Literal(index) => format!("buf.literal #{index}"),
+            Self::Clone => "buf.clone".to_owned(),
         }
     }
 }

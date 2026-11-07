@@ -42,7 +42,11 @@ const BUF_NEW: u32 = 2;
 const BUF_RESERVE: u32 = 3;
 const BUF_RELEASE: u32 = 4;
 const BOUNDS: u32 = 5;
-const IMPORTED: u32 = 6;
+const BUF_CLONE: u32 = 6;
+const IMPORTED: u32 = 7;
+/// Added to an element size: the elements are buffers the buffer owns
+/// (`perasc_runtime::DEEP`).
+const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
 const IMPORT_TYPES: u32 = 4;
 
@@ -90,6 +94,7 @@ pub fn compile_module(module: &Module) -> Compiled {
             ("buf_reserve", 3),
             ("buf_release", 1),
             ("bounds", 1),
+            ("buf_clone", 0),
         ] {
             imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
         }
@@ -476,7 +481,8 @@ impl<'a> FnEncoder<'a> {
         match (op, args) {
             (BufOp::New(elem), [cap]) => {
                 self.expr(cap);
-                self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1)));
+                let deep = if elem == Elem::Handle { DEEP } else { 0 };
+                self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1) | deep));
                 let site = self.alloc_site();
                 self.emit(&I::I32Const(site));
                 self.emit(&I::Call(BUF_NEW));
@@ -488,6 +494,12 @@ impl<'a> FnEncoder<'a> {
             (BufOp::Get(elem), [buffer, index]) => {
                 self.element_address(buffer, index, elem);
                 self.emit(&load(elem));
+            }
+            (BufOp::Clone, [buffer]) => {
+                self.expr(buffer);
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(BUF_CLONE));
             }
             (BufOp::Literal(segment), []) => {
                 let len = self
@@ -519,8 +531,64 @@ impl<'a> FnEncoder<'a> {
         }
     }
 
+    /// Stores a buffer into an element of an array of buffers; the buffer it
+    /// replaces is released.
+    fn replace_element(&mut self, buffer: &Expr, index: &Expr, value: &Expr) {
+        // The new buffer first; then the one it replaces is released.
+        self.expr(value);
+        self.emit(&I::LocalSet(self.temp_buffer));
+        self.element_address(buffer, index, Elem::Handle);
+        self.emit(&I::LocalTee(self.temp_len));
+        self.emit(&I::I32Load(mem(0, 4)));
+        self.releases += 1;
+        let site = self.site(format!("{} (release {})", self.name, self.releases));
+        self.emit(&I::I32Const(site));
+        self.emit(&I::Call(BUF_RELEASE));
+        self.emit(&I::LocalGet(self.temp_len));
+        self.emit(&I::LocalGet(self.temp_buffer));
+        self.emit(&I::I32Store(mem(0, 4)));
+    }
+
+    /// Adds the elements of `other` at the end of `buffer`.
+    fn append(&mut self, buffer: &Expr, other: &Expr, elem: Elem) {
+        let width = i32::try_from(elem.size()).unwrap_or(1);
+        let other_len = Expr {
+            kind: ExprKind::Buf(BufOp::Len, vec![other.clone()]),
+            ty: Ty::I32,
+        };
+        let len = Expr {
+            kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
+            ty: Ty::I32,
+        };
+        // Room first: it may move the elements, of `other` too when
+        // both are the same buffer.
+        self.expr(buffer);
+        self.expr(&other_len);
+        self.emit(&I::I32Const(width));
+        let site = self.alloc_site();
+        self.emit(&I::I32Const(site));
+        self.emit(&I::Call(BUF_RESERVE));
+        self.element_address(buffer, &len, elem);
+        self.expr(other);
+        self.emit(&I::I32Load(mem(8, 4)));
+        self.expr(&other_len);
+        self.scale(elem);
+        self.emit(&I::MemoryCopy {
+            src_mem: 0,
+            dst_mem: 0,
+        });
+        self.expr(buffer);
+        self.expr(&len);
+        self.expr(&other_len);
+        self.emit(&I::I32Add);
+        self.emit(&I::I32Store(mem(0, 4)));
+    }
+
     fn buf_stmt(&mut self, op: BufStmt, args: &[Expr]) {
         match (op, args) {
+            (BufStmt::Set(Elem::Handle), [buffer, index, value]) => {
+                self.replace_element(buffer, index, value);
+            }
             (BufStmt::Set(elem), [buffer, index, value]) => {
                 self.element_address(buffer, index, elem);
                 self.expr(value);
@@ -555,39 +623,7 @@ impl<'a> FnEncoder<'a> {
                 self.emit(&I::I32Add);
                 self.emit(&I::I32Store(mem(0, 4)));
             }
-            (BufStmt::Append(elem), [buffer, other]) => {
-                let width = i32::try_from(elem.size()).unwrap_or(1);
-                let other_len = Expr {
-                    kind: ExprKind::Buf(BufOp::Len, vec![other.clone()]),
-                    ty: Ty::I32,
-                };
-                let len = Expr {
-                    kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
-                    ty: Ty::I32,
-                };
-                // Room first: it may move the elements, of `other` too when
-                // both are the same buffer.
-                self.expr(buffer);
-                self.expr(&other_len);
-                self.emit(&I::I32Const(width));
-                let site = self.alloc_site();
-                self.emit(&I::I32Const(site));
-                self.emit(&I::Call(BUF_RESERVE));
-                self.element_address(buffer, &len, elem);
-                self.expr(other);
-                self.emit(&I::I32Load(mem(8, 4)));
-                self.expr(&other_len);
-                self.scale(elem);
-                self.emit(&I::MemoryCopy {
-                    src_mem: 0,
-                    dst_mem: 0,
-                });
-                self.expr(buffer);
-                self.expr(&len);
-                self.expr(&other_len);
-                self.emit(&I::I32Add);
-                self.emit(&I::I32Store(mem(0, 4)));
-            }
+            (BufStmt::Append(elem), [buffer, other]) => self.append(buffer, other, elem),
             (BufStmt::Truncate, [buffer, len]) => {
                 self.expr(buffer);
                 self.expr(len);
@@ -747,7 +783,7 @@ const fn mem(offset: u64, size: u32) -> MemArg {
 const fn load(elem: Elem) -> I<'static> {
     match elem {
         Elem::U8 => I::I32Load8U(mem(0, 1)),
-        Elem::I32 | Elem::Bool => I::I32Load(mem(0, 4)),
+        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Load(mem(0, 4)),
         Elem::I64 => I::I64Load(mem(0, 8)),
         Elem::F32 => I::F32Load(mem(0, 4)),
         Elem::F64 => I::F64Load(mem(0, 8)),
@@ -757,7 +793,7 @@ const fn load(elem: Elem) -> I<'static> {
 const fn store(elem: Elem) -> I<'static> {
     match elem {
         Elem::U8 => I::I32Store8(mem(0, 1)),
-        Elem::I32 | Elem::Bool => I::I32Store(mem(0, 4)),
+        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Store(mem(0, 4)),
         Elem::I64 => I::I64Store(mem(0, 8)),
         Elem::F32 => I::F32Store(mem(0, 4)),
         Elem::F64 => I::F64Store(mem(0, 8)),
@@ -996,22 +1032,73 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
 /// them (`bool` as a number, turned back by `!== 0`), and a function building
 /// element `i` from the columns `c`.
 fn rows(element: &Shape) -> (String, String) {
-    let kinds: Vec<String> = element
-        .scalars()
+    let mut columns = Vec::new();
+    record_columns("v", element, 0, false, &mut columns);
+    let kinds: Vec<String> = columns
         .iter()
-        .map(|&ty| {
-            let elem = Elem::of(ty).unwrap_or(Elem::I32);
-            let kind = if elem == Elem::Bool {
-                "i32"
-            } else {
-                elem_kind(elem)
-            };
+        .map(|(_, kind)| {
+            let kind = if kind == "bool" { "i32" } else { kind.as_str() };
             format!("\"{kind}\"")
         })
         .collect();
     let mut index = 0;
-    let object = rebuild_at(element, &mut index, &|k| format!("c[{k}][i]"));
+    let object = rebuild_at(element, &mut index, &|k| format!("c[{k}][i]"), false);
     (kinds.join(", "), format!("(c, i) => {object}"))
+}
+
+/// The columns of an array of `shape`, for an element at `path`: the
+/// JavaScript expression of each stored number, and its kind. A string or an
+/// array inside an element becomes a new buffer, stored as a pointer (`ptr`),
+/// which the column owns.
+fn record_columns(
+    path: &str,
+    shape: &Shape,
+    depth: usize,
+    optional: bool,
+    out: &mut Vec<(String, String)>,
+) {
+    match shape {
+        Shape::Value(ty) => {
+            let elem = Elem::of(*ty).unwrap_or(Elem::I32);
+            let value = if optional {
+                let zero = match ty {
+                    Ty::I64 => "0n",
+                    Ty::Bool => "false",
+                    _ => "0",
+                };
+                format!("({path} ?? {zero})")
+            } else {
+                path.to_owned()
+            };
+            out.push((value, elem_kind(elem).to_owned()));
+        }
+        Shape::Object(_, fields) => {
+            let dot = if optional { "?." } else { "." };
+            for (field, value) in fields {
+                record_columns(&format!("{path}{dot}{field}"), value, depth, optional, out);
+            }
+        }
+        Shape::Option(inner) => {
+            out.push((format!("{path} !== undefined"), "bool".to_owned()));
+            record_columns(path, inner, depth, true, out);
+        }
+        Shape::String(_) => out.push((format!("$toStr({path})"), "ptr".to_owned())),
+        Shape::Array(elem, _) => out.push((
+            format!("$toBuf({path}, \"{}\")", elem_kind(*elem)),
+            "ptr".to_owned(),
+        )),
+        Shape::Records(inner, _) => {
+            let item = format!("w{depth}");
+            let mut columns = Vec::new();
+            record_columns(&item, inner, depth + 1, false, &mut columns);
+            for (column, kind) in columns {
+                out.push((
+                    format!("$toBuf({path}.map(({item}) => {column}), \"{kind}\")"),
+                    "ptr".to_owned(),
+                ));
+            }
+        }
+    }
 }
 
 /// How many numbers an `inout` value gives back: its scalars, not its buffers,
@@ -1060,6 +1147,7 @@ const fn elem_kind(elem: Elem) -> &'static str {
         Elem::F64 => "f64",
         Elem::Bool => "bool",
         Elem::U8 => "u8",
+        Elem::Handle => "ptr",
     }
 }
 
@@ -1084,14 +1172,13 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             out.args.push(buffer);
         }
         Shape::Records(element, pass) => {
-            // One column per scalar of an element, read with the same paths as
-            // a parameter object: `(v) => v.x`.
-            let mut columns = Marshal::default();
-            flatten("v", element, false, &mut columns);
+            // One column per scalar of an element: `(v) => v.x`, or a new
+            // buffer for a string or an array inside it.
+            let mut columns = Vec::new();
+            record_columns("v", element, 0, false, &mut columns);
             let mut buffers = Vec::new();
-            for (column, ty) in columns.args.iter().zip(element.scalars()) {
+            for (column, kind) in &columns {
                 let buffer = format!("$a{}", out.pre.len());
-                let kind = elem_kind(Elem::of(ty).unwrap_or(Elem::I32));
                 out.pre.push(format!(
                     "const {buffer} = $toBuf({path}.map((v) => {column}), \"{kind}\");"
                 ));
@@ -1104,6 +1191,7 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
                     buffers.join(", ")
                 ));
             }
+            // Releasing a column of buffers releases the buffers too.
             if *pass != Pass::Sink {
                 for buffer in &buffers {
                     out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
@@ -1152,11 +1240,18 @@ fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
             "$r".to_owned()
         }
     };
-    rebuild_at(shape, index, &at)
+    rebuild_at(shape, index, &at, true)
 }
 
-/// A value rebuilt from scalars that `at` reads by their position.
-fn rebuild_at(shape: &Shape, index: &mut usize, at: &dyn Fn(usize) -> String) -> String {
+/// A value rebuilt from scalars that `at` reads by their position. The
+/// buffers it reaches are released when `owned`; otherwise their owner,
+/// a column of an array, releases them afterwards.
+fn rebuild_at(
+    shape: &Shape,
+    index: &mut usize,
+    at: &dyn Fn(usize) -> String,
+    owned: bool,
+) -> String {
     match shape {
         Shape::Value(ty) => {
             let scalar = at(*index);
@@ -1170,30 +1265,35 @@ fn rebuild_at(shape: &Shape, index: &mut usize, at: &dyn Fn(usize) -> String) ->
         Shape::Object(_, fields) => {
             let fields: Vec<String> = fields
                 .iter()
-                .map(|(field, value)| format!("{field}: {}", rebuild_at(value, index, at)))
+                .map(|(field, value)| format!("{field}: {}", rebuild_at(value, index, at, owned)))
                 .collect();
             format!("({{ {} }})", fields.join(", "))
         }
         Shape::Array(elem, _) => {
             let handle = at(*index);
             *index += 1;
-            format!("$take({handle}, \"{}\")", elem_kind(*elem))
+            let take = if owned { "$take" } else { "$fromBuf" };
+            format!("{take}({handle}, \"{}\")", elem_kind(*elem))
         }
         Shape::Records(element, _) => {
             let (kinds, build) = rows(element);
-            let count = element.scalars().len();
+            let mut columns = Vec::new();
+            record_columns("v", element, 0, false, &mut columns);
+            let count = columns.len();
             let handles: Vec<String> = (0..count).map(|k| at(*index + k)).collect();
             *index += count;
-            format!("$takeRows([{}], [{kinds}], {build})", handles.join(", "))
+            let take = if owned { "$takeRows" } else { "$readRows" };
+            format!("{take}([{}], [{kinds}], {build})", handles.join(", "))
         }
         Shape::String(_) => {
             let handle = at(*index);
             *index += 1;
-            format!("$takeStr({handle})")
+            let take = if owned { "$takeStr" } else { "$readStr" };
+            format!("{take}({handle})")
         }
         Shape::Option(inner) => {
-            let some = rebuild_at(&Shape::Value(Ty::Bool), index, at);
-            let value = rebuild_at(inner, index, at);
+            let some = rebuild_at(&Shape::Value(Ty::Bool), index, at, owned);
+            let value = rebuild_at(inner, index, at, owned);
             format!("({some} ? {value} : undefined)")
         }
     }
@@ -1206,7 +1306,7 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         .chain(runtime.sites.iter().cloned())
         .map(|s| js_string(&s))
         .collect();
-    format!(
+    let imports = format!(
         "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
          const $faults = [{faults}];\n\
          const $sites = [{sites}];\n\
@@ -1227,80 +1327,95 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
-         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, memory: $runtime.memory }} }};\n\
-         // Arrays cross as copies: into a new buffer, and out of one.\n\
-         const $kinds = {{ i32: [4, \"getInt32\", \"setInt32\"], i64: [8, \"getBigInt64\", \"setBigInt64\"], f32: [4, \"getFloat32\", \"setFloat32\"], f64: [8, \"getFloat64\", \"setFloat64\"], bool: [4, \"getInt32\", \"setInt32\"], u8: [1, \"getUint8\", \"setUint8\"] }};\n\
-         const $toBuf = (values, kind) => {{\n  \
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, memory: $runtime.memory }} }};\n\
+",
+        bounds = js_string(runtime.bounds),
+        faults = faults.join(", "),
+        sites = sites.join(", "),
+        allocator = base64(runtime.allocator),
+        module = RUNTIME_MODULE,
+    );
+    imports + HEAP_HELPERS
+}
+
+/// The loader's helpers for arrays and strings, which cross the boundary as
+/// copies: into a new buffer, and out of one.
+const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and out of one.\n\
+         const $kinds = { i32: [4, \"getInt32\", \"setInt32\"], i64: [8, \"getBigInt64\", \"setBigInt64\"], f32: [4, \"getFloat32\", \"setFloat32\"], f64: [8, \"getFloat64\", \"setFloat64\"], bool: [4, \"getInt32\", \"setInt32\"], u8: [1, \"getUint8\", \"setUint8\"], ptr: [4, \"getInt32\", \"setInt32\"] };\n\
+         const $toBuf = (values, kind) => {\n  \
          const [size, , set] = $kinds[kind];\n  \
          const n = values.length;\n  \
-         const h = $runtime.buf_new(n, size, 0);\n  \
+         // A column of pointers owns the buffers they point to (DEEP).\n  \
+         const h = $runtime.buf_new(n, kind === \"ptr\" ? size | 0x100 : size, 0);\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          const data = view.getUint32(h + 8, true);\n  \
          for (let i = 0; i < n; i++) view[set](data + i * size, kind === \"bool\" ? (values[i] ? 1 : 0) : values[i], true);\n  \
          view.setUint32(h, n, true);\n  \
          return h;\n\
-         }};\n\
-         const $fromBuf = (h, kind) => {{\n  \
+         };\n\
+         const $fromBuf = (h, kind) => {\n  \
          const [size, get] = $kinds[kind];\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          const n = view.getUint32(h, true);\n  \
          const data = view.getUint32(h + 8, true);\n  \
          const out = new Array(n);\n  \
-         for (let i = 0; i < n; i++) {{\n    \
+         for (let i = 0; i < n; i++) {\n    \
          const v = view[get](data + i * size, true);\n    \
          out[i] = kind === \"bool\" ? v !== 0 : v;\n  \
-         }}\n  \
+         }\n  \
          return out;\n\
-         }};\n\
-         const $take = (h, kind) => {{\n  \
+         };\n\
+         const $take = (h, kind) => {\n  \
          const out = $fromBuf(h, kind);\n  \
          $runtime.buf_release(h, 0);\n  \
          return out;\n\
-         }};\n\
+         };\n\
          // Strings cross as UTF-8 bytes.\n\
          const $encoder = new TextEncoder();\n\
-         const $decoder = new TextDecoder(\"utf-8\", {{ fatal: true }});\n\
-         const $toStr = (text) => {{\n  \
+         const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
+         const $toStr = (text) => {\n  \
          const bytes = $encoder.encode(text);\n  \
          const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
          view.setUint32(h, bytes.length, true);\n  \
          return h;\n\
-         }};\n\
-         const $takeStr = (h) => {{\n  \
+         };\n\
+         const $readStr = (h) => {\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          const n = view.getUint32(h, true);\n  \
-         const text = $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n  \
+         return $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n\
+         };\n\
+         const $takeStr = (h) => {\n  \
+         const text = $readStr(h);\n  \
          $runtime.buf_release(h, 0);\n  \
          return text;\n\
-         }};\n\
+         };\n\
          // Arrays of structures: one buffer per field, rebuilt into objects.\n\
-         const $takeRows = (handles, kinds, build) => {{\n  \
-         const c = handles.map((h, k) => $take(h, kinds[k]));\n  \
+         // The buffers inside are read first; releasing the columns releases them.\n\
+         const $readRows = (handles, kinds, build) => {\n  \
+         const c = handles.map((h, k) => $fromBuf(h, kinds[k]));\n  \
          const n = c.length > 0 ? c[0].length : 0;\n  \
          const out = new Array(n);\n  \
          for (let i = 0; i < n; i++) out[i] = build(c, i);\n  \
          return out;\n\
-         }};\n\
-         const $setRows = (values, handles, kinds, build) => {{\n  \
+         };\n\
+         const $takeRows = (handles, kinds, build) => {\n  \
+         const out = $readRows(handles, kinds, build);\n  \
+         for (const h of handles) $runtime.buf_release(h, 0);\n  \
+         return out;\n\
+         };\n\
+         const $setRows = (values, handles, kinds, build) => {\n  \
          const c = handles.map((h, k) => $fromBuf(h, kinds[k]));\n  \
          const n = c.length > 0 ? c[0].length : 0;\n  \
          values.length = n;\n  \
          for (let i = 0; i < n; i++) values[i] = build(c, i);\n\
-         }};\n\
-         const $copyBack = (values, h, kind) => {{\n  \
+         };\n\
+         const $copyBack = (values, h, kind) => {\n  \
          const out = $fromBuf(h, kind);\n  \
          values.length = out.length;\n  \
          for (let i = 0; i < out.length; i++) values[i] = out[i];\n\
-         }};\n",
-        bounds = js_string(runtime.bounds),
-        faults = faults.join(", "),
-        sites = sites.join(", "),
-        allocator = base64(runtime.allocator),
-        module = RUNTIME_MODULE,
-    )
-}
+         };\n";
 
 /// A JavaScript string literal.
 fn js_string(text: &str) -> String {
