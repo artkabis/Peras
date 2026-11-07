@@ -14,9 +14,9 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                 | <span class="status checked">checked</span>   |
 | structures, nested, as parameters and results          | <span class="status compiled">compiled</span> |
 | `Option<T>`, `Some`, `None`, `?`                       | <span class="status compiled">compiled</span> |
-| `Array<T>` of numbers and booleans                     | <span class="status compiled">compiled</span> |
+| `Array<T>` of numbers, booleans, structures, options   | <span class="status compiled">compiled</span> |
 | `String`, in UTF-8                                     | <span class="status compiled">compiled</span> |
-| `Array<T>` of other types                              | <span class="status checked">checked</span>   |
+| `Array<T>` of strings or arrays                        | <span class="status checked">checked</span>   |
 | `Result<T, E>`, enumerations and unions, `match`       | <span class="status planned">planned</span>   |
 | generics, interfaces and traits, methods on structures | <span class="status planned">planned</span>   |
 | `Map`, `Set`, tuples, closures                         | <span class="status planned">planned</span>   |

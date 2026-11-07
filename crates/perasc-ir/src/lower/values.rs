@@ -43,10 +43,17 @@ impl Lowering<'_> {
                 }
                 Ok(out)
             }
-            CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
-                Some(_) => Ok(vec![(String::new(), Ty::Owned)]),
-                None => Err("array-element"),
-            },
+            // One buffer per scalar of an element: its columns.
+            CheckTy::Array(inner) => {
+                let leaves = self.leaves(inner).map_err(|_| "array-element")?;
+                if leaves.iter().any(|(_, t)| Elem::of(*t).is_none()) {
+                    return Err("array-element");
+                }
+                Ok(leaves
+                    .into_iter()
+                    .map(|(path, _)| (path, Ty::Owned))
+                    .collect())
+            }
             CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
             CheckTy::Option(inner) => {
                 let mut out = vec![("some".to_owned(), Ty::Bool)];
@@ -122,10 +129,10 @@ impl Lowering<'_> {
             }
             CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
             CheckTy::String => Shape::String(pass),
-            CheckTy::Array(inner) => Shape::Array(
-                Self::ir_type(inner).and_then(Elem::of).unwrap_or(Elem::I32),
-                pass,
-            ),
+            CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
+                Some(elem) => Shape::Array(elem, pass),
+                None => Shape::Records(Box::new(self.shape_passed(inner, pass)), pass),
+            },
             other => Shape::Value(Self::ir_type(other).unwrap_or(Ty::Void)),
         }
     }
@@ -233,8 +240,9 @@ impl Lowering<'_> {
             } => self.concat(state, *lhs, *rhs, mode),
             AstExpr::Array(items) => {
                 let built = self.array_literal(state, id, items);
-                Self::fresh(state, built.into_iter().collect(), mode)
+                Self::fresh(state, built, mode)
             }
+            AstExpr::Index { base, index } => self.index_values(state, *base, *index, span),
             AstExpr::Field { base, name } => {
                 // A field is read from its structure, which keeps it.
                 let fields = self.value_as(state, *base, Mode::Borrow);

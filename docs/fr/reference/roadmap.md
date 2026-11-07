@@ -8,7 +8,7 @@ Les exemples de cette page montrent la syntaxe visée ; le compilateur les refus
 
 Les premiers types qui ont besoin de mémoire, sur les fondations déjà construites : le vérificateur de libérations et l’allocateur de débogage.
 
-- ~~`Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`~~ : fait pour les nombres et les booléens, avec `copy()` ; restent les tableaux de structures, de chaînes et de tableaux.
+- ~~`Array<T>` compilé : indexation avec vérification des bornes, `push`, `pop`, `for…of`~~ : fait pour les nombres, les booléens, les structures et les options, avec `copy()` ; restent les tableaux de chaînes et de tableaux.
 - ~~`String` compilé, en UTF-8~~ : fait, avec `+`, `+=`, `==`, `length` en octets et `copy()`.
 - ~~`Option<T>` compilé~~ : fait, avec `?` et l’arithmétique vérifiée.
 - ~~Les vérifications de possession : déplacements, `inout` et `sink`, alias refusés~~ : fait ([E0204](../errors/E0204.md), [E0206](../errors/E0206.md), [E0207](../errors/E0207.md), [E0209](../errors/E0209.md)) , avec `inout` sur tous les types ; reste l’historique d’une valeur dans les erreurs.

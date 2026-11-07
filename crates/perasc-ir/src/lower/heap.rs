@@ -218,16 +218,6 @@ fn new_buffer(capacity: Expr, elem: Elem) -> Expr {
 }
 
 impl Lowering<'_> {
-    /// The element type of a buffer type, if it is compiled: an array's, or
-    /// the bytes of a string.
-    pub(super) fn element(ty: Option<&CheckTy>) -> Option<Elem> {
-        match ty {
-            Some(CheckTy::Array(inner)) => Self::ir_type(inner).and_then(Elem::of),
-            Some(CheckTy::String) => Some(Elem::U8),
-            _ => None,
-        }
-    }
-
     /// The numbers an `inout` parameter gives back, by the types of its scalars.
     pub(super) fn inout_numbers(&self, decl: &perasc_syntax::ast::FnDecl) -> Vec<Ty> {
         decl.params
@@ -347,7 +337,7 @@ impl Lowering<'_> {
     }
 
     /// `a == b` and `a != b` on strings and arrays: the same length, and the
-    /// same elements in order.
+    /// same elements in order, column by column.
     pub(super) fn buffer_eq(
         &mut self,
         state: &mut FnState,
@@ -356,39 +346,49 @@ impl Lowering<'_> {
         equal: bool,
         span: Span,
     ) -> Expr {
-        let Some(elem) = Self::element(self.check_type(lhs)) else {
-            self.unsupported(span, "array-element");
+        let Some(columns) = self.columns_of(lhs, span) else {
             return int(0);
         };
-        let (Some(a), Some(b)) = (self.buffer(state, lhs), self.buffer(state, rhs)) else {
+        let a = self.value_as(state, lhs, Mode::Borrow);
+        let b = self.value_as(state, rhs, Mode::Borrow);
+        let (Some(a0), Some(b0)) = (a.first(), b.first()) else {
             return int(0);
         };
         let n = state.temp(Ty::I32);
-        state.pre.push(Stmt::Set(n, len(&a)));
+        state.pre.push(Stmt::Set(n, len(a0)));
         let n = super::local_expr(state, n);
         let same = state.temp(Ty::Bool);
         state.pre.push(Stmt::Set(
             same,
-            super::binary(BinOp::Eq, n.clone(), len(&b)),
+            super::binary(BinOp::Eq, n.clone(), len(b0)),
         ));
         let same_expr = super::local_expr(state, same);
         let i = state.temp(Ty::I32);
         state.pre.push(Stmt::Set(i, int(0)));
         let i_expr = super::local_expr(state, i);
+        let element_equal = a
+            .iter()
+            .zip(&b)
+            .zip(&columns)
+            .map(|((x, y), &elem)| {
+                super::binary(
+                    BinOp::Eq,
+                    get(x, i_expr.clone(), elem),
+                    get(y, i_expr.clone(), elem),
+                )
+            })
+            .reduce(|acc, e| super::binary(BinOp::And, acc, e))
+            .unwrap_or(Expr {
+                kind: ExprKind::Const(Const::Bool(true)),
+                ty: Ty::Bool,
+            });
         state.pre.push(Stmt::Loop {
             cond: Some(super::binary(
                 BinOp::And,
                 same_expr.clone(),
                 super::binary(BinOp::Lt, i_expr.clone(), n),
             )),
-            body: vec![Stmt::Set(
-                same,
-                super::binary(
-                    BinOp::Eq,
-                    get(&a, i_expr.clone(), elem),
-                    get(&b, i_expr.clone(), elem),
-                ),
-            )],
+            body: vec![Stmt::Set(same, element_equal)],
             step: vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))],
         });
         if equal {
@@ -429,38 +429,70 @@ impl Lowering<'_> {
             .collect()
     }
 
-    /// The buffer of an array expression, lent.
+    /// The buffer of a string, or of an array of scalars, lent.
     pub(super) fn buffer(&mut self, state: &mut FnState, id: ExprId) -> Option<Expr> {
         self.value_as(state, id, Mode::Borrow).into_iter().next()
     }
 
-    /// `[a, b, c]`: a new buffer with each element pushed, in order.
+    /// The columns of an array type: the element type of each scalar of an
+    /// element, in order. An array of structures keeps one buffer per field,
+    /// so that every element operation is one per column.
+    pub(super) fn columns(&self, ty: Option<&CheckTy>) -> Option<Vec<Elem>> {
+        match ty {
+            Some(CheckTy::String) => Some(vec![Elem::U8]),
+            Some(CheckTy::Array(inner)) => self
+                .leaves(inner)
+                .ok()?
+                .iter()
+                .map(|(_, t)| Elem::of(*t))
+                .collect(),
+            _ => None,
+        }
+    }
+
+    /// The columns of an array expression, or `E0900` if they are not compiled.
+    fn columns_of(&mut self, id: ExprId, span: Span) -> Option<Vec<Elem>> {
+        let columns = self.columns(self.check_type(id)).filter(|c| !c.is_empty());
+        if columns.is_none() {
+            self.unsupported(span, "array-element");
+        }
+        columns
+    }
+
+    /// `[a, b, c]`: new buffers, one per column, with each element pushed.
     pub(super) fn array_literal(
         &mut self,
         state: &mut FnState,
         id: ExprId,
         items: &[ExprId],
-    ) -> Option<Expr> {
+    ) -> Vec<Expr> {
         let span = self.ast.expr(id).span;
-        let Some(elem) = Self::element(self.check_type(id)) else {
-            self.unsupported(span, "array-element");
-            return None;
+        let Some(columns) = self.columns_of(id, span) else {
+            return Vec::new();
         };
         let count = i64::try_from(items.len()).unwrap_or(i64::MAX);
-        let temp = state.owned_temp(new_buffer(int(count), elem));
+        let temps: Vec<LocalId> = columns
+            .iter()
+            .map(|&elem| state.owned_temp(new_buffer(int(count), elem)))
+            .collect();
         for &item in items {
-            let value = self.expr(state, item);
-            state
-                .pre
-                .push(Stmt::Buf(BufStmt::Push(elem), vec![borrowed(temp), value]));
+            let values = self.value(state, item);
+            for ((&temp, &elem), value) in temps.iter().zip(&columns).zip(values) {
+                state
+                    .pre
+                    .push(Stmt::Buf(BufStmt::Push(elem), vec![borrowed(temp), value]));
+            }
         }
-        Some(Expr {
-            kind: ExprKind::Local(temp),
-            ty: Ty::Owned,
-        })
+        temps
+            .into_iter()
+            .map(|temp| Expr {
+                kind: ExprKind::Local(temp),
+                ty: Ty::Owned,
+            })
+            .collect()
     }
 
-    /// `xs.length`.
+    /// `xs.length`: the length of the first column.
     pub(super) fn array_length(&mut self, state: &mut FnState, base: ExprId) -> Expr {
         match self.buffer(state, base) {
             Some(buffer) => len(&buffer),
@@ -468,7 +500,35 @@ impl Lowering<'_> {
         }
     }
 
-    /// `xs[i]`, checked.
+    /// `xs[i]`, checked: one scalar per column.
+    pub(super) fn index_values(
+        &mut self,
+        state: &mut FnState,
+        base: ExprId,
+        index: ExprId,
+        span: Span,
+    ) -> Vec<Expr> {
+        let Some(columns) = self.columns_of(base, span) else {
+            return Vec::new();
+        };
+        let buffers = self.value_as(state, base, Mode::Borrow);
+        let Some(first) = buffers.first().cloned() else {
+            return Vec::new();
+        };
+        let index = self.expr(state, index);
+        let index = state.spill(index);
+        state.pre.push(Stmt::Buf(
+            BufStmt::CheckIndex,
+            vec![index.clone(), len(&first)],
+        ));
+        buffers
+            .iter()
+            .zip(columns)
+            .map(|(buffer, elem)| get(buffer, index.clone(), elem))
+            .collect()
+    }
+
+    /// `xs[i]` of an array of scalars.
     pub(super) fn index_get(
         &mut self,
         state: &mut FnState,
@@ -476,24 +536,26 @@ impl Lowering<'_> {
         index: ExprId,
         span: Span,
     ) -> Expr {
-        let Some(elem) = Self::element(self.check_type(base)) else {
-            self.unsupported(span, "array-element");
-            return int(0);
-        };
-        let Some(buffer) = self.buffer(state, base) else {
-            return int(0);
-        };
-        let index = self.expr(state, index);
-        let index = state.spill(index);
-        state.pre.push(Stmt::Buf(
-            BufStmt::CheckIndex,
-            vec![index.clone(), len(&buffer)],
-        ));
-        get(&buffer, index, elem)
+        self.index_values(state, base, index, span)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| int(0))
     }
 
-    /// `xs[i] = v` and `xs[i] op= v`: the index and the value first, then the
-    /// check, then the store.
+    /// Whether an assignment target is an element, or a field of one:
+    /// `xs[i]`, `points[i].x`.
+    pub(super) fn is_element_place(&self, mut target: ExprId) -> bool {
+        loop {
+            match self.ast.expr(target).kind {
+                AstExpr::Index { .. } => return true,
+                AstExpr::Field { base, .. } | AstExpr::Paren(base) => target = base,
+                _ => return false,
+            }
+        }
+    }
+
+    /// `xs[i] = v`, `xs[i] op= v`, `points[i].x = v`: the index and the value
+    /// first, then the check, then a store into each column the place covers.
     pub(super) fn index_assign(
         &mut self,
         state: &mut FnState,
@@ -502,41 +564,71 @@ impl Lowering<'_> {
         value: Option<ExprId>,
         out: &mut Vec<Stmt>,
     ) {
-        let AstExpr::Index { base, index } = self.ast.expr(target).kind else {
-            return;
+        // The fields on the way from the element to the place, outermost last.
+        let mut fields = Vec::new();
+        let mut place = target;
+        let (base, index) = loop {
+            match self.ast.expr(place).kind {
+                AstExpr::Index { base, index } => break (base, index),
+                AstExpr::Field { base, name } => {
+                    fields.push((base, self.ast.name(name.symbol)));
+                    place = base;
+                }
+                AstExpr::Paren(inner) => place = inner,
+                _ => return,
+            }
         };
         let span = self.ast.expr(target).span;
-        let Some(elem) = Self::element(self.check_type(base)) else {
-            self.unsupported(span, "array-element");
+        let Some(columns) = self.columns_of(base, span) else {
             return;
         };
-        let Some(buffer) = self.buffer(state, base) else {
-            return;
-        };
+        // Which columns the place covers.
+        let (mut offset, mut count) = (0, columns.len());
+        for (owner, name) in fields.iter().rev() {
+            let Some(ty) = self.check_type(*owner).cloned() else {
+                return;
+            };
+            let Some((at, len, _)) = self.field(&ty, name) else {
+                return;
+            };
+            offset += at;
+            count = len;
+        }
+        let buffers = self.value_as(state, base, Mode::Borrow);
         let index = self.expr(state, index);
         let index = state.spill(index);
-        let value = match value {
-            Some(value) => self.expr(state, value),
-            None => super::one(elem.ty()),
+        let values: Vec<Expr> = match value {
+            Some(value) => self.value(state, value),
+            None => columns
+                .get(offset)
+                .map(|e| vec![super::one(e.ty())])
+                .unwrap_or_default(),
         };
-        let value = state.spill(value);
+        let values: Vec<Expr> = values.into_iter().map(|v| state.spill(v)).collect();
+        let Some(first) = buffers.first() else {
+            return;
+        };
         state.pre.push(Stmt::Buf(
             BufStmt::CheckIndex,
-            vec![index.clone(), len(&buffer)],
+            vec![index.clone(), len(first)],
         ));
-        let value = match op {
-            Some(op) => super::binary(op, get(&buffer, index.clone(), elem), value),
-            None => value,
-        };
-        state
-            .pre
-            .push(Stmt::Buf(BufStmt::Set(elem), vec![buffer, index, value]));
+        let covered = buffers.iter().zip(&columns).skip(offset).take(count);
+        for ((buffer, &elem), value) in covered.zip(values) {
+            let value = match op {
+                Some(op) => super::binary(op, get(buffer, index.clone(), elem), value),
+                None => value,
+            };
+            state.pre.push(Stmt::Buf(
+                BufStmt::Set(elem),
+                vec![buffer.clone(), index.clone(), value],
+            ));
+        }
         state.flush(out);
         state.end_statement(out);
     }
 
     /// A method of an array, as scalars: `push` gives none, `pop` an option,
-    /// `copy` a new array.
+    /// `copy` a new array. Each works column by column.
     pub(super) fn array_method(
         &mut self,
         state: &mut FnState,
@@ -546,11 +638,11 @@ impl Lowering<'_> {
         mode: Mode,
         span: Span,
     ) -> Vec<Expr> {
-        let Some(elem) = Self::element(self.check_type(base)) else {
-            self.unsupported(span, "array-element");
+        let Some(columns) = self.columns_of(base, span) else {
             return Vec::new();
         };
-        let Some(buffer) = self.buffer(state, base) else {
+        let buffers = self.value_as(state, base, Mode::Borrow);
+        let Some(first) = buffers.first().cloned() else {
             return Vec::new();
         };
         match method {
@@ -558,58 +650,77 @@ impl Lowering<'_> {
                 let Some(&arg) = args.first() else {
                     return Vec::new();
                 };
-                let value = self.expr(state, arg);
-                state
-                    .pre
-                    .push(Stmt::Buf(BufStmt::Push(elem), vec![buffer, value]));
+                let values = self.value(state, arg);
+                for ((buffer, elem), value) in buffers.into_iter().zip(columns).zip(values) {
+                    state
+                        .pre
+                        .push(Stmt::Buf(BufStmt::Push(elem), vec![buffer, value]));
+                }
                 Vec::new()
             }
             "pop" => {
                 // n = len; if (n > 0) { v = xs[n - 1]; truncate to n - 1 }
                 let n = state.temp(Ty::I32);
-                state.pre.push(Stmt::Set(n, len(&buffer)));
+                state.pre.push(Stmt::Set(n, len(&first)));
                 let n = super::local_expr(state, n);
                 let some = super::binary(BinOp::Gt, n.clone(), int(0));
                 let last = super::binary(BinOp::Sub, n, int(1));
-                let value = state.temp(elem.ty());
-                state.pre.push(Stmt::Set(value, super::zero(elem.ty())));
                 let some_temp = state.temp(Ty::Bool);
                 state.pre.push(Stmt::Set(some_temp, some));
+                let mut out = vec![super::local_expr(state, some_temp)];
+                let mut then = Vec::new();
+                for (buffer, elem) in buffers.iter().zip(columns) {
+                    let value = state.temp(elem.ty());
+                    state.pre.push(Stmt::Set(value, super::zero(elem.ty())));
+                    then.push(Stmt::Set(value, get(buffer, last.clone(), elem)));
+                    out.push(super::local_expr(state, value));
+                }
+                for buffer in buffers {
+                    then.push(Stmt::Buf(BufStmt::Truncate, vec![buffer, last.clone()]));
+                }
                 state.pre.push(Stmt::If {
                     cond: super::local_expr(state, some_temp),
-                    then: vec![
-                        Stmt::Set(value, get(&buffer, last.clone(), elem)),
-                        Stmt::Buf(BufStmt::Truncate, vec![buffer, last]),
-                    ],
+                    then,
                     otherwise: Vec::new(),
                 });
-                vec![
-                    super::local_expr(state, some_temp),
-                    super::local_expr(state, value),
-                ]
+                out
             }
             "copy" => {
                 // t = new(len); for (i = 0; i < len; i++) push(t, xs[i])
                 let n = state.temp(Ty::I32);
-                state.pre.push(Stmt::Set(n, len(&buffer)));
+                state.pre.push(Stmt::Set(n, len(&first)));
                 let n = super::local_expr(state, n);
-                let copy = state.owned_temp(new_buffer(n.clone(), elem));
+                let copies: Vec<LocalId> = columns
+                    .iter()
+                    .map(|&elem| state.owned_temp(new_buffer(n.clone(), elem)))
+                    .collect();
                 let i = state.temp(Ty::I32);
                 state.pre.push(Stmt::Set(i, int(0)));
                 let i_expr = super::local_expr(state, i);
+                let body = copies
+                    .iter()
+                    .zip(&buffers)
+                    .zip(&columns)
+                    .map(|((&copy, buffer), &elem)| {
+                        Stmt::Buf(
+                            BufStmt::Push(elem),
+                            vec![borrowed(copy), get(buffer, i_expr.clone(), elem)],
+                        )
+                    })
+                    .collect();
                 state.pre.push(Stmt::Loop {
                     cond: Some(super::binary(BinOp::Lt, i_expr.clone(), n)),
-                    body: vec![Stmt::Buf(
-                        BufStmt::Push(elem),
-                        vec![borrowed(copy), get(&buffer, i_expr.clone(), elem)],
-                    )],
+                    body,
                     step: vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))],
                 });
-                let copied = Expr {
-                    kind: ExprKind::Local(copy),
-                    ty: Ty::Owned,
-                };
-                Self::fresh(state, vec![copied], mode)
+                let fresh_columns = copies
+                    .into_iter()
+                    .map(|column| Expr {
+                        kind: ExprKind::Local(column),
+                        ty: Ty::Owned,
+                    })
+                    .collect();
+                Self::fresh(state, fresh_columns, mode)
             }
             _ => {
                 self.unsupported(span, "method");
@@ -629,11 +740,15 @@ impl Lowering<'_> {
         out: &mut Vec<Stmt>,
     ) {
         let span = self.ast.expr(iterable).span;
-        let Some(elem) = Self::element(self.check_type(iterable)) else {
-            self.unsupported(span, "array-element");
+        let Some(columns) = self.columns_of(iterable, span) else {
             return;
         };
-        let Some(buffer) = self.buffer(state, iterable) else {
+        let element = match self.check_type(iterable) {
+            Some(CheckTy::Array(inner)) => (**inner).clone(),
+            _ => CheckTy::Int(perasc_check::ty::IntTy::U8),
+        };
+        let buffers = self.value_as(state, iterable, Mode::Borrow);
+        let Some(first) = buffers.first().cloned() else {
             return;
         };
         let i = state.temp(Ty::I32);
@@ -641,9 +756,21 @@ impl Lowering<'_> {
         state.flush(out);
         let i_expr = super::local_expr(state, i);
         state.open();
-        let x = state.add(name.symbol, self.ast.name(name.symbol), elem.ty());
-        let mut turn = vec![Stmt::Set(x, get(&buffer, i_expr.clone(), elem))];
-        let cond = super::binary(BinOp::Lt, i_expr.clone(), len(&buffer));
+        let text = self.ast.name(name.symbol);
+        let locals = if super::values::is_aggregate(&element) {
+            let leaves = self.leaves(&element).unwrap_or_default();
+            state.add_struct(name.symbol, text, &leaves)
+        } else {
+            let ty = columns.first().map_or(Ty::I32, |e| e.ty());
+            vec![state.add(name.symbol, text, ty)]
+        };
+        let mut turn: Vec<Stmt> = locals
+            .iter()
+            .zip(&buffers)
+            .zip(&columns)
+            .map(|((&x, buffer), &elem)| Stmt::Set(x, get(buffer, i_expr.clone(), elem)))
+            .collect();
+        let cond = super::binary(BinOp::Lt, i_expr.clone(), len(&first));
         let step = vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))];
         let lowered = self.loop_body(state, Some(cond), Vec::new(), body, step, &mut turn);
         out.extend(lowered);

@@ -169,3 +169,20 @@ fn the_question_mark_releases_what_the_function_holds() {
          fn check(i: i32, seen: inout i32): Option<i32> {\n  seen += 100;\n  if (i == 4) {\n    return None;\n  }\n  return Some(0);\n}\n";
     gives(source, &[(vec![i(3)], Ok(i(306))), (vec![i(9)], Ok(i(-1)))]);
 }
+
+#[test]
+fn arrays_of_structures_keep_one_buffer_per_field() {
+    let source = "export fn f(n: i32): i32 {\n  let pts: Array<P> = [];\n  for (let i = 0; i < n; i++) {\n    pts.push(P(i, i * i, i % 2 == 0));\n  }\n  pts[0].y += 100;\n  pts[n - 1] = P(7, 7, true);\n  let total = 0;\n  for (const p of pts) {\n    if (p.on) {\n      total += p.x + p.y;\n    }\n  }\n  const last = pts.copy().pop().unwrapOr(P(0, 0, false));\n  if (pts == pts.copy()) {\n    total += 1000;\n  }\n  return total * 10 + last.x;\n}\n\
+         struct P {\n  x: i32;\n  y: i32;\n  on: bool;\n}\n";
+    // n = 4: (0, 100, on), (1, 1), (2, 4, on), (7, 7, on): 100 + 6 + 14.
+    let module = gives(
+        source,
+        &[(vec![i(4)], Ok(i(11_207))), (vec![i(0)], Err(Trap::Bounds))],
+    );
+    // Three columns, three buffers: `pts_x`, `pts_y` and `pts_on`.
+    let text = module.to_string();
+    assert!(
+        text.contains("pts_x: owned") && text.contains("pts_on: owned"),
+        "{text}"
+    );
+}

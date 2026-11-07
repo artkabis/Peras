@@ -472,16 +472,14 @@ impl Lowering<'_> {
                 state.end_statement(out);
             }
             StmtKind::Assign { target, op, value } => {
-                if matches!(self.ast.expr(*target).kind, AstExpr::Index { .. }) {
+                if self.is_element_place(*target) {
                     self.index_assign(state, *target, assign_op(*op), Some(*value), out);
                 } else {
                     self.assign_stmt(state, *target, *op, *value, out);
                     state.end_statement(out);
                 }
             }
-            StmtKind::Step { target, op }
-                if matches!(self.ast.expr(*target).kind, AstExpr::Index { .. }) =>
-            {
+            StmtKind::Step { target, op } if self.is_element_place(*target) => {
                 let op = if *op == StepOp::Increment {
                     BinOp::Add
                 } else {

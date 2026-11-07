@@ -46,7 +46,7 @@ The result of a function that returns nothing. <span class="status compiled">com
 
 ## `Array<T>`
 
-A growable list of values of type `T`, written `[a, b]`, compiled when `T` is a number or `bool`. See [collections](../guide/collections.md#arrayt). <span class="status compiled">compiled</span>
+A growable list of values of type `T`, written `[a, b]`, compiled when `T` is a number, `bool`, or a structure or option of them. See [collections](../guide/collections.md#arrayt). <span class="status compiled">compiled</span>
 
 ## `String`
 

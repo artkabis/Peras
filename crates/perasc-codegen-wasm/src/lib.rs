@@ -992,6 +992,28 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
     format!("export const {name} = ({}) => {body};\n", params.join(", "))
 }
 
+/// The columns of an array of structures: their kinds as JavaScript reads
+/// them (`bool` as a number, turned back by `!== 0`), and a function building
+/// element `i` from the columns `c`.
+fn rows(element: &Shape) -> (String, String) {
+    let kinds: Vec<String> = element
+        .scalars()
+        .iter()
+        .map(|&ty| {
+            let elem = Elem::of(ty).unwrap_or(Elem::I32);
+            let kind = if elem == Elem::Bool {
+                "i32"
+            } else {
+                elem_kind(elem)
+            };
+            format!("\"{kind}\"")
+        })
+        .collect();
+    let mut index = 0;
+    let object = rebuild_at(element, &mut index, &|k| format!("c[{k}][i]"));
+    (kinds.join(", "), format!("(c, i) => {object}"))
+}
+
 /// How many numbers an `inout` value gives back: its scalars, not its buffers,
 /// which are changed in place.
 fn numbers(shape: &Shape) -> usize {
@@ -999,7 +1021,7 @@ fn numbers(shape: &Shape) -> usize {
         Shape::Value(_) => 1,
         Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
         Shape::Option(inner) => 1 + numbers(inner),
-        Shape::Array(..) | Shape::String(_) => 0,
+        Shape::Array(..) | Shape::String(_) | Shape::Records(..) => 0,
     }
 }
 
@@ -1016,7 +1038,7 @@ fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mu
             }
         }
         // perasc refuses options passed `inout` from JavaScript.
-        Shape::Option(_) | Shape::Array(..) | Shape::String(_) => {}
+        Shape::Option(_) | Shape::Array(..) | Shape::String(_) | Shape::Records(..) => {}
     }
 }
 
@@ -1061,6 +1083,34 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             }
             out.args.push(buffer);
         }
+        Shape::Records(element, pass) => {
+            // One column per scalar of an element, read with the same paths as
+            // a parameter object: `(v) => v.x`.
+            let mut columns = Marshal::default();
+            flatten("v", element, false, &mut columns);
+            let mut buffers = Vec::new();
+            for (column, ty) in columns.args.iter().zip(element.scalars()) {
+                let buffer = format!("$a{}", out.pre.len());
+                let kind = elem_kind(Elem::of(ty).unwrap_or(Elem::I32));
+                out.pre.push(format!(
+                    "const {buffer} = $toBuf({path}.map((v) => {column}), \"{kind}\");"
+                ));
+                buffers.push(buffer);
+            }
+            if *pass == Pass::Inout {
+                let (kinds, build) = rows(element);
+                out.post.push(format!(
+                    "$setRows({path}, [{}], [{kinds}], {build});",
+                    buffers.join(", ")
+                ));
+            }
+            if *pass != Pass::Sink {
+                for buffer in &buffers {
+                    out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+                }
+            }
+            out.args.extend(buffers);
+        }
         Shape::String(pass) => {
             let buffer = format!("$a{}", out.pre.len());
             out.pre.push(format!("const {buffer} = $toStr({path});"));
@@ -1095,13 +1145,21 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
 
 /// A result rebuilt from `$r`, the WebAssembly result: an array when `many`.
 fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
+    let at = |k: usize| {
+        if many {
+            format!("$r[{k}]")
+        } else {
+            "$r".to_owned()
+        }
+    };
+    rebuild_at(shape, index, &at)
+}
+
+/// A value rebuilt from scalars that `at` reads by their position.
+fn rebuild_at(shape: &Shape, index: &mut usize, at: &dyn Fn(usize) -> String) -> String {
     match shape {
         Shape::Value(ty) => {
-            let scalar = if many {
-                format!("$r[{index}]")
-            } else {
-                "$r".to_owned()
-            };
+            let scalar = at(*index);
             *index += 1;
             if *ty == Ty::Bool {
                 format!("{scalar} !== 0")
@@ -1112,31 +1170,30 @@ fn rebuild(shape: &Shape, many: bool, index: &mut usize) -> String {
         Shape::Object(_, fields) => {
             let fields: Vec<String> = fields
                 .iter()
-                .map(|(field, value)| format!("{field}: {}", rebuild(value, many, index)))
+                .map(|(field, value)| format!("{field}: {}", rebuild_at(value, index, at)))
                 .collect();
             format!("({{ {} }})", fields.join(", "))
         }
         Shape::Array(elem, _) => {
-            let handle = if many {
-                format!("$r[{index}]")
-            } else {
-                "$r".to_owned()
-            };
+            let handle = at(*index);
             *index += 1;
             format!("$take({handle}, \"{}\")", elem_kind(*elem))
         }
+        Shape::Records(element, _) => {
+            let (kinds, build) = rows(element);
+            let count = element.scalars().len();
+            let handles: Vec<String> = (0..count).map(|k| at(*index + k)).collect();
+            *index += count;
+            format!("$takeRows([{}], [{kinds}], {build})", handles.join(", "))
+        }
         Shape::String(_) => {
-            let handle = if many {
-                format!("$r[{index}]")
-            } else {
-                "$r".to_owned()
-            };
+            let handle = at(*index);
             *index += 1;
             format!("$takeStr({handle})")
         }
         Shape::Option(inner) => {
-            let some = rebuild(&Shape::Value(Ty::Bool), many, index);
-            let value = rebuild(inner, many, index);
+            let some = rebuild_at(&Shape::Value(Ty::Bool), index, at);
+            let value = rebuild_at(inner, index, at);
             format!("({some} ? {value} : undefined)")
         }
     }
@@ -1217,6 +1274,20 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          const text = $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n  \
          $runtime.buf_release(h, 0);\n  \
          return text;\n\
+         }};\n\
+         // Arrays of structures: one buffer per field, rebuilt into objects.\n\
+         const $takeRows = (handles, kinds, build) => {{\n  \
+         const c = handles.map((h, k) => $take(h, kinds[k]));\n  \
+         const n = c.length > 0 ? c[0].length : 0;\n  \
+         const out = new Array(n);\n  \
+         for (let i = 0; i < n; i++) out[i] = build(c, i);\n  \
+         return out;\n\
+         }};\n\
+         const $setRows = (values, handles, kinds, build) => {{\n  \
+         const c = handles.map((h, k) => $fromBuf(h, kinds[k]));\n  \
+         const n = c.length > 0 ? c[0].length : 0;\n  \
+         values.length = n;\n  \
+         for (let i = 0; i < n; i++) values[i] = build(c, i);\n\
          }};\n\
          const $copyBack = (values, h, kind) => {{\n  \
          const out = $fromBuf(h, kind);\n  \
@@ -1355,6 +1426,20 @@ fn ts_shape(shape: &Shape) -> String {
         Shape::Object(name, _) => name.clone(),
         Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
         Shape::String(_) => "string".to_owned(),
+        Shape::Records(element, pass) => {
+            let item = ts_shape(element);
+            // `(number | undefined)[]`, not `number | undefined[]`.
+            let item = if item.contains('|') {
+                format!("({item})")
+            } else {
+                item
+            };
+            if matches!(pass, Pass::Borrow | Pass::Sink) {
+                format!("readonly {item}[]")
+            } else {
+                format!("{item}[]")
+            }
+        }
         Shape::Array(elem, pass) => {
             let item = ts_scalar(elem.ty());
             // An array the function does not change can be read-only.
@@ -1370,7 +1455,7 @@ fn ts_shape(shape: &Shape) -> String {
 /// `export interface Point { x: number; y: number; }`, for a structure and the
 /// structures in it, each once.
 fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
-    if let Shape::Option(inner) = shape {
+    if let Shape::Option(inner) | Shape::Records(inner, _) = shape {
         return interface(inner, out);
     }
     let Shape::Object(name, fields) = shape else {

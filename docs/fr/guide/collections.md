@@ -42,7 +42,31 @@ export fn scale(xs: inout Array<f64>, k: f64): void {
 
 **Les indices sont vérifiés.** Un indice hors de `0` à `xs.length - 1` arrête le programme avec une `RangeError`, avant de toucher la mémoire. `push` fait de la place au besoin, en la doublant, si bien qu’ajouter des éléments un par un coûte un temps constant chacun, en moyenne.
 
-Aujourd’hui, un tableau contient des nombres ou des booléens : `i32`, `i64`, `f32`, `f64`, `bool`. Les tableaux de structures, de chaînes ou de tableaux sont vérifiés, pas encore compilés.
+Un tableau contient des nombres, des booléens, des structures de ceux-ci, ou des options de ceux-ci. Un tableau de structures garde un buffer par champ, ses colonnes : `points[i].x` lit un nombre dans la colonne `x`, et une boucle sur `x` seul ne touche rien d’autre. Les tableaux de chaînes et de tableaux sont vérifiés, pas encore compilés.
+
+```peras build
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn centroid(points: Array<Point>): Point {
+  let sx = 0.0;
+  let sy = 0.0;
+  for (const p of points) {
+    sx += p.x;
+    sy += p.y;
+  }
+  const n = points.length.toF64();
+  return Point(sx / n, sy / n);
+}
+
+export fn shift(points: inout Array<Point>, dx: f64): void {
+  for (let i = 0; i < points.length; i++) {
+    points[i].x += dx;
+  }
+}
+```
 
 ### Un propriétaire par tableau
 

@@ -42,7 +42,31 @@ export fn scale(xs: inout Array<f64>, k: f64): void {
 
 **Indices are checked.** An index outside `0` to `xs.length - 1` stops the program with a `RangeError`, before any memory is touched. `push` makes room as needed, doubling it, so that adding elements one by one costs a constant time each, on average.
 
-Today an array holds numbers or booleans: `i32`, `i64`, `f32`, `f64`, `bool`. Arrays of structures, of strings or of arrays are checked, not compiled yet.
+An array holds numbers, booleans, structures of them, or options of them. An array of structures keeps one buffer per field, its columns: `points[i].x` reads one number from the `x` column, and a loop over `x` alone touches nothing else. Arrays of strings and of arrays are checked, not compiled yet.
+
+```peras build
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn centroid(points: Array<Point>): Point {
+  let sx = 0.0;
+  let sy = 0.0;
+  for (const p of points) {
+    sx += p.x;
+    sy += p.y;
+  }
+  const n = points.length.toF64();
+  return Point(sx / n, sy / n);
+}
+
+export fn shift(points: inout Array<Point>, dx: f64): void {
+  for (let i = 0; i < points.length; i++) {
+    points[i].x += dx;
+  }
+}
+```
 
 ### One owner per array
 

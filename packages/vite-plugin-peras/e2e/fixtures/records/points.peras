@@ -1,0 +1,55 @@
+export struct Point {
+  x: f64;
+  y: f64;
+  visible: bool;
+}
+
+export fn centroid(points: Array<Point>): Point {
+  let sx = 0.0;
+  let sy = 0.0;
+  for (const p of points) {
+    sx += p.x;
+    sy += p.y;
+  }
+  const n = points.length.toF64();
+  return Point(sx / n, sy / n, true);
+}
+
+export fn grid(n: i32): Array<Point> {
+  let out: Array<Point> = [];
+  for (let i = 0; i < n; i++) {
+    out.push(Point(i.toF64(), (i * i).toF64(), i % 2 == 0));
+  }
+  return out;
+}
+
+export fn shift(points: inout Array<Point>, dx: f64): void {
+  for (let i = 0; i < points.length; i++) {
+    points[i].x += dx;
+    points[i].visible = !points[i].visible;
+  }
+}
+
+export fn last_x(points: Array<Point>): f64 {
+  let copy = points.copy();
+  const last = copy.pop().unwrapOr(Point(-1.0, -1.0, false));
+  return last.x;
+}
+
+export fn same(a: Array<Point>, b: Array<Point>): bool {
+  return a == b;
+}
+
+export fn swap_first(points: inout Array<Point>): void {
+  const first = points[0];
+  points[0] = points[points.length - 1];
+  points[points.length - 1] = first;
+}
+
+export fn maybe(xs: Array<Option<i32>>): i32 {
+  let total = 0;
+  for (const x of xs) {
+    total += x.unwrapOr(100);
+  }
+  return total;
+}

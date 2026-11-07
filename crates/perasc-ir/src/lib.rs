@@ -149,6 +149,9 @@ pub enum Shape {
     Array(Elem, Pass),
     /// A `String`: one buffer of UTF-8 bytes. JavaScript sees a string.
     String(Pass),
+    /// An array of structures: one buffer per scalar of an element, its
+    /// columns. JavaScript sees an array of objects.
+    Records(Box<Shape>, Pass),
 }
 
 /// How a heap value is passed between JavaScript and WebAssembly.
@@ -176,6 +179,14 @@ impl Shape {
                 vec![Ty::Owned]
             }
             Self::Array(..) | Self::String(_) => vec![Ty::Borrowed],
+            Self::Records(element, pass) => {
+                let handle = if matches!(pass, Pass::Sink | Pass::Result) {
+                    Ty::Owned
+                } else {
+                    Ty::Borrowed
+                };
+                element.scalars().iter().map(|_| handle).collect()
+            }
         }
     }
 }

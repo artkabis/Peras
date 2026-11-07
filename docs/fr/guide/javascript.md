@@ -14,15 +14,15 @@ Pour `geometry.peras` :
 
 ## Les types à la frontière
 
-| Peras               | JavaScript                                  |
-| ------------------- | ------------------------------------------- |
-| `i32`, `f32`, `f64` | `number`                                    |
-| `i64`               | `bigint`                                    |
-| `bool`              | `boolean`                                   |
-| une structure       | un simple objet, déclaré comme `interface`  |
-| `Option<T>`         | la valeur, ou `undefined`                   |
-| `Array<T>`          | un tableau, copié à l’entrée et à la sortie |
-| `String`            | une chaîne, copiée en UTF-8                 |
+| Peras               | JavaScript                                                                |
+| ------------------- | ------------------------------------------------------------------------- |
+| `i32`, `f32`, `f64` | `number`                                                                  |
+| `i64`               | `bigint`                                                                  |
+| `bool`              | `boolean`                                                                 |
+| une structure       | un simple objet, déclaré comme `interface`                                |
+| `Option<T>`         | la valeur, ou `undefined`                                                 |
+| `Array<T>`          | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie |
+| `String`            | une chaîne, copiée en UTF-8                                               |
 
 ```peras build
 export struct Rect {
