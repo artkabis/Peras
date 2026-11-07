@@ -59,19 +59,11 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "inout-export",
         ),
         (
-            "fn f(_o: Option<Array<i32>>): i32 { return 0; }",
-            "heap-option",
-        ),
-        (
             "export fn f(s: inout String): void { s += \"a\"; }",
             "inout-string",
         ),
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
         ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
-        (
-            "fn f(xs: Array<String>): bool { let ys = xs.copy(); return ys.pop().isSome(); }",
-            "heap-option",
-        ),
         ("fn f(x: f64): f64 { return x.sin(); }", "method"),
     ] {
         let errors = lowered(source).err().unwrap_or_default();

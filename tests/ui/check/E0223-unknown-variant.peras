@@ -1,0 +1,23 @@
+// E0223: variants that do not exist, in values and in patterns.
+enum Shape {
+  Circle(f64),
+  Empty,
+}
+
+export fn make(): Shape {
+  return Shape.Circl(1.0);
+}
+
+export fn test(s: Shape, o: Option<i32>): i32 {
+  const a = match (s) {
+    Circle(_) => 1,
+    Square(_) => 2,
+    _ => 0,
+  };
+  // A name that is no variant is not an error: it names the value.
+  const b = match (o) {
+    Some(x) => x,
+    nothing => 0,
+  };
+  return a + b;
+}

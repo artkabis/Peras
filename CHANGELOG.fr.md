@@ -14,6 +14,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
   - Les champs se lisent et s’écrivent, affectations composées comprises ; une structure se copie par affectation ; `p = Point(p.y, p.x)` échange.
   - Les appels qui renvoient une structure s’exécutent d’abord, dans des temporaires, sans changer l’ordre d’évaluation : à droite de `&&` et `||` seulement quand ils s’exécuteraient, et dans une condition de boucle à chaque tour.
   - Les fonctions exportées prennent et renvoient des objets JavaScript, déclarés comme interfaces TypeScript.
+- **Énumérations avec données, et `match`.** `enum Shape { Circle(f64), Rect(f64, f64), Empty }` ; les valeurs s’écrivent `Shape.Circle(1.0)`.
+  - `match` décompose une valeur avec des motifs : `_`, noms, nombres et booléens, variantes avec leurs données, imbriqués ; les bras sont des valeurs ou des blocs, et `return`, `break`, `continue` y marchent.
+  - Chaque `match` doit couvrir chaque valeur (`E0222`) ; une variante inconnue (`E0223`) et un bras qu’aucune valeur n’atteint (`E0224`) sont aussi des erreurs. Un `match` dont tous les bras renvoient termine la fonction.
+  - Les options se filtrent aussi (`Some(x)`, `None`), et une option ou une énumération peut désormais contenir des chaînes et des tableaux : les données des variantes non prises sont des buffers vides, si bien que la valeur possède toujours les mêmes. `pop()` sur un tableau de chaînes marche désormais.
+  - JavaScript voit `{ kind: "Circle", values: [1] }`, déclaré à TypeScript comme une union.
 - Les **tableaux de chaînes et de tableaux** se compilent, ainsi que les structures qui en contiennent dans des tableaux : un buffer peut posséder des buffers, que le runtime libère et copie avec lui, à toute profondeur. JavaScript les passe et les reçoit en tableaux et objets imbriqués.
 - E0204 raconte l’histoire de la valeur : où elle a reçu sa valeur, où elle a été déplacée, où elle est réutilisée.
 - Les **tableaux de structures et d’options** se compilent, en colonnes : un buffer par scalaire d’un élément, si bien que `points[i].x` et une boucle sur un seul champ ne touchent qu’un buffer. L’indexation, `points[i].x = v`, `push`, `pop`, `copy`, `==` et `for…of` marchent colonne par colonne ; JavaScript voit des tableaux d’objets.

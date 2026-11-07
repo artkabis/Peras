@@ -684,11 +684,6 @@ impl Lowering<'_> {
                 }
                 Vec::new()
             }
-            "pop" if columns.contains(&Elem::Handle) => {
-                // The element would be an option holding a buffer.
-                self.unsupported(span, "heap-option");
-                Vec::new()
-            }
             "pop" => {
                 // n = len; if (n > 0) { v = xs[n - 1]; truncate to n - 1 }
                 let n = state.temp(Ty::I32);
@@ -701,6 +696,27 @@ impl Lowering<'_> {
                 let mut out = vec![super::local_expr(state, some_temp)];
                 let mut then = Vec::new();
                 for (buffer, elem) in buffers.iter().zip(columns) {
+                    if elem == Elem::Handle {
+                        // An empty buffer when there is none, else the element
+                        // itself, taken out before the array is shortened.
+                        let value = state.owned_temp(new_buffer(int(0), Elem::U8));
+                        then.push(release_stmt(value));
+                        then.push(Stmt::Set(
+                            value,
+                            Expr {
+                                kind: ExprKind::Buf(
+                                    BufOp::Take,
+                                    vec![buffer.clone(), last.clone()],
+                                ),
+                                ty: Ty::Owned,
+                            },
+                        ));
+                        out.push(Expr {
+                            kind: ExprKind::Local(value),
+                            ty: Ty::Owned,
+                        });
+                        continue;
+                    }
                     let value = state.temp(elem.ty());
                     state.pre.push(Stmt::Set(value, super::zero(elem.ty())));
                     then.push(Stmt::Set(value, get(buffer, last.clone(), elem)));
@@ -714,7 +730,7 @@ impl Lowering<'_> {
                     then,
                     otherwise: Vec::new(),
                 });
-                out
+                Self::fresh(state, out, mode)
             }
             "copy" => {
                 // Each column copied by the runtime, with the buffers it owns.

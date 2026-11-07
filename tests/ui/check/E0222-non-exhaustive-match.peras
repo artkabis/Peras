@@ -1,0 +1,47 @@
+// E0222: a match must cover every value.
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Empty,
+}
+
+export fn sides(s: Shape): i32 {
+  return match (s) {
+    Circle(_) => 0,
+    Rect(_, _) => 4,
+  };
+}
+
+export fn flags(b: bool, o: Option<i32>, n: i32): i32 {
+  let total = match (b) {
+    true => 1,
+  };
+  total += match (o) {
+    Some(0) => 1,
+    None => 0,
+  };
+  total += match (n) {
+    0 => 1,
+    1 => 2,
+  };
+  return total;
+}
+
+// Covered: every variant, a nested wildcard, a final name.
+export fn fine(s: Shape, o: Option<i32>, n: i32): i32 {
+  const a = match (s) {
+    Shape.Circle(_) => 0,
+    Rect(w, _) => w.toI32(),
+    Empty => 2,
+  };
+  const b = match (o) {
+    Some(0) => 1,
+    Some(_) => 2,
+    None => 3,
+  };
+  const c = match (n) {
+    0 => 1,
+    other => other,
+  };
+  return a + b + c;
+}

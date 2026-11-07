@@ -83,7 +83,7 @@ impl<'a> Verifier<'a> {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
             ExprKind::Alloc(_)
             | ExprKind::Call(..)
-            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone, _) => {
+            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _) => {
                 self.expr(value);
             }
             _ => self.problem(&format!(
@@ -149,6 +149,11 @@ impl<'a> Verifier<'a> {
         let expected = match op {
             BufOp::New(_) => {
                 self.operands("buf.new", args, &[Ty::I32]);
+                Ty::Owned
+            }
+            BufOp::Take => {
+                self.buffer(args.first());
+                self.operands("buf.take", rest, &[Ty::I32]);
                 Ty::Owned
             }
             BufOp::Clone => {

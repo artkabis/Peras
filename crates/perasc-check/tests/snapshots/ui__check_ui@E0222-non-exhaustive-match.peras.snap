@@ -1,0 +1,26 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0222-non-exhaustive-match.peras
+---
+diagnostics:
+  error[E0222] check-match-missing { ty: "Shape", missing: "Empty" }
+    primary 12:3-12:4: check-match-missing-label { missing: "Empty" }
+    secondary 9:10-12:4: check-match-missing-match-label
+    cause: check-match-missing-why
+    fix: check-match-missing-fix
+  error[E0222] check-match-missing { ty: "bool", missing: "false" }
+    primary 18:3-18:4: check-match-missing-label { missing: "false" }
+    secondary 16:15-18:4: check-match-missing-match-label
+    cause: check-match-missing-why
+    fix: check-match-missing-fix
+  error[E0222] check-match-missing { ty: "Option<i32>", missing: "Some(_)" }
+    primary 22:3-22:4: check-match-missing-label { missing: "Some(_)" }
+    secondary 19:12-22:4: check-match-missing-match-label
+    cause: check-match-missing-why
+    fix: check-match-missing-fix
+  error[E0222] check-match-missing { ty: "i32", missing: "_" }
+    primary 26:3-26:4: check-match-missing-label { missing: "_" }
+    secondary 23:12-26:4: check-match-missing-match-label
+    cause: check-match-missing-why
+    fix: check-match-missing-fix

@@ -3,7 +3,7 @@
 use perasc_diag::Span;
 use perasc_syntax::ast::{Convention, Symbol};
 
-use crate::ty::{FnId, StructId, Ty};
+use crate::ty::{EnumId, FnId, StructId, Ty};
 
 /// What a name is bound to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +33,10 @@ pub enum Kind {
     Fn(FnId),
     /// A structure, usable as a constructor.
     Struct(StructId),
+    /// An enumeration, whose variants are written `Name.Variant`.
+    Enum(EnumId),
+    /// A name a `match` pattern gives to a value, or a part of it.
+    Pattern,
     /// `Some`, provided by the language.
     Some,
     /// `None`, provided by the language.

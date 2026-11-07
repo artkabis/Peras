@@ -22,7 +22,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use perasc_diag::Span;
 use perasc_syntax::ast::{
-    AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, ItemKind, Stmt, StmtKind, UnaryOp,
+    ArmBody, AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, ItemKind, Stmt, StmtKind,
+    UnaryOp,
 };
 
 use crate::scope::Kind;
@@ -392,6 +393,24 @@ impl<'c, 'a> Owner<'c, 'a> {
         match &expr.kind {
             ExprKind::Name(_) => self.name(id, span, mode, path),
             ExprKind::Paren(inner) => self.expr(*inner, mode, path),
+            ExprKind::Match { scrutinee, arms } => {
+                // The value matched is lent to the arms; each arm is a path.
+                self.expr(*scrutinee, Use::Read, path);
+                let start = path.clone();
+                let mut joined = Path {
+                    gone: true,
+                    ..Path::default()
+                };
+                for arm in arms {
+                    let mut arm_path = start.clone();
+                    match &arm.body {
+                        ArmBody::Expr(value) => self.expr(*value, mode, &mut arm_path),
+                        ArmBody::Block(block) => self.stmts(&block.stmts, &mut arm_path),
+                    }
+                    merge(&mut joined, &arm_path);
+                }
+                *path = joined;
+            }
             ExprKind::Field { base, .. } => {
                 self.expr(*base, Use::Read, path);
                 if mode == Use::Consume && self.moves(id) {
@@ -476,6 +495,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 self.report(errors::move_borrowed_parameter(span, &name, sink_at));
             }
             Some(Kind::Global { .. }) => self.cannot_move(id, span, "global"),
+            // A name a pattern gives only lends a part of the value matched.
+            Some(Kind::Pattern) => self.cannot_move(id, span, "binding"),
             _ => {
                 self.not_iterated(binding, span);
                 path.moved.insert(binding, span);

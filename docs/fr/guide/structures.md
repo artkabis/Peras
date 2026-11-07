@@ -122,4 +122,4 @@ export declare function flip(s: Segment): Segment;
 
 > Les structures dont les champs sont des nombres, des booléens ou des structures sont compilées. Un champ tableau ou chaîne est vérifié, pas encore compilé.
 
-Ensuite : [tableaux, chaînes et options](collections.md).
+Ensuite : [énumérations et match](enums.md).

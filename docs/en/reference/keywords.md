@@ -8,6 +8,7 @@ These words cannot name a variable, a function or a type.
 | -------------------- | -------------------------------------------------------------------------------- |
 | `fn`                 | declares a function                                                              |
 | `struct`             | declares a structure                                                             |
+| `enum`, `match`      | declare an enumeration, take a value apart ([enumerations](../guide/enums.md))   |
 | `let`, `const`       | declare a variable, a constant                                                   |
 | `export`             | makes a function or a structure visible from JavaScript                          |
 | `return`             | leaves a function, with its result                                               |
@@ -23,7 +24,6 @@ Reserved for features that are designed but not built yet; using them as a name 
 
 | Keyword                      | For                                                     |
 | ---------------------------- | ------------------------------------------------------- |
-| `enum`, `match`              | enumerations and pattern matching                       |
 | `trait`, `impl`, `interface` | shared behaviour, methods on types                      |
 | `type`                       | type aliases                                            |
 | `class`                      | refused on purpose: Peras uses structures and functions |

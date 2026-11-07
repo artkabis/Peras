@@ -13,8 +13,8 @@ mod expr;
 use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
-    Ast, Block, Convention, Field, FnDecl, Ident, Item, ItemKind, Local, Param, Stmt, StmtKind,
-    StructDecl, Type, TypeKind,
+    Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, Item, ItemKind, Local, Param,
+    Stmt, StmtKind, StructDecl, Type, TypeKind, Variant,
 };
 use crate::lexer::lex;
 use crate::token::{Token, TokenKind};
@@ -62,6 +62,8 @@ enum NameOf {
     Field,
     Attribute,
     Struct,
+    Enum,
+    Variant,
 }
 
 impl NameOf {
@@ -73,6 +75,8 @@ impl NameOf {
             Self::Field => "field",
             Self::Attribute => "attribute",
             Self::Struct => "struct",
+            Self::Enum => "enum",
+            Self::Variant => "variant",
         }
     }
 }
@@ -341,6 +345,7 @@ impl<'src> Parser<'src> {
                 }
                 TokenKind::Fn
                 | TokenKind::Struct
+                | TokenKind::Enum
                 | TokenKind::Export
                 | TokenKind::Async
                 | TokenKind::At
@@ -485,6 +490,13 @@ impl<'src> Parser<'src> {
                     span: self.since(start),
                 });
             }
+            TokenKind::Enum => {
+                let decl = self.enum_decl(exported)?;
+                return Some(Item {
+                    kind: ItemKind::Enum(decl),
+                    span: self.since(start),
+                });
+            }
             TokenKind::Let | TokenKind::Const => {
                 let local = self.local()?;
                 self.expect_semicolon();
@@ -616,6 +628,51 @@ impl<'src> Parser<'src> {
             exported,
             name,
             fields,
+        })
+    }
+
+    /// `enum Name { Variant, Variant(Type, …), … }`, variants separated by `,`.
+    fn enum_decl(&mut self, exported: bool) -> Option<EnumDecl> {
+        self.bump(); // `enum`
+        let name = self.ident(NameOf::Enum)?;
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let mut variants = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at_eof() {
+            self.recovering = false;
+            let Some(variant_name) = self.ident(NameOf::Variant) else {
+                self.recover_field();
+                continue;
+            };
+            let mut fields = Vec::new();
+            if let Some(paren) = self.eat(TokenKind::LParen) {
+                while !self.at(TokenKind::RParen) && !self.at_eof() {
+                    fields.push(self.ty());
+                    if self.eat(TokenKind::Comma).is_none() {
+                        break;
+                    }
+                }
+                self.expect_close(paren, TokenKind::RParen, ")");
+            }
+            variants.push(Variant {
+                name: variant_name,
+                fields,
+            });
+            if self.eat(TokenKind::Comma).is_none()
+                && self.eat(TokenKind::Semicolon).is_none()
+                && !self.at(TokenKind::RBrace)
+            {
+                self.expect(TokenKind::Comma, ",");
+                self.recover_field();
+            }
+        }
+        if self.at_eof() {
+            self.recovering = false;
+        }
+        self.expect_close(open, TokenKind::RBrace, "}");
+        Some(EnumDecl {
+            exported,
+            name,
+            variants,
         })
     }
 
@@ -758,7 +815,14 @@ impl<'src> Parser<'src> {
     /// An expression statement, an assignment or an increment, `;` included.
     fn expr_stmt(&mut self) -> StmtKind {
         let kind = self.simple_stmt();
-        if !matches!(kind, StmtKind::Error) {
+        // A `match` ends with `}`, like a block: its `;` is optional.
+        let is_match = matches!(
+            kind,
+            StmtKind::Expr(e) if matches!(self.ast.expr(e).kind, ExprKind::Match { .. })
+        );
+        if is_match {
+            self.eat(TokenKind::Semicolon);
+        } else if !matches!(kind, StmtKind::Error) {
             self.expect_semicolon();
         }
         kind

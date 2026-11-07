@@ -1,0 +1,56 @@
+export enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Empty,
+}
+
+export enum Event {
+  Text(String),
+  Points(Array<i32>),
+  Quit,
+}
+
+export fn area(s: Shape): f64 {
+  return match (s) {
+    Circle(r) => 3.0 * r * r,
+    Rect(w, h) => w * h,
+    Empty => 0.0,
+  };
+}
+
+export fn grow(s: Shape): Shape {
+  return match (s) {
+    Circle(r) => Shape.Circle(r * 2.0),
+    Rect(w, h) => Shape.Rect(h, w),
+    Empty => Shape.Empty,
+  };
+}
+
+export fn describe(e: Event): String {
+  return match (e) {
+    Text(t) => "text: " + t,
+    Points(p) => "points",
+    Quit => "quit",
+  };
+}
+
+export fn echo(e: Event): Event {
+  return match (e) {
+    Text(t) => Event.Text(t + "!"),
+    Points(p) => Event.Points(p.copy()),
+    Quit => Event.Quit,
+  };
+}
+
+export fn first(names: Array<String>): Option<String> {
+  let copy = names.copy();
+  return copy.pop();
+}
+
+export fn total(shapes: Array<Shape>): f64 {
+  let sum = 0.0;
+  for (const s of shapes) {
+    sum += area(s);
+  }
+  return sum;
+}

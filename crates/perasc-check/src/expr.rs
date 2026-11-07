@@ -174,8 +174,14 @@ impl Checker<'_> {
             ExprKind::Binary { op, lhs, rhs } => self.binary(*op, *lhs, *rhs, span, expected),
             ExprKind::Call { callee, args } => self.call(*callee, args, span, expected),
             ExprKind::Field { base, name } => {
+                if let Some(ty) = self.enum_variant(*base, name, None, span) {
+                    return ty;
+                }
                 let base_ty = self.infer(*base, None);
                 self.field(&base_ty, name.symbol, name.span)
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                self.match_expr(*scrutinee, arms, span, expected)
             }
             ExprKind::Index { base, index } => {
                 let base_ty = self.infer(*base, None);
@@ -410,6 +416,9 @@ impl Checker<'_> {
                 self.call_name(*symbol, callee_expr.span, args, span, expected)
             }
             ExprKind::Field { base, name } => {
+                if let Some(ty) = self.enum_variant(*base, name, Some(args), span) {
+                    return ty;
+                }
                 let receiver = self.infer(*base, None);
                 // `push` and `pop` change the array: it must be one that can change.
                 if matches!(receiver, Ty::Array(_))

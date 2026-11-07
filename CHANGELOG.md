@@ -14,6 +14,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **Enumerations with data, and `match`.** `enum Shape { Circle(f64), Rect(f64, f64), Empty }`; values are written `Shape.Circle(1.0)`.
+  - `match` takes a value apart with patterns: `_`, names, numbers and booleans, variants with their data, nested; arms are values or blocks, and `return`, `break`, `continue` work inside.
+  - Every `match` must cover every value (`E0222`); an unknown variant (`E0223`) and an arm no value can reach (`E0224`) are errors too. A `match` whose arms all return ends the function.
+  - Options match too (`Some(x)`, `None`), and an option or an enumeration can now hold strings and arrays: the data of the variants not taken are empty buffers, so the value always owns the same ones. `pop()` on an array of strings now works.
+  - JavaScript sees `{ kind: "Circle", values: [1] }`, declared to TypeScript as a union.
 - **Arrays of strings and of arrays** compile, and structures holding them in arrays: a buffer can own buffers, which the runtime releases and copies with it, at any depth. JavaScript passes and receives them as nested arrays and objects.
 - E0204 tells the value's history: where it received its value, where it moved, where it is used again.
 - **Arrays of structures and options** compile, as columns: one buffer per scalar of an element, so `points[i].x` and a loop over one field touch one buffer. Indexing, `points[i].x = v`, `push`, `pop`, `copy`, `==` and `for…of` work column by column; JavaScript sees arrays of objects.

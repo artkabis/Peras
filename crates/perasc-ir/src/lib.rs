@@ -152,6 +152,9 @@ pub enum Shape {
     /// An array of structures: one buffer per scalar of an element, its
     /// columns. JavaScript sees an array of objects.
     Records(Box<Shape>, Pass),
+    /// An enumeration: its name, and each variant with its data. JavaScript
+    /// sees `{ kind: "Variant", values: [...] }`.
+    Enum(String, Vec<(String, Vec<Shape>)>),
 }
 
 /// How a heap value is passed between JavaScript and WebAssembly.
@@ -175,6 +178,13 @@ impl Shape {
             Self::Value(ty) => vec![*ty],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
             Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
+            Self::Enum(_, variants) => std::iter::once(Ty::I32)
+                .chain(
+                    variants
+                        .iter()
+                        .flat_map(|(_, f)| f.iter().flat_map(Self::scalars)),
+                )
+                .collect(),
             Self::Array(_, Pass::Sink | Pass::Result) | Self::String(Pass::Sink | Pass::Result) => {
                 vec![Ty::Owned]
             }
@@ -452,6 +462,10 @@ pub enum BufOp {
     Literal(u32),
     /// `[buffer]`: a new `owned` copy, with copies of the buffers it owns.
     Clone,
+    /// `[buffer, index]`: the buffer element at a checked index, taken: the
+    /// code then shortens the buffer below it ([`BufStmt::Truncate`]), so
+    /// that the buffer no longer owns it. This is `pop` on an array of strings.
+    Take,
 }
 
 /// A statement on a buffer.
@@ -482,6 +496,7 @@ impl BufOp {
             Self::Get(elem) => format!("buf.get.{}", elem.name()),
             Self::Literal(index) => format!("buf.literal #{index}"),
             Self::Clone => "buf.clone".to_owned(),
+            Self::Take => "buf.take".to_owned(),
         }
     }
 }
@@ -774,6 +789,8 @@ fn expr(e: &Expr) -> String {
 
 #[cfg(test)]
 mod array_tests;
+#[cfg(test)]
+mod match_tests;
 #[cfg(test)]
 mod opt_tests;
 #[cfg(test)]

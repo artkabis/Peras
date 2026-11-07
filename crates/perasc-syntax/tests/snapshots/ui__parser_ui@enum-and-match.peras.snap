@@ -1,0 +1,16 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/enum-and-match.peras
+---
+ast:
+  (enum Shape export (Circle f64) (Rect f64 f64) (Empty))
+  (fn area export (params (s Shape)) -> f64
+    (return (match s ((Circle r) => (* (* 3.14159 r) r)) ((Shape.Rect w _) => (* w 2.0)) (Empty => 0.0)))
+  )
+  (fn kind (params (n i32)) -> i32
+    (match n (0 => (block 1 statements)) ((neg 1) => (block 1 statements)) (_ => (block 0 statements)))
+    (return 0)
+  )
+diagnostics:
+  none

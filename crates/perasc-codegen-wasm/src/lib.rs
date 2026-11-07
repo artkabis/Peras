@@ -495,6 +495,10 @@ impl<'a> FnEncoder<'a> {
                 self.element_address(buffer, index, elem);
                 self.emit(&load(elem));
             }
+            (BufOp::Take, [buffer, index]) => {
+                self.element_address(buffer, index, Elem::Handle);
+                self.emit(&I::I32Load(mem(0, 4)));
+            }
             (BufOp::Clone, [buffer]) => {
                 self.expr(buffer);
                 let site = self.alloc_site();
@@ -951,6 +955,13 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
          {EXPORTS_MARKER}\n\
          const $wasm = $instance.exports;\n"
     );
+    if module
+        .functions
+        .iter()
+        .any(|f| f.exported && f.shape.is_some())
+    {
+        js.push_str(VALUE_HELPERS);
+    }
     for f in module.functions.iter().filter(|f| f.exported) {
         if let Some(shape) = &f.shape {
             js.push_str(&object_wrapper(&f.name, shape));
@@ -1031,6 +1042,12 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
 /// The columns of an array of structures: their kinds as JavaScript reads
 /// them (`bool` as a number, turned back by `!== 0`), and a function building
 /// element `i` from the columns `c`.
+/// The names of the variants of an enumeration, as a JavaScript array.
+fn variant_names(variants: &[(String, Vec<Shape>)]) -> String {
+    let names: Vec<String> = variants.iter().map(|(v, _)| format!("\"{v}\"")).collect();
+    format!("[{}]", names.join(", "))
+}
+
 fn rows(element: &Shape) -> (String, String) {
     let mut columns = Vec::new();
     record_columns("v", element, 0, false, &mut columns);
@@ -1082,13 +1099,45 @@ fn record_columns(
             out.push((format!("{path} !== undefined"), "bool".to_owned()));
             record_columns(path, inner, depth, true, out);
         }
-        Shape::String(_) => out.push((format!("$toStr({path})"), "ptr".to_owned())),
-        Shape::Array(elem, _) => out.push((
-            format!("$toBuf({path}, \"{}\")", elem_kind(*elem)),
-            "ptr".to_owned(),
-        )),
+        Shape::Enum(_, variants) => {
+            out.push((
+                format!("$tagOf({path}.kind, {})", variant_names(variants)),
+                "i32".to_owned(),
+            ));
+            for (variant, fields) in variants {
+                for (j, field) in fields.iter().enumerate() {
+                    let part =
+                        format!("({path}.kind === \"{variant}\" ? {path}.values[{j}] : undefined)");
+                    record_columns(&part, field, depth, true, out);
+                }
+            }
+        }
+        Shape::String(_) => {
+            let text = if optional {
+                format!("({path} ?? \"\")")
+            } else {
+                path.to_owned()
+            };
+            out.push((format!("$toStr({text})"), "ptr".to_owned()));
+        }
+        Shape::Array(elem, _) => {
+            let values = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            out.push((
+                format!("$toBuf({values}, \"{}\")", elem_kind(*elem)),
+                "ptr".to_owned(),
+            ));
+        }
         Shape::Records(inner, _) => {
             let item = format!("w{depth}");
+            let path = &if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
             let mut columns = Vec::new();
             record_columns(&item, inner, depth + 1, false, &mut columns);
             for (column, kind) in columns {
@@ -1108,6 +1157,7 @@ fn numbers(shape: &Shape) -> usize {
         Shape::Value(_) => 1,
         Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
         Shape::Option(inner) => 1 + numbers(inner),
+        Shape::Enum(..) => shape.scalars().len(),
         Shape::Array(..) | Shape::String(_) | Shape::Records(..) => 0,
     }
 }
@@ -1125,7 +1175,11 @@ fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mu
             }
         }
         // perasc refuses options passed `inout` from JavaScript.
-        Shape::Option(_) | Shape::Array(..) | Shape::String(_) | Shape::Records(..) => {}
+        Shape::Option(_)
+        | Shape::Enum(..)
+        | Shape::Array(..)
+        | Shape::String(_)
+        | Shape::Records(..) => {}
     }
 }
 
@@ -1159,8 +1213,13 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
         Shape::Array(elem, pass) => {
             let buffer = format!("$a{}", out.pre.len());
             let kind = elem_kind(*elem);
+            let values = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
             out.pre
-                .push(format!("const {buffer} = $toBuf({path}, \"{kind}\");"));
+                .push(format!("const {buffer} = $toBuf({values}, \"{kind}\");"));
             if *pass == Pass::Inout {
                 out.post
                     .push(format!("$copyBack({path}, {buffer}, \"{kind}\");"));
@@ -1179,8 +1238,13 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             let mut buffers = Vec::new();
             for (column, kind) in &columns {
                 let buffer = format!("$a{}", out.pre.len());
+                let rows = if optional {
+                    format!("({path} ?? [])")
+                } else {
+                    path.to_owned()
+                };
                 out.pre.push(format!(
-                    "const {buffer} = $toBuf({path}.map((v) => {column}), \"{kind}\");"
+                    "const {buffer} = $toBuf({rows}.map((v) => {column}), \"{kind}\");"
                 ));
                 buffers.push(buffer);
             }
@@ -1199,9 +1263,25 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             }
             out.args.extend(buffers);
         }
+        Shape::Enum(_, variants) => {
+            let names = variant_names(variants);
+            out.args.push(format!("$tagOf({path}.kind, {names})"));
+            for (variant, fields) in variants {
+                for (j, field) in fields.iter().enumerate() {
+                    let part =
+                        format!("({path}.kind === \"{variant}\" ? {path}.values[{j}] : undefined)");
+                    flatten(&part, field, true, out);
+                }
+            }
+        }
         Shape::String(pass) => {
             let buffer = format!("$a{}", out.pre.len());
-            out.pre.push(format!("const {buffer} = $toStr({path});"));
+            let text = if optional {
+                format!("({path} ?? \"\")")
+            } else {
+                path.to_owned()
+            };
+            out.pre.push(format!("const {buffer} = $toStr({text});"));
             // JavaScript strings never change: `inout` is not exported (perasc
             // refuses it), and a `sink` parameter is released by the function.
             if *pass != Pass::Sink {
@@ -1292,9 +1372,29 @@ fn rebuild_at(
             format!("{take}({handle})")
         }
         Shape::Option(inner) => {
+            // Both read, so that a buffer inside is released even when empty.
             let some = rebuild_at(&Shape::Value(Ty::Bool), index, at, owned);
             let value = rebuild_at(inner, index, at, owned);
-            format!("({some} ? {value} : undefined)")
+            format!("$opt({some}, {value})")
+        }
+        Shape::Enum(_, variants) => {
+            let tag = at(*index);
+            *index += 1;
+            let payloads: Vec<String> = variants
+                .iter()
+                .map(|(_, fields)| {
+                    let values: Vec<String> = fields
+                        .iter()
+                        .map(|f| rebuild_at(f, index, at, owned))
+                        .collect();
+                    format!("[{}]", values.join(", "))
+                })
+                .collect();
+            format!(
+                "$variant({tag}, {}, [{}])",
+                variant_names(variants),
+                payloads.join(", ")
+            )
         }
     }
 }
@@ -1337,6 +1437,17 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
     );
     imports + HEAP_HELPERS
 }
+
+/// The loader's helpers for options and enumerations: every part is read,
+/// so that the buffers inside are released, then one is chosen.
+const VALUE_HELPERS: &str = "const $opt = (some, value) => (some ? value : undefined);
+const $variant = (tag, names, payloads) => ({ kind: names[tag], values: payloads[tag] });
+const $tagOf = (kind, names) => {
+  const tag = names.indexOf(kind);
+  if (tag < 0) throw new TypeError(`unknown variant ${String(kind)}`);
+  return tag;
+};
+";
 
 /// The loader's helpers for arrays and strings, which cross the boundary as
 /// copies: into a new buffer, and out of one.
@@ -1538,7 +1649,7 @@ const fn ts_scalar(ty: Ty) -> &'static str {
 fn ts_shape(shape: &Shape) -> String {
     match shape {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
-        Shape::Object(name, _) => name.clone(),
+        Shape::Object(name, _) | Shape::Enum(name, _) => name.clone(),
         Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
         Shape::String(_) => "string".to_owned(),
         Shape::Records(element, pass) => {
@@ -1572,6 +1683,28 @@ fn ts_shape(shape: &Shape) -> String {
 fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
     if let Shape::Option(inner) | Shape::Records(inner, _) = shape {
         return interface(inner, out);
+    }
+    if let Shape::Enum(name, variants) = shape {
+        for (_, fields) in variants {
+            for field in fields {
+                interface(field, out);
+            }
+        }
+        if out.iter().any(|(n, _)| n == name) {
+            return;
+        }
+        let cases: Vec<String> = variants
+            .iter()
+            .map(|(variant, fields)| {
+                let values: Vec<String> = fields.iter().map(ts_shape).collect();
+                format!("{{ kind: \"{variant}\"; values: [{}] }}", values.join(", "))
+            })
+            .collect();
+        out.push((
+            name.clone(),
+            format!("export type {name} = {};\n", cases.join(" | ")),
+        ));
+        return;
     }
     let Shape::Object(name, fields) = shape else {
         return;

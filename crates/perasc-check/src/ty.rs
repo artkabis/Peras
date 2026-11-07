@@ -127,6 +127,10 @@ impl FloatTy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StructId(pub usize);
 
+/// Index of an enumeration in [`crate::Analysis::enums`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EnumId(pub usize);
+
 /// Index of a function in the checker's table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FnId(pub usize);
@@ -154,6 +158,8 @@ pub enum Ty {
     Option(Box<Ty>),
     /// A structure, with its name for messages.
     Struct(StructId, String),
+    /// An enumeration, with its name for messages.
+    Enum(EnumId, String),
     /// A function used as a value, with its name for messages.
     Fn(FnId, String),
     /// A type already reported as wrong: compatible with everything, so one
@@ -216,7 +222,7 @@ impl fmt::Display for Ty {
             Self::Void => f.write_str("void"),
             Self::Array(t) => write!(f, "Array<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
-            Self::Struct(_, name) => f.write_str(name),
+            Self::Struct(_, name) | Self::Enum(_, name) => f.write_str(name),
             Self::Fn(_, name) => write!(f, "fn {name}"),
             Self::Error => f.write_str("?"),
         }

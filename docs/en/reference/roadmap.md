@@ -17,25 +17,11 @@ The first types that need memory, on the foundations already built: the release 
 
 What lets a program say precisely what its data can be.
 
-- **Enumerations with data, and `match`**, checked for exhaustiveness: forgetting a case is an error.
+- ~~**Enumerations with data, and `match`**, checked for exhaustiveness~~: done, see [enumerations and match](../guide/enums.md).
 - **`Result<T, E>` and `?`**, for errors that are values, not exceptions.
 - **Generics**, on functions and structures, with constraints.
 - **Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time.
 - Tuples, type aliases, module-level constants compiled.
-
-```peras planned
-enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-}
-
-fn area(s: Shape): f64 {
-  return match (s) {
-    Circle(r) => 3.14159 * r * r,
-    Rect(w, h) => w * h,
-  };
-}
-```
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

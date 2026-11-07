@@ -362,6 +362,10 @@ impl Machine<'_> {
                 Value::Handle(self.allocated)
             }
             (BufOp::Clone, [buf]) => self.clone_buffer(*buf)?,
+            (BufOp::Take, [buf, Value::I32(index)]) => {
+                let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
+                *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
+            }
             (BufOp::New(_), _) => return Err(Trap::BadAlloc),
             (BufOp::Literal(index), []) => {
                 let bytes = usize::try_from(index)

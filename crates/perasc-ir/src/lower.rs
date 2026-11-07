@@ -7,6 +7,7 @@
 //! occurrence at once, instead of being miscompiled.
 
 mod heap;
+mod matching;
 mod values;
 
 use std::collections::{BTreeSet, HashMap};
@@ -61,8 +62,9 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
                 lowering.results.insert(id, results);
                 index += 1;
             }
-            // A structure is a type: its uses are lowered where they appear.
-            ItemKind::Struct(_) => {}
+            // A structure or an enumeration is a type: its uses are lowered
+            // where they appear.
+            ItemKind::Struct(_) | ItemKind::Enum(_) => {}
             ItemKind::Global(local) => lowering.unsupported(local.name.span, "global"),
         }
     }
@@ -118,8 +120,8 @@ struct FnState {
     /// Statements that must run before the statement being lowered: calls
     /// returning several results, and what keeps the order of evaluation.
     pre: Vec<Stmt>,
-    /// When the function returns an option: its result's scalars, for `?`.
-    ret_option: Option<Vec<Ty>>,
+    /// When the function returns an option: its type, for the `None` of `?`.
+    ret_option: Option<CheckTy>,
     /// The numbers of the `inout` parameters, returned after the result so
     /// that the caller writes them back.
     writeback: Vec<LocalId>,
@@ -320,7 +322,7 @@ impl Lowering<'_> {
                 if inout && decl.exported && self.holds_string(&ty) {
                     self.unsupported(param.name.span, "inout-string");
                 }
-                if inout && decl.exported && matches!(ty, CheckTy::Option(_)) {
+                if inout && decl.exported && matches!(ty, CheckTy::Option(_) | CheckTy::Enum(..)) {
                     self.unsupported(param.name.span, "inout-export");
                 }
                 let numbers = leaves.iter().any(|(_, t)| !t.is_handle());
@@ -385,7 +387,7 @@ impl Lowering<'_> {
             _ => Vec::new(),
         };
         if matches!(ret_ty, Some(CheckTy::Option(_))) {
-            state.ret_option = Some(results.clone());
+            state.ret_option.clone_from(&ret_ty);
         }
         // The `inout` numbers come back after the result.
         let inout_types: Vec<Ty> = state
@@ -856,6 +858,13 @@ impl Lowering<'_> {
                     .unwrap_or_else(|| zero(ty));
             }
             AstExpr::Index { base, index } => return self.index_get(state, *base, *index, span),
+            AstExpr::Match { scrutinee, arms } => {
+                return self
+                    .match_values(state, id, *scrutinee, arms, heap::Mode::Borrow)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty));
+            }
             AstExpr::Try(inner) => {
                 return self
                     .try_values(state, *inner, span)

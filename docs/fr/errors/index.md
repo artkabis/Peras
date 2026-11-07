@@ -55,4 +55,7 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0219](E0219.md) | Retour manquant                                     | noms et types      |
 | [E0220](E0220.md) | Type de retour manquant                             | noms et types      |
 | [E0221](E0221.md) | Opérateur invalide                                  | noms et types      |
+| [E0222](E0222.md) | `match` incomplet                                   | noms et types      |
+| [E0223](E0223.md) | Variante inconnue                                   | noms et types      |
+| [E0224](E0224.md) | Bras inatteignable                                  | noms et types      |
 | [E0900](E0900.md) | Pas encore pris en charge par la génération de code | génération de code |

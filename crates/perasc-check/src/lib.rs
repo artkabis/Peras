@@ -8,6 +8,7 @@
 pub mod builtins;
 mod errors;
 mod expr;
+mod matching;
 mod owner;
 mod scope;
 mod stmt;
@@ -17,12 +18,12 @@ use std::collections::{HashMap, HashSet};
 
 use perasc_diag::{Diagnostic, Span};
 use perasc_syntax::ast::{
-    Ast, ExprId, ExprKind, FnDecl, ItemKind, Local, Stmt, StmtKind, StructDecl, Symbol, Type,
-    TypeKind,
+    Ast, EnumDecl, ExprId, ExprKind, FnDecl, ItemKind, Local, Stmt, StmtKind, StructDecl, Symbol,
+    Type, TypeKind,
 };
 
 use crate::scope::{Binding, Declared, Kind, Scopes};
-use crate::ty::{FloatTy, FnId, IntTy, StructId, Ty};
+use crate::ty::{EnumId, FloatTy, FnId, IntTy, StructId, Ty};
 
 /// Checks names and types of a parsed module, returning every error sorted by position.
 #[must_use]
@@ -44,7 +45,13 @@ pub struct Analysis {
     /// The variables read where their heap value moves out of them: an
     /// assignment, a `return`, a `sink` argument… Any other read borrows.
     pub moves: HashSet<ExprId>,
+    /// Every enumeration, indexed by its [`EnumId`]: its name, and its
+    /// variants with the types of their data.
+    pub enums: Vec<(String, Vec<Variant>)>,
 }
+
+/// A variant of an enumeration: its name, and the types of its data.
+pub type Variant = (String, Vec<Ty>);
 
 /// Checks a module and keeps the type of every expression, for code generation.
 #[must_use]
@@ -72,6 +79,11 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
         types,
         structs,
         moves: checker.moves,
+        enums: checker
+            .enums
+            .into_iter()
+            .map(|e| (e.name, e.variants))
+            .collect(),
     }
 }
 
@@ -116,6 +128,13 @@ struct Checker<'a> {
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
     moves: HashSet<ExprId>,
+    enums: Vec<EnumDef>,
+}
+
+/// An enumeration's variants, in order, each with the types of its data.
+struct EnumDef {
+    name: String,
+    variants: Vec<(String, Vec<Ty>)>,
 }
 
 impl<'a> Checker<'a> {
@@ -146,6 +165,7 @@ impl<'a> Checker<'a> {
             resolved: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
+            enums: Vec::new(),
         }
     }
 
@@ -228,16 +248,20 @@ impl<'a> Checker<'a> {
             self.declare(symbol, None, Kind::None, Ty::Option(Box::new(Ty::Error)));
         }
 
-        // Structures first, so that any signature can name any structure.
+        // Structures and enumerations first, so that any signature can name them.
         let items = &self.ast.items;
         for item in items {
-            if let ItemKind::Struct(decl) = &item.kind {
-                self.register_struct(decl);
+            match &item.kind {
+                ItemKind::Struct(decl) => self.register_struct(decl),
+                ItemKind::Enum(decl) => self.register_enum(decl),
+                _ => {}
             }
         }
         for item in items {
-            if let ItemKind::Struct(decl) = &item.kind {
-                self.struct_fields(decl);
+            match &item.kind {
+                ItemKind::Struct(decl) => self.struct_fields(decl),
+                ItemKind::Enum(decl) => self.enum_variants(decl),
+                _ => {}
             }
         }
         for item in items {
@@ -276,6 +300,65 @@ impl<'a> Checker<'a> {
             Kind::Struct(id),
             Ty::Struct(id, name),
         );
+    }
+
+    fn register_enum(&mut self, decl: &EnumDecl) {
+        let name = self.name(decl.name.symbol).to_owned();
+        let id = EnumId(self.enums.len());
+        self.enums.push(EnumDef {
+            name: name.clone(),
+            variants: Vec::new(),
+        });
+        self.types
+            .entry(name.clone())
+            .or_insert_with(|| TypeDef::Plain(Ty::Enum(id, name.clone())));
+        self.declare(
+            decl.name.symbol,
+            Some(decl.name.span),
+            Kind::Enum(id),
+            Ty::Enum(id, name),
+        );
+    }
+
+    /// The variants of an enumeration, each name once.
+    fn enum_variants(&mut self, decl: &EnumDecl) {
+        let name = self.name(decl.name.symbol);
+        let Some(index) = self.enums.iter().position(|e| e.name == name) else {
+            return;
+        };
+        let mut seen: Vec<(Symbol, Span)> = Vec::new();
+        let mut variants = Vec::new();
+        for variant in &decl.variants {
+            if let Some((_, previous)) = seen.iter().find(|(s, _)| *s == variant.name.symbol) {
+                let d =
+                    errors::duplicate(variant.name.span, self.name(variant.name.symbol), *previous);
+                self.report(d);
+                continue;
+            }
+            seen.push((variant.name.symbol, variant.name.span));
+            let fields = variant
+                .fields
+                .iter()
+                .map(|t| self.resolve_type(t))
+                .collect();
+            variants.push((self.name(variant.name.symbol).to_owned(), fields));
+        }
+        if let Some(def) = self.enums.get_mut(index) {
+            def.variants = variants;
+        }
+    }
+
+    /// The variants of a type that has some: an enumeration, or an option
+    /// (`None`, `Some(value)`).
+    pub(crate) fn variants_of(&self, ty: &Ty) -> Option<Vec<(String, Vec<Ty>)>> {
+        match ty {
+            Ty::Enum(id, _) => self.enums.get(id.0).map(|e| e.variants.clone()),
+            Ty::Option(inner) => Some(vec![
+                ("None".to_owned(), Vec::new()),
+                ("Some".to_owned(), vec![(**inner).clone()]),
+            ]),
+            _ => None,
+        }
     }
 
     fn struct_fields(&mut self, decl: &StructDecl) {
@@ -477,6 +560,10 @@ fn always_returns(ast: &Ast, stmts: &[Stmt]) -> bool {
 fn stmt_always_returns(ast: &Ast, stmt: &Stmt) -> bool {
     match &stmt.kind {
         StmtKind::Return(_) => true,
+        // A `match` whose arms all return; one that misses a value is E0222.
+        StmtKind::Expr(e) => match_arms(ast, *e).is_some_and(|arms| {
+            !arms.is_empty() && arms.iter().all(|stmts| always_returns(ast, stmts))
+        }),
         StmtKind::Block(block) => always_returns(ast, &block.stmts),
         StmtKind::If {
             then,
@@ -486,24 +573,43 @@ fn stmt_always_returns(ast: &Ast, stmt: &Stmt) -> bool {
         // `for (;;)` and `while (true)` without `break` never end normally.
         StmtKind::For {
             cond: None, body, ..
-        } => !breaks(body),
+        } => !breaks(ast, body),
         StmtKind::While { cond, body } => {
-            matches!(ast.expr(*cond).kind, ExprKind::Bool(true)) && !breaks(body)
+            matches!(ast.expr(*cond).kind, ExprKind::Bool(true)) && !breaks(ast, body)
         }
         _ => false,
     }
 }
 
 /// Whether a loop body contains a `break` for this loop (not a nested one).
-fn breaks(stmt: &Stmt) -> bool {
+fn breaks(ast: &Ast, stmt: &Stmt) -> bool {
     match &stmt.kind {
         StmtKind::Break => true,
-        StmtKind::Block(block) => block.stmts.iter().any(breaks),
+        StmtKind::Block(block) => block.stmts.iter().any(|s| breaks(ast, s)),
         StmtKind::If {
             then, otherwise, ..
-        } => breaks(then) || otherwise.as_ref().is_some_and(|o| breaks(o)),
+        } => breaks(ast, then) || otherwise.as_ref().is_some_and(|o| breaks(ast, o)),
+        StmtKind::Expr(e) => match_arms(ast, *e).is_some_and(|arms| {
+            arms.iter()
+                .any(|stmts| stmts.iter().any(|s| breaks(ast, s)))
+        }),
         _ => false,
     }
+}
+
+/// The statements of each block arm of a `match` used as a statement.
+fn match_arms(ast: &Ast, e: ExprId) -> Option<Vec<&[Stmt]>> {
+    let ExprKind::Match { arms, .. } = &ast.expr(e).kind else {
+        return None;
+    };
+    Some(
+        arms.iter()
+            .map(|arm| match &arm.body {
+                perasc_syntax::ast::ArmBody::Block(block) => block.stmts.as_slice(),
+                perasc_syntax::ast::ArmBody::Expr(_) => &[],
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]

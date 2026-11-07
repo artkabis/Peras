@@ -55,13 +55,27 @@ impl Lowering<'_> {
                     .collect())
             }
             CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
+            // A tag, then the scalars of every variant's data, in order.
+            CheckTy::Enum(id, _) => {
+                let mut out = vec![("tag".to_owned(), Ty::I32)];
+                let (_, variants) = self.analysis.enums.get(id.0).ok_or("enum")?;
+                for (variant, fields) in variants {
+                    for (k, field) in fields.iter().enumerate() {
+                        for (path, leaf) in self.leaves(field)? {
+                            let path = if path.is_empty() {
+                                format!("{variant}_{k}")
+                            } else {
+                                format!("{variant}_{k}_{path}")
+                            };
+                            out.push((path, leaf));
+                        }
+                    }
+                }
+                Ok(out)
+            }
             CheckTy::Option(inner) => {
                 let mut out = vec![("some".to_owned(), Ty::Bool)];
-                let inner_leaves = self.leaves(inner)?;
-                if inner_leaves.iter().any(|(_, t)| t.is_handle()) {
-                    return Err("heap-option");
-                }
-                for (path, leaf) in inner_leaves {
+                for (path, leaf) in self.leaves(inner)? {
                     let path = if path.is_empty() {
                         "value".to_owned()
                     } else {
@@ -87,6 +101,12 @@ impl Lowering<'_> {
         let text = self.ast.name(name.symbol);
         if let Some(index) = self.analysis.structs.iter().position(|(n, _)| n == text) {
             return Ok(CheckTy::Struct(StructId(index), text.to_owned()));
+        }
+        if let Some(index) = self.analysis.enums.iter().position(|(n, _)| n == text) {
+            return Ok(CheckTy::Enum(
+                perasc_check::ty::EnumId(index),
+                text.to_owned(),
+            ));
         }
         match (text, args.as_slice()) {
             ("Option", [inner]) => return Ok(CheckTy::Option(Box::new(self.resolve(inner)?))),
@@ -128,6 +148,24 @@ impl Lowering<'_> {
                 Shape::Object(name.clone(), fields)
             }
             CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
+            CheckTy::Enum(id, name) => Shape::Enum(
+                name.clone(),
+                self.analysis
+                    .enums
+                    .get(id.0)
+                    .map(|(_, variants)| {
+                        variants
+                            .iter()
+                            .map(|(v, fields)| {
+                                (
+                                    v.clone(),
+                                    fields.iter().map(|f| self.shape_passed(f, pass)).collect(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            ),
             CheckTy::String => Shape::String(pass),
             CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
                 Some(elem) => Shape::Array(elem, pass),
@@ -226,6 +264,9 @@ impl Lowering<'_> {
                 }
                 AstExpr::Field { base, name } => {
                     let method = self.ast.name(name.symbol);
+                    if let Some(values) = self.enum_value(state, id, base, method, args) {
+                        return Self::fresh(state, values, mode);
+                    }
                     self.method_values(state, base, method, args, mode, span)
                 }
                 _ => {
@@ -245,6 +286,16 @@ impl Lowering<'_> {
                 Self::fresh(state, built, mode)
             }
             AstExpr::Index { base, index } => self.index_values(state, *base, *index, span),
+            AstExpr::Field { base, name } if self.enum_value_named(state, *base) => {
+                let variant = self.ast.name(name.symbol);
+                let values = self
+                    .enum_value(state, id, *base, variant, &[])
+                    .unwrap_or_default();
+                Self::fresh(state, values, mode)
+            }
+            AstExpr::Match { scrutinee, arms } => {
+                self.match_values(state, id, *scrutinee, arms, mode)
+            }
             AstExpr::Field { base, name } => {
                 // A field is read from its structure, which keeps it.
                 let fields = self.value_as(state, *base, Mode::Borrow);
@@ -264,11 +315,63 @@ impl Lowering<'_> {
 
     /// `None`, of the type the checker gave it: `false`, then zeros.
     fn none(&self, id: ExprId) -> Vec<Expr> {
-        let leaves = self
-            .check_type(id)
-            .and_then(|t| self.leaves(t).ok())
-            .unwrap_or_default();
-        leaves.iter().map(|(_, t)| super::zero(*t)).collect()
+        self.check_type(id)
+            .map(|t| self.zero_value(t))
+            .unwrap_or_default()
+    }
+
+    /// The value every scalar of a type holds when nothing is there: zero,
+    /// `false`, and an empty buffer for each string or array, so that an
+    /// option or an enumeration always owns its buffers, whatever it holds.
+    pub(super) fn zero_value(&self, ty: &CheckTy) -> Vec<Expr> {
+        match ty {
+            CheckTy::String | CheckTy::Array(_) => self
+                .columns(Some(ty))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|elem| Expr {
+                    kind: ExprKind::Buf(
+                        crate::BufOp::New(elem),
+                        vec![Expr {
+                            kind: ExprKind::Const(Const::Int(0)),
+                            ty: Ty::I32,
+                        }],
+                    ),
+                    ty: Ty::Owned,
+                })
+                .collect(),
+            CheckTy::Struct(id, _) => self
+                .analysis
+                .structs
+                .get(id.0)
+                .map(|(_, fields)| {
+                    fields
+                        .iter()
+                        .flat_map(|(_, f)| self.zero_value(f))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            CheckTy::Option(inner) => {
+                let mut out = vec![bool_const(false)];
+                out.extend(self.zero_value(inner));
+                out
+            }
+            CheckTy::Enum(id, _) => {
+                let mut out = vec![Expr {
+                    kind: ExprKind::Const(Const::Int(0)),
+                    ty: Ty::I32,
+                }];
+                if let Some((_, variants)) = self.analysis.enums.get(id.0) {
+                    for (_, fields) in variants {
+                        for field in fields {
+                            out.extend(self.zero_value(field));
+                        }
+                    }
+                }
+                out
+            }
+            other => vec![super::zero(Self::ir_type(other).unwrap_or(Ty::I32))],
+        }
     }
 
     /// A method whose receiver or result is an option, as scalars.
@@ -333,6 +436,23 @@ impl Lowering<'_> {
                 let mut out = Vec::new();
                 let mut then = Vec::new();
                 for (value, fallback) in payload.iter().zip(fallback) {
+                    if fallback.ty == Ty::Owned {
+                        // A buffer: the fallback, or a copy of the one inside.
+                        let temp = state.owned_temp(fallback);
+                        then.push(heap::release_stmt(temp));
+                        then.push(Stmt::Set(
+                            temp,
+                            Expr {
+                                kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
+                                ty: Ty::Owned,
+                            },
+                        ));
+                        out.push(Expr {
+                            kind: ExprKind::Local(temp),
+                            ty: Ty::Owned,
+                        });
+                        continue;
+                    }
                     let temp = state.temp(fallback.ty);
                     state.pre.push(Stmt::Set(temp, fallback));
                     then.push(Stmt::Set(temp, value.clone()));
@@ -343,7 +463,7 @@ impl Lowering<'_> {
                     then,
                     otherwise: Vec::new(),
                 });
-                out
+                Self::fresh(state, out, mode)
             }
             _ => {
                 self.unsupported(span, "method");
@@ -363,17 +483,29 @@ impl Lowering<'_> {
             self.unsupported(span, "try");
             return Vec::new();
         };
+        // Buffers go to temporaries: the `None` path releases them, the other
+        // takes them.
         let fields: Vec<Expr> = self
             .value(state, inner)
             .into_iter()
-            .map(|e| state.spill(e))
+            .map(|e| {
+                if e.ty == Ty::Owned {
+                    let temp = state.owned_temp(e);
+                    Expr {
+                        kind: ExprKind::Local(temp),
+                        ty: Ty::Owned,
+                    }
+                } else {
+                    state.spill(e)
+                }
+            })
             .collect();
         let Some((some, payload)) = fields.split_first() else {
             return Vec::new();
         };
         // `None`, and the `inout` numbers as they are; what the function holds
         // is released first.
-        let mut none: Vec<Expr> = ret.iter().map(|t| super::zero(*t)).collect();
+        let mut none: Vec<Expr> = self.zero_value(&ret);
         none.extend(state.writeback_values());
         let mut then = state.exit_releases();
         then.push(super::return_of(none));
@@ -385,7 +517,7 @@ impl Lowering<'_> {
             then,
             otherwise: Vec::new(),
         });
-        payload.to_vec()
+        Self::fresh(state, payload.to_vec(), Mode::Consume)
     }
 
     /// `len` scalars from `offset`. The others are dropped, so any of them that
@@ -622,7 +754,11 @@ impl FnState {
 pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
     matches!(
         ty,
-        CheckTy::Struct(..) | CheckTy::Option(_) | CheckTy::Array(_) | CheckTy::String
+        CheckTy::Struct(..)
+            | CheckTy::Option(_)
+            | CheckTy::Array(_)
+            | CheckTy::String
+            | CheckTy::Enum(..)
     )
 }
 

@@ -108,6 +108,12 @@ pub const MISSING_RETURN: ErrorCode = ErrorCode::new(219);
 pub const MISSING_RETURN_TYPE: ErrorCode = ErrorCode::new(220);
 /// An operator applied to a type that does not support it.
 pub const INVALID_OPERATOR: ErrorCode = ErrorCode::new(221);
+/// A `match` that does not cover every value of its scrutinee.
+pub const NON_EXHAUSTIVE_MATCH: ErrorCode = ErrorCode::new(222);
+/// A variant that the enumeration does not have.
+pub const UNKNOWN_VARIANT: ErrorCode = ErrorCode::new(223);
+/// A `match` arm that no value can reach.
+pub const UNREACHABLE_ARM: ErrorCode = ErrorCode::new(224);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -214,6 +220,9 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(MISSING_RETURN, "check-missing-return", "E0219"),
     active!(MISSING_RETURN_TYPE, "check-missing-return-type", "E0220"),
     active!(INVALID_OPERATOR, "check-operator", "E0221"),
+    active!(NON_EXHAUSTIVE_MATCH, "check-match-missing", "E0222"),
+    active!(UNKNOWN_VARIANT, "check-unknown-variant", "E0223"),
+    active!(UNREACHABLE_ARM, "check-unreachable-arm", "E0224"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

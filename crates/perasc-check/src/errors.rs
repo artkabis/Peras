@@ -68,6 +68,9 @@ const fn why(code: ErrorCode) -> &'static str {
         218 => "check-return-why",
         219 => "check-missing-return-why",
         220 => "check-missing-return-type-why",
+        222 => "check-match-missing-why",
+        223 => "check-unknown-variant-why",
+        224 => "check-unreachable-arm-why",
         _ => "check-operator-why",
     }
 }
@@ -656,6 +659,53 @@ pub fn changed_while_iterated(span: Span, name: &str, iterated: Span) -> Diagnos
         Fix {
             message: Message::new("check-alias-loop-fix").text("name", name),
             edits: vec![insert(iterated.end, ".copy()")],
+        },
+    )
+}
+
+/// `E0222`: the patterns `missing` are not covered; the arms close at `close`.
+pub fn non_exhaustive(span: Span, ty: &Ty, missing: &[String], close: u32) -> Diagnostic {
+    let list = missing.join(", ");
+    diagnostic(
+        codes::NON_EXHAUSTIVE_MATCH,
+        Message::new("check-match-missing")
+            .text("ty", ty.to_string())
+            .text("missing", list.clone()),
+        vec![
+            primary(
+                Span::new(close, close.saturating_add(1)),
+                Message::new("check-match-missing-label").text("missing", list),
+            ),
+            secondary(span, Message::new("check-match-missing-match-label")),
+        ],
+        Fix {
+            message: Message::new("check-match-missing-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0223`
+pub fn unknown_variant(span: Span, ty: &Ty, name: &str, suggestion: Option<&str>) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_VARIANT,
+        Message::new("check-unknown-variant")
+            .text("ty", ty.to_string())
+            .text("name", name),
+        vec![primary(span, Message::new("check-unknown-variant-label"))],
+        suggestion_fix(span, suggestion, "check-unknown-variant-fix"),
+    )
+}
+
+/// `E0224`
+pub fn unreachable_arm(span: Span) -> Diagnostic {
+    diagnostic(
+        codes::UNREACHABLE_ARM,
+        Message::new("check-unreachable-arm"),
+        vec![primary(span, Message::new("check-unreachable-arm-label"))],
+        Fix {
+            message: Message::new("check-unreachable-arm-fix"),
+            edits: Vec::new(),
         },
     )
 }

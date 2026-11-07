@@ -58,4 +58,4 @@ UTF-8 text, written `"…"`; its `length` counts bytes. See [collections](../gui
 
 ## Not in the language yet
 
-`Result<T, E>`, enumerations, unions, generics, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).
+Enumerations are on their own page: [enumerations and match](../guide/enums.md). `Result<T, E>`, unions, generics, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).

@@ -165,6 +165,8 @@ parse-expected-name = expected { $what ->
     [field] a field name
     [attribute] an attribute name
     [struct] a structure name
+    [enum] an enumeration name
+    [variant] a variant name
    *[other] a name
 }, found { $eof ->
     [1] the end of the file
@@ -387,6 +389,7 @@ check-move-out = cannot move { $what ->
     [parameter] the parameter `{ $name }`, which only borrows its value
     [field] a field out of its structure
     [element] an element out of its array
+    [binding] a value out of the `match` that only lends it
    *[other] a module-level value
 }
 check-move-out-label = moved here
@@ -496,6 +499,25 @@ check-operator-why = Each operator applies to specific types: arithmetic to numb
 check-operator-fix = convert the value, or use another operation
 
 ## Code generation (E0900–E0999)
+
+# E0222
+check-match-missing = this `match` on `{ $ty }` does not cover { $missing }
+check-match-missing-label = add an arm for { $missing }
+check-match-missing-match-label = every value must reach an arm
+check-match-missing-why = A `match` must handle every value it can receive: each variant of an enumeration or an option, `true` and `false`, and for numbers or strings a final `_`. Forgetting a case is the bug an exhaustive `match` exists to catch.
+check-match-missing-fix = add the missing arms, or a final `_ => …` arm on purpose
+
+# E0223
+check-unknown-variant = `{ $ty }` has no variant `{ $name }`
+check-unknown-variant-label = unknown variant
+check-unknown-variant-why = The variants of an enumeration are the ones its declaration lists; an option has `None` and `Some`.
+check-unknown-variant-fix = use one of the variants the declaration lists
+
+# E0224
+check-unreachable-arm = this arm can never be reached
+check-unreachable-arm-label = earlier arms already cover these values
+check-unreachable-arm-why = Arms are tried in order: after `_`, a name, or a variant already covered, no value is left for this one. It is dead code, or arms in the wrong order.
+check-unreachable-arm-fix = remove the arm, or move it before the one that covers it
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

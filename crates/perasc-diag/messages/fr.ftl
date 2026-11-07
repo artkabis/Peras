@@ -165,6 +165,8 @@ parse-expected-name = { $what ->
     [field] nom de champ attendu
     [attribute] nom d’attribut attendu
     [struct] nom de structure attendu
+    [enum] nom d’énumération attendu
+    [variant] nom de variante attendu
    *[other] nom attendu
 }, trouvé { $eof ->
     [1] la fin du fichier
@@ -387,6 +389,7 @@ check-move-out = impossible de déplacer { $what ->
     [parameter] le paramètre `{ $name }`, qui ne fait qu’emprunter sa valeur
     [field] un champ hors de sa structure
     [element] un élément hors de son tableau
+    [binding] une valeur hors du `match` qui ne fait que la prêter
    *[other] une valeur du niveau du module
 }
 check-move-out-label = déplacé ici
@@ -496,6 +499,25 @@ check-operator-why = Chaque opérateur s’applique à des types précis : l’a
 check-operator-fix = convertis la valeur, ou utilise une autre opération
 
 ## Génération de code (E0900–E0999)
+
+# E0222
+check-match-missing = ce `match` sur `{ $ty }` ne couvre pas { $missing }
+check-match-missing-label = ajoute un bras pour { $missing }
+check-match-missing-match-label = toute valeur doit atteindre un bras
+check-match-missing-why = Un `match` doit traiter chaque valeur qu’il peut recevoir : chaque variante d’une énumération ou d’une option, `true` et `false`, et pour les nombres ou les chaînes un `_` final. Oublier un cas est précisément le bug qu’un `match` exhaustif sert à attraper.
+check-match-missing-fix = ajoute les bras manquants, ou un bras final `_ => …` volontairement
+
+# E0223
+check-unknown-variant = `{ $ty }` n’a pas de variante `{ $name }`
+check-unknown-variant-label = variante inconnue
+check-unknown-variant-why = Les variantes d’une énumération sont celles que sa déclaration liste ; une option a `None` et `Some`.
+check-unknown-variant-fix = utilise l’une des variantes que liste la déclaration
+
+# E0224
+check-unreachable-arm = ce bras ne peut jamais être atteint
+check-unreachable-arm-label = les bras précédents couvrent déjà ces valeurs
+check-unreachable-arm-why = Les bras sont essayés dans l’ordre : après `_`, un nom, ou une variante déjà couverte, il ne reste aucune valeur pour celui-ci. C’est du code mort, ou des bras dans le mauvais ordre.
+check-unreachable-arm-fix = retire le bras, ou place-le avant celui qui le couvre
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

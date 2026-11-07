@@ -55,4 +55,7 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0219](E0219.md) | Missing return                            | names and types |
 | [E0220](E0220.md) | Missing return type                       | names and types |
 | [E0221](E0221.md) | Invalid operator                          | names and types |
+| [E0222](E0222.md) | Match does not cover every value          | names and types |
+| [E0223](E0223.md) | Unknown variant                           | names and types |
+| [E0224](E0224.md) | Unreachable arm                           | names and types |
 | [E0900](E0900.md) | Not supported by code generation yet      | code generation |

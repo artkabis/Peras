@@ -17,25 +17,11 @@ Les premiers types qui ont besoin de mémoire, sur les fondations déjà constru
 
 Ce qui permet à un programme de dire précisément ce que ses données peuvent être.
 
-- **Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité : oublier un cas est une erreur.
+- ~~**Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité~~ : fait, voir [énumérations et match](../guide/enums.md).
 - **`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs, pas des exceptions.
 - **Des génériques**, sur les fonctions et les structures, avec des contraintes.
 - **Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation.
 - Tuples, alias de types, constantes de module compilées.
-
-```peras planned
-enum Shape {
-  Circle(f64),
-  Rect(f64, f64),
-}
-
-fn area(s: Shape): f64 {
-  return match (s) {
-    Circle(r) => 3.14159 * r * r,
-    Rect(w, h) => w * h,
-  };
-}
-```
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {
