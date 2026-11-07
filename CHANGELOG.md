@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
   - Fields are read and written, compound assignments included; a structure is copied by assignment; `p = Point(p.y, p.x)` swaps.
   - Calls returning a structure run first, into temporaries, without changing the order of evaluation: on the right of `&&` and `||` only when it would run, and in a loop condition at every turn.
   - Exported functions take and return JavaScript objects, declared as TypeScript interfaces.
+- **`inout`** works on every type: the function gives its numbers back as extra results, written back into the caller's variables; arrays and strings change in place. From JavaScript, a structure passed `inout` is an object whose fields are updated. A variable passed `inout` cannot be read elsewhere in the same statement (`E0207`), and different fields of one structure no longer count as aliases.
+- `?` now releases the arrays and strings a function holds before it returns `None`; they leaked before.
 - **Strings** compile, in UTF-8: literals, `+`, `+=`, `==`, `!=`, `length` in bytes and `copy()`. A literal is stored once, as a passive data segment, and copied into a new buffer with `memory.init`; `+=` appends in place. JavaScript passes and receives strings, encoded and decoded as UTF-8. `==` also compares arrays, element by element.
 - **Arrays** compile, of numbers and booleans, on the heap: literals, `length`, indexing and assignment through an index, `push`, `pop`, `copy`, `for…of`.
   - Every index is checked; one out of bounds stops the program with a `RangeError`, in English or French, before memory is touched.

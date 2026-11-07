@@ -511,6 +511,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [array-element] les tableaux d’autre chose que des nombres et des booléens
     [heap-option] les options qui contiennent un tableau ou une chaîne
     [inout-string] les chaînes `inout` des fonctions exportées, que JavaScript ne peut pas modifier
+    [inout-export] les nombres et options `inout` des fonctions exportées : JavaScript les passe par valeur
     [field] les champs
     [index] l’indexation
     [try] l’opérateur `?`

@@ -24,18 +24,18 @@ Peras is young. This page says, feature by feature, how far each one goes:
 
 ## Statements and expressions
 
-| Feature                                                      | Status                                                                                                            |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `let`, `const`, assignments, `+=` and the others, `++`, `--` | <span class="status compiled">compiled</span>                                                                     |
-| arithmetic, comparisons, bitwise and logical operators       | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span>   |
-| `if`, `while`, `for`, `break`, `continue`                    | <span class="status compiled">compiled</span>                                                                     |
-| `for…of`                                                     | <span class="status compiled">compiled</span>                                                                     |
-| functions, recursion, `export`                               | <span class="status compiled">compiled</span>                                                                     |
-| `sink` parameters                                            | <span class="status compiled">compiled</span>                                                                     |
-| `inout` parameters, `&` at the call                          | <span class="status compiled">compiled</span> for arrays, <span class="status checked">checked</span> for numbers |
-| ownership: moves, borrows, aliasing refused, releases        | <span class="status compiled">compiled</span>                                                                     |
-| module-level `const`                                         | <span class="status checked">checked</span>                                                                       |
-| `import` between modules                                     | <span class="status planned">planned</span>                                                                       |
+| Feature                                                      | Status                                                                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `let`, `const`, assignments, `+=` and the others, `++`, `--` | <span class="status compiled">compiled</span>                                                                   |
+| arithmetic, comparisons, bitwise and logical operators       | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span> |
+| `if`, `while`, `for`, `break`, `continue`                    | <span class="status compiled">compiled</span>                                                                   |
+| `for…of`                                                     | <span class="status compiled">compiled</span>                                                                   |
+| functions, recursion, `export`                               | <span class="status compiled">compiled</span>                                                                   |
+| `sink` parameters                                            | <span class="status compiled">compiled</span>                                                                   |
+| `inout` parameters, `&` at the call                          | <span class="status compiled">compiled</span>                                                                   |
+| ownership: moves, borrows, aliasing refused, releases        | <span class="status compiled">compiled</span>                                                                   |
+| module-level `const`                                         | <span class="status checked">checked</span>                                                                     |
+| `import` between modules                                     | <span class="status planned">planned</span>                                                                     |
 
 ## Methods
 

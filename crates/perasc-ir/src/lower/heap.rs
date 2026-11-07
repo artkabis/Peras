@@ -57,6 +57,31 @@ impl FnState {
             .is_some_and(|l| l.ty == Ty::Owned)
     }
 
+    /// Whether a local lends a buffer someone else owns.
+    pub(super) fn is_borrowed(&self, local: LocalId) -> bool {
+        usize::try_from(local.0)
+            .ok()
+            .and_then(|i| self.locals.get(i))
+            .is_some_and(|l| l.ty == Ty::Borrowed)
+    }
+
+    /// The `inout` numbers, as the function gives them back when it returns.
+    pub(super) fn writeback_values(&self) -> Vec<Expr> {
+        self.writeback
+            .iter()
+            .map(|&l| super::local_expr(self, l))
+            .collect()
+    }
+
+    /// The releases a `return` from here would need, without changing what
+    /// is live: for an exit that only some paths take, such as `?`.
+    pub(super) fn exit_releases(&self) -> Vec<Stmt> {
+        self.live
+            .iter()
+            .map(|&l| release_stmt(LocalId(l)))
+            .collect()
+    }
+
     /// Releases a live local; it is empty afterwards.
     pub(super) fn release(&mut self, local: LocalId) -> Stmt {
         self.live.remove(&local.0);
@@ -203,6 +228,19 @@ impl Lowering<'_> {
         }
     }
 
+    /// The numbers an `inout` parameter gives back, by the types of its scalars.
+    pub(super) fn inout_numbers(&self, decl: &perasc_syntax::ast::FnDecl) -> Vec<Ty> {
+        decl.params
+            .iter()
+            .filter(|p| p.convention == perasc_syntax::ast::Convention::Inout)
+            .filter_map(|p| self.resolve(&p.ty).ok())
+            .filter_map(|ty| self.leaves(&ty).ok())
+            .flatten()
+            .map(|(_, ty)| ty)
+            .filter(|ty| !ty.is_handle())
+            .collect()
+    }
+
     /// Whether a type holds a string, which JavaScript cannot change in place.
     pub(super) fn holds_string(&self, ty: &CheckTy) -> bool {
         match ty {
@@ -232,10 +270,14 @@ impl Lowering<'_> {
         mode: Mode,
     ) -> Vec<Expr> {
         let bytes = text.as_bytes().to_vec();
-        let index = self.data.iter().position(|d| *d == bytes).unwrap_or_else(|| {
-            self.data.push(bytes);
-            self.data.len() - 1
-        });
+        let index = self
+            .data
+            .iter()
+            .position(|d| *d == bytes)
+            .unwrap_or_else(|| {
+                self.data.push(bytes);
+                self.data.len() - 1
+            });
         let literal = Expr {
             kind: ExprKind::Buf(
                 BufOp::Literal(u32::try_from(index).unwrap_or(u32::MAX)),

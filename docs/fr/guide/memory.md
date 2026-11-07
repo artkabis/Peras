@@ -22,7 +22,7 @@ Les vérifications suivent chaque chemin : une valeur déplacée d’un côté d
 | `x: inout T`        | peut modifier `x` sur place | écrit `&valeur` ; aucun alias n’existe pendant l’appel |
 | `x: sink T`         | prend `x`, et le libère     | ne peut plus l’utiliser                                |
 
-`&` marque un argument `inout`, et lui seul ([E0206](../errors/E0206.md)). Aucun autre argument de l’appel ne peut atteindre la même variable ([E0207](../errors/E0207.md)), et une boucle `for…of` ne laisse pas son tableau changer de taille.
+`&` marque un argument `inout`, et lui seul ([E0206](../errors/E0206.md)). Aucun autre argument de l’appel ne peut atteindre le même emplacement, et rien d’autre dans l’instruction ne peut le lire ([E0207](../errors/E0207.md)) ; deux champs différents d’une structure sont deux emplacements différents. Une boucle `for…of` ne laisse pas son tableau changer de taille.
 
 ```peras build
 struct Buffer {

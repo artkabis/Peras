@@ -129,6 +129,9 @@ pub struct JsShape {
     pub params: Vec<(String, Shape)>,
     /// The result; `None` for `void`.
     pub result: Option<Shape>,
+    /// The `inout` parameters whose numbers the function returns after its
+    /// result, to be written back into the objects JavaScript passed.
+    pub writeback: Vec<(String, Shape)>,
 }
 
 /// A value as JavaScript sees it.

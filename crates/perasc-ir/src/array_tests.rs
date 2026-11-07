@@ -149,3 +149,23 @@ fn every_element_type() {
     let source = "export fn f(): f64 {\n  let flags = [true, false, true];\n  let wide: Array<i64> = [9000000000, 1];\n  let small: Array<f32> = [0.5, 0.25];\n  let n = 0;\n  for (const b of flags) {\n    if (b) {\n      n++;\n    }\n  }\n  return n.toF64() + (wide[0] / 1000000000).toF64() + (small[0] + small[1]).toF64();\n}\n";
     gives(source, &[(vec![], Ok(Value::F64(11.75)))]);
 }
+
+#[test]
+fn inout_numbers_come_back_to_the_caller() {
+    let source = "export fn f(n: i32): i32 {\n  let c = Counter(0, 0.5);\n  for (let i = 0; i < n; i++) {\n    bump(&c);\n  }\n  let a = 1;\n  let b = 2;\n  swap(&a, &b);\n  return c.value * 100 + (c.ratio * 10.0).toI32() + a * 10 + b;\n}\n\
+         struct Counter {\n  value: i32;\n  ratio: f64;\n}\n\
+         fn bump(c: inout Counter): void {\n  c.value += 1;\n  c.ratio *= 2.0;\n}\n\
+         fn swap(a: inout i32, b: inout i32): void {\n  const t = a;\n  a = b;\n  b = t;\n}\n";
+    // n = 3: value 3, ratio 4.0.
+    gives(source, &[(vec![i(3)], Ok(i(361))), (vec![i(0)], Ok(i(26)))]);
+}
+
+#[test]
+fn the_question_mark_releases_what_the_function_holds() {
+    // `?` leaves early, with `xs` and the temporary of `make()` alive.
+    let source = "export fn f(n: i32): i32 {\n  return g(n).unwrapOr(-1);\n}\n\
+         fn g(n: i32): Option<i32> {\n  let xs = [1, 2, 3];\n  let count = 0;\n  let seen = 0;\n  for (let i = 0; i < n; i++) {\n    count += make(i).length + check(i, &seen)?;\n  }\n  return Some(count + seen + xs.length);\n}\n\
+         fn make(n: i32): Array<i32> {\n  let out: Array<i32> = [];\n  for (let i = 0; i < n; i++) {\n    out.push(i);\n  }\n  return out;\n}\n\
+         fn check(i: i32, seen: inout i32): Option<i32> {\n  seen += 100;\n  if (i == 4) {\n    return None;\n  }\n  return Some(0);\n}\n";
+    gives(source, &[(vec![i(3)], Ok(i(306))), (vec![i(9)], Ok(i(-1)))]);
+}

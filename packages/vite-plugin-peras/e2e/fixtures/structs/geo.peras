@@ -45,3 +45,9 @@ export fn walk(n: i32): f64 {
   }
   return p.y + i.toF64();
 }
+
+export fn stretch(s: inout Segment, k: f64): f64 {
+  s.to = scale(s.to, k);
+  s.closed = true;
+  return s.to.x;
+}

@@ -511,6 +511,7 @@ gen-unsupported = code generation does not support { $feature ->
     [array-element] arrays of anything but numbers and booleans
     [heap-option] options holding an array or a string
     [inout-string] `inout` strings in exported functions, which JavaScript cannot change
+    [inout-export] `inout` numbers and options in exported functions: JavaScript passes them by value
     [field] fields
     [index] indexing
     [try] the `?` operator

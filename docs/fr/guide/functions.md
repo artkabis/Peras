@@ -70,7 +70,7 @@ Un paramètre est en lecture seule par défaut. Deux conventions en disent plus,
 | `x: inout T` | la fonction peut modifier la valeur de l’appelant ; l’appelant écrit `&valeur`, et aucun alias n’existe pendant l’appel |
 | `x: sink T`  | la fonction prend `x` ; l’appelant ne peut plus l’utiliser                                                              |
 
-```peras
+```peras build
 struct Counter {
   value: i32;
 }
@@ -87,7 +87,9 @@ export fn twice(): i32 {
 }
 ```
 
-> `sink` est compilé. `inout` est compilé pour les tableaux, et pour les structures qui ne contiennent que des tableaux ; sur des nombres, et sur des structures qui en contiennent comme `Counter` ci-dessus, il est vérifié, pas encore compilé. Les règles sont sur la page [mémoire](memory.md).
+`inout` marche sur tout : un tableau ou une chaîne est modifié sur place, et la fonction rend ses nombres à l’appelant, qui les retrouve dans sa variable après l’appel. Pendant l’appel, rien d’autre dans l’instruction ne peut lire cette variable ([E0207](../errors/E0207.md)) : `n += bump(&n)` est refusé, puisque le résultat dépendrait de l’ordre d’évaluation. Les règles sont sur la page [mémoire](memory.md).
+
+Depuis JavaScript, une structure passée `inout` est un objet dont les champs sont mis à jour après l’appel. Un nombre, une option ou une chaîne ne peuvent pas être passés `inout` depuis JavaScript, qui les passe par valeur ; une telle fonction reste appelable depuis Peras.
 
 ## Méthodes intégrées
 

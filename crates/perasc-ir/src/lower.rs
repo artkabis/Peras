@@ -50,13 +50,14 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
                     .insert(id, decl.params.iter().map(|p| p.convention).collect());
                 // Its results, for its callers; a type not compiled yet is
                 // reported once, with the function itself.
-                let results = decl
+                let mut results: Vec<Ty> = decl
                     .ret
                     .as_ref()
                     .and_then(|t| lowering.resolve(t).ok())
                     .and_then(|t| lowering.leaves(&t).ok())
                     .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
                     .unwrap_or_default();
+                results.extend(lowering.inout_numbers(decl));
                 lowering.results.insert(id, results);
                 index += 1;
             }
@@ -116,6 +117,9 @@ struct FnState {
     pre: Vec<Stmt>,
     /// When the function returns an option: its result's scalars, for `?`.
     ret_option: Option<Vec<Ty>>,
+    /// The numbers of the `inout` parameters, returned after the result so
+    /// that the caller writes them back.
+    writeback: Vec<LocalId>,
     /// The `owned` locals declared in each open scope, parallel to `scopes`.
     owned: Vec<Vec<LocalId>>,
     /// The `owned` locals that hold a buffer here (see [`heap`]).
@@ -135,6 +139,7 @@ impl FnState {
             scopes: vec![HashMap::new()],
             pre: Vec::new(),
             ret_option: None,
+            writeback: Vec::new(),
             owned: vec![Vec::new()],
             live: BTreeSet::new(),
             gone: false,
@@ -280,68 +285,96 @@ impl Lowering<'_> {
         }
     }
 
+    /// A parameter: its locals, how JavaScript passes it, and whether its
+    /// numbers go back to the caller (`inout`).
+    fn param(
+        &mut self,
+        state: &mut FnState,
+        decl: &FnDecl,
+        param: &perasc_syntax::ast::Param,
+        shapes: &mut Vec<(String, crate::Shape)>,
+        writeback: &mut Vec<(String, crate::Shape)>,
+        has_struct: &mut bool,
+    ) {
+        let name = self.ast.name(param.name.symbol);
+        let Some(ty) = self.typed(&param.ty) else {
+            return;
+        };
+        *has_struct |= values::is_aggregate(&ty);
+        let pass = match param.convention {
+            Convention::Let => crate::Pass::Borrow,
+            Convention::Inout => crate::Pass::Inout,
+            Convention::Sink => crate::Pass::Sink,
+        };
+        shapes.push((name.to_owned(), self.shape_passed(&ty, pass)));
+        match self.leaves(&ty) {
+            Ok(leaves) if values::is_aggregate(&ty) => {
+                // A parameter that is not `sink` only borrows its buffers;
+                // `inout` changes them in place, and returns its numbers.
+                let inout = param.convention == Convention::Inout;
+                // A JavaScript string cannot change, nor be given back to an
+                // option: there is nothing to copy back into.
+                if inout && decl.exported && self.holds_string(&ty) {
+                    self.unsupported(param.name.span, "inout-string");
+                }
+                if inout && decl.exported && matches!(ty, CheckTy::Option(_)) {
+                    self.unsupported(param.name.span, "inout-export");
+                }
+                let numbers = leaves.iter().any(|(_, t)| !t.is_handle());
+                if inout && numbers {
+                    writeback.push((name.to_owned(), self.shape_passed(&ty, crate::Pass::Inout)));
+                }
+                let leaves: Vec<(String, Ty)> = leaves
+                    .into_iter()
+                    .map(|(path, t)| match (t, param.convention) {
+                        (Ty::Owned, Convention::Let | Convention::Inout) => (path, Ty::Borrowed),
+                        other => (path, other.0),
+                    })
+                    .collect();
+                let ids = state.add_struct(param.name.symbol, name, &leaves);
+                for id in ids {
+                    if state.is_owned(id) {
+                        state.live.insert(id.0);
+                    } else if inout && !state.is_borrowed(id) {
+                        state.writeback.push(id);
+                    }
+                }
+            }
+            Ok(leaves) => {
+                // A number passed `inout` from JavaScript has nowhere to go back.
+                if param.convention == Convention::Inout && decl.exported {
+                    self.unsupported(param.name.span, "inout-export");
+                }
+                let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
+                let id = state.add(param.name.symbol, name, leaf);
+                if param.convention == Convention::Inout {
+                    state.writeback.push(id);
+                }
+            }
+            Err(feature) => self.unsupported(param.ty.span, feature),
+        }
+    }
+
     fn function(&mut self, decl: &FnDecl) -> Function {
         let mut state = FnState::new();
         let errors_before = self.diagnostics.len();
         let mut shapes = Vec::new();
+        let mut writeback = Vec::new();
         let mut has_struct = false;
         for param in &decl.params {
-            let name = self.ast.name(param.name.symbol);
-            let Some(ty) = self.typed(&param.ty) else {
-                continue;
-            };
-            has_struct |= values::is_aggregate(&ty);
-            let pass = match param.convention {
-                Convention::Let => crate::Pass::Borrow,
-                Convention::Inout => crate::Pass::Inout,
-                Convention::Sink => crate::Pass::Sink,
-            };
-            shapes.push((name.to_owned(), self.shape_passed(&ty, pass)));
-            match self.leaves(&ty) {
-                Ok(leaves) if values::is_aggregate(&ty) => {
-                    // A parameter that is not `sink` only borrows its buffers;
-                    // `inout` changes them in place, so it holds nothing else.
-                    let all_heap = leaves.iter().all(|(_, t)| *t == Ty::Owned);
-                    if param.convention == Convention::Inout && !all_heap {
-                        self.unsupported(param.name.span, "inout");
-                    }
-                    // A JavaScript string cannot change: it has nothing to copy back into.
-                    if param.convention == Convention::Inout
-                        && decl.exported
-                        && self.holds_string(&ty)
-                    {
-                        self.unsupported(param.name.span, "inout-string");
-                    }
-                    let leaves: Vec<(String, Ty)> = leaves
-                        .into_iter()
-                        .map(|(path, t)| match (t, param.convention) {
-                            (Ty::Owned, Convention::Let | Convention::Inout) => {
-                                (path, Ty::Borrowed)
-                            }
-                            other => (path, other.0),
-                        })
-                        .collect();
-                    let ids = state.add_struct(param.name.symbol, name, &leaves);
-                    for id in ids {
-                        if state.is_owned(id) {
-                            state.live.insert(id.0);
-                        }
-                    }
-                }
-                Ok(_) if param.convention == Convention::Inout => {
-                    self.unsupported(param.name.span, "inout");
-                }
-                Ok(leaves) => {
-                    let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
-                    state.add(param.name.symbol, name, leaf);
-                }
-                Err(feature) => self.unsupported(param.ty.span, feature),
-            }
+            self.param(
+                &mut state,
+                decl,
+                param,
+                &mut shapes,
+                &mut writeback,
+                &mut has_struct,
+            );
         }
         let param_count = u32::try_from(state.locals.len()).unwrap_or(u32::MAX);
         let ret_ty = decl.ret.as_ref().and_then(|t| self.typed(t));
         has_struct |= ret_ty.as_ref().is_some_and(values::is_aggregate);
-        let results: Vec<Ty> = match &ret_ty {
+        let mut results: Vec<Ty> = match &ret_ty {
             Some(ty) if *ty != CheckTy::Void => match self.leaves(ty) {
                 Ok(leaves) => leaves.into_iter().map(|(_, t)| t).collect(),
                 Err(_) => Vec::new(),
@@ -351,14 +384,26 @@ impl Lowering<'_> {
         if matches!(ret_ty, Some(CheckTy::Option(_))) {
             state.ret_option = Some(results.clone());
         }
+        // The `inout` numbers come back after the result.
+        let inout_types: Vec<Ty> = state
+            .writeback
+            .iter()
+            .map(|&l| local_expr(&state, l).ty)
+            .collect();
+        results.extend(inout_types);
         let mut body = Vec::new();
         // A signature already reported: its body would only repeat the same cause
         // (`xs.length` for an unsupported `xs: Array<i32>`), so it is not lowered.
         if self.diagnostics.len() == errors_before {
             self.block(&mut state, &decl.body.stmts, &mut body);
-            // A `void` function that ends releases its `sink` parameters.
+            // A `void` function that ends releases its `sink` parameters, and
+            // gives back its `inout` numbers.
             if !state.gone {
                 state.release_scopes(0, &mut body);
+                if !state.writeback.is_empty() {
+                    let values = state.writeback_values();
+                    body.push(return_of(values));
+                }
             }
         }
         let shape = (decl.exported && has_struct).then(|| JsShape {
@@ -366,6 +411,7 @@ impl Lowering<'_> {
             result: ret_ty
                 .filter(|t| *t != CheckTy::Void)
                 .map(|t| self.shape(&t)),
+            writeback,
         });
         Function {
             name: self.ast.name(decl.name.symbol).to_owned(),
@@ -586,11 +632,9 @@ impl Lowering<'_> {
         };
         state.flush(out);
         state.release_scopes(0, out);
-        out.push(match values.len() {
-            0 => Stmt::Return(None),
-            1 => Stmt::Return(values.into_iter().next()),
-            _ => Stmt::ReturnMany(values),
-        });
+        let mut values = values;
+        values.extend(state.writeback_values());
+        out.push(return_of(values));
         state.gone = true;
     }
 
@@ -884,8 +928,9 @@ impl Lowering<'_> {
                     };
                     return self.not_yet(span, feature, ty);
                 };
+                let back = self.writeback_places(state, id, args);
                 let args = self.arguments(state, Some(id), args);
-                self.call_results(state, id, args)
+                self.call_results(state, id, args, &back)
                     .into_iter()
                     .next()
                     .unwrap_or_else(|| zero(ty))
@@ -1004,6 +1049,15 @@ fn one(ty: Ty) -> Expr {
     Expr {
         kind: ExprKind::Const(value),
         ty,
+    }
+}
+
+/// `return`, with none, one or several values.
+fn return_of(mut values: Vec<Expr>) -> Stmt {
+    match values.len() {
+        0 => Stmt::Return(None),
+        1 => Stmt::Return(values.pop()),
+        _ => Stmt::ReturnMany(values),
     }
 }
 

@@ -22,7 +22,7 @@ The checks follow every path: a value moved on one side of an `if` counts as mov
 | `x: inout T`     | may modify `x` in place    | writes `&value`; no alias exists during the call |
 | `x: sink T`      | takes `x`, and releases it | can no longer use it                             |
 
-`&` marks an `inout` argument, and only it ([E0206](../errors/E0206.md)). No other argument of the call may reach the same variable ([E0207](../errors/E0207.md)), and a `for…of` loop does not let its array change size.
+`&` marks an `inout` argument, and only it ([E0206](../errors/E0206.md)). No other argument of the call may reach the same place, and nothing else in the statement may read it ([E0207](../errors/E0207.md)); two different fields of one structure are different places. A `for…of` loop does not let its array change size.
 
 ```peras build
 struct Buffer {

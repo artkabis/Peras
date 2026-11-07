@@ -47,6 +47,26 @@ struct Exits {
     continues: Vec<Moved>,
 }
 
+/// What one statement reads and passes `inout`: a variable changed by a call
+/// cannot also be read elsewhere in the same statement, whose order of
+/// evaluation would then decide what it reads.
+#[derive(Default)]
+struct Uses {
+    /// Each place read: its variable, the fields on the way, and where.
+    reads: Vec<(usize, Vec<String>, Span)>,
+    /// Each place passed `inout`, the call, and the function called. The
+    /// call's own arguments are evaluated before it: only reads outside it
+    /// depend on the order of evaluation.
+    inouts: Vec<(usize, Vec<String>, Span, String)>,
+    /// Expressions inside a place already recorded whole.
+    inside: HashSet<ExprId>,
+}
+
+/// Whether two places can be the same memory: one contains the other.
+fn overlap(a: &[String], b: &[String]) -> bool {
+    a.iter().zip(b).all(|(x, y)| x == y)
+}
+
 /// How an expression is used.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Use {
@@ -69,6 +89,8 @@ pub(crate) struct Owner<'c, 'a> {
     /// The variables `for…of` loops are going through, with the span of each
     /// loop's array: they cannot change during the loop.
     iterated: Vec<(usize, Span)>,
+    /// One entry per statement being checked, innermost last.
+    uses: Vec<Uses>,
 }
 
 impl<'c, 'a> Owner<'c, 'a> {
@@ -89,6 +111,7 @@ impl<'c, 'a> Owner<'c, 'a> {
             silent: 0,
             reported: HashSet::new(),
             iterated: Vec::new(),
+            uses: Vec::new(),
         }
     }
 
@@ -128,6 +151,56 @@ impl<'c, 'a> Owner<'c, 'a> {
     }
 
     fn stmt(&mut self, stmt: &Stmt, path: &mut Path) {
+        let simple = matches!(
+            stmt.kind,
+            StmtKind::Local(_)
+                | StmtKind::Return(_)
+                | StmtKind::Expr(_)
+                | StmtKind::Assign { .. }
+                | StmtKind::Step { .. }
+        );
+        if simple {
+            self.uses.push(Uses::default());
+        }
+        self.stmt_inner(stmt, path);
+        if simple {
+            self.check_uses();
+        }
+    }
+
+    /// An expression on its own: a condition, the array of a `for…of`.
+    fn expr_alone(&mut self, id: ExprId, mode: Use, path: &mut Path) {
+        self.uses.push(Uses::default());
+        self.expr(id, mode, path);
+        self.check_uses();
+    }
+
+    /// `E0207` for a variable passed `inout` and read elsewhere in the same
+    /// statement.
+    fn check_uses(&mut self) {
+        let Some(uses) = self.uses.pop() else {
+            return;
+        };
+        for (binding, place, arg, callee) in &uses.inouts {
+            // Reads inside a call with an `inout` argument happen before it;
+            // the call itself checked its arguments against each other.
+            let within = |span: &Span| {
+                uses.inouts
+                    .iter()
+                    .any(|(_, _, a, _)| a.start <= span.start && span.end <= a.end)
+            };
+            let other = uses
+                .reads
+                .iter()
+                .find(|(b, path, span)| b == binding && overlap(place, path) && !within(span));
+            if let Some((_, _, read)) = other {
+                let name = self.binding_name(*binding);
+                self.report(errors::alias(*read, &name, callee, *arg, None));
+            }
+        }
+    }
+
+    fn stmt_inner(&mut self, stmt: &Stmt, path: &mut Path) {
         match &stmt.kind {
             StmtKind::Local(local) => {
                 if let Some(init) = local.init {
@@ -161,7 +234,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 then,
                 otherwise,
             } => {
-                self.expr(*cond, Use::Read, path);
+                self.expr_alone(*cond, Use::Read, path);
                 let mut other = path.clone();
                 self.stmt(then, path);
                 if let Some(otherwise) = otherwise {
@@ -187,7 +260,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 body,
                 ..
             } => {
-                self.expr(*iterable, Use::Read, path);
+                self.expr_alone(*iterable, Use::Read, path);
                 if let Some(&binding) = self.checker.declared.get(&name.span.start) {
                     path.moved.remove(&binding);
                 }
@@ -231,7 +304,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         let mut turn = head.clone();
         self.loops.push(Exits::default());
         if let Some(cond) = cond {
-            self.expr(cond, Use::Read, &mut turn);
+            self.expr_alone(cond, Use::Read, &mut turn);
         }
         // The loop ends at its condition, or forever loops end by `break`.
         let at_cond = turn.moved.clone();
@@ -259,7 +332,7 @@ impl<'c, 'a> Owner<'c, 'a> {
     ) -> Vec<Moved> {
         self.loops.push(Exits::default());
         if let Some(cond) = cond {
-            self.expr(cond, Use::Read, path);
+            self.expr_alone(cond, Use::Read, path);
         }
         self.stmt(body, path);
         let exits = self.loops.pop().unwrap_or_default();
@@ -290,7 +363,17 @@ impl<'c, 'a> Owner<'c, 'a> {
                 }
             }
             ExprKind::Paren(inner) => self.target(*inner, op, path),
-            _ => self.expr(target, Use::Read, path),
+            _ => {
+                let before = self.uses.last().map_or(0, |u| u.reads.len());
+                self.expr(target, Use::Read, path);
+                // `p.x = f(&p)` writes `p.x` after the call: only a compound
+                // assignment reads the target first.
+                if op == AssignOp::Assign
+                    && let Some(uses) = self.uses.last_mut()
+                {
+                    uses.reads.truncate(before);
+                }
+            }
         }
     }
 
@@ -299,6 +382,7 @@ impl<'c, 'a> Owner<'c, 'a> {
     fn expr(&mut self, id: ExprId, mode: Use, path: &mut Path) {
         let expr = self.checker.ast.expr(id);
         let span = expr.span;
+        self.record_place(id, span);
         match &expr.kind {
             ExprKind::Name(_) => self.name(id, span, mode, path),
             ExprKind::Paren(inner) => self.expr(*inner, mode, path),
@@ -334,7 +418,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                     self.expr(item, Use::Consume, path);
                 }
             }
-            ExprKind::Call { callee, args } => self.call(*callee, args, path),
+            ExprKind::Call { callee, args } => self.call(*callee, args, span, path),
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::String(_)
@@ -348,6 +432,11 @@ impl<'c, 'a> Owner<'c, 'a> {
         let Some(&binding) = self.checker.resolved.get(&id) else {
             return;
         };
+        if let Some(uses) = self.uses.last_mut()
+            && !uses.inside.contains(&id)
+        {
+            uses.reads.push((binding, Vec::new(), span));
+        }
         if let Some(&moved_at) = path.moved.get(&binding) {
             let name = self.binding_name(binding);
             let copyable = self.copyable(binding);
@@ -391,7 +480,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
-    fn call(&mut self, callee: ExprId, args: &[ExprId], path: &mut Path) {
+    fn call(&mut self, callee: ExprId, args: &[ExprId], span: Span, path: &mut Path) {
         let callee_expr = self.checker.ast.expr(callee);
         match &callee_expr.kind {
             ExprKind::Name(symbol) => {
@@ -405,7 +494,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                     Some(Kind::Fn(id)) => {
                         let conventions = self.conventions.get(id.0).cloned().unwrap_or_default();
                         let name = self.checker.name(*symbol).to_owned();
-                        self.arguments(&name, args, &conventions, path);
+                        self.arguments(&name, args, &conventions, span, path);
                     }
                     // A constructor and `Some` take their arguments.
                     _ => {
@@ -444,10 +533,11 @@ impl<'c, 'a> Owner<'c, 'a> {
         callee: &str,
         args: &[ExprId],
         conventions: &[Convention],
+        call: Span,
         path: &mut Path,
     ) {
         // The variable each argument reaches, and whether it is passed `inout`.
-        let mut roots: Vec<(usize, Span, bool)> = Vec::new();
+        let mut roots: Vec<(usize, Vec<String>, Span, bool)> = Vec::new();
         for (i, &arg) in args.iter().enumerate() {
             let convention = conventions.get(i).copied().unwrap_or(Convention::Let);
             let (inner, marked) = self.unmark(arg);
@@ -464,6 +554,10 @@ impl<'c, 'a> Owner<'c, 'a> {
                 if let Some(root) = self.root(inner) {
                     let span = self.checker.ast.expr(inner).span;
                     self.not_iterated(root, span);
+                    let place = self.place_path(inner).map(|(_, p)| p).unwrap_or_default();
+                    if let Some(uses) = self.uses.last_mut() {
+                        uses.inouts.push((root, place, call, callee.to_owned()));
+                    }
                 }
             }
             let mode = if convention == Convention::Sink {
@@ -474,22 +568,20 @@ impl<'c, 'a> Owner<'c, 'a> {
             self.expr(inner, mode, path);
             // A number or a boolean is copied: it cannot alias.
             let shared = convention == Convention::Inout || self.moves(inner);
-            if shared && let Some(root) = self.root(inner) {
-                roots.push((
-                    root,
-                    self.checker.ast.expr(inner).span,
-                    convention == Convention::Inout,
-                ));
+            if shared && let Some((root, place)) = self.place_path(inner) {
+                let span = self.checker.ast.expr(inner).span;
+                roots.push((root, place, span, convention == Convention::Inout));
             }
         }
-        // Each argument that reaches the variable of an earlier one, when
-        // either is `inout`, is reported once.
-        for (j, &(root, span, inout)) in roots.iter().enumerate() {
-            let earlier = roots
-                .iter()
-                .take(j)
-                .find(|&&(r, _, other_inout)| r == root && (inout || other_inout));
-            if let Some(&(_, other_span, other_inout)) = earlier {
+        // Each argument that reaches the place of an earlier one, when either is
+        // `inout`, is reported once. Different fields of one structure do not
+        // overlap.
+        for (j, (root, place, span, inout)) in roots.iter().enumerate() {
+            let (root, span, inout) = (*root, *span, *inout);
+            let earlier = roots.iter().take(j).find(|(r, other, _, other_inout)| {
+                *r == root && (inout || *other_inout) && overlap(place, other)
+            });
+            if let Some(&(_, _, other_span, other_inout)) = earlier {
                 let name = self.binding_name(root);
                 // A copy of the argument that is only read removes the alias.
                 let copy_at = if !self.copyable(root) {
@@ -530,6 +622,54 @@ impl<'c, 'a> Owner<'c, 'a> {
             } => (operand, true),
             ExprKind::Paren(inner) => self.unmark(inner),
             _ => (arg, false),
+        }
+    }
+
+    /// A field or an element read: recorded whole, `b.samples`, so that it
+    /// does not conflict with `&b.peak` the way the whole of `b` would.
+    fn record_place(&mut self, id: ExprId, span: Span) {
+        let (ExprKind::Field { base, .. } | ExprKind::Index { base, .. }) =
+            self.checker.ast.expr(id).kind
+        else {
+            return;
+        };
+        let outer = self.uses.last().is_some_and(|u| !u.inside.contains(&id));
+        let found = if outer { self.place_path(id) } else { None };
+        let Some(uses) = self.uses.last_mut() else {
+            return;
+        };
+        if let Some((root, place)) = found {
+            uses.reads.push((root, place, span));
+        }
+        // The base is part of this place, unless it was not recorded.
+        if outer || uses.inside.contains(&id) {
+            let mut base = base;
+            loop {
+                uses.inside.insert(base);
+                match &self.checker.ast.expr(base).kind {
+                    ExprKind::Field { base: next, .. } | ExprKind::Index { base: next, .. } => {
+                        base = *next;
+                    }
+                    ExprKind::Paren(inner) => base = *inner,
+                    _ => break,
+                }
+            }
+        }
+    }
+
+    /// A place as its variable and the fields on the way; an element counts as
+    /// all of its array.
+    fn place_path(&self, id: ExprId) -> Option<(usize, Vec<String>)> {
+        match &self.checker.ast.expr(id).kind {
+            ExprKind::Name(_) => self.checker.resolved.get(&id).map(|&b| (b, Vec::new())),
+            ExprKind::Paren(inner) => self.place_path(*inner),
+            ExprKind::Field { base, name } => {
+                let (root, mut path) = self.place_path(*base)?;
+                path.push(self.checker.name(name.symbol).to_owned());
+                Some((root, path))
+            }
+            ExprKind::Index { base, .. } => self.place_path(*base),
+            _ => None,
         }
     }
 

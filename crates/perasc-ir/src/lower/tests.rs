@@ -54,7 +54,10 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "array-element",
         ),
         ("const LIMIT = 3;", "global"),
-        ("fn f(x: inout i32): void { x = x + 1; }", "inout"),
+        (
+            "export fn f(x: inout i32): void { x = x + 1; }",
+            "inout-export",
+        ),
         (
             "fn f(_o: Option<Array<i32>>): i32 { return 0; }",
             "heap-option",

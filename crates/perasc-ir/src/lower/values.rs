@@ -199,9 +199,12 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args } => match self.ast.expr(*callee).kind {
                 AstExpr::Name(symbol) => {
                     let id = self.fns.get(&symbol).copied();
+                    let back = id
+                        .map(|id| self.writeback_places(state, id, args))
+                        .unwrap_or_default();
                     let args = self.arguments(state, id, args);
                     let values = if let Some(id) = id {
-                        self.call_results(state, id, args)
+                        self.call_results(state, id, args, &back)
                     } else if self.ast.name(symbol) == "Some" {
                         let mut out = vec![bool_const(true)];
                         out.extend(args);
@@ -358,17 +361,18 @@ impl Lowering<'_> {
         let Some((some, payload)) = fields.split_first() else {
             return Vec::new();
         };
+        // `None`, and the `inout` numbers as they are; what the function holds
+        // is released first.
         let mut none: Vec<Expr> = ret.iter().map(|t| super::zero(*t)).collect();
-        let exit = match none.len() {
-            1 => Stmt::Return(none.pop()),
-            _ => Stmt::ReturnMany(none),
-        };
+        none.extend(state.writeback_values());
+        let mut then = state.exit_releases();
+        then.push(super::return_of(none));
         state.pre.push(Stmt::If {
             cond: Expr {
                 kind: ExprKind::Unary(UnOp::Not, Box::new(some.clone())),
                 ty: Ty::Bool,
             },
-            then: vec![exit],
+            then,
             otherwise: Vec::new(),
         });
         payload.to_vec()
@@ -418,6 +422,30 @@ impl Lowering<'_> {
         out
     }
 
+    /// The numbers of the `inout` arguments of a call, in order: the locals the
+    /// function's extra results are written back into.
+    pub(super) fn writeback_places(
+        &mut self,
+        state: &FnState,
+        callee: crate::FnId,
+        args: &[ExprId],
+    ) -> Vec<LocalId> {
+        let conventions = self.conventions.get(&callee).cloned().unwrap_or_default();
+        let mut out = Vec::new();
+        for (&arg, convention) in args.iter().zip(conventions) {
+            if convention != perasc_syntax::ast::Convention::Inout {
+                continue;
+            }
+            let place = self.unmarked(arg);
+            for local in self.place(state, place).unwrap_or_default() {
+                if !state.is_owned(local) && !state.is_borrowed(local) {
+                    out.push(local);
+                }
+            }
+        }
+        out
+    }
+
     /// An argument without its `&`.
     fn unmarked(&self, arg: ExprId) -> ExprId {
         match self.ast.expr(arg).kind {
@@ -437,8 +465,38 @@ impl Lowering<'_> {
         state: &mut FnState,
         id: crate::FnId,
         args: Vec<Expr>,
+        back: &[LocalId],
     ) -> Vec<Expr> {
         let results = self.results.get(&id).cloned().unwrap_or_default();
+        if !back.is_empty() {
+            // The function also returns its `inout` numbers, last: they go
+            // straight back into the caller's variables.
+            let declared = results.len().saturating_sub(back.len());
+            if results.len() == 1 {
+                let target = back.first().copied().unwrap_or(LocalId(0));
+                state.pre.push(Stmt::Set(
+                    target,
+                    Expr {
+                        kind: ExprKind::Call(id, args),
+                        ty: results.first().copied().unwrap_or(Ty::Void),
+                    },
+                ));
+                return Vec::new();
+            }
+            let temps: Vec<LocalId> = results
+                .iter()
+                .take(declared)
+                .map(|&ty| state.temp(ty))
+                .collect();
+            let mut targets = temps.clone();
+            targets.extend_from_slice(back);
+            state.pre.push(Stmt::CallMany {
+                targets,
+                callee: id,
+                args,
+            });
+            return temps.iter().map(|&t| super::local_expr(state, t)).collect();
+        }
         match results.as_slice() {
             [] => {
                 state.pre.push(Stmt::Expr(Expr {

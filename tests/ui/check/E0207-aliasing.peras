@@ -21,15 +21,27 @@ export fn twice_inout(): i32 {
   return xs.length;
 }
 
-// Fields of one structure count as the same variable, even different ones.
+// A field and the whole structure overlap; two different fields do not.
 export fn through_fields(p: inout Pair): void {
   append(&p.a, p.b);
+  append(&p.a, p.a);
 }
 
 export fn growing(xs: inout Array<i32>): void {
   for (const x of xs) {
     xs.push(x);
   }
+}
+
+fn bump(n: inout i32): i32 {
+  n += 1;
+  return n;
+}
+
+export fn read_and_changed(): i32 {
+  let n = 1;
+  n += bump(&n);
+  return n + bump(&n);
 }
 
 // Allowed: two different variables, changing elements during the loop.
@@ -41,5 +53,7 @@ export fn fine(): i32 {
   for (const y of ys) {
     ys[0] = y + 1;
   }
-  return xs.length + ys.length;
+  let n = 0;
+  n = bump(&n);
+  return xs.length + ys.length + n;
 }

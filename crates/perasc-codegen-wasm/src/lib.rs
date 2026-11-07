@@ -948,19 +948,30 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
         flatten(param, value, false, &mut marshal);
     }
     let call = format!("$wasm.{name}({})", marshal.args.join(", "));
-    let body = match &shape.result {
-        None if marshal.pre.is_empty() => call,
-        None => format!("{call};"),
-        Some(result) => {
-            let many = result.scalars().len() > 1;
-            let mut index = 0;
-            let value = rebuild(result, many, &mut index);
-            // `$` cannot start a Peras name, so `$r` never hides a parameter.
-            format!("const $r = {call}; return {value};")
-        }
+    // WebAssembly returns the result, then the numbers of the `inout` objects.
+    let back: usize = shape.writeback.iter().map(|(_, s)| numbers(s)).sum();
+    let given = shape.result.as_ref().map_or(0, |r| r.scalars().len());
+    let many = given + back > 1;
+    let mut index = 0;
+    let value = shape
+        .result
+        .as_ref()
+        .map(|result| rebuild(result, many, &mut index));
+    let mut assigns = Vec::new();
+    for (param, value) in &shape.writeback {
+        write_back(param, value, many, &mut index, &mut assigns);
+    }
+    let assigns = assigns.join(" ");
+    // `$` cannot start a Peras name, so `$r` never hides a parameter.
+    let body = match (value, assigns.is_empty()) {
+        (None, true) if marshal.pre.is_empty() => call,
+        (None, true) => format!("{call};"),
+        (None, false) => format!("const $r = {call}; {assigns}"),
+        (Some(value), true) => format!("const $r = {call}; return {value};"),
+        (Some(value), false) => format!("const $r = {call}; {assigns} return {value};"),
     };
     if marshal.pre.is_empty() {
-        let body = if shape.result.is_some() {
+        let body = if body.ends_with(';') {
             format!("{{ {body} }}")
         } else {
             body
@@ -979,6 +990,34 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
         )
     };
     format!("export const {name} = ({}) => {body};\n", params.join(", "))
+}
+
+/// How many numbers an `inout` value gives back: its scalars, not its buffers,
+/// which are changed in place.
+fn numbers(shape: &Shape) -> usize {
+    match shape {
+        Shape::Value(_) => 1,
+        Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
+        Shape::Option(inner) => 1 + numbers(inner),
+        Shape::Array(..) | Shape::String(_) => 0,
+    }
+}
+
+/// `p.x = $r[1];` for each number of an `inout` object, in order.
+fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mut Vec<String>) {
+    match shape {
+        Shape::Value(_) => {
+            let value = rebuild(shape, many, index);
+            out.push(format!("{path} = {value};"));
+        }
+        Shape::Object(_, fields) => {
+            for (field, value) in fields {
+                write_back(&format!("{path}.{field}"), value, many, index, out);
+            }
+        }
+        // perasc refuses options passed `inout` from JavaScript.
+        Shape::Option(_) | Shape::Array(..) | Shape::String(_) => {}
+    }
 }
 
 /// What calling a function from JavaScript needs: the arguments, and the
