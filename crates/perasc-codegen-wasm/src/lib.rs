@@ -51,7 +51,7 @@ const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 6;
+const IMPORT_TYPES: u32 = 8;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -98,6 +98,8 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
     types.ty().function([T, T, T, T], []);
     types.ty().function([T], [T]);
     types.ty().function([T], []);
+    types.ty().function([ValType::I64], [T]);
+    types.ty().function([T], [ValType::I64]);
     for (name, ty) in [
         ("alloc", 0),
         ("release", 1),
@@ -110,8 +112,11 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
         imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
     }
     for f in RuntimeFn::ALL {
-        // Every operand and the result are `i32`: the type by count.
+        // `fmt_int` takes an `i64` and `str_parse_int` gives one; the others
+        // take and give `i32` only: their type by count.
         let ty = match (f.operands().len(), f.result() == Ty::Void) {
+            _ if f.receiver() == Ty::I64 => 6,
+            _ if f.result() == Ty::I64 => 7,
             (0, false) => 4,
             (1, false) => 0,
             (_, false) => 2,

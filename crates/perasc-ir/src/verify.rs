@@ -182,7 +182,11 @@ impl<'a> Verifier<'a> {
                 elem.ty()
             }
             BufOp::Runtime(f) => {
-                self.buffer(args.first());
+                match (f.receiver(), args.first()) {
+                    (Ty::Borrowed, first) => self.buffer(first),
+                    (ty, Some(first)) if first.ty == ty => self.expr(first),
+                    (ty, _) => self.problem(&format!("{} on a {ty:?} expected", f.name())),
+                }
                 // The other buffers are lent too.
                 let given: Vec<Ty> = rest.iter().map(|a| a.ty).collect();
                 if given != f.operands() {

@@ -685,6 +685,9 @@ impl Lowering<'_> {
         {
             return values;
         }
+        if is_string && matches!(method, "parseI32" | "parseI64") {
+            return Self::parse_int(state, first, method == "parseI32");
+        }
         if let Some(values) = self.text_method(state, &first, method, args, mode) {
             return values;
         }

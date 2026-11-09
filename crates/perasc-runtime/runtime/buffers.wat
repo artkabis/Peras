@@ -529,3 +529,107 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
     (i32.const -1))
+
+  ;; Numbers and booleans as text, and text as integers.
+
+  ;; The decimal digits of `x`, after `-` when it is negative: written from
+  ;; the end of a 20-byte block, the longest an `i64` needs, then moved to
+  ;; its start.
+  (func (export "fmt_int") (param $x i64) (result i32)
+    (local $h i32) (local $p i32) (local $end i32) (local $neg i32) (local $n i32)
+    (local.set $h (call $buf_new (i32.const 20) (i32.const 1) (i32.const 0)))
+    (local.set $end (i32.add (i32.load offset=8 (local.get $h)) (i32.const 20)))
+    (local.set $p (local.get $end))
+    ;; The magnitude, unsigned: right for the smallest `i64` too.
+    (if (i64.lt_s (local.get $x) (i64.const 0))
+      (then
+        (local.set $neg (i32.const 1))
+        (local.set $x (i64.sub (i64.const 0) (local.get $x)))))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p)
+        (i32.add (i32.const 48) (i32.wrap_i64 (i64.rem_u (local.get $x) (i64.const 10)))))
+      (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+      (br_if $digit (i64.ne (local.get $x) (i64.const 0))))
+    (if (local.get $neg)
+      (then
+        (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+        (i32.store8 (local.get $p) (i32.const 45))))
+    (local.set $n (i32.sub (local.get $end) (local.get $p)))
+    (memory.copy (i32.load offset=8 (local.get $h)) (local.get $p) (local.get $n))
+    (i32.store (local.get $h) (local.get $n))
+    (local.get $h))
+
+  ;; `true` or `false`, their bytes stored as one word, little-endian.
+  (func (export "fmt_bool") (param $b i32) (result i32)
+    (local $h i32) (local $at i32)
+    (local.set $h (call $buf_new (i32.const 5) (i32.const 1) (i32.const 0)))
+    (local.set $at (i32.load offset=8 (local.get $h)))
+    (if (local.get $b)
+      (then
+        (i32.store (local.get $at) (i32.const 0x65757274))
+        (i32.store (local.get $h) (i32.const 4)))
+      (else
+        (i32.store (local.get $at) (i32.const 0x736c6166))
+        (i32.store8 offset=4 (local.get $at) (i32.const 0x65))
+        (i32.store (local.get $h) (i32.const 5))))
+    (local.get $h))
+
+  ;; Where the digits of `h` start: after a sign, if any. `$negative` says
+  ;; which sign.
+  (global $negative (mut i32) (i32.const 0))
+  (func $digits_from (param $h i32) (result i32)
+    (local $c i32)
+    (global.set $negative (i32.const 0))
+    (if (i32.eqz (i32.load (local.get $h))) (then (return (i32.const 0))))
+    (local.set $c (i32.load8_u (i32.load offset=8 (local.get $h))))
+    (global.set $negative (i32.eq (local.get $c) (i32.const 45)))
+    (i32.or (global.get $negative) (i32.eq (local.get $c) (i32.const 43))))
+
+  ;; Whether `h` is a sign or none, then at least one decimal digit, and
+  ;; nothing else, in the range of a signed integer of `bits` bits: up to
+  ;; 2^(bits-1) - 1, or 2^(bits-1) after `-`.
+  (func (export "str_is_int") (param $h i32) (param $bits i32) (result i32)
+    (local $len i32) (local $at i32) (local $i i32) (local $c i32)
+    (local $limit i64) (local $mag i64) (local $d i64)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $at (i32.load offset=8 (local.get $h)))
+    (local.set $i (call $digits_from (local.get $h)))
+    (if (i32.ge_u (local.get $i) (local.get $len)) (then (return (i32.const 0))))
+    (local.set $limit (i64.add
+      (i64.sub
+        (i64.shl (i64.const 1) (i64.extend_i32_u (i32.sub (local.get $bits) (i32.const 1))))
+        (i64.const 1))
+      (i64.extend_i32_u (global.get $negative))))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (local.set $c (i32.sub
+          (i32.load8_u (i32.add (local.get $at) (local.get $i))) (i32.const 48)))
+        (if (i32.gt_u (local.get $c) (i32.const 9)) (then (return (i32.const 0))))
+        (local.set $d (i64.extend_i32_u (local.get $c)))
+        ;; `mag * 10 + d` above the limit is refused before it is computed.
+        (if (i64.gt_u (local.get $mag)
+              (i64.div_u (i64.sub (local.get $limit) (local.get $d)) (i64.const 10)))
+          (then (return (i32.const 0))))
+        (local.set $mag (i64.add (i64.mul (local.get $mag) (i64.const 10)) (local.get $d)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const 1))
+
+  ;; The integer `h` writes, which `str_is_int` accepted.
+  (func (export "str_parse_int") (param $h i32) (result i64)
+    (local $len i32) (local $at i32) (local $i i32) (local $mag i64)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $at (i32.load offset=8 (local.get $h)))
+    (local.set $i (call $digits_from (local.get $h)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (local.set $mag (i64.add
+          (i64.mul (local.get $mag) (i64.const 10))
+          (i64.extend_i32_u (i32.sub
+            (i32.load8_u (i32.add (local.get $at) (local.get $i))) (i32.const 48)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (select (i64.sub (i64.const 0) (local.get $mag)) (local.get $mag) (global.get $negative)))

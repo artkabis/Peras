@@ -90,6 +90,42 @@ fn the_functions_of_numbers_round_halves_up_and_compute_as_math_does() {
     }
 }
 
+#[test]
+fn integers_and_booleans_become_text_and_text_becomes_integers() {
+    let parsed = perasc_syntax::parse(FORMAT);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, FORMAT);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The smallest `i64` round-trips, and is out of the range of `i32`.
+    for (n, expected) in [(i64::MIN, 253_305), (42, 253_126), (0, 253_116)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I64(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I64(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const FORMAT: &str = r#"export fn run(n: i64): i64 {
+  const text = n.toString();
+  let score = text.parseI64().unwrapOr(7) - n;
+  if (text.parseI32().isSome()) score += 1;
+  score += text.length.toI64() * 10;
+  if (true.toString() == "true") score += 100;
+  score += false.toString().length.toI64();
+  const m: i32 = -7;
+  score += m.toString().length.toI64() * 100000;
+  let valid = 0;
+  const inputs: Array<String> = ["", "-", "+5", "12a", " 1", "2147483648", "-2147483648", "9223372036854775807", "-9223372036854775809", "007"];
+  for (const s of inputs) {
+    if (s.parseI32().isSome()) valid += 1;
+    if (s.parseI64().isSome()) valid += 10;
+  }
+  return score + valid.toI64() * 1000;
+}
+"#;
+
 const ARRAYS: &str = r#"struct Point {
   x: f64;
   name: String;

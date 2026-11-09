@@ -517,11 +517,20 @@ pub enum RuntimeFn {
     ArrSort,
     /// `(strings, s) -> i32`: the index of the first string equal to `s`, or -1.
     ArrIndexOfStr,
+    /// `(n: i64) -> owned`: the decimal digits of `n`, after `-` if negative.
+    FmtInt,
+    /// `(b: bool) -> owned`: `true` or `false`.
+    FmtBool,
+    /// `(s, bits) -> bool`: whether `s` is an optional sign then decimal
+    /// digits, nothing else, in the range of a signed integer of `bits` bits.
+    IsInt,
+    /// `(s) -> i64`: the integer `s` writes, which [`Self::IsInt`] accepted.
+    ParseInt,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 21] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -539,6 +548,10 @@ impl RuntimeFn {
         Self::ArrReverse,
         Self::ArrSort,
         Self::ArrIndexOfStr,
+        Self::FmtInt,
+        Self::FmtBool,
+        Self::IsInt,
+        Self::ParseInt,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -562,10 +575,25 @@ impl RuntimeFn {
             Self::ArrReverse => "arr_reverse",
             Self::ArrSort => "arr_sort",
             Self::ArrIndexOfStr => "arr_index_of_str",
+            Self::FmtInt => "fmt_int",
+            Self::FmtBool => "fmt_bool",
+            Self::IsInt => "str_is_int",
+            Self::ParseInt => "str_parse_int",
         }
     }
 
-    /// The types of its operands after the first, which is a lent buffer.
+    /// The type of its first operand: a lent buffer, or the number or
+    /// boolean it formats.
+    #[must_use]
+    pub const fn receiver(self) -> Ty {
+        match self {
+            Self::FmtInt => Ty::I64,
+            Self::FmtBool => Ty::Bool,
+            _ => Ty::Borrowed,
+        }
+    }
+
+    /// The types of its operands after the first.
     #[must_use]
     pub const fn operands(self) -> &'static [Ty] {
         match self {
@@ -577,8 +605,14 @@ impl RuntimeFn {
             | Self::ArrConcat
             | Self::ArrIndexOfStr => &[Ty::Borrowed],
             Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
-            Self::Trim | Self::Upper | Self::Lower | Self::ArrReverse => &[],
-            Self::Repeat | Self::ArrSort => &[Ty::I32],
+            Self::Trim
+            | Self::Upper
+            | Self::Lower
+            | Self::ArrReverse
+            | Self::FmtInt
+            | Self::FmtBool
+            | Self::ParseInt => &[],
+            Self::Repeat | Self::ArrSort | Self::IsInt => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
         }
     }
@@ -588,7 +622,8 @@ impl RuntimeFn {
     pub const fn result(self) -> Ty {
         match self {
             Self::IndexOf | Self::ArrIndexOfStr => Ty::I32,
-            Self::StartsWith | Self::EndsWith => Ty::Bool,
+            Self::StartsWith | Self::EndsWith | Self::IsInt => Ty::Bool,
+            Self::ParseInt => Ty::I64,
             Self::ArrReverse | Self::ArrSort => Ty::Void,
             _ => Ty::Owned,
         }

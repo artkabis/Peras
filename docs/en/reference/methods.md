@@ -31,6 +31,20 @@ export fn wrapped(a: i32): i32 {
 }
 ```
 
+### As text
+
+| Method       | On                     | Gives                                                                      | Status                                        |
+| ------------ | ---------------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
+| `toString()` | integers, and booleans | the decimal digits, after `-` when negative; `true` or `false`, a `String` | <span class="status compiled">compiled</span> |
+
+The text is what JavaScript's `String()` writes for the same value. Floats come next: their shortest exact form needs an algorithm of its own.
+
+```peras build
+export fn label(count: i64, done: bool): String {
+  return count.toString() + " items, done: " + done.toString();
+}
+```
+
 ### Floats
 
 | Method                    | Gives                                                | Status                                        |
@@ -119,12 +133,22 @@ Indices and lengths count bytes of UTF-8, as `length` does. An index inside a ch
 | `repeat(n)`                                   | the text `n` times                                                                        | <span class="status compiled">compiled</span> |
 | `replace(from, to)`, `replaceAll(from, to)`   | the first `from`, or every one, replaced by `to`                                          | <span class="status compiled">compiled</span> |
 | `split(separator)`                            | the parts between each separator, an `Array<String>`; with `""`, the characters           | <span class="status compiled">compiled</span> |
+| `parseI32()`, `parseI64()`                    | `Some(n)` when the text is an integer in range, else `None`; see below                    | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn tidy(line: String): String {
   const fields = line.split(",").map((f) => f.trim().toLowerCase());
   const named = fields.filter((f) => !f.startsWith("#"));
   return named.join(" ").replaceAll("  ", " ");
+}
+```
+
+`parseI32()` and `parseI64()` are strict: the text is a `+` or `-` or neither, then ASCII digits, and nothing else. No spaces, no `_`, no `0x`, no exponent; a value outside the type's range is `None`, never wrapped. Trim first if the text may carry spaces.
+
+```peras build
+export fn port(text: String): i32 {
+  const n = text.trim().parseI32().unwrapOr(-1);
+  return n.clamp(-1, 65535);
 }
 ```
 

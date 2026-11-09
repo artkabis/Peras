@@ -31,6 +31,20 @@ export fn wrapped(a: i32): i32 {
 }
 ```
 
+### En texte
+
+| Méthode      | Sur                  | Donne                                                                         | État                                         |
+| ------------ | -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
+| `toString()` | entiers, et booléens | les chiffres décimaux, après `-` si négatif ; `true` ou `false`, une `String` | <span class="status compiled">compilé</span> |
+
+Le texte est celui qu’écrit `String()` en JavaScript pour la même valeur. Les flottants viennent ensuite : leur forme exacte la plus courte demande un algorithme à elle.
+
+```peras build
+export fn label(count: i64, done: bool): String {
+  return count.toString() + " items, done: " + done.toString();
+}
+```
+
 ### Flottants
 
 | Méthode                   | Donne                                                                | État                                         |
@@ -119,12 +133,22 @@ Les indices et les longueurs comptent les octets UTF-8, comme `length`. Un indic
 | `repeat(n)`                                   | le texte `n` fois                                                                                     | <span class="status compiled">compilé</span> |
 | `replace(from, to)`, `replaceAll(from, to)`   | le premier `from`, ou tous, remplacés par `to`                                                        | <span class="status compiled">compilé</span> |
 | `split(separator)`                            | les morceaux entre chaque séparateur, un `Array<String>` ; avec `""`, les caractères                  | <span class="status compiled">compilé</span> |
+| `parseI32()`, `parseI64()`                    | `Some(n)` quand le texte est un entier dans l’intervalle, sinon `None` ; voir plus bas                | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn tidy(line: String): String {
   const fields = line.split(",").map((f) => f.trim().toLowerCase());
   const named = fields.filter((f) => !f.startsWith("#"));
   return named.join(" ").replaceAll("  ", " ");
+}
+```
+
+`parseI32()` et `parseI64()` sont strictes : le texte est un `+`, un `-` ou rien, puis des chiffres ASCII, et rien d’autre. Ni espace, ni `_`, ni `0x`, ni exposant ; une valeur hors de l’intervalle du type donne `None`, jamais un résultat tronqué. Appliquez `trim()` d’abord si le texte peut porter des espaces.
+
+```peras build
+export fn port(text: String): i32 {
+  const n = text.trim().parseI32().unwrapOr(-1);
+  return n.clamp(-1, 65535);
 }
 ```
 

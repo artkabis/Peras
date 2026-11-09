@@ -489,6 +489,9 @@ impl Lowering<'_> {
             return self.array_method(state, base, method, args, mode, span);
         }
         if !self.is_aggregate(base) {
+            if method == "toString" {
+                return self.stringified(state, base, mode);
+            }
             let op = match method {
                 "checkedAdd" => BinOp::Add,
                 "checkedSub" => BinOp::Sub,

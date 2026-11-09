@@ -6,6 +6,7 @@
 //! `inout` and the other constructs listed in `E0900`) is reported, every
 //! occurrence at once, instead of being miscompiled.
 
+mod format;
 mod functional;
 mod heap;
 mod matching;

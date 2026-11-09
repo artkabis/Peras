@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **Numbers as text**: `toString()` on integers and booleans writes what JavaScript's `String()` writes; `parseI32()` and `parseI64()` on strings give `Some(n)` only for a sign or none, then ASCII digits, in the type's range, and `None` otherwise, never a wrapped value. Four new functions of the runtime, `fmt_int`, `fmt_bool`, `str_is_int` and `str_parse_int`, the first taking an `i64` and the last giving one.
 - **Numbers**: `round`, `sin`, `cos`, `tan`, `exp`, `log`, `pow`, `atan2` and `hypot` on floats. Those WebAssembly has no instruction for are imported from JavaScript's `Math`, only by the modules that use them, so they give exactly what JavaScript gives; an `f32` goes through `f64`.
 - **Arrays**: `slice`, `concat`, `reverse`, `sort` (numbers, heapsort in place without allocating), `includes` and `indexOf` (numbers, booleans and strings), column by column for arrays of structures.
 - **Arrays without a copy**: `__perasHeap.array(kind, init)` makes a `PerasArray`, an array of numbers in the module's memory. Exported functions take it with no copy: lent, changed in place by `inout`, or given to `sink`. `view()` gives a typed array over its elements, valid until the next call into the module. On a million `f32`, reading goes from 5.2 to 1.5 ms and changing in place from 11.5 to 0.8 ms. TypeScript sees `number[] | PerasArray<"f32">`.

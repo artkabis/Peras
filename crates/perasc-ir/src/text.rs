@@ -99,6 +99,34 @@ pub fn split(s: &[u8], separator: &[u8]) -> Vec<Vec<u8>> {
     parts
 }
 
+/// The integer `s` writes: a sign or none, then at least one decimal digit
+/// and nothing else, in the range of a signed integer of `bits` bits.
+#[must_use]
+pub fn parse_int(s: &[u8], bits: i32) -> Option<i64> {
+    let (negative, digits) = match s.split_first() {
+        Some((b'-', rest)) => (true, rest),
+        Some((b'+', rest)) => (false, rest),
+        _ => (false, s),
+    };
+    if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let shift = u32::try_from(bits.clamp(1, 64) - 1).ok()?;
+    let limit = (1u64 << shift) - 1 + u64::from(negative);
+    let mut magnitude: u64 = 0;
+    for &d in digits {
+        magnitude = magnitude
+            .checked_mul(10)?
+            .checked_add(u64::from(d - b'0'))
+            .filter(|&m| m <= limit)?;
+    }
+    Some(if negative {
+        0i64.wrapping_sub_unsigned(magnitude)
+    } else {
+        i64::try_from(magnitude).ok()?
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{index_of, replace, slice, split, trim};

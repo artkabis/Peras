@@ -79,6 +79,9 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                     ret: me,
                 });
             }
+            if me.is_integer() && name == "toString" {
+                return simple(Ty::String);
+            }
             if me.is_integer() && CHECKED.contains(&name) {
                 return Some(Method {
                     params: vec![me.clone()],
@@ -119,6 +122,7 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             }),
             _ => None,
         },
+        Ty::Bool if name == "toString" => simple(Ty::String),
         Ty::String => string_method(name),
         Ty::Result(ok, _) => match name {
             "isOk" | "isErr" => simple(Ty::Bool),
@@ -155,7 +159,7 @@ fn searchable(element: &Ty) -> bool {
 }
 
 /// The methods of strings beyond `copy`.
-const STRING_METHODS: [&str; 12] = [
+const STRING_METHODS: [&str; 14] = [
     "indexOf",
     "includes",
     "startsWith",
@@ -168,6 +172,8 @@ const STRING_METHODS: [&str; 12] = [
     "replace",
     "replaceAll",
     "split",
+    "parseI32",
+    "parseI64",
 ];
 
 /// A method of `String`.
@@ -181,6 +187,8 @@ fn string_method(name: &str) -> Option<Method> {
         "repeat" => (vec![int], Ty::String),
         "replace" | "replaceAll" => (vec![Ty::String, Ty::String], Ty::String),
         "split" => (vec![Ty::String], Ty::Array(Box::new(Ty::String))),
+        "parseI32" => (Vec::new(), Ty::Option(Box::new(int))),
+        "parseI64" => (Vec::new(), Ty::Option(Box::new(Ty::Int(IntTy::I64)))),
         _ => return None,
     };
     Some(Method { params, ret })
@@ -201,6 +209,7 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             } else {
                 names.extend(WRAPPING);
                 names.extend(CHECKED);
+                names.push("toString");
             }
         }
         Ty::Array(element) => {
@@ -222,6 +231,7 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             names.extend(["length", "copy"]);
             names.extend(STRING_METHODS);
         }
+        Ty::Bool => names.push("toString"),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}

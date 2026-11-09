@@ -37,14 +37,14 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)).
 
-| Domaine     | Quoi                                                                                                                                                                                                               |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`~~ (fait), mise en forme et chaînes gabarits                                                                |
-| tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                                  |
-| nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                |
-| temps       | durées et instants                                                                                                                                                                                                 |
-| données     | JSON, encodage de texte, octets                                                                                                                                                                                    |
+| Domaine     | Quoi                                                                                                                                                                                                                         |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`, `toString` sur les entiers et les booléens, `parseI32`, `parseI64`~~ (fait), flottants en texte et chaînes gabarits |
+| tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles           |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                                            |
+| nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                          |
+| temps       | durées et instants                                                                                                                                                                                                           |
+| données     | JSON, encodage de texte, octets                                                                                                                                                                                              |
 
 ```peras build
 export fn words(text: String): i32 {

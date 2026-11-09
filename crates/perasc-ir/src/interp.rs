@@ -426,6 +426,14 @@ impl Machine<'_> {
         if let Some(value) = self.array_runtime(f, operands)? {
             return Ok(value);
         }
+        match (f, operands.first()) {
+            (F::FmtInt, Some(Value::I64(n))) => return Ok(self.string(n.to_string().as_bytes())),
+            (F::FmtBool, Some(Value::Bool(b))) => {
+                return Ok(self.string(b.to_string().as_bytes()));
+            }
+            (F::FmtInt | F::FmtBool, _) => return Err(Trap::Unreachable),
+            _ => {}
+        }
         let s = text(self, 0)?;
         Ok(match f {
             F::IndexOf => Value::I32(crate::text::index_of(&s, &text(self, 1)?, int(2)?)),
@@ -461,7 +469,15 @@ impl Machine<'_> {
                 self.deep.insert(self.allocated);
                 Value::Handle(self.allocated)
             }
-            F::ArrSlice | F::ArrConcat | F::ArrReverse | F::ArrSort | F::ArrIndexOfStr => {
+            F::IsInt => Value::Bool(crate::text::parse_int(&s, int(1)?).is_some()),
+            F::ParseInt => Value::I64(crate::text::parse_int(&s, 64).unwrap_or(0)),
+            F::ArrSlice
+            | F::ArrConcat
+            | F::ArrReverse
+            | F::ArrSort
+            | F::ArrIndexOfStr
+            | F::FmtInt
+            | F::FmtBool => {
                 return Err(Trap::Unreachable);
             }
             F::Join => {
