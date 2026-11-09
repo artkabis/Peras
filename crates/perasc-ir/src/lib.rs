@@ -527,11 +527,15 @@ pub enum RuntimeFn {
     IsInt,
     /// `(s) -> i64`: the integer `s` writes, which [`Self::IsInt`] accepted.
     ParseInt,
+    /// `(column, flags)`: keeps, in place and in order, the elements whose flag
+    /// (an array of `bool`) is set, and releases the buffers among the others.
+    /// `filter` on a temporary array, which it then gives as its result.
+    ArrKeep,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -553,6 +557,7 @@ impl RuntimeFn {
         Self::FmtBool,
         Self::IsInt,
         Self::ParseInt,
+        Self::ArrKeep,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -580,6 +585,7 @@ impl RuntimeFn {
             Self::FmtBool => "fmt_bool",
             Self::IsInt => "str_is_int",
             Self::ParseInt => "str_parse_int",
+            Self::ArrKeep => "arr_keep",
         }
     }
 
@@ -604,7 +610,8 @@ impl RuntimeFn {
             | Self::Split
             | Self::Join
             | Self::ArrConcat
-            | Self::ArrIndexOfStr => &[Ty::Borrowed],
+            | Self::ArrIndexOfStr
+            | Self::ArrKeep => &[Ty::Borrowed],
             Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
             Self::Trim
             | Self::Upper
@@ -625,7 +632,7 @@ impl RuntimeFn {
             Self::IndexOf | Self::ArrIndexOfStr => Ty::I32,
             Self::StartsWith | Self::EndsWith | Self::IsInt => Ty::Bool,
             Self::ParseInt => Ty::I64,
-            Self::ArrReverse | Self::ArrSort => Ty::Void,
+            Self::ArrReverse | Self::ArrSort | Self::ArrKeep => Ty::Void,
             _ => Ty::Owned,
         }
     }

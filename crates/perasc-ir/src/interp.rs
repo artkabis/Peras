@@ -476,6 +476,7 @@ impl Machine<'_> {
             | F::ArrReverse
             | F::ArrSort
             | F::ArrIndexOfStr
+            | F::ArrKeep
             | F::FmtInt
             | F::FmtBool => {
                 return Err(Trap::Unreachable);
@@ -550,6 +551,25 @@ impl Machine<'_> {
             }
             F::ArrReverse => {
                 self.elements(first)?.reverse();
+                Value::Void
+            }
+            F::ArrKeep => {
+                let flags = self
+                    .elements(*operands.get(1).ok_or(Trap::Unreachable)?)?
+                    .clone();
+                let elements = std::mem::take(self.elements(first)?);
+                let mut kept = Vec::with_capacity(elements.len());
+                for (element, flag) in elements
+                    .into_iter()
+                    .zip(flags.iter().chain(std::iter::repeat(&Value::Bool(false))))
+                {
+                    if *flag == Value::Bool(true) {
+                        kept.push(element);
+                    } else if let (true, Value::Handle(block)) = (deep, element) {
+                        self.free(block)?;
+                    }
+                }
+                *self.elements(first)? = kept;
                 Value::Void
             }
             F::ArrSort => {

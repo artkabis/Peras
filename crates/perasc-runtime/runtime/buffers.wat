@@ -10,21 +10,45 @@
   ;;   +12 the size of an element in bytes, plus DEEP when its elements are
   ;;       buffers themselves, which it owns: an array of strings
   ;;
-  ;; The elements are a block of their own, `capacity * size` bytes. Every
-  ;; `size` argument below may carry DEEP; only its low byte is a size.
+  ;; The elements are a block of their own, `capacity * size` bytes, except
+  ;; in a small buffer whose elements are not buffers, a short string: they
+  ;; follow its header in the same block, one allocation instead of two, and
+  ;; +12 carries INLINE while they are there. When such a buffer grows, its
+  ;; elements move to a block of their own, INLINE goes, and the room after
+  ;; the header stays unused until the header is released. Every `size` argument below may carry DEEP, and INLINE, which
+  ;; `buf_new` ignores; only its low byte is a size.
+
+  (global $INLINE i32 (i32.const 0x200))
+  ;; The most bytes of elements kept in the header's block.
+  (global $INLINE_MAX i32 (i32.const 256))
 
   ;; A new, empty buffer with room for `cap` elements of `size` bytes.
   (func $buf_new (export "buf_new") (param $cap i32) (param $size i32) (param $site i32) (result i32)
-    (local $h i32)
-    (local.set $h (call $alloc (i32.const 16) (local.get $site)))
+    (local $h i32) (local $bytes i32)
+    (local.set $size (i32.and (local.get $size) (i32.xor (global.get $INLINE) (i32.const -1))))
+    (local.set $bytes (call $bytes (local.get $cap) (local.get $size) (local.get $site)))
+    (if (i32.and
+          (i32.and (i32.ne (local.get $cap) (i32.const 0))
+            (i32.le_u (local.get $bytes) (global.get $INLINE_MAX)))
+          (i32.eqz (i32.and (local.get $size) (global.get $DEEP))))
+      (then
+        (local.set $h (call $alloc (i32.add (i32.const 16) (local.get $bytes)) (local.get $site)))
+        (i32.store offset=8 (local.get $h) (i32.add (local.get $h) (i32.const 16)))
+        (local.set $size (i32.or (local.get $size) (global.get $INLINE))))
+      (else
+        (local.set $h (call $alloc (i32.const 16) (local.get $site)))
+        (i32.store offset=8 (local.get $h)
+          (if (result i32) (i32.eqz (local.get $cap))
+            (then (i32.const 0))
+            (else (call $alloc (local.get $bytes) (local.get $site)))))))
     (i32.store (local.get $h) (i32.const 0))
     (i32.store offset=4 (local.get $h) (local.get $cap))
-    (i32.store offset=8 (local.get $h)
-      (if (result i32) (i32.eqz (local.get $cap))
-        (then (i32.const 0))
-        (else (call $alloc (call $bytes (local.get $cap) (local.get $size) (local.get $site)) (local.get $site)))))
     (i32.store offset=12 (local.get $h) (local.get $size))
     (local.get $h))
+
+  ;; Whether the elements of `h` follow its header, in its block.
+  (func $inline (param $h i32) (result i32)
+    (i32.ne (i32.and (i32.load offset=12 (local.get $h)) (global.get $INLINE)) (i32.const 0)))
 
   ;; `count * size`, or a fault when it exceeds what one block can hold.
   (func $bytes (param $count i32) (param $size i32) (param $site i32) (result i32)
@@ -57,7 +81,12 @@
       (then
         (memory.copy (local.get $data) (i32.load offset=8 (local.get $h))
           (call $bytes (local.get $len) (local.get $size) (local.get $site)))
-        (call $release (i32.load offset=8 (local.get $h)) (local.get $site))))
+        ;; Elements in the header's block stay there, unused, until the
+        ;; header is released; the buffer is no longer INLINE.
+        (if (call $inline (local.get $h))
+          (then (i32.store offset=12 (local.get $h)
+            (i32.and (i32.load offset=12 (local.get $h)) (i32.xor (global.get $INLINE) (i32.const -1)))))
+          (else (call $release (i32.load offset=8 (local.get $h)) (local.get $site))))))
     (i32.store offset=4 (local.get $h) (local.get $new_cap))
     (i32.store offset=8 (local.get $h) (local.get $data)))
 
@@ -69,6 +98,9 @@
     (local.set $data (i32.load offset=8 (local.get $h)))
     (local.set $len (i32.load (local.get $h)))
     (local.set $deep (i32.and (i32.load offset=12 (local.get $h)) (global.get $DEEP)))
+    ;; Elements in the header's block are released with it.
+    (if (call $inline (local.get $h))
+      (then (local.set $data (i32.const 0))))
     (call $release (local.get $h) (local.get $site))
     (if (local.get $deep)
       (then
@@ -165,19 +197,31 @@
 
   ;; The first index at or after `from` where `needle` is in `h`, or -1.
   (func $str_index_of (export "str_index_of") (param $h i32) (param $needle i32) (param $from i32) (result i32)
-    (local $len i32) (local $n i32) (local $i i32)
+    (local $len i32) (local $n i32) (local $i i32) (local $data i32) (local $first i32) (local $last i32)
     (local.set $len (i32.load (local.get $h)))
     (local.set $n (i32.load (local.get $needle)))
     (local.set $i (local.get $from))
     (if (i32.lt_s (local.get $i) (i32.const 0)) (then (local.set $i (i32.const 0))))
+    ;; An empty needle is found where the search starts, if within the text.
+    (if (i32.eqz (local.get $n))
+      (then (return (select (local.get $i) (i32.const -1)
+        (i32.le_u (local.get $i) (local.get $len))))))
+    (if (i32.gt_u (local.get $n) (local.get $len)) (then (return (i32.const -1))))
+    ;; The last start where the needle fits; its first byte, looked for byte
+    ;; by byte, and the rest compared only where it matches.
+    (local.set $last (i32.sub (local.get $len) (local.get $n)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $first (i32.load8_u (i32.load offset=8 (local.get $needle))))
     (block $none
       (loop $next
-        (br_if $none (i32.gt_u (i32.add (local.get $i) (local.get $n)) (local.get $len)))
-        (if (call $same
-              (i32.add (i32.load offset=8 (local.get $h)) (local.get $i))
-              (i32.load offset=8 (local.get $needle))
-              (local.get $n))
-          (then (return (local.get $i))))
+        (br_if $none (i32.gt_u (local.get $i) (local.get $last)))
+        (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $i))) (local.get $first))
+          (then
+            (if (call $same
+                  (i32.add (i32.add (local.get $data) (local.get $i)) (i32.const 1))
+                  (i32.add (i32.load offset=8 (local.get $needle)) (i32.const 1))
+                  (i32.sub (local.get $n) (i32.const 1)))
+              (then (return (local.get $i))))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
     (i32.const -1))
@@ -444,6 +488,37 @@
     (local.set $t (i64.extend_i32_u (i32.load8_u (local.get $a))))
     (i32.store8 (local.get $a) (i32.load8_u (local.get $b)))
     (i32.store8 (local.get $b) (i32.wrap_i64 (local.get $t))))
+
+  ;; Keeps, in place and in order, the elements of `h` whose flag in `flags`,
+  ;; an array of booleans as long, is set; releases the buffers among the
+  ;; others when `h` owns them; shortens `h` to what it kept.
+  (func (export "arr_keep") (param $h i32) (param $flags i32)
+    (local $n i32) (local $i i32) (local $w i32) (local $es i32) (local $data i32)
+    (local $f i32) (local $deep i32)
+    (local.set $n (i32.load (local.get $h)))
+    (local.set $es (call $element_size (local.get $h)))
+    (local.set $deep (i32.and (i32.load offset=12 (local.get $h)) (global.get $DEEP)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $f (i32.load offset=8 (local.get $flags)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (if (i32.load (i32.add (local.get $f) (i32.shl (local.get $i) (i32.const 2))))
+          (then
+            (if (i32.ne (local.get $w) (local.get $i))
+              (then (memory.copy
+                (i32.add (local.get $data) (i32.mul (local.get $w) (local.get $es)))
+                (i32.add (local.get $data) (i32.mul (local.get $i) (local.get $es)))
+                (local.get $es))))
+            (local.set $w (i32.add (local.get $w) (i32.const 1))))
+          (else
+            (if (local.get $deep)
+              (then (call $buf_release
+                (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+                (i32.const 0))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.store (local.get $h) (local.get $w)))
 
   ;; Reverses the elements of `h` in place.
   (func (export "arr_reverse") (param $h i32)

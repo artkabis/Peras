@@ -126,6 +126,60 @@ const FORMAT: &str = r#"export fn run(n: i64): i64 {
 }
 "#;
 
+#[test]
+fn filter_on_a_temporary_keeps_its_elements_in_place_without_a_leak() {
+    let parsed = perasc_syntax::parse(KEEP);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, KEEP);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    assert!(module.to_string().contains("arr_keep"), "{module}");
+    // Checked by hand: 5 words in " a  bb ccc  dddd e "; "bb-ccc-dddd", 11
+    // bytes; the tags past 1.0, "bbc" or "bbcdd"; 5 or 2 even numbers; 7
+    // letters in the words longer than 2.
+    for (n, expected) in [(0, 75_011_352), (3, 75_011_523)] {
+        let (value, heap) = run_with_heap(&module, FnId(2), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const KEEP: &str = r#"struct Tag {
+  x: f64;
+  name: String;
+}
+
+fn tags(n: i32): Array<Tag> {
+  return [Tag(0.5, "a"), Tag(2.0, "bb"), Tag(3.0, "c"), Tag(n.toF64(), "dd")];
+}
+
+fn long(text: String): Array<String> {
+  return text.split(" ").filter((w) => w.length > 1);
+}
+
+export fn run(n: i32): i32 {
+  const words = " a  bb ccc  dddd e ".split(" ").filter((w) => w.length > 0).length;
+  const kept = long(" a  bb ccc  dddd e ");
+  const joined = kept.join("-");
+  const big = tags(n).filter((t) => t.x > 1.0);
+  let names = "";
+  for (const t of big) {
+    names += t.name;
+  }
+  const doubled = [1, 2, 3, 4, 5].map((x) => x * n).filter((x) => x % 2 == 0).length;
+  // A loop over a temporary array, which lives through every turn.
+  let letters = 0;
+  for (const w of " a  bb ccc  dddd e ".split(" ")) {
+    if (w.length > 2) letters += w.length;
+    if (letters > 100) return -1;
+    if (w.length > 10) break;
+  }
+  return words * 1000000 + joined.length * 1000 + names.length * 100 + doubled * 10 + big.length + letters * 10000000;
+}
+"#;
+
 const ARRAYS: &str = r#"struct Point {
   x: f64;
   name: String;

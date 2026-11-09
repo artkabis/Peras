@@ -94,14 +94,14 @@ export fn median(samples: Array<f64>): f64 {
 
 Chacune de ces méthodes prend une fonction fléchée, écrite sur place, `(x) => …`, et la compile comme le corps d’une boucle : aucune valeur de fonction, aucun appel à l’exécution. Ses paramètres prêtent les éléments, comme `for…of` : ils sont lus, jamais déplacés. <span class="status compiled">compilé</span>
 
-| Méthode               | Donne                                                                                  | Statut                                       |
-| --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `map(f)`              | un nouveau tableau des `f(x)` de chaque élément                                        | <span class="status compiled">compilé</span> |
-| `filter(f)`           | un nouveau tableau des copies des éléments pour lesquels `f(x)` vaut `true`            | <span class="status compiled">compilé</span> |
-| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start` ; nombres et structures de nombres | <span class="status compiled">compilé</span> |
-| `find(f)`             | une copie du premier élément pour lequel `f(x)` vaut `true`, ou `None`                 | <span class="status compiled">compilé</span> |
-| `findIndex(f)`        | l’indice du premier élément pour lequel `f(x)` vaut `true`, ou `-1`                    | <span class="status compiled">compilé</span> |
-| `some(f)`, `every(f)` | si `f(x)` vaut `true` pour un élément, pour tous ; s’arrête dès que c’est connu        | <span class="status compiled">compilé</span> |
+| Méthode               | Donne                                                                                                                                                                         | Statut                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `map(f)`              | un nouveau tableau des `f(x)` de chaque élément                                                                                                                               | <span class="status compiled">compilé</span> |
+| `filter(f)`           | un nouveau tableau des copies des éléments pour lesquels `f(x)` vaut `true` ; sur un tableau temporaire, comme `text.split(" ")`, le même tableau, gardé sur place sans copie | <span class="status compiled">compilé</span> |
+| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start` ; nombres et structures de nombres                                                                                        | <span class="status compiled">compilé</span> |
+| `find(f)`             | une copie du premier élément pour lequel `f(x)` vaut `true`, ou `None`                                                                                                        | <span class="status compiled">compilé</span> |
+| `findIndex(f)`        | l’indice du premier élément pour lequel `f(x)` vaut `true`, ou `-1`                                                                                                           | <span class="status compiled">compilé</span> |
+| `some(f)`, `every(f)` | si `f(x)` vaut `true` pour un élément, pour tous ; s’arrête dès que c’est connu                                                                                               | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn summary(xs: Array<i32>, words: Array<String>): i32 {

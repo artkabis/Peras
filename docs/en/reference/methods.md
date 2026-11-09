@@ -94,14 +94,14 @@ export fn median(samples: Array<f64>): f64 {
 
 Each of these methods takes an arrow function, written in place, `(x) => …`, and compiles it as the body of a loop: no function value and no call at run time. Its parameters lend the elements, as `for…of` does: they are read, never moved. <span class="status compiled">compiled</span>
 
-| Method                | Gives                                                                              | Status                                        |
-| --------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------- |
-| `map(f)`              | a new array of `f(x)` for each element                                             | <span class="status compiled">compiled</span> |
-| `filter(f)`           | a new array of copies of the elements for which `f(x)` is `true`                   | <span class="status compiled">compiled</span> |
-| `reduce(f, start)`    | `f(acc, x)` folded over the elements, from `start`; numbers and structures of them | <span class="status compiled">compiled</span> |
-| `find(f)`             | a copy of the first element for which `f(x)` is `true`, or `None`                  | <span class="status compiled">compiled</span> |
-| `findIndex(f)`        | the index of the first element for which `f(x)` is `true`, or `-1`                 | <span class="status compiled">compiled</span> |
-| `some(f)`, `every(f)` | whether `f(x)` is `true` for one element, for all; stops as soon as known          | <span class="status compiled">compiled</span> |
+| Method                | Gives                                                                                                                                                      | Status                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `map(f)`              | a new array of `f(x)` for each element                                                                                                                     | <span class="status compiled">compiled</span> |
+| `filter(f)`           | a new array of copies of the elements for which `f(x)` is `true`; on a temporary array, as `text.split(" ")`, the same array, kept in place without copies | <span class="status compiled">compiled</span> |
+| `reduce(f, start)`    | `f(acc, x)` folded over the elements, from `start`; numbers and structures of them                                                                         | <span class="status compiled">compiled</span> |
+| `find(f)`             | a copy of the first element for which `f(x)` is `true`, or `None`                                                                                          | <span class="status compiled">compiled</span> |
+| `findIndex(f)`        | the index of the first element for which `f(x)` is `true`, or `-1`                                                                                         | <span class="status compiled">compiled</span> |
+| `some(f)`, `every(f)` | whether `f(x)` is `true` for one element, for all; stops as soon as known                                                                                  | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn summary(xs: Array<i32>, words: Array<String>): i32 {

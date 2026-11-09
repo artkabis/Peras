@@ -22,6 +22,10 @@ enum Goal {
     Map(Vec<(LocalId, Elem)>),
     /// `filter`: the elements kept, pushed into new buffers.
     Filter(Vec<(LocalId, Elem)>),
+    /// `filter` on a temporary array: whether each element is kept, pushed
+    /// into an array of `bool`; the runtime then keeps them in place
+    /// (`arr_keep`), and the temporary becomes the result, with no copy.
+    Keep(LocalId),
     /// `reduce`: the accumulator, given the function's value at each turn.
     Reduce(Vec<LocalId>),
     /// `find` and `findIndex`: the index of the first element that matches.
@@ -60,7 +64,15 @@ impl Lowering<'_> {
         let n = state.temp(Ty::I32);
         state.pre.push(Stmt::Set(n, length(&first)));
         let n_expr = super::local_expr(state, n);
-        let goal = self.goal(state, method, args, lambda, body, columns, &n_expr)?;
+        // A temporary array, released after the statement: no one else sees
+        // it, so `filter` may change it and give it as its result.
+        let temporaries = temporaries(state, buffers);
+        let goal = match &temporaries {
+            Some(_) if method == "filter" => {
+                Goal::Keep(state.owned_temp(new_buffer(n_expr.clone(), Elem::Bool)))
+            }
+            _ => self.goal(state, method, args, lambda, body, columns, &n_expr)?,
+        };
         let i = state.temp(Ty::I32);
         state.pre.push(Stmt::Set(i, int(0)));
         let i_expr = super::local_expr(state, i);
@@ -98,6 +110,28 @@ impl Lowering<'_> {
         state.drops = outer_drops;
         state.pre.extend(lowered);
         let values = match goal {
+            Goal::Keep(flags) => {
+                for buffer in buffers {
+                    state.pre.push(Stmt::Expr(Expr {
+                        kind: ExprKind::Buf(
+                            BufOp::Runtime(crate::RuntimeFn::ArrKeep),
+                            vec![buffer.clone(), super::heap::borrowed(flags)],
+                        ),
+                        ty: Ty::Void,
+                    }));
+                }
+                state.drops.push(flags);
+                // The temporaries are the result now, not released here.
+                let taken = temporaries.unwrap_or_default();
+                state.drops.retain(|d| !taken.contains(d));
+                taken
+                    .into_iter()
+                    .map(|local| Expr {
+                        kind: ExprKind::Local(local),
+                        ty: Ty::Owned,
+                    })
+                    .collect()
+            }
             Goal::Map(result) | Goal::Filter(result) => result
                 .into_iter()
                 .map(|(local, _)| Expr {
@@ -194,6 +228,15 @@ impl Lowering<'_> {
                 for ((local, elem), value) in result.iter().zip(values) {
                     out.push(push(*local, *elem, value));
                 }
+            }
+            Goal::Keep(flags) => {
+                let keep = this.expr(state, body);
+                let keep = state
+                    .settle(vec![keep])
+                    .pop()
+                    .unwrap_or_else(|| boolean(false));
+                state.flush(out);
+                out.push(push(*flags, Elem::Bool, keep));
             }
             Goal::Filter(result) => {
                 let keep = this.expr(state, body);
@@ -587,6 +630,18 @@ fn element_at(buffer: &Expr, i: &Expr, elem: Elem, owned: bool) -> Expr {
     } else {
         value
     }
+}
+
+/// The locals of `buffers`, when every one is an owned temporary of the
+/// statement, released at its end.
+fn temporaries(state: &FnState, buffers: &[Expr]) -> Option<Vec<LocalId>> {
+    buffers
+        .iter()
+        .map(|b| match b.kind {
+            ExprKind::Borrow(local) if state.drops.contains(&local) => Some(local),
+            _ => None,
+        })
+        .collect()
 }
 
 fn push(buffer: LocalId, elem: Elem, value: Expr) -> Stmt {
