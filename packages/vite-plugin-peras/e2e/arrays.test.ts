@@ -69,10 +69,10 @@ describe("arrays in JavaScript", () => {
     const { dts } = await load();
     expect(dts).toContain("export declare function evens(n: number): number[];");
     expect(dts).toContain(
-      'export declare function sum(xs: readonly number[] | PerasArray<"f64">): number;',
+      'export declare function sum(xs: readonly number[] | Float64Array | PerasArray<"f64">): number;',
     );
     expect(dts).toContain(
-      'export declare function scale(xs: number[] | PerasArray<"f64">, k: number): void;',
+      'export declare function scale(xs: number[] | Float64Array | PerasArray<"f64">, k: number): void;',
     );
     expect(dts).toContain("export interface Stats { values: number[]; count: number; }");
   });

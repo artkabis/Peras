@@ -19,8 +19,8 @@ interface View {
 
 interface Points {
   sum(xs: readonly number[] | View): number;
-  scale(xs: number[] | View, k: number): void;
-  grow(xs: number[] | View, n: number): void;
+  scale(xs: number[] | Float32Array | View, k: number): void;
+  grow(xs: number[] | Float32Array | View, n: number): void;
   consume(xs: readonly number[] | View): number;
   __perasHeap: {
     live(): number;
@@ -63,6 +63,20 @@ describe("arrays without a copy", () => {
     });
   }
 
+  it("copy a typed array back, and refuse to make it grow without a leak", async () => {
+    const { m } = await load("tlsf");
+    const typed = new Float32Array([1, 2]);
+    m.scale(typed, 3);
+    expect(Array.from(typed)).toEqual([3, 6]);
+    // A typed array has a fixed length: the error comes after every buffer
+    // is released.
+    expect(() => {
+      m.grow(typed, 1);
+    }).toThrow(RangeError);
+    expect(Array.from(typed)).toEqual([3, 6]);
+    expect(m.__perasHeap.live()).toBe(0);
+  });
+
   it("refuse a PerasArray of another kind", async () => {
     const { m } = await load("tlsf");
     const ints = m.__perasHeap.array("i32", 3);
@@ -74,7 +88,7 @@ describe("arrays without a copy", () => {
   it("are declared to TypeScript", async () => {
     const { dts } = await load("tlsf");
     expect(dts).toContain(
-      'export declare function sum(xs: readonly number[] | PerasArray<"f32">): number;',
+      'export declare function sum(xs: readonly number[] | Float32Array | PerasArray<"f32">): number;',
     );
     expect(dts).toContain("export declare class PerasArray<K extends keyof PerasKinds>");
   });

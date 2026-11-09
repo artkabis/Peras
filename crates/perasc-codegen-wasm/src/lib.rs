@@ -1042,7 +1042,7 @@ pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `$instance`)";
 /// What a loader needs to link the debug allocator into a module using the heap.
 #[derive(Debug, Clone, Copy)]
 pub struct Runtime<'a> {
-    /// The allocator module: `perasc_runtime::DEBUG_ALLOCATOR`.
+    /// The allocator module: `perasc_runtime::DEBUG_ALLOCATOR` or the TLSF one.
     pub allocator: &'a [u8],
     /// The sites of the module, from [`compile_module`].
     pub sites: &'a [String],
@@ -1158,6 +1158,13 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
     let pre = marshal.pre.join(" ");
     let body = if marshal.post.is_empty() {
         format!("{{ {pre} {body} }}")
+    } else if marshal.post.iter().any(|p| p.contains("$copyBack")) {
+        // A copy back that cannot be made is thrown after every buffer is
+        // released, so that none is left alive.
+        format!(
+            "{{ {pre} let $e; try {{ {body} }} finally {{ {} if ($e) throw $e; }} }}",
+            marshal.post.join(" ")
+        )
     } else {
         format!(
             "{{ {pre} try {{ {body} }} finally {{ {} }} }}",
@@ -1352,7 +1359,7 @@ fn flatten_array(path: &str, elem: Elem, pass: Pass, optional: bool, out: &mut M
     let copied = format!("!({values} instanceof PerasArray)");
     if pass == Pass::Inout {
         out.post.push(format!(
-            "if ({copied}) $copyBack({path}, {buffer}, \"{kind}\");"
+            "if ({copied}) $e ??= $copyBack({path}, {buffer}, \"{kind}\");"
         ));
     }
     // A `sink` parameter is released by the function itself.
@@ -1554,7 +1561,8 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         .map(|s| js_string(&s))
         .collect();
     let imports = format!(
-        "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
+        "// The allocator chosen at build time, inlined: debug (decision 0001) or TLSF\n\
+         // (decision 0002). A memory fault throws a PerasMemoryError.\n\
          const $faults = [{faults}];\n\
          const $sites = [{sites}];\n\
          const $site = (n) => $sites[n] ?? \"?\";\n\
@@ -1712,10 +1720,18 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          values.length = n;\n  \
          for (let i = 0; i < n; i++) values[i] = build(c, i);\n\
          };\n\
+         // The values of an `inout` array, back into the array JavaScript\n\
+         // passed; a typed array cannot change length: the error is returned.\n\
          const $copyBack = (values, h, kind) => {\n  \
          const out = $fromBuf(h, kind);\n  \
+         if (ArrayBuffer.isView(values)) {\n    \
+         if (values.length !== out.length) return new RangeError(`a ${values.constructor.name} of ${values.length} cannot become ${out.length} long: pass an array or a PerasArray`);\n    \
+         values.set(out);\n    \
+         return undefined;\n  \
+         }\n  \
          values.length = out.length;\n  \
-         for (let i = 0; i < out.length; i++) values[i] = out[i];\n\
+         for (let i = 0; i < out.length; i++) values[i] = out[i];\n  \
+         return undefined;\n\
          };\n";
 
 /// A JavaScript string literal.
@@ -1903,11 +1919,23 @@ fn ts_shape(shape: &Shape) -> String {
 }
 
 /// The TypeScript type of a parameter: an array of numbers can also be a
-/// `PerasArray`, passed with no copy.
+/// typed array, copied in, or a `PerasArray`, passed with no copy.
 fn ts_param(shape: &Shape) -> String {
     match shape {
         Shape::Array(elem, _) => {
-            format!("{} | PerasArray<\"{}\">", ts_shape(shape), elem_kind(*elem))
+            // A typed array of the same numbers is copied in, as an array is.
+            let typed = match elem {
+                Elem::I32 => " | Int32Array",
+                Elem::I64 => " | BigInt64Array",
+                Elem::F32 => " | Float32Array",
+                Elem::F64 => " | Float64Array",
+                Elem::Bool | Elem::U8 | Elem::Handle => "",
+            };
+            format!(
+                "{}{typed} | PerasArray<\"{}\">",
+                ts_shape(shape),
+                elem_kind(*elem)
+            )
         }
         other => ts_shape(other),
     }
