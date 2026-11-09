@@ -51,9 +51,10 @@ function build() {
     join(work, "index.html"),
     `${head}<script type="module">
 import { run } from "./runner.js";
+import * as peras from "./kernels.js";
 const q = new URLSearchParams(location.search);
 try {
-  await report(run({ scale: Number(q.get("scale")), runs: Number(q.get("runs")), warm: Number(q.get("warm")) }));
+  await report(run(peras, { scale: Number(q.get("scale")), runs: Number(q.get("runs")), warm: Number(q.get("warm")) }));
 } catch (e) {
   await fail(e instanceof Error ? e.stack ?? e.message : String(e));
 }

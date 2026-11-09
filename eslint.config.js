@@ -30,6 +30,8 @@ export default defineConfig(
             "vitest.e2e.config.ts",
             "scripts/*.mjs",
           ],
+          // The root configs and the scripts: more than the default of 8.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
         tsconfigRootDir: import.meta.dirname,
       },
