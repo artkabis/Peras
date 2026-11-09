@@ -181,7 +181,7 @@ export fn run(n: i32): i32 {
 "#;
 
 #[test]
-fn template_literals_write_strings_integers_and_booleans_in_order() {
+fn template_literals_write_strings_numbers_and_booleans_in_order() {
     let parsed = perasc_syntax::parse(TEMPLATES);
     assert_eq!(parsed.diagnostics, [], "syntax errors");
     let analysis = perasc_check::analyze(&parsed.ast, TEMPLATES);
@@ -191,7 +191,7 @@ fn template_literals_write_strings_integers_and_booleans_in_order() {
     // Each case adds its bit when the template gives the text expected.
     let (value, heap) = run_with_heap(&module, FnId(1), &[Value::I32(3)])
         .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
-    assert_eq!(value, Value::I32(2047), "{module}");
+    assert_eq!(value, Value::I32(4095), "{module}");
     assert_eq!(heap.live, Vec::<u32>::new(), "leak\n{module}");
 }
 
@@ -220,6 +220,8 @@ two` == "line\ntwo") ok += 256;
     built = `${built}${i},`;
   }
   if (built == "0,1,2,") ok += 1024;
+  const y: f32 = 0.1;
+  if (`${k.toF64() / 8.0}|${0.1 + 0.2}|${y}` == "0.375|0.30000000000000004|0.1") ok += 2048;
   return ok;
 }
 "#;

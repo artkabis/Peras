@@ -184,3 +184,16 @@ fn arrays_of_buffers_release_and_copy_what_they_own() {
     assert_eq!(m.runtime("live_count"), Ok(0));
     assert_eq!(m.check_leaks(), Ok(()));
 }
+
+/// Floats as text: the runtime asks the host, here the fixture, which writes
+/// what the loader writes; each case adds its bit when the text is right.
+#[test]
+fn floats_as_text_go_through_the_host_without_a_leak() {
+    let source = "export fn check(n: i32): i32 {\n  let ok = 0;\n  const x = n.toF64() / 8.0;\n  const y: f32 = 0.1;\n  const zero = 0.0;\n  if ((0.1 + 0.2).toString() == \"0.30000000000000004\") ok += 1;\n  if (`${x}` == \"0.375\") ok += 2;\n  if (y.toString() == \"0.1\") ok += 4;\n  if (`${1000000000000000000000.0}|${0.0000001}` == \"1e+21|1e-7\") ok += 8;\n  if (`${zero / zero}, ${-x / zero}, ${-zero}` == \"NaN, -Infinity, 0\") ok += 16;\n  if (`${-x * 1000000.0}` == \"-375000\") ok += 32;\n  return ok;\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    let mut m = linked(&module);
+    assert_eq!(m.call("check", 3), Ok(Some(63)));
+    assert_eq!(m.runtime("live_count"), Ok(0));
+    assert_eq!(m.check_leaks(), Ok(()));
+}

@@ -32,6 +32,10 @@
 ;;   +0 magic   +4 size   +8 alloc site   +12 serial   +16 free site   +20 next
 (module
   (import "peras" "fault" (func $fault (param i32 i32 i32 i32)))
+  ;; A float as text, written at `at` by the host, which gives its length:
+  ;; JavaScript's `String()`, or for an `f32` (`single`), the fewest digits
+  ;; that read back as it. At most 25 ASCII bytes.
+  (import "peras" "float_text" (func $float_text (param f64 i32 i32) (result i32)))
 
   (memory (export "memory") 1)
 

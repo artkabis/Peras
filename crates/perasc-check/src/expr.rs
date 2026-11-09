@@ -192,11 +192,14 @@ impl Checker<'_> {
                 args,
             } => self.call(id, *callee, types, args, span, expected),
             ExprKind::Template { exprs, .. } => {
-                // Strings as they are; integers and booleans as `toString()`
+                // Strings as they are; numbers and booleans as `toString()`
                 // writes them.
                 for &e in exprs {
                     let ty = self.infer(e, None).defaulted();
-                    let fits = matches!(ty, Ty::String | Ty::Bool | Ty::Error) || ty.is_integer();
+                    let fits = matches!(
+                        ty,
+                        Ty::String | Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Error
+                    );
                     if !fits {
                         let span = self.ast.expr(e).span;
                         self.report(errors::template_value(span, &ty));

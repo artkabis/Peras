@@ -631,8 +631,8 @@ check-arrow-fix = passe-la à `map`, `filter`, `reduce`, `find`, `findIndex`, `s
 check-arrow-expected-fix = écris la fonction sur place : `xs.map((x) => x * 2)`
 check-template = un gabarit ne sait pas encore écrire un `{ $type }` en texte
 check-template-label = un `{ $type }`
-check-template-why = Un gabarit écrit chacune de ses valeurs en texte : une chaîne telle quelle, un entier ou un booléen comme l’écrit `toString()`. Les flottants en texte viennent ensuite : leur forme exacte la plus courte demande un algorithme à elle.
-check-template-fix = mettez-y un entier, un booléen ou une chaîne : `x.toI64()` garde la partie entière d’un flottant
+check-template-why = Un gabarit écrit chacune de ses valeurs en texte : une chaîne telle quelle, un nombre ou un booléen comme l’écrit `toString()`, comme le fait JavaScript. Une structure, un tableau ou une option n’a pas encore de texte à elle : quels champs, dans quel ordre, c’est au programme de le dire.
+check-template-fix = mettez-y ses champs, une valeur chacun
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

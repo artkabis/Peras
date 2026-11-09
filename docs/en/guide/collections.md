@@ -136,15 +136,15 @@ export fn repeat(s: String, n: i32): String {
 
 ### Template literals
 
-Between backticks, `${…}` writes a value into the text: a string as it is, an integer or a boolean as `toString()` writes it, so as JavaScript does. Any expression fits there, another template included; `` \` `` and `\${` write the characters themselves, and a template can span several lines. <span class="status compiled">compiled</span>
+Between backticks, `${…}` writes a value into the text: a string as it is, a number or a boolean as `toString()` writes it, so as JavaScript does. Any expression fits there, another template included; `` \` `` and `\${` write the characters themselves, and a template can span several lines. <span class="status compiled">compiled</span>
 
 ```peras build
-export fn label(name: String, count: i64, done: bool): String {
-  return `${name}: ${count} items, done ${done}`;
+export fn label(name: String, count: i64, done: bool, ratio: f64): String {
+  return `${name}: ${count} items, done ${done}, ${ratio * 100.0} %`;
 }
 ```
 
-The compiler measures every piece first, then writes them into one buffer: one allocation per template, whatever the number of values. A float or a structure is refused for now ([E0239](../errors/E0239.md)): floats as text, in their shortest exact form, come next. A template with no `${…}` is an ordinary string literal.
+The compiler measures every piece first, then writes them into one buffer: one allocation per template, whatever the number of values. A structure, an array or an option is refused ([E0239](../errors/E0239.md)): the program says which of its fields to write, and how. A template with no `${…}` is an ordinary string literal.
 
 A literal is stored once in the module, and copied into a new buffer where it is used. In JavaScript, a string crosses the boundary as a copy, encoded and decoded as UTF-8; TypeScript sees `string`. An exported function cannot take a string `inout`, since a JavaScript string never changes.
 

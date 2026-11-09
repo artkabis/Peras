@@ -13,9 +13,12 @@ const source = fileURLToPath(new URL("fixtures/format/format.peras", import.meta
 interface Format {
   wide(n: bigint): string;
   narrow(n: number): string;
+  real(x: number): string;
+  single(x: number): string;
   flag(b: boolean): string;
   readI32(s: string): number | undefined;
   readI64(s: string): bigint | undefined;
+  __perasHeap: { live(): number; checkLeaks(): void };
 }
 
 async function load(allocator: "debug" | "tlsf"): Promise<Format> {
@@ -71,6 +74,39 @@ describe("numbers as text", () => {
       }
       expect(m.flag(true)).toBe("true");
       expect(m.flag(false)).toBe("false");
+    });
+
+    it(`write floats as String() does, and f32 with its own digits, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const doubles = [0, -0, 0.1, 0.1 + 0.2, 1 / 3, -2.5, 1e21, 1e20, 1e-6, 1e-7, 5e-324];
+      for (const x of [...doubles, Number.MAX_VALUE, NaN, Infinity, -Infinity, 2 ** 53 + 2])
+        expect(m.real(x), String(x)).toBe(String(x));
+      // Random bit patterns: every kind of float, subnormals included.
+      const bits = new DataView(new ArrayBuffer(8));
+      let seed = 0x2545f4914f6cdd1dn;
+      for (let i = 0; i < 2000; i++) {
+        seed ^= (seed << 13n) & 0xffffffffffffffffn;
+        seed ^= seed >> 7n;
+        seed ^= (seed << 17n) & 0xffffffffffffffffn;
+        bits.setBigUint64(0, seed);
+        const x = bits.getFloat64(0);
+        expect(m.real(x)).toBe(String(x));
+      }
+      // An f32 is written with the fewest digits that read back as it, not
+      // with those of the f64 it widens to.
+      const singles: [number, string][] = [
+        [0.1, "0.1"],
+        [1 / 3, "0.33333334"],
+        [16777218, "16777218"],
+        [3.4028234663852886e38, "3.4028235e+38"],
+        [1.401298464324817e-45, "1e-45"],
+        [1e21, "1e+21"],
+        [1595310.25, "1595310.3"],
+        [-7.5, "-7.5"],
+      ];
+      for (const [x, text] of singles) expect(m.single(Math.fround(x)), text).toBe(text);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
     });
 
     it(`read an integer only when it is one, in range, on ${allocator}`, async () => {

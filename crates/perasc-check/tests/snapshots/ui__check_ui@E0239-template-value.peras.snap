@@ -4,11 +4,11 @@ expression: out
 input_file: tests/ui/check/E0239-template-value.peras
 ---
 diagnostics:
-  error[E0239] check-template { type: "f64" }
-    primary 8:58-8:63: check-template-label { type: "f64" }
-    cause: check-template-why
-    fix: check-template-fix
   error[E0239] check-template { type: "Point" }
     primary 8:70-8:71: check-template-label { type: "Point" }
+    cause: check-template-why
+    fix: check-template-fix
+  error[E0239] check-template { type: "Array<i32>" }
+    primary 8:78-8:80: check-template-label { type: "Array<i32>" }
     cause: check-template-why
     fix: check-template-fix

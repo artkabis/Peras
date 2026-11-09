@@ -83,6 +83,14 @@ impl Heap {
                 Err(wasmi::Error::new("peras fault"))
             },
         )?;
+        // Floats as text are the host's; these tests write none.
+        linker.func_wrap(
+            "peras",
+            "float_text",
+            |_: Caller<'_, Host>, _x: f64, _single: i32, _at: i32| -> Result<i32, wasmi::Error> {
+                Err(wasmi::Error::new("float_text is not called here"))
+            },
+        )?;
         let instance = linker.instantiate_and_start(&mut store, &module)?;
         let memory = instance
             .get_memory(&store, "memory")

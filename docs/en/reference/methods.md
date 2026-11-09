@@ -33,11 +33,11 @@ export fn wrapped(a: i32): i32 {
 
 ### As text
 
-| Method       | On                     | Gives                                                                      | Status                                        |
-| ------------ | ---------------------- | -------------------------------------------------------------------------- | --------------------------------------------- |
-| `toString()` | integers, and booleans | the decimal digits, after `-` when negative; `true` or `false`, a `String` | <span class="status compiled">compiled</span> |
+| Method       | On                    | Gives                                                                                                      | Status                                        |
+| ------------ | --------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `toString()` | numbers, and booleans | the decimal digits, after `-` when negative; for a float, its shortest form; `true` or `false`, a `String` | <span class="status compiled">compiled</span> |
 
-The text is what JavaScript's `String()` writes for the same value. Floats come next: their shortest exact form needs an algorithm of its own.
+The text is what JavaScript's `String()` writes for the same value. A float gets the fewest digits that read back as the same number: `0.1`, `0.30000000000000004`, plain from `0.000001` up to `1e21`, with an exponent outside (`1e-7`, `1e+21`), and `NaN`, `Infinity`, `-Infinity`; both zeros give `0`. JavaScript has no `f32`: an `f32` gets the fewest digits that read back as that `f32`, rounded as `toPrecision` rounds, so `0.1` and not the `0.10000000149011612` of the `f64` it widens to. The runtime asks the host, the loader, which calls `String()` itself: the text is JavaScript's by construction, as the functions of `Math` are.
 
 ```peras build
 export fn label(count: i64, done: bool): String {

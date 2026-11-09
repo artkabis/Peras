@@ -1,8 +1,8 @@
 //! Numbers and booleans as text, and text as integers: functions of the
 //! runtime.
 //!
-//! `n.toString()` gives the decimal digits of an integer, `b.toString()` gives
-//! `true` or `false`. A template literal, `` `${n} items` ``, writes its
+//! `n.toString()` gives the decimal digits of an integer, `x.toString()` a
+//! float as JavaScript writes it, `b.toString()` gives `true` or `false`. A template literal, `` `${n} items` ``, writes its
 //! values the same way into one new string, sized once. `s.parseI32()` and `s.parseI64()` give an option: the
 //! runtime first says whether `s` is an integer in range, then, only then,
 //! reads it.
@@ -14,7 +14,7 @@ use super::{FnState, Lowering};
 use crate::{BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, RuntimeFn, Stmt, Ty};
 
 impl Lowering<'_> {
-    /// `x.toString()` on an integer or a boolean: a new string.
+    /// `x.toString()` on a number or a boolean: a new string.
     pub(super) fn stringified(
         &mut self,
         state: &mut FnState,
@@ -22,18 +22,26 @@ impl Lowering<'_> {
         mode: Mode,
     ) -> Vec<Expr> {
         let receiver = self.expr(state, base);
-        let (f, operand) = match receiver.ty {
-            Ty::Bool => (RuntimeFn::FmtBool, receiver),
-            Ty::I64 => (RuntimeFn::FmtInt, receiver),
-            _ => (
-                RuntimeFn::FmtInt,
-                Expr {
-                    kind: ExprKind::Convert(Box::new(receiver)),
-                    ty: Ty::I64,
-                },
-            ),
+        let flag = |single: bool| Expr {
+            kind: ExprKind::Const(Const::Int(i64::from(single))),
+            ty: Ty::I32,
         };
-        let text = runtime(f, vec![operand]);
+        let widened = |receiver: Expr, ty: Ty| Expr {
+            kind: ExprKind::Convert(Box::new(receiver)),
+            ty,
+        };
+        let operands = match receiver.ty {
+            Ty::Bool => (RuntimeFn::FmtBool, vec![receiver]),
+            Ty::I64 => (RuntimeFn::FmtInt, vec![receiver]),
+            Ty::F64 => (RuntimeFn::FmtFloat, vec![receiver, flag(false)]),
+            // Exactly, then written with the digits of an `f32`.
+            Ty::F32 => (
+                RuntimeFn::FmtFloat,
+                vec![widened(receiver, Ty::F64), flag(true)],
+            ),
+            _ => (RuntimeFn::FmtInt, vec![widened(receiver, Ty::I64)]),
+        };
+        let text = runtime(operands.0, operands.1);
         Self::fresh(state, vec![text], mode)
     }
 

@@ -53,7 +53,7 @@ const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 8;
+const IMPORT_TYPES: u32 = 9;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -110,6 +110,7 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
     types.ty().function([T], []);
     types.ty().function([ValType::I64], [T]);
     types.ty().function([T], [ValType::I64]);
+    types.ty().function([ValType::F64, T], [T]);
     for (name, ty) in [
         ("alloc", 0),
         ("release", 1),
@@ -122,10 +123,12 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
         imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
     }
     for f in RuntimeFn::ALL {
-        // `fmt_int` takes an `i64` and `str_parse_int` gives one; the others
-        // take and give `i32` only: their type by count.
+        // `fmt_int` takes an `i64`, `fmt_float` an `f64`, and `str_parse_int`
+        // gives an `i64`; the others take and give `i32` only: their type by
+        // count.
         let ty = match (f.operands().len(), f.result() == Ty::Void) {
             _ if f.receiver() == Ty::I64 => 6,
+            _ if f.receiver() == Ty::F64 => 8,
             _ if f.result() == Ty::I64 => 7,
             (0, false) => 4,
             (1, false) => 0,
@@ -1635,8 +1638,24 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          Object.assign(error, {{ kind, allocSite: $site(allocSite), releaseSite: $site(releaseSite) }});\n  \
          throw error;\n\
          }};\n\
+         let $memoryBytes = new Uint8Array(0);\n\
+         const $floatText = (x, single, at) => {{\n  \
+         let text = String(x);\n  \
+         if (single && Number.isFinite(x))\n    \
+         for (let p = 1; p < 10; p++) {{\n      \
+         const t = x.toPrecision(p);\n      \
+         if (Math.fround(Number(t)) === x) {{\n        \
+         text = String(Number(t));\n        \
+         break;\n      \
+         }}\n    \
+         }}\n  \
+         // One view of the memory, made again only when it has grown.\n  \
+         if ($memoryBytes.buffer !== $runtime.memory.buffer) $memoryBytes = new Uint8Array($runtime.memory.buffer);\n  \
+         for (let i = 0; i < text.length; i++) $memoryBytes[at + i] = text.charCodeAt(i);\n  \
+         return text.length;\n\
+         }};\n\
          const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
-         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault }} }})).instance.exports;\n\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }} }})).instance.exports;\n\
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\

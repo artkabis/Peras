@@ -18,8 +18,7 @@ mod licm;
 mod lower;
 mod opt;
 mod own;
-#[cfg(test)]
-mod text;
+pub mod text;
 mod verify;
 
 pub use lower::lower;
@@ -522,6 +521,10 @@ pub enum RuntimeFn {
     FmtInt,
     /// `(b: bool) -> owned`: `true` or `false`.
     FmtBool,
+    /// `(x: f64, single) -> owned`: `x` as JavaScript's `String()` writes it;
+    /// with `single` set, `x` is an `f32`, written with the fewest digits
+    /// that read back as it ([`text::number_text`]).
+    FmtFloat,
     /// `(s, bits) -> bool`: whether `s` is an optional sign then decimal
     /// digits, nothing else, in the range of a signed integer of `bits` bits.
     IsInt,
@@ -542,7 +545,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -566,6 +569,7 @@ impl RuntimeFn {
         Self::ParseInt,
         Self::ArrKeep,
         Self::SplitViews,
+        Self::FmtFloat,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -595,6 +599,7 @@ impl RuntimeFn {
             Self::ParseInt => "str_parse_int",
             Self::ArrKeep => "arr_keep",
             Self::SplitViews => "str_split_views",
+            Self::FmtFloat => "fmt_float",
         }
     }
 
@@ -605,6 +610,7 @@ impl RuntimeFn {
         match self {
             Self::FmtInt => Ty::I64,
             Self::FmtBool => Ty::Bool,
+            Self::FmtFloat => Ty::F64,
             _ => Ty::Borrowed,
         }
     }
@@ -630,7 +636,7 @@ impl RuntimeFn {
             | Self::FmtInt
             | Self::FmtBool
             | Self::ParseInt => &[],
-            Self::Repeat | Self::ArrSort | Self::IsInt => &[Ty::I32],
+            Self::Repeat | Self::ArrSort | Self::IsInt | Self::FmtFloat => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
         }
     }

@@ -79,7 +79,7 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                     ret: me,
                 });
             }
-            if me.is_integer() && name == "toString" {
+            if name == "toString" {
                 return simple(Ty::String);
             }
             if me.is_integer() && CHECKED.contains(&name) {
@@ -209,8 +209,8 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             } else {
                 names.extend(WRAPPING);
                 names.extend(CHECKED);
-                names.push("toString");
             }
+            names.push("toString");
         }
         Ty::Array(element) => {
             names.extend([

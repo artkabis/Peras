@@ -33,11 +33,11 @@ export fn wrapped(a: i32): i32 {
 
 ### En texte
 
-| Méthode      | Sur                  | Donne                                                                         | État                                         |
-| ------------ | -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
-| `toString()` | entiers, et booléens | les chiffres décimaux, après `-` si négatif ; `true` ou `false`, une `String` | <span class="status compiled">compilé</span> |
+| Méthode      | Sur                  | Donne                                                                                                                     | État                                         |
+| ------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `toString()` | nombres, et booléens | les chiffres décimaux, après `-` si négatif ; pour un flottant, sa forme la plus courte ; `true` ou `false`, une `String` | <span class="status compiled">compilé</span> |
 
-Le texte est celui qu’écrit `String()` en JavaScript pour la même valeur. Les flottants viennent ensuite : leur forme exacte la plus courte demande un algorithme à elle.
+Le texte est celui qu’écrit `String()` en JavaScript pour la même valeur. Un flottant reçoit le moins de chiffres qui se relisent en le même nombre : `0.1`, `0.30000000000000004`, en notation simple de `0.000001` jusqu’à `1e21`, avec un exposant au-delà (`1e-7`, `1e+21`), et `NaN`, `Infinity`, `-Infinity` ; les deux zéros donnent `0`. JavaScript n’a pas de `f32` : un `f32` reçoit le moins de chiffres qui se relisent en ce même `f32`, arrondis comme le fait `toPrecision`, donc `0.1` et non le `0.10000000149011612` du `f64` qu’il devient. Le runtime le demande à l’hôte, le chargeur, qui appelle `String()` lui-même : le texte est celui de JavaScript par construction, comme pour les fonctions de `Math`.
 
 ```peras build
 export fn label(count: i64, done: bool): String {

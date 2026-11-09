@@ -127,9 +127,145 @@ pub fn parse_int(s: &[u8], bits: i32) -> Option<i64> {
     })
 }
 
+/// A float as text, as JavaScript's `String()` writes it: the fewest
+/// significant digits that read back as the same number, in plain notation
+/// from 1e-6 up to 1e21 and in exponent notation outside; `NaN`,
+/// `Infinity`, and `0` for both zeros. With `single`, `x` is an `f32`, which
+/// JavaScript does not have: the fewest digits, correctly rounded, that read
+/// back as the same `f32`, written the same way, so `0.1` and not
+/// `0.10000000149011612`.
+#[must_use]
+pub fn number_text(x: f64, single: bool) -> String {
+    if x.is_nan() {
+        return "NaN".into();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "Infinity" } else { "-Infinity" }.into();
+    }
+    if x == 0.0 {
+        return "0".into();
+    }
+    // Shortest digits and exponent, as `{:e}` writes them: `d.ddde-7`.
+    let scientific = if single {
+        shortest_single(x.abs())
+    } else {
+        shortest_double(x.abs())
+    };
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let point = exponent.parse::<i32>().unwrap_or(0) + 1;
+    let mut out = String::from(if x < 0.0 { "-" } else { "" });
+    let k = i32::try_from(digits.len()).unwrap_or(i32::MAX);
+    if k <= point && point <= 21 {
+        out.push_str(digits);
+        out.extend(std::iter::repeat_n(
+            '0',
+            usize::try_from(point - k).unwrap_or(0),
+        ));
+    } else if 0 < point && point <= 21 {
+        let (whole, fraction) = digits.split_at(usize::try_from(point).unwrap_or(0));
+        out.push_str(whole);
+        out.push('.');
+        out.push_str(fraction);
+    } else if -6 < point && point <= 0 {
+        out.push_str("0.");
+        out.extend(std::iter::repeat_n(
+            '0',
+            usize::try_from(-point).unwrap_or(0),
+        ));
+        out.push_str(digits);
+    } else {
+        let (first, rest) = digits.split_at(1);
+        out.push_str(first);
+        if !rest.is_empty() {
+            out.push('.');
+            out.push_str(rest);
+        }
+        out.push('e');
+        out.push(if point > 0 { '+' } else { '-' });
+        out.push_str(&(point - 1).abs().to_string());
+    }
+    out
+}
+
+/// The fewest significant digits that read back as `x`, as `{:e}` writes
+/// them. Of two candidates as near, JavaScript takes the even one, which
+/// `{:.N$e}` gives; Rust's shortest form may take the other.
+fn shortest_double(x: f64) -> String {
+    let shortest = format!("{x:e}");
+    let length = shortest
+        .split('e')
+        .next()
+        .map_or(1, |m| m.chars().filter(char::is_ascii_digit).count());
+    let precision = length.saturating_sub(1);
+    let nearest = format!("{x:.precision$e}");
+    if nearest.parse::<f64>() == Ok(x) {
+        nearest
+    } else {
+        shortest
+    }
+}
+
+/// The fewest significant digits that read back as the `f32` `x`, as `{:e}`
+/// writes them: what the loader finds with `toPrecision`, one more digit at a
+/// time, which rounds a tie away from zero.
+fn shortest_single(x: f64) -> String {
+    // Every `f32` has an exact decimal form of at most 112 digits.
+    let exact = format!("{x:.120e}");
+    let (mantissa, exponent) = exact.split_once('e').unwrap_or((&exact, "0"));
+    let digits: Vec<u8> = mantissa.bytes().filter(u8::is_ascii_digit).collect();
+    let exponent = exponent.parse::<i32>().unwrap_or(0);
+    for precision in 1..=9 {
+        let (head, exponent) = rounded_up_on_ties(&digits, exponent, precision);
+        let (first, rest) = head.split_at(1);
+        let text = format!(
+            "{}.{}e{exponent}",
+            String::from_utf8_lossy(first),
+            String::from_utf8_lossy(rest)
+        );
+        // The same `f32`, bit for bit: `x` is neither zero nor `NaN` here.
+        #[expect(clippy::cast_possible_truncation, reason = "an f32 read back")]
+        if text
+            .parse::<f64>()
+            .is_ok_and(|y| (y as f32).to_bits() == (x as f32).to_bits())
+        {
+            return text;
+        }
+    }
+    format!("{x:e}")
+}
+
+/// The first `precision` of `digits`, rounded to nearest, a tie away from
+/// zero; the exponent grows when `9…9` becomes `10…0`.
+fn rounded_up_on_ties(digits: &[u8], exponent: i32, precision: usize) -> (Vec<u8>, i32) {
+    let mut head = digits.get(..precision).unwrap_or(digits).to_vec();
+    if digits.get(precision).is_some_and(|&d| d >= b'5') {
+        let mut at = head.len();
+        loop {
+            if at == 0 {
+                head.insert(0, b'1');
+                head.pop();
+                return (head, exponent + 1);
+            }
+            at -= 1;
+            if let Some(d) = head.get_mut(at) {
+                if *d == b'9' {
+                    *d = b'0';
+                } else {
+                    *d += 1;
+                    break;
+                }
+            }
+        }
+    }
+    (head, exponent)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{index_of, replace, slice, split, trim};
+    use super::{index_of, number_text, replace, slice, split, trim};
 
     #[test]
     fn indices_count_bytes_and_stop_at_characters() {
@@ -153,5 +289,63 @@ mod tests {
             vec![b"h".to_vec(), "é".as_bytes().to_vec()]
         );
         assert_eq!(split(b"", b","), vec![Vec::<u8>::new()]);
+    }
+    /// Expected texts written by JavaScript's `String()`, and for `f32` by
+    /// the loader's `toPrecision` search.
+    #[test]
+    fn floats_are_written_as_javascript_writes_them() {
+        let doubles = [
+            (0.0, "0"),
+            (-0.0, "0"),
+            (1.0, "1"),
+            (-1.0, "-1"),
+            (0.1, "0.1"),
+            (0.1 + 0.2, "0.30000000000000004"),
+            (1.0 / 3.0, "0.3333333333333333"),
+            (-2.5, "-2.5"),
+            (100.0, "100"),
+            (1e21, "1e+21"),
+            (1e20, "100000000000000000000"),
+            (123_456_789_012_345_680_000.0, "123456789012345680000"),
+            (1.5e21, "1.5e+21"),
+            (1e-6, "0.000001"),
+            (1e-7, "1e-7"),
+            (1.234e-7, "1.234e-7"),
+            (0.000_001_234, "0.000001234"),
+            (5e-324, "5e-324"),
+            (1.5e-323, "1.5e-323"),
+            (f64::MAX, "1.7976931348623157e+308"),
+            (9_007_199_254_740_992.0, "9007199254740992"),
+            (9_007_199_254_740_994.0, "9007199254740994"),
+            (-1e-300, "-1e-300"),
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "Infinity"),
+            (f64::NEG_INFINITY, "-Infinity"),
+            (123.456, "123.456"),
+            (4.35, "4.35"),
+            (5e-7, "5e-7"),
+            (1e100, "1e+100"),
+        ];
+        for (x, text) in doubles {
+            assert_eq!(number_text(x, false), text, "{x:e}");
+        }
+        let singles: [(f32, &str); 13] = [
+            (0.1, "0.1"),
+            (1.0 / 3.0, "0.33333334"),
+            (16_777_216.0, "16777216"),
+            (16_777_218.0, "16777218"),
+            (f32::MAX, "3.4028235e+38"),
+            (1e-45, "1e-45"),
+            (1e-7, "1e-7"),
+            (0.3, "0.3"),
+            (2.5, "2.5"),
+            (1e21, "1e+21"),
+            (f32::MIN_POSITIVE, "1.1754944e-38"),
+            (-7.5, "-7.5"),
+            (100.0, "100"),
+        ];
+        for (x, text) in singles {
+            assert_eq!(number_text(f64::from(x), true), text, "{x:e}");
+        }
     }
 }

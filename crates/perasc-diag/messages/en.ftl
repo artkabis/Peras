@@ -631,8 +631,8 @@ check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `so
 check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
 check-template = a template literal cannot write a `{ $type }` as text yet
 check-template-label = a `{ $type }`
-check-template-why = A template literal writes each of its values as text: a string as it is, an integer or a boolean as `toString()` writes it. Floats as text come next: their shortest exact form needs an algorithm of its own.
-check-template-fix = write an integer, a boolean or a string there: `x.toI64()` keeps the whole part of a float
+check-template-why = A template literal writes each of its values as text: a string as it is, a number or a boolean as `toString()` writes it, as JavaScript does. A structure, an array or an option has no text of its own yet: which fields, in which order, is for the program to say.
+check-template-fix = write its fields there, one value each
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

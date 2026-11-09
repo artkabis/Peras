@@ -431,7 +431,11 @@ impl Machine<'_> {
             (F::FmtBool, Some(Value::Bool(b))) => {
                 return Ok(self.string(b.to_string().as_bytes()));
             }
-            (F::FmtInt | F::FmtBool, _) => return Err(Trap::Unreachable),
+            (F::FmtFloat, Some(Value::F64(x))) => {
+                let single = matches!(operands.get(1), Some(Value::I32(1)));
+                return Ok(self.string(crate::text::number_text(*x, single).as_bytes()));
+            }
+            (F::FmtInt | F::FmtBool | F::FmtFloat, _) => return Err(Trap::Unreachable),
             _ => {}
         }
         let s = text(self, 0)?;
@@ -480,7 +484,8 @@ impl Machine<'_> {
             | F::ArrIndexOfStr
             | F::ArrKeep
             | F::FmtInt
-            | F::FmtBool => {
+            | F::FmtBool
+            | F::FmtFloat => {
                 return Err(Trap::Unreachable);
             }
             F::Join => {

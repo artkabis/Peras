@@ -136,15 +136,15 @@ export fn repeat(s: String, n: i32): String {
 
 ### Les chaînes gabarits
 
-Entre accents graves, `${…}` écrit une valeur dans le texte : une chaîne telle quelle, un entier ou un booléen comme l’écrit `toString()`, donc comme le fait JavaScript. Toute expression y tient, un autre gabarit compris ; `` \` `` et `\${` écrivent les caractères eux-mêmes, et un gabarit peut s’étendre sur plusieurs lignes. <span class="status compiled">compilé</span>
+Entre accents graves, `${…}` écrit une valeur dans le texte : une chaîne telle quelle, un nombre ou un booléen comme l’écrit `toString()`, donc comme le fait JavaScript. Toute expression y tient, un autre gabarit compris ; `` \` `` et `\${` écrivent les caractères eux-mêmes, et un gabarit peut s’étendre sur plusieurs lignes. <span class="status compiled">compilé</span>
 
 ```peras build
-export fn label(name: String, count: i64, done: bool): String {
-  return `${name}: ${count} items, done ${done}`;
+export fn label(name: String, count: i64, done: bool, ratio: f64): String {
+  return `${name}: ${count} items, done ${done}, ${ratio * 100.0} %`;
 }
 ```
 
-Le compilateur mesure d’abord chaque morceau, puis les écrit dans un seul buffer : une allocation par gabarit, quel que soit le nombre de valeurs. Un flottant ou une structure est refusé pour l’instant ([E0239](../errors/E0239.md)) : les flottants en texte, sous leur forme exacte la plus courte, viennent ensuite. Un gabarit sans `${…}` est un littéral de chaîne ordinaire.
+Le compilateur mesure d’abord chaque morceau, puis les écrit dans un seul buffer : une allocation par gabarit, quel que soit le nombre de valeurs. Une structure, un tableau ou une option est refusé ([E0239](../errors/E0239.md)) : le programme dit lesquels de ses champs écrire, et comment. Un gabarit sans `${…}` est un littéral de chaîne ordinaire.
 
 Un littéral est stocké une seule fois dans le module, et copié dans un nouveau buffer là où il sert. En JavaScript, une chaîne passe la frontière par copie, encodée et décodée en UTF-8 ; TypeScript voit `string`. Une fonction exportée ne peut pas prendre une chaîne `inout`, puisqu’une chaîne JavaScript ne change jamais.
 

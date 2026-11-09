@@ -7,6 +7,14 @@ export fn narrow(n: i32): String {
   return n.toString();
 }
 
+export fn real(x: f64): String {
+  return x.toString();
+}
+
+export fn single(x: f32): String {
+  return `${x}`;
+}
+
 export fn flag(b: bool): String {
   return b.toString();
 }

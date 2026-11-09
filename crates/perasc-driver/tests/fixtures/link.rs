@@ -32,6 +32,23 @@ pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, 
             Err::<(), _>(wasmi::Error::new("peras fault"))
         },
     )?;
+    // A float as text, written as the loader writes it.
+    runtime.func_wrap(
+        "peras",
+        "float_text",
+        |mut caller: Caller<'_, Reported>, x: f64, single: i32, at: i32| {
+            let text = perasc_ir::text::number_text(x, single != 0);
+            let memory = caller
+                .get_export("memory")
+                .and_then(Extern::into_memory)
+                .ok_or_else(|| wasmi::Error::new("memory"))?;
+            let at = usize::try_from(at).map_err(|_| wasmi::Error::new("address"))?;
+            memory
+                .write(&mut caller, at, text.as_bytes())
+                .map_err(|_| wasmi::Error::new("write"))?;
+            i32::try_from(text.len()).map_err(|_| wasmi::Error::new("length"))
+        },
+    )?;
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, allocator_module)?)?;
     let mut linker = Linker::new(&engine);

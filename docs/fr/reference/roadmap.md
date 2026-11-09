@@ -39,7 +39,7 @@ Les outils de tous les jours, avec les mêmes règles : types explicites, aucune
 
 | Domaine     | Quoi                                                                                                                                                                                                                       |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`, `toString` sur les entiers et les booléens, `parseI32`, `parseI64`, chaînes gabarits~~ (fait), flottants en texte |
+| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`, `toString` sur les entiers et les booléens, `parseI32`, `parseI64`, chaînes gabarits, flottants en texte~~ (fait) |
 | tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles         |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                                          |
 | nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                        |

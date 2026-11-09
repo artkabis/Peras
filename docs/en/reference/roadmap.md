@@ -39,7 +39,7 @@ The everyday tools, with the same rules: explicit types, no hidden allocation, e
 
 | Area        | What                                                                                                                                                                                                        |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`, `toString` on integers and booleans, `parseI32`, `parseI64`, template strings~~ (done), floats as text |
+| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`, `toString` on integers and booleans, `parseI32`, `parseI64`, template strings, floats as text~~ (done) |
 | arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges      |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                           |
 | numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                                   |
