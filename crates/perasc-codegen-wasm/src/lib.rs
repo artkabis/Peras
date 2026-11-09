@@ -711,12 +711,23 @@ impl<'a> FnEncoder<'a> {
                 };
                 self.expr(value);
                 self.emit(&I::LocalSet(temp));
+                // Room is made by the runtime only when the buffer is full: a
+                // call into another module, which most pushes do not need.
+                let site = self.alloc_site();
+                self.expr(buffer);
+                self.emit(&I::I32Load(mem(0, 4)));
+                self.expr(buffer);
+                self.emit(&I::I32Load(mem(4, 4)));
+                self.emit(&I::I32GeU);
+                self.emit(&I::If(BlockType::Empty));
+                self.frames.push(Frame::Other);
                 self.expr(buffer);
                 self.emit(&I::I32Const(1));
                 self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1)));
-                let site = self.alloc_site();
                 self.emit(&I::I32Const(site));
                 self.emit(&I::Call(BUF_RESERVE));
+                self.frames.pop();
+                self.emit(&I::End);
                 let len = Expr {
                     kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
                     ty: Ty::I32,
