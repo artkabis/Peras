@@ -303,14 +303,9 @@ fn look_alike_characters_are_replaced() {
 }
 
 #[test]
-fn non_ascii_names_and_template_literals_get_a_specific_fix() {
+fn non_ascii_names_get_a_specific_fix() {
     let d = only("caf\u{e9}");
     assert_eq!(d.fix.message.id, "lex-invalid-character-fix-identifier");
-    let lexed = lex("`x`");
-    assert_eq!(
-        lexed.diagnostics.first().map(|d| d.fix.message.id),
-        Some("lex-invalid-character-fix-template")
-    );
 }
 
 #[test]
@@ -520,4 +515,60 @@ fn invariants_hold_on_random_input() {
         }
         check_invariants(&source);
     }
+}
+
+#[test]
+fn template_literals_resume_their_text_after_each_value() {
+    // Without a value: a string. With values: pieces around their tokens,
+    // a `{}` inside a value counted, a template inside a value its own.
+    assert_eq!(kinds("`plain`"), [String, Eof]);
+    assert_eq!(
+        kinds("`a${b}c${ match (x) { _ => `in${y}` } }d`"),
+        [
+            TemplateHead,
+            Ident,
+            TemplateMiddle,
+            Match,
+            LParen,
+            Ident,
+            RParen,
+            LBrace,
+            Ident,
+            FatArrow,
+            TemplateHead,
+            Ident,
+            TemplateTail,
+            RBrace,
+            TemplateTail,
+            Eof
+        ]
+    );
+    assert_eq!(
+        kinds("`${a}${b}`"),
+        [
+            TemplateHead,
+            Ident,
+            TemplateMiddle,
+            Ident,
+            TemplateTail,
+            Eof
+        ]
+    );
+    assert_eq!(
+        kinds("{ `x${ {} }y` }"),
+        [
+            LBrace,
+            TemplateHead,
+            LBrace,
+            RBrace,
+            TemplateTail,
+            RBrace,
+            Eof
+        ]
+    );
+    assert_eq!(super::template_value("`a\\`b\\${c\\n${"), "a`b${c\n");
+    assert_eq!(super::template_value("}line\nbreak`"), "line\nbreak");
+    // Unclosed: reported as a string is, its quote a backtick.
+    assert_eq!(codes_of("`open ${x} still"), [codes::UNTERMINATED_STRING]);
+    assert_eq!(codes_of("`multi\nline`"), [] as [perasc_diag::ErrorCode; 0]);
 }

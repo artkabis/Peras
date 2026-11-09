@@ -293,6 +293,7 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
+            AstExpr::Template { parts, exprs } => self.template(state, parts, exprs, mode),
             AstExpr::Binary {
                 op: perasc_syntax::ast::BinaryOp::Add,
                 lhs,

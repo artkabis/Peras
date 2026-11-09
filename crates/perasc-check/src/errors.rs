@@ -85,6 +85,7 @@ const fn why(code: ErrorCode) -> &'static str {
         236 => "check-signature-why",
         237 => "check-interface-as-type-why",
         238 => "check-arrow-why",
+        239 => "check-template-why",
         _ => "check-operator-why",
     }
 }
@@ -1004,6 +1005,22 @@ pub fn interface_as_type(span: Span, name: &str) -> Diagnostic {
         span,
         Message::new("check-interface-as-type-label"),
         Message::new("check-interface-as-type-fix").text("name", name),
+    )
+}
+
+/// `E0239`: a value a template literal cannot write as text yet.
+pub fn template_value(span: Span, ty: &Ty) -> Diagnostic {
+    diagnostic(
+        codes::TEMPLATE_VALUE,
+        Message::new("check-template").text("type", ty.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-template-label").text("type", ty.to_string()),
+        )],
+        Fix {
+            message: Message::new("check-template-fix"),
+            edits: Vec::new(),
+        },
     )
 }
 

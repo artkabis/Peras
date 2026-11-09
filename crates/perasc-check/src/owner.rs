@@ -430,6 +430,12 @@ impl<'c, 'a> Owner<'c, 'a> {
             ExprKind::Unary { operand, .. } | ExprKind::Try(operand) => {
                 self.expr(*operand, Use::Read, path);
             }
+            // Its values are read, in order, into the new string.
+            ExprKind::Template { exprs, .. } => {
+                for &e in exprs {
+                    self.expr(e, Use::Read, path);
+                }
+            }
             ExprKind::Binary { op, lhs, rhs } => {
                 self.expr(*lhs, Use::Read, path);
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {

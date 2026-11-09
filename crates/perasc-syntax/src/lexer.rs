@@ -40,6 +40,19 @@ pub fn string_value(token_text: &str) -> String {
     scan_escapes(body, |_| {})
 }
 
+/// Decodes the text of a template piece, [`TokenKind::TemplateHead`],
+/// [`TokenKind::TemplateMiddle`] or [`TokenKind::TemplateTail`], from its
+/// source text: after its first character, before its `${` or `` ` ``.
+#[must_use]
+pub fn template_value(token_text: &str) -> String {
+    let body = token_text.get(1..).unwrap_or("");
+    let body = body
+        .strip_suffix("${")
+        .or_else(|| body.strip_suffix('`'))
+        .unwrap_or(body);
+    scan_escapes(body, |_| {})
+}
+
 /// Lexes `source`, refusing it when longer than `max_len` bytes.
 fn lex_bounded(source: &str, max_len: usize) -> Lexed {
     if source.len() > max_len {
@@ -126,6 +139,9 @@ enum RawError {
 /// The tokens as `logos` sees them, before validation.
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
 #[logos(error = RawError)]
+// For each template literal open around the code being lexed, how many `{`
+// are open inside its current `${`: the `}` that finds 0 resumes its text.
+#[logos(extras = Vec<u32>)]
 #[logos(skip r"[ \t\r\n\f]+")]
 // A line comment runs to the end of its line: the greedy match is the intent.
 #[logos(skip(r"//[^\n]*", allow_greedy = true))]
@@ -201,10 +217,16 @@ enum Raw {
     LParen,
     #[token(")")]
     RParen,
-    #[token("{")]
+    #[token("{", |lex| {
+        if let Some(depth) = lex.extras.last_mut() {
+            *depth += 1;
+        }
+    })]
     LBrace,
-    #[token("}")]
-    RBrace,
+    #[token("}", brace_close)]
+    RBrace(Piece),
+    #[token("`", template_open)]
+    Template(Piece),
     #[token("[")]
     LBracket,
     #[token("]")]
@@ -296,6 +318,78 @@ fn block_comment(lex: &mut logos::Lexer<'_, Raw>) -> FilterResult<(), RawError> 
 
 /// Consumes a string up to its closing quote. A string never spans lines:
 /// without a closing quote, it stops at the end of the line, `\r` excluded.
+/// Where a piece of a template literal ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Piece {
+    /// A `}` that closes a block, not a template's `${`.
+    Brace,
+    /// `` `text` ``, with no `${`.
+    Full,
+    /// `` `text${ ``: the text before the first `${`.
+    Head,
+    /// `}text${`: between two `${…}`.
+    Middle,
+    /// `` }text` ``: after the last `${…}`.
+    Tail,
+}
+
+/// A `` ` ``: the text up to its first `${`, or the whole literal.
+fn template_open(lex: &mut logos::Lexer<'_, Raw>) -> Result<Piece, RawError> {
+    if template_text(lex)? {
+        lex.extras.push(0);
+        Ok(Piece::Head)
+    } else {
+        Ok(Piece::Full)
+    }
+}
+
+/// A `}`: the end of a block, or, closing a template's `${`, the template's
+/// text that follows, up to its next `${` or its end.
+fn brace_close(lex: &mut logos::Lexer<'_, Raw>) -> Result<Piece, RawError> {
+    match lex.extras.last_mut() {
+        Some(0) => {
+            if template_text(lex)? {
+                Ok(Piece::Middle)
+            } else {
+                lex.extras.pop();
+                Ok(Piece::Tail)
+            }
+        }
+        Some(depth) => {
+            *depth -= 1;
+            Ok(Piece::Brace)
+        }
+        None => Ok(Piece::Brace),
+    }
+}
+
+/// The text of a template literal, escapes and line breaks included, up to a
+/// `${` (true) or the closing `` ` `` (false).
+fn template_text(lex: &mut logos::Lexer<'_, Raw>) -> Result<bool, RawError> {
+    let rest = lex.remainder();
+    let mut chars = rest.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '\\' => {
+                if chars.next().is_none() {
+                    break;
+                }
+            }
+            '`' => {
+                lex.bump(i + 1);
+                return Ok(false);
+            }
+            '$' if chars.peek().is_some_and(|&(_, n)| n == '{') => {
+                lex.bump(i + 2);
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    lex.bump(rest.len());
+    Err(RawError::UnterminatedString)
+}
+
 fn string(lex: &mut logos::Lexer<'_, Raw>, quote: char) -> Result<(), RawError> {
     let rest = lex.remainder();
     let mut chars = rest.char_indices();
@@ -345,8 +439,6 @@ enum InvalidFix {
     Replace(&'static str),
     /// A letter outside ASCII, probably in a name.
     Identifier,
-    /// A backtick, starting a template literal.
-    Template,
 }
 
 struct Lexer<'src> {
@@ -379,9 +471,22 @@ impl Lexer<'_> {
                     TokenKind::Error
                 }
             },
-            Raw::Str => {
+            // A backtick string with no `${` is a string like any other.
+            Raw::Str | Raw::Template(Piece::Full) => {
                 self.check_escapes(span, true);
                 TokenKind::String
+            }
+            Raw::Template(_) => {
+                self.check_piece(span, 2);
+                TokenKind::TemplateHead
+            }
+            Raw::RBrace(Piece::Middle) => {
+                self.check_piece(span, 2);
+                TokenKind::TemplateMiddle
+            }
+            Raw::RBrace(Piece::Tail) => {
+                self.check_piece(span, 1);
+                TokenKind::TemplateTail
             }
             Raw::EqEqEq => {
                 self.diagnostics.push(strict_equality(span, "===", "=="));
@@ -401,7 +506,11 @@ impl Lexer<'_> {
         match error {
             RawError::UnterminatedString => {
                 let text = self.text(span).to_owned();
-                let quote = text.chars().next().unwrap_or('"');
+                // A template literal's text resumes after a `}`; its quote is `` ` ``.
+                let quote = match text.chars().next() {
+                    Some('}') | None => '`',
+                    Some(c) => c,
+                };
                 self.diagnostics
                     .push(unterminated_string(span, &text, quote));
                 self.check_escapes(span, false);
@@ -478,6 +587,27 @@ impl Lexer<'_> {
         }
     }
 
+    /// Checks the escapes of a piece of a template literal: its text after its
+    /// first character (`` ` `` or `}`) and before the last `end` bytes
+    /// (`${` or `` ` ``).
+    fn check_piece(&mut self, span: Span, end: u32) {
+        let text = self.text(span).to_owned();
+        let body = text
+            .get(1..text.len().saturating_sub(index(end)))
+            .unwrap_or("");
+        let mut found = Vec::new();
+        scan_escapes(body, |problem| found.push(problem));
+        for problem in found {
+            let span = Span::new(
+                span.start + 1 + offset(problem.start),
+                span.start + 1 + offset(problem.end),
+            );
+            let escape = body.get(problem.start..problem.end).unwrap_or("\\");
+            self.diagnostics
+                .push(invalid_escape(span, escape, &problem.kind));
+        }
+    }
+
     /// Reports every bidirectional control character, wherever it is (Trojan Source).
     fn report_bidi_controls(&mut self) {
         for (i, c) in self.source.char_indices() {
@@ -494,7 +624,15 @@ impl Lexer<'_> {
         let strings: Vec<Span> = self
             .tokens
             .iter()
-            .filter(|t| t.kind == TokenKind::String)
+            .filter(|t| {
+                matches!(
+                    t.kind,
+                    TokenKind::String
+                        | TokenKind::TemplateHead
+                        | TokenKind::TemplateMiddle
+                        | TokenKind::TemplateTail
+                )
+            })
             .map(|t| t.span)
             .collect();
         let source = self.source;
@@ -558,7 +696,7 @@ fn simple_kind(raw: Raw) -> TokenKind {
         Raw::LParen => TokenKind::LParen,
         Raw::RParen => TokenKind::RParen,
         Raw::LBrace => TokenKind::LBrace,
-        Raw::RBrace => TokenKind::RBrace,
+        Raw::RBrace(_) => TokenKind::RBrace,
         Raw::LBracket => TokenKind::LBracket,
         Raw::RBracket => TokenKind::RBracket,
         Raw::Comma => TokenKind::Comma,
@@ -595,7 +733,7 @@ fn simple_kind(raw: Raw) -> TokenKind {
         Raw::Caret => TokenKind::Caret,
         Raw::Tilde => TokenKind::Tilde,
         // Handled by `Lexer::token` before reaching here; never a valid token alone.
-        Raw::BlockComment | Raw::Number | Raw::Str => TokenKind::Error,
+        Raw::BlockComment | Raw::Number | Raw::Str | Raw::Template(_) => TokenKind::Error,
     }
 }
 
@@ -637,7 +775,6 @@ fn invalid_fix(c: char) -> InvalidFix {
         '\u{FF09}' => ")",
         '\u{FF1D}' => "=",
         '\u{00A0}' | '\u{2007}' | '\u{2009}' | '\u{202F}' | '\u{3000}' => " ",
-        '`' => return InvalidFix::Template,
         '$' => return InvalidFix::Identifier,
         c if c.is_alphabetic() => return InvalidFix::Identifier,
         _ => return InvalidFix::Remove,
@@ -902,7 +1039,7 @@ fn scan_escapes(body: &str, mut report: impl FnMut(EscapeProblem)) -> String {
             'r' => Some('\r'),
             't' => Some('\t'),
             '0' => Some('\0'),
-            '\\' | '\'' | '"' => Some(e),
+            '\\' | '\'' | '"' | '`' | '$' => Some(e),
             _ => None,
         };
         if let Some(decoded) = simple {
@@ -1022,10 +1159,6 @@ fn invalid_character(run: &InvalidRun) -> Diagnostic {
         },
         InvalidFix::Identifier => Fix {
             message: Message::new("lex-invalid-character-fix-identifier"),
-            edits: Vec::new(),
-        },
-        InvalidFix::Template => Fix {
-            message: Message::new("lex-invalid-character-fix-template"),
             edits: Vec::new(),
         },
     };

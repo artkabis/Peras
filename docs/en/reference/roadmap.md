@@ -37,14 +37,14 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values. In progress: the array methods that take an arrow function, compiled in place as loops, and `min`, `max`, `clamp` are [done](methods.md); the production allocator, TLSF, came first ([decision 0002](../decisions/0002-tlsf-allocator.md)). Text is next: pieces of text as views into the text they come from, then chains of methods fused into one loop, chosen by the compiler ([decision 0004](../decisions/0004-strings-without-allocation.md)).
 
-| Area        | What                                                                                                                                                                                                           |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`, `toString` on integers and booleans, `parseI32`, `parseI64`~~ (done), floats as text and template strings |
-| arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges         |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                              |
-| numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                                      |
-| time        | durations and instants                                                                                                                                                                                         |
-| data        | JSON, text encoding, bytes                                                                                                                                                                                     |
+| Area        | What                                                                                                                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`, `toString` on integers and booleans, `parseI32`, `parseI64`, template strings~~ (done), floats as text |
+| arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges      |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                           |
+| numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                                   |
+| time        | durations and instants                                                                                                                                                                                      |
+| data        | JSON, text encoding, bytes                                                                                                                                                                                  |
 
 ```peras build
 export fn words(text: String): i32 {

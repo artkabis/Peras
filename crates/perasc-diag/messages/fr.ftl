@@ -69,7 +69,6 @@ lex-invalid-character-fix-remove = { $count ->
 }
 lex-invalid-character-fix-replace = remplace { $character } par `{ $replacement }`, le caractère ASCII auquel il ressemble
 lex-invalid-character-fix-identifier = les noms n’utilisent que des lettres ASCII, des chiffres et `_` : renomme-le, par exemple `cafe` au lieu de `café` ; pour afficher du texte, mets-le dans une chaîne
-lex-invalid-character-fix-template = les gabarits de chaîne (template literals) ne sont pas encore pris en charge : concatène les chaînes avec `+`
 
 # E0002
 lex-unterminated-string = chaîne non terminée
@@ -630,6 +629,10 @@ check-arrow-expected-label = attendu `(x) => …`
 check-arrow-why = Une fonction fléchée est compilée sur place, comme le corps d’une boucle, par les méthodes de tableaux qui en prennent une : `map`, `filter`, `reduce`, `find`, `findIndex`, `some` et `every`. Les fonctions comme valeurs, stockées ou transmises, arriveront avec les fermetures.
 check-arrow-fix = passe-la à `map`, `filter`, `reduce`, `find`, `findIndex`, `some` ou `every`, ou écris une fonction avec `fn`
 check-arrow-expected-fix = écris la fonction sur place : `xs.map((x) => x * 2)`
+check-template = un gabarit ne sait pas encore écrire un `{ $type }` en texte
+check-template-label = un `{ $type }`
+check-template-why = Un gabarit écrit chacune de ses valeurs en texte : une chaîne telle quelle, un entier ou un booléen comme l’écrit `toString()`. Les flottants en texte viennent ensuite : leur forme exacte la plus courte demande un algorithme à elle.
+check-template-fix = mettez-y un entier, un booléen ou une chaîne : `x.toI64()` garde la partie entière d’un flottant
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

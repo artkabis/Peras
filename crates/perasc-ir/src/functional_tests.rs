@@ -180,6 +180,50 @@ export fn run(n: i32): i32 {
 }
 "#;
 
+#[test]
+fn template_literals_write_strings_integers_and_booleans_in_order() {
+    let parsed = perasc_syntax::parse(TEMPLATES);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, TEMPLATES);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // Each case adds its bit when the template gives the text expected.
+    let (value, heap) = run_with_heap(&module, FnId(1), &[Value::I32(3)])
+        .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+    assert_eq!(value, Value::I32(2047), "{module}");
+    assert_eq!(heap.live, Vec::<u32>::new(), "leak\n{module}");
+}
+
+const TEMPLATES: &str = r#"fn angled(n: i64): String {
+  return `<${n}>`;
+}
+
+export fn run(k: i32): i32 {
+  let ok = 0;
+  const name = "Ada";
+  const low: i64 = -9223372036854775808;
+  const high: i64 = 9223372036854775807;
+  if (`hello ${name}!` == "hello Ada!") ok += 1;
+  if (`${low}|${high}` == "-9223372036854775808|9223372036854775807") ok += 2;
+  if (`${true}/${false}` == "true/false") ok += 4;
+  if (`${k}${k}` == "33") ok += 8;
+  if (`` == "") ok += 16;
+  if (`a${`b${name}c`}d` == "abAdacd") ok += 32;
+  if (`\`\${x}\n` == "`${x}\n") ok += 64;
+  if (`été ${match (k) { 3 => "trois", _ => "?" }}` == "été trois") ok += 128;
+  if (`line
+two` == "line\ntwo") ok += 256;
+  if (angled(-5) == "<-5>") ok += 512;
+  let built = "";
+  for (let i = 0; i < k; i++) {
+    built = `${built}${i},`;
+  }
+  if (built == "0,1,2,") ok += 1024;
+  return ok;
+}
+"#;
+
 const ARRAYS: &str = r#"struct Point {
   x: f64;
   name: String;

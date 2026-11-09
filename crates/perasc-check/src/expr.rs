@@ -191,6 +191,19 @@ impl Checker<'_> {
                 types,
                 args,
             } => self.call(id, *callee, types, args, span, expected),
+            ExprKind::Template { exprs, .. } => {
+                // Strings as they are; integers and booleans as `toString()`
+                // writes them.
+                for &e in exprs {
+                    let ty = self.infer(e, None).defaulted();
+                    let fits = matches!(ty, Ty::String | Ty::Bool | Ty::Error) || ty.is_integer();
+                    if !fits {
+                        let span = self.ast.expr(e).span;
+                        self.report(errors::template_value(span, &ty));
+                    }
+                }
+                Ty::String
+            }
             ExprKind::Field { base, name } => {
                 if let Some(ty) = self.enum_variant(*base, name, None, span, expected) {
                     return ty;

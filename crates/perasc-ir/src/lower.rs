@@ -966,7 +966,9 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args, .. } => {
                 return self.call(state, id, *callee, args, ty, span);
             }
-            AstExpr::String(_) => return self.not_yet(span, "string", ty),
+            AstExpr::String(_) | AstExpr::Template { .. } => {
+                return self.not_yet(span, "string", ty);
+            }
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
             AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),

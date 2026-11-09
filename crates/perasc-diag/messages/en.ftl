@@ -69,7 +69,6 @@ lex-invalid-character-fix-remove = { $count ->
 }
 lex-invalid-character-fix-replace = replace { $character } with `{ $replacement }`, the ASCII character it looks like
 lex-invalid-character-fix-identifier = names use ASCII letters, digits and `_` only: rename it, e.g. `cafe` instead of `café`; to show text, put it in a string
-lex-invalid-character-fix-template = template literals are not supported yet: join strings with `+`
 
 # E0002
 lex-unterminated-string = unterminated string
@@ -630,6 +629,10 @@ check-arrow-expected-label = expected `(x) => …`
 check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
 check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
 check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
+check-template = a template literal cannot write a `{ $type }` as text yet
+check-template-label = a `{ $type }`
+check-template-why = A template literal writes each of its values as text: a string as it is, an integer or a boolean as `toString()` writes it. Floats as text come next: their shortest exact form needs an algorithm of its own.
+check-template-fix = write an integer, a boolean or a string there: `x.toI64()` keeps the whole part of a float
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->
