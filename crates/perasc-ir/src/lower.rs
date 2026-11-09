@@ -1111,8 +1111,46 @@ impl Lowering<'_> {
             "sqrt" => Some(MathOp::Sqrt),
             "floor" => Some(MathOp::Floor),
             "ceil" => Some(MathOp::Ceil),
+            "exp" => Some(MathOp::Exp),
+            "log" => Some(MathOp::Log),
+            "sin" => Some(MathOp::Sin),
+            "cos" => Some(MathOp::Cos),
+            "tan" => Some(MathOp::Tan),
+            "round" => Some(MathOp::Round),
             _ => None,
         };
+        if let (Some(op), Some(&arg)) = (
+            match method {
+                "pow" => Some(BinOp::Pow),
+                "atan2" => Some(BinOp::Atan2),
+                "hypot" => Some(BinOp::Add),
+                _ => None,
+            },
+            args.first(),
+        ) {
+            let mark = state.pre.len();
+            let other = self.expr(state, arg);
+            let mut operands = [receiver];
+            state.keep_before(mark, &mut operands);
+            let [receiver] = operands;
+            if method != "hypot" {
+                return binary(op, receiver, other);
+            }
+            // `sqrt(a * a + b * b)`, each operand computed once.
+            let (a, b) = (state.temp(ty), state.temp(ty));
+            state.pre.push(Stmt::Set(a, receiver));
+            state.pre.push(Stmt::Set(b, other));
+            let (a, b) = (local_expr(state, a), local_expr(state, b));
+            let sum = binary(
+                BinOp::Add,
+                binary(BinOp::Mul, a.clone(), a),
+                binary(BinOp::Mul, b.clone(), b),
+            );
+            return Expr {
+                kind: ExprKind::Math(MathOp::Sqrt, Box::new(sum)),
+                ty,
+            };
+        }
         if let Some(op) = math {
             return Expr {
                 kind: ExprKind::Math(op, Box::new(receiver)),

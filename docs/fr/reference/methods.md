@@ -33,12 +33,18 @@ export fn wrapped(a: i32): i32 {
 
 ### Flottants
 
-| Méthode                   | Donne                                     | État                                         |
-| ------------------------- | ----------------------------------------- | -------------------------------------------- |
-| `sqrt()`                  | la racine carrée ; NaN en dessous de zéro | <span class="status compiled">compilé</span> |
-| `floor()`, `ceil()`       | arrondi vers le bas, vers le haut         | <span class="status compiled">compilé</span> |
-| `round()`                 | arrondi au plus proche                    | <span class="status checked">vérifié</span>  |
-| `sin()`, `cos()`, `tan()` | trigonométrie, en radians                 | <span class="status checked">vérifié</span>  |
+| Méthode                   | Donne                                                                | État                                         |
+| ------------------------- | -------------------------------------------------------------------- | -------------------------------------------- |
+| `sqrt()`                  | la racine carrée ; NaN en dessous de zéro                            | <span class="status compiled">compilé</span> |
+| `floor()`, `ceil()`       | arrondi vers le bas, vers le haut                                    | <span class="status compiled">compilé</span> |
+| `round()`                 | arrondi au plus proche, les moitiés vers le haut, comme `Math.round` | <span class="status compiled">compilé</span> |
+| `sin()`, `cos()`, `tan()` | trigonométrie, en radians                                            | <span class="status compiled">compilé</span> |
+| `exp()`, `log()`          | `e` à la puissance de la valeur, le logarithme naturel               | <span class="status compiled">compilé</span> |
+| `pow(b)`                  | la valeur à la puissance `b`                                         | <span class="status compiled">compilé</span> |
+| `atan2(x)`                | sur `y`, l’angle du point `(x, y)`, en radians                       | <span class="status compiled">compilé</span> |
+| `hypot(b)`                | `sqrt(a * a + b * b)`                                                | <span class="status compiled">compilé</span> |
+
+WebAssembly n’a pas d’instruction pour `round`, `exp`, `log`, la trigonométrie, `pow` et `atan2` : un module qui s’en sert les importe du `Math` de JavaScript, et ils donnent donc exactement ce que donne JavaScript. Un `f32` est calculé comme un `f64`, puis rearrondi.
 
 ## `Array<T>`
 

@@ -42,7 +42,7 @@ The everyday tools, with the same rules: explicit types, no hidden allocation, e
 | text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`~~ (done), formatting and template strings                                                          |
 | arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                      |
-| numbers     | ~~`min`, `max`, `clamp`~~ (done), `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                                                                                              |
+| numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                              |
 | time        | durations and instants                                                                                                                                                                                 |
 | data        | JSON, text encoding, bytes                                                                                                                                                                             |
 

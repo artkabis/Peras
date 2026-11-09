@@ -185,7 +185,7 @@ fn the_loader_speaks_the_language_asked() {
     );
     let js = plain.map(|o| o.js).unwrap_or_default();
     assert!(
-        js.contains("const $imports = {};") && !js.contains("PerasMemoryError"),
+        js.contains("const $imports = { Math };") && !js.contains("PerasMemoryError"),
         "{js}"
     );
 }

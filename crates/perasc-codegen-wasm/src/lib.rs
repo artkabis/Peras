@@ -10,8 +10,8 @@
 use std::fmt::Write as _;
 
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, JsShape, MathOp, Module, Pass,
-    RuntimeFn, Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MathOp,
+    Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
@@ -52,6 +52,26 @@ const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
 const IMPORT_TYPES: u32 = 6;
+/// The module JavaScript's `Math` is imported as.
+pub const HOST_MODULE: &str = "Math";
+/// The function types of the imports from `Math`.
+const HOST_TYPES: u32 = 2;
+
+/// Where the functions imported from `Math` are.
+#[derive(Clone, Copy)]
+struct Host<'m> {
+    /// The index of the first one.
+    first: u32,
+    /// Those the module imports, in order.
+    math: &'m [HostMath],
+}
+
+impl Host<'_> {
+    fn index(self, h: HostMath) -> u32 {
+        let position = self.math.iter().position(|&m| m == h).unwrap_or(0);
+        self.first + u32::try_from(position).unwrap_or(0)
+    }
+}
 
 /// A compiled module, and what its allocation sites are.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +89,70 @@ pub fn compile(module: &Module) -> Vec<u8> {
     compile_module(module).wasm
 }
 
+/// Declares the runtime's types and imports: the heap, buffers and memory.
+fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
+    use ValType::I32 as T;
+    types.ty().function([T, T], [T]);
+    types.ty().function([T, T], []);
+    types.ty().function([T, T, T], [T]);
+    types.ty().function([T, T, T, T], []);
+    types.ty().function([T], [T]);
+    types.ty().function([T], []);
+    for (name, ty) in [
+        ("alloc", 0),
+        ("release", 1),
+        ("buf_new", 2),
+        ("buf_reserve", 3),
+        ("buf_release", 1),
+        ("bounds", 1),
+        ("buf_clone", 0),
+    ] {
+        imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
+    }
+    for f in RuntimeFn::ALL {
+        // Every operand and the result are `i32`: the type by count.
+        let ty = match (f.operands().len(), f.result() == Ty::Void) {
+            (0, false) => 4,
+            (1, false) => 0,
+            (_, false) => 2,
+            (0, true) => 5,
+            (_, true) => 1,
+        };
+        imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
+    }
+    // The allocator's memory, which buffers live in.
+    imports.import(
+        RUNTIME_MODULE,
+        "memory",
+        EntityType::Memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        }),
+    );
+}
+
+/// Declares the host's `Math` functions the module calls, after the heap's types.
+fn math_imports_into(
+    types: &mut TypeSection,
+    imports: &mut ImportSection,
+    math: &[HostMath],
+    heap: bool,
+) {
+    // `(f64) -> f64` and `(f64, f64) -> f64`, after the heap's types.
+    let first = if heap { IMPORT_TYPES } else { 0 };
+    types.ty().function([ValType::F64], [ValType::F64]);
+    types
+        .ty()
+        .function([ValType::F64, ValType::F64], [ValType::F64]);
+    for &h in math {
+        let ty = first + u32::from(h.binary());
+        imports.import(HOST_MODULE, h.name(), EntityType::Function(ty));
+    }
+}
+
 /// Encodes a module, and numbers its allocation sites.
 ///
 /// A module that uses the heap imports `alloc(size, site) -> ptr` and
@@ -82,51 +166,21 @@ pub fn compile_module(module: &Module) -> Compiled {
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
     let heap = module.uses_heap();
-    let offset = if heap { IMPORTED } else { 0 };
-    let type_offset = if heap { IMPORT_TYPES } else { 0 };
+    let math = module.host_math();
+    let heap_imports = if heap { IMPORTED } else { 0 };
+    let offset = heap_imports + u32::try_from(math.len()).unwrap_or(0);
+    let type_offset =
+        if heap { IMPORT_TYPES } else { 0 } + if math.is_empty() { 0 } else { HOST_TYPES };
     if heap {
-        use ValType::I32 as T;
-        types.ty().function([T, T], [T]);
-        types.ty().function([T, T], []);
-        types.ty().function([T, T, T], [T]);
-        types.ty().function([T, T, T, T], []);
-        types.ty().function([T], [T]);
-        types.ty().function([T], []);
-        for (name, ty) in [
-            ("alloc", 0),
-            ("release", 1),
-            ("buf_new", 2),
-            ("buf_reserve", 3),
-            ("buf_release", 1),
-            ("bounds", 1),
-            ("buf_clone", 0),
-        ] {
-            imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
-        }
-        for f in RuntimeFn::ALL {
-            // Every operand and the result are `i32`: the type by count.
-            let ty = match (f.operands().len(), f.result() == Ty::Void) {
-                (0, false) => 4,
-                (1, false) => 0,
-                (_, false) => 2,
-                (0, true) => 5,
-                (_, true) => 1,
-            };
-            imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
-        }
-        // The allocator's memory, which buffers live in.
-        imports.import(
-            RUNTIME_MODULE,
-            "memory",
-            EntityType::Memory(MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
+        heap_imports_into(&mut types, &mut imports);
     }
+    if !math.is_empty() {
+        math_imports_into(&mut types, &mut imports, &math, heap);
+    }
+    let host = Host {
+        first: heap_imports,
+        math: &math,
+    };
     let mut sites = Vec::new();
     for (position, function) in module.functions.iter().enumerate() {
         let position = u32::try_from(position).unwrap_or(u32::MAX);
@@ -146,13 +200,14 @@ pub fn compile_module(module: &Module) -> Compiled {
         code.function(&FnEncoder::encode(
             function,
             offset,
+            host,
             &mut sites,
             &module.data,
         ));
     }
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
-    if heap {
+    if heap || !math.is_empty() {
         wasm.section(&imports);
     }
     wasm.section(&functions).section(&exports);
@@ -195,6 +250,8 @@ struct FnEncoder<'a> {
     frames: Vec<Frame>,
     /// Index of the module's first own function: the imports come before.
     offset: u32,
+    /// The functions imported from `Math`.
+    host: Host<'a>,
     /// The function's name, and how many sites of each kind it has so far.
     name: &'a str,
     allocs: u32,
@@ -218,6 +275,7 @@ impl<'a> FnEncoder<'a> {
     fn encode(
         function: &'a Function,
         offset: u32,
+        host: Host<'a>,
         sites: &'a mut Vec<String>,
         data: &'a [Vec<u8>],
     ) -> WasmFunction {
@@ -243,6 +301,7 @@ impl<'a> FnEncoder<'a> {
             out: WasmFunction::new(locals),
             frames: Vec::new(),
             offset,
+            host,
             name: &function.name,
             allocs: 0,
             releases: 0,
@@ -755,6 +814,15 @@ impl<'a> FnEncoder<'a> {
         }
         self.expr(lhs);
         self.expr(rhs);
+        if matches!(op, BinOp::Pow | BinOp::Atan2) {
+            let h = if op == BinOp::Pow {
+                HostMath::Pow
+            } else {
+                HostMath::Atan2
+            };
+            self.host_call(h, lhs.ty);
+            return;
+        }
         let instruction = match lhs.ty {
             Ty::I32 | Ty::Bool | Ty::Owned | Ty::Borrowed => int32(op),
             Ty::I64 => int64(op),
@@ -766,6 +834,10 @@ impl<'a> FnEncoder<'a> {
 
     fn math(&mut self, op: MathOp, operand: &Expr) {
         self.expr(operand);
+        if let Some(h) = op.host() {
+            self.host_call(h, operand.ty);
+            return;
+        }
         let instruction = match (op, operand.ty) {
             (MathOp::Abs, Ty::I32) => return self.int_abs(false),
             (MathOp::Abs, Ty::I64) => return self.int_abs(true),
@@ -777,8 +849,29 @@ impl<'a> FnEncoder<'a> {
             (MathOp::Sqrt, _) => I::F64Sqrt,
             (MathOp::Floor, _) => I::F64Floor,
             (MathOp::Ceil, _) => I::F64Ceil,
+            // Computed by `Math`, above.
+            _ => I::Unreachable,
         };
         self.emit(&instruction);
+    }
+
+    /// A function of `Math` on the operands on the stack, of type `ty`: an
+    /// `f32` goes through `f64`, as JavaScript computes.
+    fn host_call(&mut self, h: HostMath, ty: Ty) {
+        let narrow = ty == Ty::F32;
+        if narrow && h.binary() {
+            // The second operand is on top: widened through a scratch local.
+            self.emit(&I::LocalSet(self.temp_f32));
+            self.emit(&I::F64PromoteF32);
+            self.emit(&I::LocalGet(self.temp_f32));
+        }
+        if narrow {
+            self.emit(&I::F64PromoteF32);
+        }
+        self.emit(&I::Call(self.host.index(h)));
+        if narrow {
+            self.emit(&I::F32DemoteF64);
+        }
     }
 
     /// `x < 0 ? 0 - x : x`, wrapping for the smallest value, with a scratch local.
@@ -854,6 +947,7 @@ const fn int32(op: BinOp) -> I<'static> {
         BinOp::Le => I::I32LeS,
         BinOp::Gt => I::I32GtS,
         BinOp::Ge => I::I32GeS,
+        BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
 
@@ -875,6 +969,7 @@ const fn int64(op: BinOp) -> I<'static> {
         BinOp::Le => I::I64LeS,
         BinOp::Gt => I::I64GtS,
         BinOp::Ge => I::I64GeS,
+        BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
 
@@ -968,7 +1063,7 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
-        None => js.push_str("const $imports = {};\n"),
+        None => js.push_str("const $imports = { Math };\n"),
     }
     let _ = write!(
         js,
@@ -1474,7 +1569,7 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
-         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }} }};\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math }};\n\
 ",
         strings = RuntimeFn::ALL.iter().fold(String::new(), |mut out, f| {
             let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());

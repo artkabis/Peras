@@ -33,12 +33,18 @@ export fn wrapped(a: i32): i32 {
 
 ### Floats
 
-| Method                    | Gives                           | Status                                        |
-| ------------------------- | ------------------------------- | --------------------------------------------- |
-| `sqrt()`                  | the square root; NaN below zero | <span class="status compiled">compiled</span> |
-| `floor()`, `ceil()`       | rounded down, up                | <span class="status compiled">compiled</span> |
-| `round()`                 | rounded to the nearest          | <span class="status checked">checked</span>   |
-| `sin()`, `cos()`, `tan()` | trigonometry, in radians        | <span class="status checked">checked</span>   |
+| Method                    | Gives                                                | Status                                        |
+| ------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| `sqrt()`                  | the square root; NaN below zero                      | <span class="status compiled">compiled</span> |
+| `floor()`, `ceil()`       | rounded down, up                                     | <span class="status compiled">compiled</span> |
+| `round()`                 | rounded to the nearest, halves up, as `Math.round`   | <span class="status compiled">compiled</span> |
+| `sin()`, `cos()`, `tan()` | trigonometry, in radians                             | <span class="status compiled">compiled</span> |
+| `exp()`, `log()`          | `e` to the power of the value, the natural logarithm | <span class="status compiled">compiled</span> |
+| `pow(b)`                  | the value to the power `b`                           | <span class="status compiled">compiled</span> |
+| `atan2(x)`                | on `y`, the angle of the point `(x, y)`, in radians  | <span class="status compiled">compiled</span> |
+| `hypot(b)`                | `sqrt(a * a + b * b)`                                | <span class="status compiled">compiled</span> |
+
+WebAssembly has no instruction for `round`, `exp`, `log`, the trigonometry, `pow` and `atan2`: a module that uses them imports them from JavaScript's `Math`, so they give exactly what JavaScript gives. An `f32` is computed as an `f64`, then rounded back.
 
 ## `Array<T>`
 

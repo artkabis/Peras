@@ -704,7 +704,9 @@ macro_rules! int_op {
             BinOp::Le => return Ok(Value::Bool(a <= b)),
             BinOp::Gt => return Ok(Value::Bool(a > b)),
             BinOp::Ge => return Ok(Value::Bool(a >= b)),
-            BinOp::And | BinOp::Or => return Err(Trap::Unreachable),
+            BinOp::And | BinOp::Or | BinOp::Pow | BinOp::Atan2 => {
+                return Err(Trap::Unreachable);
+            }
         }))
     }};
 }
@@ -723,6 +725,10 @@ macro_rules! float_op {
             BinOp::Le => Value::Bool(a <= b),
             BinOp::Gt => Value::Bool(a > b),
             BinOp::Ge => Value::Bool(a >= b),
+            #[allow(clippy::cast_possible_truncation)]
+            BinOp::Pow => $wrap((f64::from(a).powf(f64::from(b))) as _),
+            #[allow(clippy::cast_possible_truncation)]
+            BinOp::Atan2 => $wrap((f64::from(a).atan2(f64::from(b))) as _),
             _ => return Err(Trap::Unreachable),
         })
     }};
@@ -776,6 +782,24 @@ fn math(op: MathOp, v: Value) -> Value {
         (MathOp::Floor, Value::F64(x)) => Value::F64(x.floor()),
         (MathOp::Ceil, Value::F32(x)) => Value::F32(x.ceil()),
         (MathOp::Ceil, Value::F64(x)) => Value::F64(x.ceil()),
+        // The functions of `Math`, on `f64`, an `f32` widened then narrowed.
+        #[allow(clippy::cast_possible_truncation)]
+        (op, Value::F32(x)) => match math(op, Value::F64(f64::from(x))) {
+            Value::F64(y) => Value::F32(y as f32),
+            other => other,
+        },
+        (MathOp::Exp, Value::F64(x)) => Value::F64(x.exp()),
+        (MathOp::Log, Value::F64(x)) => Value::F64(x.ln()),
+        (MathOp::Sin, Value::F64(x)) => Value::F64(x.sin()),
+        (MathOp::Cos, Value::F64(x)) => Value::F64(x.cos()),
+        (MathOp::Tan, Value::F64(x)) => Value::F64(x.tan()),
+        (MathOp::Round, Value::F64(x)) => Value::F64(js_round(x)),
         (_, other) => other,
     }
+}
+
+/// `Math.round`: the nearest integer, halves toward positive infinity.
+fn js_round(x: f64) -> f64 {
+    let down = x.floor();
+    if x - down >= 0.5 { down + 1.0 } else { down }
 }

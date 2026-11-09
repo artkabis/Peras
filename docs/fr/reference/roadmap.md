@@ -42,7 +42,7 @@ Les outils de tous les jours, avec les mêmes règles : types explicites, aucune
 | texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`~~ (fait), mise en forme et chaînes gabarits                                                                |
 | tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                                  |
-| nombres     | ~~`min`, `max`, `clamp`~~ (fait), `pow`, `exp`, `log`, `atan2`, `hypot`, constantes, nombres aléatoires avec graine                                                                                                |
+| nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                |
 | temps       | durées et instants                                                                                                                                                                                                 |
 | données     | JSON, encodage de texte, octets                                                                                                                                                                                    |
 

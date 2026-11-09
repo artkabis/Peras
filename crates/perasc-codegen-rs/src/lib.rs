@@ -286,8 +286,17 @@ impl<'a> Emitter<'a> {
             }
             ExprKind::Math(op, operand) => {
                 let x = self.expr(operand);
+                let wide = rust_type(operand.ty);
                 match (op, operand.ty.is_int()) {
                     (MathOp::Abs, true) => format!("({x}).wrapping_abs()"),
+                    // `Math.round`: halves toward positive infinity.
+                    (MathOp::Round, _) => format!(
+                        "{{ let v = ({x}) as f64; let d = v.floor(); (if v - d >= 0.5 {{ d + 1.0 }} else {{ d }}) as {wide} }}"
+                    ),
+                    (MathOp::Log, _) => format!("((({x}) as f64).ln() as {wide})"),
+                    (MathOp::Exp | MathOp::Sin | MathOp::Cos | MathOp::Tan, _) => {
+                        format!("((({x}) as f64).{}() as {wide})", op.name())
+                    }
                     (op, _) => format!("({x}).{}()", op.name()),
                 }
             }
@@ -304,6 +313,8 @@ fn binary(op: BinOp, ty: Ty, a: &str, b: &str) -> String {
         BinOp::Rem if int => format!("{a}.wrapping_rem({b})"),
         BinOp::Shl => format!("{a}.wrapping_shl({b} as u32)"),
         BinOp::Shr => format!("{a}.wrapping_shr({b} as u32)"),
+        BinOp::Pow => format!("((({a}) as f64).powf(({b}) as f64) as {})", rust_type(ty)),
+        BinOp::Atan2 => format!("((({a}) as f64).atan2(({b}) as f64) as {})", rust_type(ty)),
         // Integer `/` traps on zero and on `MIN / -1`, as `i32.div_s` does.
         other => format!("({a} {} {b})", other.symbol()),
     }

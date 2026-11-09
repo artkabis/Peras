@@ -498,7 +498,15 @@ impl<'a> Verifier<'a> {
                 self.expr(operand);
                 let valid = match op {
                     MathOp::Abs => operand.ty.is_int() || operand.ty.is_float(),
-                    MathOp::Sqrt | MathOp::Floor | MathOp::Ceil => operand.ty.is_float(),
+                    MathOp::Sqrt
+                    | MathOp::Floor
+                    | MathOp::Ceil
+                    | MathOp::Exp
+                    | MathOp::Log
+                    | MathOp::Sin
+                    | MathOp::Cos
+                    | MathOp::Tan
+                    | MathOp::Round => operand.ty.is_float(),
                 };
                 if !valid || e.ty != operand.ty {
                     self.problem(&format!("{} on {}", op.name(), operand.ty.name()));
@@ -529,6 +537,7 @@ impl<'a> Verifier<'a> {
                 | BinOp::BitXor
                 | BinOp::Shl
                 | BinOp::Shr => operand.is_int(),
+                BinOp::Pow | BinOp::Atan2 => operand.is_float(),
             };
         let expected = if op.is_comparison() || matches!(op, BinOp::And | BinOp::Or) {
             Ty::Bool

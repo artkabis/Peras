@@ -26,7 +26,11 @@ const CONVERSIONS: [(&str, Ty); 10] = [
     ("toF64", Ty::Float(FloatTy::F64)),
 ];
 
-const FLOAT_METHODS: [&str; 7] = ["sqrt", "sin", "cos", "tan", "floor", "ceil", "round"];
+const FLOAT_METHODS: [&str; 9] = [
+    "sqrt", "sin", "cos", "tan", "floor", "ceil", "round", "exp", "log",
+];
+/// The methods of floats with a second operand of the same type.
+const FLOAT_BINARY: [&str; 3] = ["pow", "atan2", "hypot"];
 const WRAPPING: [&str; 3] = ["wrappingAdd", "wrappingSub", "wrappingMul"];
 const CHECKED: [&str; 3] = ["checkedAdd", "checkedSub", "checkedMul"];
 
@@ -62,6 +66,12 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             }
             if name == "abs" || (me.is_float() && FLOAT_METHODS.contains(&name)) {
                 return simple(me);
+            }
+            if me.is_float() && FLOAT_BINARY.contains(&name) {
+                return Some(Method {
+                    params: vec![me.clone()],
+                    ret: me,
+                });
             }
             if me.is_integer() && WRAPPING.contains(&name) {
                 return Some(Method {
@@ -187,6 +197,7 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             names.extend(["abs", "min", "max", "clamp"]);
             if me.is_float() {
                 names.extend(FLOAT_METHODS);
+                names.extend(FLOAT_BINARY);
             } else {
                 names.extend(WRAPPING);
                 names.extend(CHECKED);

@@ -69,6 +69,27 @@ fn slice_concat_reverse_sort_and_search_give_what_the_runtime_gives() {
     }
 }
 
+#[test]
+fn the_functions_of_numbers_round_halves_up_and_compute_as_math_does() {
+    let source = "export fn f(x: f64): f64 {\n  return x.round() * 1000.0 + x.pow(2.0) + x.hypot(4.0) + x.atan2(1.0) + x.exp().log();\n}\n";
+    let parsed = perasc_syntax::parse(source);
+    let analysis = perasc_check::analyze(&parsed.ast, source);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    for x in [2.5_f64, -2.5, 3.0, 0.499_999_999_999_999_94] {
+        let (value, _) = run_with_heap(&module, FnId(0), &[Value::F64(x)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        let down = x.floor();
+        let round = if x - down >= 0.5 { down + 1.0 } else { down };
+        let expected = round * 1000.0 + x.powf(2.0) + x.hypot(4.0) + x.atan2(1.0) + x.exp().ln();
+        let Value::F64(got) = value else {
+            unreachable!("{value:?}")
+        };
+        assert!((got - expected).abs() < 1e-9, "{x}: {got} for {expected}");
+    }
+}
+
 const ARRAYS: &str = r#"struct Point {
   x: f64;
   name: String;

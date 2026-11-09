@@ -704,6 +704,10 @@ pub enum BinOp {
     And,
     /// `||`, short-circuit.
     Or,
+    /// `a` to the power `b`, on floats.
+    Pow,
+    /// The angle of the point `(b, a)`, `a.atan2(b)`, on floats.
+    Atan2,
 }
 
 impl BinOp {
@@ -729,6 +733,8 @@ impl BinOp {
             Self::Ge => ">=",
             Self::And => "&&",
             Self::Or => "||",
+            Self::Pow => "pow",
+            Self::Atan2 => "atan2",
         }
     }
 
@@ -753,6 +759,18 @@ pub enum MathOp {
     Floor,
     /// Rounds up.
     Ceil,
+    /// `e` to the power of the operand.
+    Exp,
+    /// The natural logarithm.
+    Log,
+    /// Sine, in radians.
+    Sin,
+    /// Cosine, in radians.
+    Cos,
+    /// Tangent, in radians.
+    Tan,
+    /// Rounds to the nearest; halves up, as JavaScript's `Math.round`.
+    Round,
 }
 
 impl MathOp {
@@ -764,7 +782,153 @@ impl MathOp {
             Self::Sqrt => "sqrt",
             Self::Floor => "floor",
             Self::Ceil => "ceil",
+            Self::Exp => "exp",
+            Self::Log => "log",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Round => "round",
         }
+    }
+
+    /// The function of JavaScript's `Math` that computes it, for those
+    /// WebAssembly has no instruction for.
+    #[must_use]
+    pub const fn host(self) -> Option<HostMath> {
+        Some(match self {
+            Self::Exp => HostMath::Exp,
+            Self::Log => HostMath::Log,
+            Self::Sin => HostMath::Sin,
+            Self::Cos => HostMath::Cos,
+            Self::Tan => HostMath::Tan,
+            Self::Round => HostMath::Round,
+            _ => return None,
+        })
+    }
+}
+
+/// A function of JavaScript's `Math` that a module imports, on `f64`: the
+/// functions of numbers WebAssembly has no instruction for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HostMath {
+    /// `Math.exp`
+    Exp,
+    /// `Math.log`
+    Log,
+    /// `Math.sin`
+    Sin,
+    /// `Math.cos`
+    Cos,
+    /// `Math.tan`
+    Tan,
+    /// `Math.round`
+    Round,
+    /// `Math.pow`, with two operands.
+    Pow,
+    /// `Math.atan2`, with two operands.
+    Atan2,
+}
+
+impl HostMath {
+    /// Its name in `Math`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Exp => "exp",
+            Self::Log => "log",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Round => "round",
+            Self::Pow => "pow",
+            Self::Atan2 => "atan2",
+        }
+    }
+
+    /// Whether it takes two operands.
+    #[must_use]
+    pub const fn binary(self) -> bool {
+        matches!(self, Self::Pow | Self::Atan2)
+    }
+}
+
+impl Module {
+    /// The functions of `Math` the module calls, each once, in order.
+    #[must_use]
+    pub fn host_math(&self) -> Vec<HostMath> {
+        let mut found = std::collections::BTreeSet::new();
+        for f in &self.functions {
+            host_in_stmts(&f.body, &mut found);
+        }
+        found.into_iter().collect()
+    }
+}
+
+fn host_in_stmts(stmts: &[Stmt], found: &mut std::collections::BTreeSet<HostMath>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => host_in_expr(e, found),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                host_in_expr(cond, found);
+                host_in_stmts(then, found);
+                host_in_stmts(otherwise, found);
+            }
+            Stmt::Loop { cond, body, step } => {
+                if let Some(cond) = cond {
+                    host_in_expr(cond, found);
+                }
+                host_in_stmts(body, found);
+                host_in_stmts(step, found);
+            }
+            Stmt::Block(body) => host_in_stmts(body, found),
+            Stmt::ReturnMany(values)
+            | Stmt::Buf(_, values)
+            | Stmt::CallMany { args: values, .. } => {
+                for e in values {
+                    host_in_expr(e, found);
+                }
+            }
+            Stmt::Leave(_)
+            | Stmt::Break
+            | Stmt::Continue
+            | Stmt::Return(None)
+            | Stmt::Release(_) => {}
+        }
+    }
+}
+
+fn host_in_expr(e: &Expr, found: &mut std::collections::BTreeSet<HostMath>) {
+    match &e.kind {
+        ExprKind::Math(op, x) => {
+            if let Some(h) = op.host() {
+                found.insert(h);
+            }
+            host_in_expr(x, found);
+        }
+        ExprKind::Binary(op, a, b) => {
+            match op {
+                BinOp::Pow => {
+                    found.insert(HostMath::Pow);
+                }
+                BinOp::Atan2 => {
+                    found.insert(HostMath::Atan2);
+                }
+                _ => {}
+            }
+            host_in_expr(a, found);
+            host_in_expr(b, found);
+        }
+        ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Alloc(x) => host_in_expr(x, found),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+            for a in args {
+                host_in_expr(a, found);
+            }
+        }
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}
     }
 }
 

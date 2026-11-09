@@ -16,10 +16,6 @@ diagnostics:
     primary 10:21-10:30: gen-unsupported-label { feature: "integer-type" }
     cause: gen-unsupported-why
     fix: gen-unsupported-fix
-  error[E0900] gen-unsupported { feature: "method" }
-    primary 15:10-15:17: gen-unsupported-label { feature: "method" }
-    cause: gen-unsupported-why
-    fix: gen-unsupported-fix
   error[E0900] gen-unsupported { feature: "float-remainder" }
     primary 15:10-15:23: gen-unsupported-label { feature: "float-remainder" }
     cause: gen-unsupported-why
