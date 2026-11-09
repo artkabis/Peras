@@ -6,7 +6,9 @@ Peras est un langage web à la syntaxe TypeScript et à la rigueur de Rust. Les 
 
 > Peras (πέρας) signifie _la limite_ en grec. Pour les pythagoriciens, tout ce qui est bon naît de la limite imposée à l'illimité (_apeiron_).
 
-**État :** version 0.0.1, fin de la phase 0 du plan de démarrage ([journal des modifications](CHANGELOG.fr.md)). `perasc` vérifie la syntaxe, les noms et les types d’une source, et compile en WebAssembly les fonctions sur des nombres, des booléens et des structures de ces types, sans toolchain Rust ; `vite-plugin-peras` les exécute dans le navigateur, les structures passant en JavaScript sous forme d’objets. Tableaux, ownership et modules `.apeiron` viennent ensuite.
+**État :** version 0.0.1, en phase 3 de la [feuille de route](docs/fr/reference/roadmap.md), la bibliothèque standard ([journal des modifications](CHANGELOG.fr.md), [ce qui est compilé aujourd’hui](docs/fr/reference/status.md)). `perasc` vérifie la syntaxe, les noms, les types et la possession d’une source, et la compile en WebAssembly sans toolchain Rust : nombres, structures, énumérations et `match`, options et résultats, génériques, méthodes et interfaces, tableaux et chaînes avec leurs méthodes, fonctions fléchées pour `map`, `filter` et les autres, et chaînes gabarits. Chaque bloc de mémoire est libéré par le compilateur, vérifié par un vérificateur, avec un allocateur de débogage en développement et TLSF en production. `vite-plugin-peras` exécute les modules dans le navigateur. `Map` et `Set` ([décision 0005](docs/fr/decisions/0005-maps-and-sets.md)) et les modules `.apeiron` viennent ensuite.
+
+**Vitesse**, mesurée dans Chromium face à du JavaScript écrit pour la vitesse ([banc d’essai](bench/README.fr.md#banc-dessai-dans-le-navigateur-benchbrowser)) : 5,4 fois plus rapide sur les entiers 64 bits, 1,6 à 2,4 fois sur les nombres en tableaux, le tri et le texte, la même vitesse sur les structures et l’arithmétique flottante seule, et plus lent sur les appels très courts à travers la frontière. Face à JavaScript tel qu’on l’écrit habituellement, les écarts sont plus grands ; les deux sont publiés.
 
 ## Piliers
 
@@ -18,30 +20,34 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 
 ## Documentation
 
-- [Spec du langage](docs/fr/spec.md)
-- [Plan de démarrage du compilateur](docs/fr/kickoff-plan.md)
+- [Guide](docs/fr/guide/introduction.md), du premier programme à l’échange avec JavaScript
+- [Référence](docs/fr/reference/status.md) : état, types, opérateurs, méthodes, mots-clés, CLI, [feuille de route](docs/fr/reference/roadmap.md)
+- [Codes d’erreur](docs/fr/errors/index.md), chacun avec sa cause et sa correction
+- Décisions : [0001 backend WebAssembly](docs/fr/decisions/0001-webassembly-backend.md), [0002 allocateur TLSF](docs/fr/decisions/0002-tlsf-allocator.md), [0003 un runtime prouvé à la compilation](docs/fr/decisions/0003-runtime-proved-at-compile-time.md), [0004 du texte sans allocation](docs/fr/decisions/0004-strings-without-allocation.md), [0005 tables et ensembles](docs/fr/decisions/0005-maps-and-sets.md)
+- [Bancs d’essai](bench/README.fr.md), ce qu’ils mesurent et ce qu’ils ne mesurent pas
+- [Spec du langage](docs/fr/spec.md), [architecture](docs/fr/architecture.md), [plan de démarrage du compilateur](docs/fr/kickoff-plan.md)
 
 ## Organisation du dépôt
 
-| Chemin                       | Contenu                                             |
-| ---------------------------- | --------------------------------------------------- |
-| `crates/perasc-syntax`       | Lexer, parser, AST                                  |
-| `crates/perasc-diag`         | Diagnostics, codes d'erreur, messages EN/FR         |
-| `crates/perasc-check`        | Noms, types, ownership, ressources, budget de pile  |
-| `crates/perasc-ir`           | IR typée partagée par les deux backends             |
-| `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                              |
-| `crates/perasc-codegen-wasm` | `.peras` → WASM, en direct, sans toolchain Rust     |
-| `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                             |
-| `crates/perasc-driver`       | Pipeline et orchestration du build                  |
-| `crates/perasc-runtime`      | Runtime WebAssembly : l’allocateur de débogage      |
-| `crates/perasc`              | Interface en ligne de commande                      |
-| `packages/vite-plugin-peras` | Plugin Vite                                         |
-| `packages/vitest-peras`      | Adaptateur Vitest                                   |
-| `packages/create-peras`      | Création de projet                                  |
-| `examples/fib`               | `fib` en Peras, exécuté dans le navigateur via Vite |
-| `std/`                       | Bibliothèque standard, écrite en Peras              |
-| `tests/ui/`                  | Fichiers source et leurs diagnostics attendus       |
-| `docs/en`, `docs/fr`         | Documentation, anglais d'abord                      |
+| Chemin                       | Contenu                                              |
+| ---------------------------- | ---------------------------------------------------- |
+| `crates/perasc-syntax`       | Lexer, parser, AST                                   |
+| `crates/perasc-diag`         | Diagnostics, codes d'erreur, messages EN/FR          |
+| `crates/perasc-check`        | Noms, types, ownership, ressources, budget de pile   |
+| `crates/perasc-ir`           | IR typée partagée par les deux backends              |
+| `crates/perasc-codegen-rs`   | `.peras` → Rust → WASM                               |
+| `crates/perasc-codegen-wasm` | `.peras` → WASM, en direct, sans toolchain Rust      |
+| `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                              |
+| `crates/perasc-driver`       | Pipeline et orchestration du build                   |
+| `crates/perasc-runtime`      | Runtime WebAssembly : allocateurs, chaînes, tableaux |
+| `crates/perasc`              | Interface en ligne de commande                       |
+| `packages/vite-plugin-peras` | Plugin Vite                                          |
+| `packages/vitest-peras`      | Adaptateur Vitest                                    |
+| `packages/create-peras`      | Création de projet                                   |
+| `examples/fib`               | `fib` en Peras, exécuté dans le navigateur via Vite  |
+| `std/`                       | Bibliothèque standard, écrite en Peras               |
+| `tests/ui/`                  | Fichiers source et leurs diagnostics attendus        |
+| `docs/en`, `docs/fr`         | Documentation, anglais d'abord                       |
 
 ## Démarrer
 
