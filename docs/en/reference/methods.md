@@ -71,14 +71,14 @@ WebAssembly has no instruction for `round`, `exp`, `log`, the trigonometry, `pow
 
 ### Order, parts and search
 
-| Method              | Gives                                                                                              | Status                                        |
-| ------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `slice(start, end)` | a new array of the elements from `start` to `end`; negative counts from the end, beyond is clamped | <span class="status compiled">compiled</span> |
-| `concat(other)`     | a new array of its elements, then those of `other`                                                 | <span class="status compiled">compiled</span> |
-| `reverse()`         | reverses the elements, in place: the array is a `let`                                              | <span class="status compiled">compiled</span> |
-| `sort()`            | sorts numbers in increasing order, in place, in time n log n, without allocating                   | <span class="status compiled">compiled</span> |
-| `includes(x)`       | whether an element equals `x`; numbers, booleans and strings                                       | <span class="status compiled">compiled</span> |
-| `indexOf(x)`        | the index of the first element equal to `x`, or `-1`                                               | <span class="status compiled">compiled</span> |
+| Method              | Gives                                                                                                 | Status                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `slice(start, end)` | a new array of the elements from `start` to `end`; negative counts from the end, beyond is clamped    | <span class="status compiled">compiled</span> |
+| `concat(other)`     | a new array of its elements, then those of `other`                                                    | <span class="status compiled">compiled</span> |
+| `reverse()`         | reverses the elements, in place: the array is a `let`                                                 | <span class="status compiled">compiled</span> |
+| `sort()`            | sorts numbers in increasing order, in place, as typed arrays do in JavaScript: -0 before +0, NaN last | <span class="status compiled">compiled</span> |
+| `includes(x)`       | whether an element equals `x`; numbers, booleans and strings                                          | <span class="status compiled">compiled</span> |
+| `indexOf(x)`        | the index of the first element equal to `x`, or `-1`                                                  | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn median(samples: Array<f64>): f64 {
@@ -87,6 +87,8 @@ export fn median(samples: Array<f64>): f64 {
   return sorted[sorted.length / 2];
 }
 ```
+
+`sort()` orders numbers by their bits, a radix sort: its time grows with the length, not with length × log(length), and a million `f64` take about 30 ms in a browser. It uses a scratch copy of the array, given back before it returns.
 
 ### With an arrow function
 

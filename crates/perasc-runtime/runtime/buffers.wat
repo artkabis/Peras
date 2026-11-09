@@ -458,63 +458,301 @@
         (local.set $j (i32.sub (local.get $j) (i32.const 1)))
         (br $next))))
 
-  ;; Whether element `i` of `h` is below element `j`, as numbers of `kind`:
-  ;; 0 `i32`, 1 `i64`, 2 `f32`, 3 `f64`.
-  (func $below (param $h i32) (param $i i32) (param $j i32) (param $kind i32) (result i32)
-    (local $data i32)
-    (local.set $data (i32.load offset=8 (local.get $h)))
-    (if (i32.eqz (local.get $kind))
-      (then (return (i32.lt_s
-        (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
-        (i32.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 2))))))))
-    (if (i32.eq (local.get $kind) (i32.const 1))
-      (then (return (i64.lt_s
-        (i64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
-        (i64.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 3))))))))
-    (if (i32.eq (local.get $kind) (i32.const 2))
-      (then (return (f32.lt
-        (f32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
-        (f32.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 2))))))))
-    (f64.lt
-      (f64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
-      (f64.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 3))))))
+  ;; Sorting. Each number becomes a key, an unsigned integer in the same
+  ;; order; the keys are sorted, then turned back into numbers. The order is
+  ;; JavaScript's for typed arrays: -0 before +0, and every NaN last, whatever
+  ;; its sign; a NaN comes back as the canonical one, as WebAssembly does not
+  ;; fix the bits of a NaN either.
 
-  ;; Moves the element at `root` down the heap of the first `end` elements.
-  (func $sift (param $h i32) (param $root i32) (param $end i32) (param $kind i32) (param $es i32)
-    (local $child i32)
+  ;; The key of a 32-bit number: the sign bit flipped for an integer; for a
+  ;; float, every bit flipped when it is negative, else the sign bit, and the
+  ;; largest key for a NaN.
+  (func $key32 (param $x i32) (param $float i32) (result i32)
+    (if (i32.eqz (local.get $float))
+      (then (return (i32.xor (local.get $x) (i32.const 0x80000000)))))
+    (if (i32.gt_u (i32.and (local.get $x) (i32.const 0x7fffffff)) (i32.const 0x7f800000))
+      (then (return (i32.const -1))))
+    (if (result i32) (i32.lt_s (local.get $x) (i32.const 0))
+      (then (i32.xor (local.get $x) (i32.const -1)))
+      (else (i32.xor (local.get $x) (i32.const 0x80000000)))))
+
+  (func $unkey32 (param $k i32) (param $float i32) (result i32)
+    (if (i32.eqz (local.get $float))
+      (then (return (i32.xor (local.get $k) (i32.const 0x80000000)))))
+    (if (i32.eq (local.get $k) (i32.const -1))
+      (then (return (i32.const 0x7fc00000))))
+    ;; The sign bit set: the number was positive.
+    (if (result i32) (i32.lt_s (local.get $k) (i32.const 0))
+      (then (i32.xor (local.get $k) (i32.const 0x80000000)))
+      (else (i32.xor (local.get $k) (i32.const -1)))))
+
+  (func $key64 (param $x i64) (param $float i32) (result i64)
+    (if (i32.eqz (local.get $float))
+      (then (return (i64.xor (local.get $x) (i64.const 0x8000000000000000)))))
+    (if (i64.gt_u (i64.and (local.get $x) (i64.const 0x7fffffffffffffff))
+          (i64.const 0x7ff0000000000000))
+      (then (return (i64.const -1))))
+    (if (result i64) (i64.lt_s (local.get $x) (i64.const 0))
+      (then (i64.xor (local.get $x) (i64.const -1)))
+      (else (i64.xor (local.get $x) (i64.const 0x8000000000000000)))))
+
+  (func $unkey64 (param $k i64) (param $float i32) (result i64)
+    (if (i32.eqz (local.get $float))
+      (then (return (i64.xor (local.get $k) (i64.const 0x8000000000000000)))))
+    (if (i64.eq (local.get $k) (i64.const -1))
+      (then (return (i64.const 0x7ff8000000000000))))
+    (if (result i64) (i64.lt_s (local.get $k) (i64.const 0))
+      (then (i64.xor (local.get $k) (i64.const 0x8000000000000000)))
+      (else (i64.xor (local.get $k) (i64.const -1)))))
+
+  ;; Insertion sort of the `n` keys at `data`: for a few keys, where counting
+  ;; costs more than it saves.
+  (func $insert32 (param $data i32) (param $n i32)
+    (local $i i32) (local $at i32) (local $k i32) (local $prev i32)
+    (local.set $i (i32.const 1))
     (block $done
       (loop $next
-        (local.set $child (i32.add (i32.shl (local.get $root) (i32.const 1)) (i32.const 1)))
-        (br_if $done (i32.ge_s (local.get $child) (local.get $end)))
-        (if (i32.lt_s (i32.add (local.get $child) (i32.const 1)) (local.get $end))
-          (then (if (call $below (local.get $h) (local.get $child) (i32.add (local.get $child) (i32.const 1)) (local.get $kind))
-            (then (local.set $child (i32.add (local.get $child) (i32.const 1)))))))
-        (br_if $done (i32.eqz (call $below (local.get $h) (local.get $root) (local.get $child) (local.get $kind))))
-        (call $swap (local.get $h) (local.get $root) (local.get $child) (local.get $es))
-        (local.set $root (local.get $child))
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+        (local.set $k (i32.load (local.get $at)))
+        (block $placed
+          (loop $shift
+            (br_if $placed (i32.eq (local.get $at) (local.get $data)))
+            (local.set $prev (i32.load (i32.sub (local.get $at) (i32.const 4))))
+            (br_if $placed (i32.le_u (local.get $prev) (local.get $k)))
+            (i32.store (local.get $at) (local.get $prev))
+            (local.set $at (i32.sub (local.get $at) (i32.const 4)))
+            (br $shift)))
+        (i32.store (local.get $at) (local.get $k))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next))))
 
-  ;; Sorts the numbers of `h` in increasing order, in place: heapsort, in
-  ;; time n log n, without allocating.
-  (func (export "arr_sort") (param $h i32) (param $kind i32)
-    (local $n i32) (local $i i32) (local $es i32)
-    (local.set $n (i32.load (local.get $h)))
-    (local.set $es (call $element_size (local.get $h)))
-    (local.set $i (i32.sub (i32.shr_u (local.get $n) (i32.const 1)) (i32.const 1)))
-    (block $built
+  (func $insert64 (param $data i32) (param $n i32)
+    (local $i i32) (local $at i32) (local $k i64) (local $prev i64)
+    (local.set $i (i32.const 1))
+    (block $done
       (loop $next
-        (br_if $built (i32.lt_s (local.get $i) (i32.const 0)))
-        (call $sift (local.get $h) (local.get $i) (local.get $n) (local.get $kind) (local.get $es))
-        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
-        (br $next)))
-    (local.set $i (i32.sub (local.get $n) (i32.const 1)))
-    (block $sorted
-      (loop $next
-        (br_if $sorted (i32.le_s (local.get $i) (i32.const 0)))
-        (call $swap (local.get $h) (i32.const 0) (local.get $i) (local.get $es))
-        (call $sift (local.get $h) (i32.const 0) (local.get $i) (local.get $kind) (local.get $es))
-        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+        (local.set $k (i64.load (local.get $at)))
+        (block $placed
+          (loop $shift
+            (br_if $placed (i32.eq (local.get $at) (local.get $data)))
+            (local.set $prev (i64.load (i32.sub (local.get $at) (i32.const 8))))
+            (br_if $placed (i64.le_u (local.get $prev) (local.get $k)))
+            (i64.store (local.get $at) (local.get $prev))
+            (local.set $at (i32.sub (local.get $at) (i32.const 8)))
+            (br $shift)))
+        (i64.store (local.get $at) (local.get $k))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next))))
+
+  ;; LSD radix sort of the `n` keys at `data`, 3 digits of 11 bits, through a
+  ;; scratch block as large, plus 3 tables of 2048 counts. A digit that is
+  ;; the same in every key, as the high bits of small numbers, is skipped.
+  (func $radix32 (param $data i32) (param $n i32)
+    (local $block i32) (local $counts i32) (local $src i32) (local $dst i32)
+    (local $i i32) (local $d i32) (local $b i32) (local $at i32) (local $sum i32) (local $c i32)
+    (local $shift i32) (local $k i32) (local $bytes i32)
+    (local.set $bytes (call $bytes (local.get $n) (i32.const 4) (i32.const 0)))
+    (local.set $block (call $alloc
+      (i32.add (local.get $bytes) (i32.const 24576)) (i32.const 0)))
+    (local.set $counts (i32.add (local.get $block) (local.get $bytes)))
+    (memory.fill (local.get $counts) (i32.const 0) (i32.const 24576))
+    ;; Every digit's counts, in one reading of the keys.
+    (local.set $i (i32.const 0))
+    (block $counted
+      (loop $next
+        (br_if $counted (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $k (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2)))))
+        (local.set $d (i32.const 0))
+        (block $digits
+          (loop $digit
+            (br_if $digits (i32.ge_u (local.get $d) (i32.const 3)))
+            (local.set $at (i32.add
+              (i32.add (local.get $counts) (i32.shl (local.get $d) (i32.const 13)))
+              (i32.shl (i32.and (i32.shr_u (local.get $k) (i32.mul (local.get $d) (i32.const 11))) (i32.const 2047)) (i32.const 2))))
+            (i32.store (local.get $at) (i32.add (i32.load (local.get $at)) (i32.const 1)))
+            (local.set $d (i32.add (local.get $d) (i32.const 1)))
+            (br $digit)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.set $src (local.get $data))
+    (local.set $dst (local.get $block))
+    (local.set $d (i32.const 0))
+    (block $passes
+      (loop $pass
+        (br_if $passes (i32.ge_u (local.get $d) (i32.const 3)))
+        (local.set $shift (i32.mul (local.get $d) (i32.const 11)))
+        (local.set $counts (i32.add (local.get $block)
+          (i32.add (local.get $bytes) (i32.shl (local.get $d) (i32.const 13)))))
+        ;; Skipped when one bucket holds every key.
+        (if (i32.ne (local.get $n)
+              (i32.load (i32.add (local.get $counts)
+                (i32.shl (i32.and (i32.shr_u (i32.load (local.get $src)) (local.get $shift)) (i32.const 2047)) (i32.const 2)))))
+          (then
+            ;; Where each bucket starts.
+            (local.set $sum (i32.const 0))
+            (local.set $b (i32.const 0))
+            (block $starts
+              (loop $start
+                (br_if $starts (i32.ge_u (local.get $b) (i32.const 2048)))
+                (local.set $at (i32.add (local.get $counts) (i32.shl (local.get $b) (i32.const 2))))
+                (local.set $c (i32.load (local.get $at)))
+                (i32.store (local.get $at) (local.get $sum))
+                (local.set $sum (i32.add (local.get $sum) (local.get $c)))
+                (local.set $b (i32.add (local.get $b) (i32.const 1)))
+                (br $start)))
+            ;; Each key to its bucket, in order: the sort is stable.
+            (local.set $i (i32.const 0))
+            (block $moved
+              (loop $move
+                (br_if $moved (i32.ge_u (local.get $i) (local.get $n)))
+                (local.set $k (i32.load (i32.add (local.get $src) (i32.shl (local.get $i) (i32.const 2)))))
+                (local.set $at (i32.add (local.get $counts)
+                  (i32.shl (i32.and (i32.shr_u (local.get $k) (local.get $shift)) (i32.const 2047)) (i32.const 2))))
+                (local.set $c (i32.load (local.get $at)))
+                (i32.store (local.get $at) (i32.add (local.get $c) (i32.const 1)))
+                (i32.store (i32.add (local.get $dst) (i32.shl (local.get $c) (i32.const 2))) (local.get $k))
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                (br $move)))
+            (local.set $c (local.get $src))
+            (local.set $src (local.get $dst))
+            (local.set $dst (local.get $c))))
+        (local.set $d (i32.add (local.get $d) (i32.const 1)))
+        (br $pass)))
+    (if (i32.ne (local.get $src) (local.get $data))
+      (then (memory.copy (local.get $data) (local.get $src) (local.get $bytes))))
+    (call $release (local.get $block) (i32.const 0)))
+
+  ;; LSD radix sort of the `n` keys at `data`, 6 digits of 11 bits, through a
+  ;; scratch block as large, plus 6 tables of 2048 counts. A digit that is
+  ;; the same in every key, as the high bits of small numbers, is skipped.
+  (func $radix64 (param $data i32) (param $n i32)
+    (local $block i32) (local $counts i32) (local $src i32) (local $dst i32)
+    (local $i i32) (local $d i32) (local $b i32) (local $at i32) (local $sum i32) (local $c i32)
+    (local $shift i32) (local $k i64) (local $bytes i32)
+    (local.set $bytes (call $bytes (local.get $n) (i32.const 8) (i32.const 0)))
+    (local.set $block (call $alloc
+      (i32.add (local.get $bytes) (i32.const 49152)) (i32.const 0)))
+    (local.set $counts (i32.add (local.get $block) (local.get $bytes)))
+    (memory.fill (local.get $counts) (i32.const 0) (i32.const 49152))
+    ;; Every digit's counts, in one reading of the keys.
+    (local.set $i (i32.const 0))
+    (block $counted
+      (loop $next
+        (br_if $counted (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $k (i64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3)))))
+        (local.set $d (i32.const 0))
+        (block $digits
+          (loop $digit
+            (br_if $digits (i32.ge_u (local.get $d) (i32.const 6)))
+            (local.set $at (i32.add
+              (i32.add (local.get $counts) (i32.shl (local.get $d) (i32.const 13)))
+              (i32.shl (i32.wrap_i64 (i64.and (i64.shr_u (local.get $k) (i64.extend_i32_u (i32.mul (local.get $d) (i32.const 11)))) (i64.const 2047))) (i32.const 2))))
+            (i32.store (local.get $at) (i32.add (i32.load (local.get $at)) (i32.const 1)))
+            (local.set $d (i32.add (local.get $d) (i32.const 1)))
+            (br $digit)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.set $src (local.get $data))
+    (local.set $dst (local.get $block))
+    (local.set $d (i32.const 0))
+    (block $passes
+      (loop $pass
+        (br_if $passes (i32.ge_u (local.get $d) (i32.const 6)))
+        (local.set $shift (i32.mul (local.get $d) (i32.const 11)))
+        (local.set $counts (i32.add (local.get $block)
+          (i32.add (local.get $bytes) (i32.shl (local.get $d) (i32.const 13)))))
+        ;; Skipped when one bucket holds every key.
+        (if (i32.ne (local.get $n)
+              (i32.load (i32.add (local.get $counts)
+                (i32.shl (i32.wrap_i64 (i64.and (i64.shr_u (i64.load (local.get $src)) (i64.extend_i32_u (local.get $shift))) (i64.const 2047))) (i32.const 2)))))
+          (then
+            ;; Where each bucket starts.
+            (local.set $sum (i32.const 0))
+            (local.set $b (i32.const 0))
+            (block $starts
+              (loop $start
+                (br_if $starts (i32.ge_u (local.get $b) (i32.const 2048)))
+                (local.set $at (i32.add (local.get $counts) (i32.shl (local.get $b) (i32.const 2))))
+                (local.set $c (i32.load (local.get $at)))
+                (i32.store (local.get $at) (local.get $sum))
+                (local.set $sum (i32.add (local.get $sum) (local.get $c)))
+                (local.set $b (i32.add (local.get $b) (i32.const 1)))
+                (br $start)))
+            ;; Each key to its bucket, in order: the sort is stable.
+            (local.set $i (i32.const 0))
+            (block $moved
+              (loop $move
+                (br_if $moved (i32.ge_u (local.get $i) (local.get $n)))
+                (local.set $k (i64.load (i32.add (local.get $src) (i32.shl (local.get $i) (i32.const 3)))))
+                (local.set $at (i32.add (local.get $counts)
+                  (i32.shl (i32.wrap_i64 (i64.and (i64.shr_u (local.get $k) (i64.extend_i32_u (local.get $shift))) (i64.const 2047))) (i32.const 2))))
+                (local.set $c (i32.load (local.get $at)))
+                (i32.store (local.get $at) (i32.add (local.get $c) (i32.const 1)))
+                (i64.store (i32.add (local.get $dst) (i32.shl (local.get $c) (i32.const 3))) (local.get $k))
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                (br $move)))
+            (local.set $c (local.get $src))
+            (local.set $src (local.get $dst))
+            (local.set $dst (local.get $c))))
+        (local.set $d (i32.add (local.get $d) (i32.const 1)))
+        (br $pass)))
+    (if (i32.ne (local.get $src) (local.get $data))
+      (then (memory.copy (local.get $data) (local.get $src) (local.get $bytes))))
+    (call $release (local.get $block) (i32.const 0)))
+
+  ;; Sorts the numbers of `h` in increasing order, in place: `kind` is 0 for
+  ;; `i32`, 1 `i64`, 2 `f32`, 3 `f64`. Below 64 numbers, an insertion sort;
+  ;; above, a radix sort in a constant number of passes, time n.
+  (func (export "arr_sort") (param $h i32) (param $kind i32)
+    (local $n i32) (local $data i32) (local $float i32) (local $i i32) (local $at i32)
+    (local.set $n (i32.load (local.get $h)))
+    (if (i32.lt_u (local.get $n) (i32.const 2)) (then (return)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $float (i32.ge_u (local.get $kind) (i32.const 2)))
+    (if (i32.and (local.get $kind) (i32.const 1))
+      (then
+        (local.set $i (i32.const 0))
+        (block $keyed
+          (loop $next
+            (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
+            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+            (i64.store (local.get $at) (call $key64 (i64.load (local.get $at)) (local.get $float)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next)))
+        (if (i32.lt_u (local.get $n) (i32.const 64))
+          (then (call $insert64 (local.get $data) (local.get $n)))
+          (else (call $radix64 (local.get $data) (local.get $n))))
+        (local.set $i (i32.const 0))
+        (block $back
+          (loop $next
+            (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
+            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+            (i64.store (local.get $at) (call $unkey64 (i64.load (local.get $at)) (local.get $float)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next))))
+      (else
+        (local.set $i (i32.const 0))
+        (block $keyed
+          (loop $next
+            (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
+            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+            (i32.store (local.get $at) (call $key32 (i32.load (local.get $at)) (local.get $float)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next)))
+        (if (i32.lt_u (local.get $n) (i32.const 64))
+          (then (call $insert32 (local.get $data) (local.get $n)))
+          (else (call $radix32 (local.get $data) (local.get $n))))
+        (local.set $i (i32.const 0))
+        (block $back
+          (loop $next
+            (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
+            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+            (i32.store (local.get $at) (call $unkey32 (i32.load (local.get $at)) (local.get $float)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next))))))
 
   ;; The index of the first string of `h` equal to `s`, or -1.
   (func (export "arr_index_of_str") (param $h i32) (param $s i32) (result i32)

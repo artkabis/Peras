@@ -554,6 +554,15 @@ impl Machine<'_> {
             }
             F::ArrSort => {
                 let elements = self.elements(first)?;
+                // JavaScript's order for typed arrays, as the runtime's: -0
+                // before +0, every NaN last, as the canonical NaN.
+                for v in elements.iter_mut() {
+                    match v {
+                        Value::F32(x) if x.is_nan() => *x = f32::NAN,
+                        Value::F64(x) if x.is_nan() => *x = f64::NAN,
+                        _ => {}
+                    }
+                }
                 elements.sort_by(|a, b| match (a, b) {
                     (Value::I32(x), Value::I32(y)) => x.cmp(y),
                     (Value::I64(x), Value::I64(y)) => x.cmp(y),

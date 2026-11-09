@@ -44,7 +44,7 @@ What the results say, today:
 - **Floating-point arithmetic alone** (Mandelbrot): the same speed (0.98 to 1.07 between runs). V8 already compiles such JavaScript very well, and Peras checks every index and every integer operation.
 - **Structures** (n-body): 1.5 to 1.8 times faster. An array of structures is stored by columns in linear memory, where JavaScript has an object per element.
 - **64-bit integers**: about 20 times faster. JavaScript has only `BigInt`, which allocates.
-- **Sorting**: 2.3 times slower than `Float64Array.prototype.sort`, which V8 runs as native code, but 2 times faster than the usual `array.sort((a, b) => a - b)`. The runtime's heapsort is the next thing to improve.
+- **Sorting**: 4.2 times faster than `Float64Array.prototype.sort`, which V8 runs as native code, and 17 times faster than the usual `array.sort((a, b) => a - b)`. The runtime sorts numbers by their bits, a radix sort in a few passes, where a comparison sort needs about 20 comparisons per number; it was a heapsort, 2.3 times slower than V8, before.
 - **Text**: 3.4 times slower. The string is encoded in UTF-8 to cross into the module at every call, and each part of `split` is a new block. Text should stay on the side where it is used.
 - **Calls**: a call into the module costs about 1.4 times a JavaScript call, which V8 inlines. Work should cross the boundary in large pieces.
 - **Start**: about 10 KiB gzip more to download, and the import takes about twice as long (17 ms against 9), mostly the allocator inlined in the loader. It is paid once per module.

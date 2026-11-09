@@ -1,0 +1,16 @@
+// Sorting in place, by the runtime, on arrays JavaScript lends.
+export fn sortF64(xs: inout Array<f64>): void {
+  xs.sort();
+}
+
+export fn sortF32(xs: inout Array<f32>): void {
+  xs.sort();
+}
+
+export fn sortI32(xs: inout Array<i32>): void {
+  xs.sort();
+}
+
+export fn sortI64(xs: inout Array<i64>): void {
+  xs.sort();
+}
