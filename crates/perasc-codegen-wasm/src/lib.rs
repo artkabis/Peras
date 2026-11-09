@@ -9,6 +9,8 @@
 
 use std::fmt::Write as _;
 
+mod simd;
+
 use perasc_ir::{
     BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MathOp,
     Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
@@ -272,6 +274,8 @@ struct FnEncoder<'a> {
     temp_f64: u32,
     /// The buffer a string literal is copied into.
     temp_buffer: u32,
+    /// The first of the vector locals of the function's vector loops.
+    temp_v128: u32,
     /// The bytes of each literal, for their lengths.
     data: &'a [Vec<u8>],
 }
@@ -302,6 +306,10 @@ impl<'a> FnEncoder<'a> {
         ] {
             locals.push((1, ty));
         }
+        let vectors = simd::vectors_needed(&function.body);
+        if vectors > 0 {
+            locals.push((vectors, simd::V128));
+        }
         let mut encoder = Self {
             out: WasmFunction::new(locals),
             frames: Vec::new(),
@@ -317,6 +325,7 @@ impl<'a> FnEncoder<'a> {
             temp_f32: count + 3,
             temp_f64: count + 4,
             temp_buffer: count + 5,
+            temp_v128: count + 6,
             data,
         };
         encoder.stmts(&function.body);
@@ -459,6 +468,10 @@ impl<'a> FnEncoder<'a> {
     /// `block $break { br_if $break !cond; loop $top { block $continue { body } step;
     /// br_if $top cond } }`; without a condition, the bottom is `br $top`.
     fn loop_(&mut self, cond: Option<&Expr>, body: &[Stmt], step: &[Stmt]) {
+        // Several turns at once first, when they are independent.
+        if let (Some(plan), Some(cond)) = (simd::plan(cond, body, step), cond) {
+            self.vector_loop(&plan, cond, body);
+        }
         self.emit(&I::Block(BlockType::Empty));
         self.frames.push(Frame::Break);
         if let Some(cond) = cond {

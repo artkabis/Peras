@@ -70,6 +70,20 @@ xs.release(); // gives its memory back
 
 On a million `f32`, `sum` goes from 5.2 to 1.5 ms, and `scale`, which changes its array, from 11.5 to 0.8 ms: the copies were most of the time.
 
+## Vector loops
+
+A loop whose turns are independent runs four `i32` or `f32`, or two `f64`, at once, with WebAssembly's 128-bit vectors; the loop as written finishes the last turns. The result is exactly the one the loop as written gives: Peras vectorizes only what every lane computes the same way. In `bench/browser`, a grayscale filter on 4 million pixels goes from about 10 to 5 ms, twice as fast as the same JavaScript.
+
+```peras build
+export fn gain(samples: inout Array<f32>, g: f32): void {
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = samples[i] * g;
+  }
+}
+```
+
+A module that has such a loop needs WebAssembly vectors (SIMD): Chrome and Edge 91, Firefox 89, Safari 16.4, Node 16.4 and later.
+
 ## With Vite
 
 ```ts

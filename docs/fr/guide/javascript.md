@@ -70,6 +70,20 @@ xs.release(); // rend sa mémoire
 
 Sur un million de `f32`, `sum` passe de 5,2 à 1,5 ms, et `scale`, qui modifie son tableau, de 11,5 à 0,8 ms : les copies faisaient l'essentiel du temps.
 
+## Les boucles vectorielles
+
+Une boucle dont les tours sont indépendants calcule quatre `i32` ou `f32`, ou deux `f64`, à la fois, avec les vecteurs de 128 bits de WebAssembly ; la boucle telle qu’écrite termine les derniers tours. Le résultat est exactement celui de la boucle telle qu’écrite : Peras ne vectorise que ce que chaque voie calcule de la même façon. Dans `bench/browser`, un filtre de gris sur 4 millions de pixels passe d’environ 10 à 5 ms, deux fois plus vite que le même JavaScript.
+
+```peras build
+export fn gain(samples: inout Array<f32>, g: f32): void {
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = samples[i] * g;
+  }
+}
+```
+
+Un module qui contient une telle boucle demande les vecteurs de WebAssembly (SIMD) : Chrome et Edge 91, Firefox 89, Safari 16.4, Node 16.4 et suivants.
+
 ## Avec Vite
 
 ```ts
