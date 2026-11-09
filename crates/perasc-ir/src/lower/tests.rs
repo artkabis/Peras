@@ -69,7 +69,6 @@ fn every_unsupported_construct_is_reported_with_its_name() {
         ),
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
         ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
-        ("fn f(x: f64): f64 { return x.sin(); }", "method"),
     ] {
         let errors = lowered(source).err().unwrap_or_default();
         assert!(!errors.is_empty(), "{source}: no error");

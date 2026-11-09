@@ -149,6 +149,7 @@ fn the_method_reference_lists_exactly_the_built_in_methods() {
     let receivers = [
         Ty::Int(IntTy::I32),
         Ty::Float(FloatTy::F64),
+        Ty::Bool,
         Ty::Array(Box::new(Ty::Int(IntTy::I32))),
         Ty::String,
         Ty::Option(Box::new(Ty::Int(IntTy::I32))),

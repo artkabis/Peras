@@ -1,0 +1,28 @@
+// Numbers and booleans as text, and text as integers, by the runtime.
+export fn wide(n: i64): String {
+  return n.toString();
+}
+
+export fn narrow(n: i32): String {
+  return n.toString();
+}
+
+export fn real(x: f64): String {
+  return x.toString();
+}
+
+export fn single(x: f32): String {
+  return `${x}`;
+}
+
+export fn flag(b: bool): String {
+  return b.toString();
+}
+
+export fn readI32(s: String): Option<i32> {
+  return s.parseI32();
+}
+
+export fn readI64(s: String): Option<i64> {
+  return s.parseI64();
+}

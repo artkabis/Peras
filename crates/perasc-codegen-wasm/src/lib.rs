@@ -9,9 +9,11 @@
 
 use std::fmt::Write as _;
 
+mod simd;
+
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, JsShape, MathOp, Module, Pass,
-    Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MathOp,
+    Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
@@ -43,18 +45,43 @@ const BUF_RESERVE: u32 = 3;
 const BUF_RELEASE: u32 = 4;
 const BOUNDS: u32 = 5;
 const BUF_CLONE: u32 = 6;
-const IMPORTED: u32 = 7;
+/// The first function of the runtime on strings, [`RuntimeFn::ALL`] in order.
+const RUNTIME_FIRST: u32 = 7;
+#[allow(clippy::cast_possible_truncation)]
+const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// Added to an element size: the elements are buffers the buffer owns
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 4;
+const IMPORT_TYPES: u32 = 9;
+/// The module JavaScript's `Math` is imported as.
+pub const HOST_MODULE: &str = "Math";
+/// The function types of the imports from `Math`.
+const HOST_TYPES: u32 = 2;
+
+/// Where the functions imported from `Math` are.
+#[derive(Clone, Copy)]
+struct Host<'m> {
+    /// The index of the first one.
+    first: u32,
+    /// Those the module imports, in order.
+    math: &'m [HostMath],
+}
+
+impl Host<'_> {
+    fn index(self, h: HostMath) -> u32 {
+        let position = self.math.iter().position(|&m| m == h).unwrap_or(0);
+        self.first + u32::try_from(position).unwrap_or(0)
+    }
+}
 
 /// A compiled module, and what its allocation sites are.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Compiled {
     /// The WebAssembly binary.
     pub wasm: Vec<u8>,
+    /// Whether it uses WebAssembly SIMD: a loop runs several turns at once.
+    pub vectors: bool,
     /// What each allocation or release site is, for messages: `sites[n - 1]` is
     /// site `n`, the number passed to the allocator; 0 means unknown.
     pub sites: Vec<String>,
@@ -66,52 +93,116 @@ pub fn compile(module: &Module) -> Vec<u8> {
     compile_module(module).wasm
 }
 
-/// Encodes a module, and numbers its allocation sites.
+/// [`compile_for`] with WebAssembly SIMD, the default.
+#[must_use]
+pub fn compile_module(module: &Module) -> Compiled {
+    compile_for(module, true)
+}
+
+/// Declares the runtime's types and imports: the heap, buffers and memory.
+fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
+    use ValType::I32 as T;
+    types.ty().function([T, T], [T]);
+    types.ty().function([T, T], []);
+    types.ty().function([T, T, T], [T]);
+    types.ty().function([T, T, T, T], []);
+    types.ty().function([T], [T]);
+    types.ty().function([T], []);
+    types.ty().function([ValType::I64], [T]);
+    types.ty().function([T], [ValType::I64]);
+    types.ty().function([ValType::F64, T], [T]);
+    for (name, ty) in [
+        ("alloc", 0),
+        ("release", 1),
+        ("buf_new", 2),
+        ("buf_reserve", 3),
+        ("buf_release", 1),
+        ("bounds", 1),
+        ("buf_clone", 0),
+    ] {
+        imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
+    }
+    for f in RuntimeFn::ALL {
+        // `fmt_int` takes an `i64`, `fmt_float` an `f64`, and `str_parse_int`
+        // gives an `i64`; the others take and give `i32` only: their type by
+        // count.
+        let ty = match (f.operands().len(), f.result() == Ty::Void) {
+            _ if f.receiver() == Ty::I64 => 6,
+            _ if f.receiver() == Ty::F64 => 8,
+            _ if f.result() == Ty::I64 => 7,
+            (0, false) => 4,
+            (1, false) => 0,
+            (_, false) => 2,
+            (0, true) => 5,
+            (_, true) => 1,
+        };
+        imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
+    }
+    // The allocator's memory, which buffers live in.
+    imports.import(
+        RUNTIME_MODULE,
+        "memory",
+        EntityType::Memory(MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        }),
+    );
+}
+
+/// Declares the host's `Math` functions the module calls, after the heap's types.
+fn math_imports_into(
+    types: &mut TypeSection,
+    imports: &mut ImportSection,
+    math: &[HostMath],
+    heap: bool,
+) {
+    // `(f64) -> f64` and `(f64, f64) -> f64`, after the heap's types.
+    let first = if heap { IMPORT_TYPES } else { 0 };
+    types.ty().function([ValType::F64], [ValType::F64]);
+    types
+        .ty()
+        .function([ValType::F64, ValType::F64], [ValType::F64]);
+    for &h in math {
+        let ty = first + u32::from(h.binary());
+        imports.import(HOST_MODULE, h.name(), EntityType::Function(ty));
+    }
+}
+
+/// Encodes a module, and numbers its allocation sites. With `simd`, loops
+/// whose turns are independent also run several turns at once, with
+/// WebAssembly SIMD; without, the module uses none of it.
 ///
 /// A module that uses the heap imports `alloc(size, site) -> ptr` and
 /// `release(ptr, site)` from [`RUNTIME_MODULE`], the debug allocator of
 /// `perasc-runtime`; the imports come first, so its own functions follow them.
 #[must_use]
-pub fn compile_module(module: &Module) -> Compiled {
+pub fn compile_for(module: &Module, simd: bool) -> Compiled {
     let mut types = TypeSection::new();
     let mut imports = ImportSection::new();
     let mut functions = FunctionSection::new();
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
     let heap = module.uses_heap();
-    let offset = if heap { IMPORTED } else { 0 };
-    let type_offset = if heap { IMPORT_TYPES } else { 0 };
+    let math = module.host_math();
+    let heap_imports = if heap { IMPORTED } else { 0 };
+    let offset = heap_imports + u32::try_from(math.len()).unwrap_or(0);
+    let type_offset =
+        if heap { IMPORT_TYPES } else { 0 } + if math.is_empty() { 0 } else { HOST_TYPES };
     if heap {
-        use ValType::I32 as T;
-        types.ty().function([T, T], [T]);
-        types.ty().function([T, T], []);
-        types.ty().function([T, T, T], [T]);
-        types.ty().function([T, T, T, T], []);
-        for (name, ty) in [
-            ("alloc", 0),
-            ("release", 1),
-            ("buf_new", 2),
-            ("buf_reserve", 3),
-            ("buf_release", 1),
-            ("bounds", 1),
-            ("buf_clone", 0),
-        ] {
-            imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
-        }
-        // The allocator's memory, which buffers live in.
-        imports.import(
-            RUNTIME_MODULE,
-            "memory",
-            EntityType::Memory(MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
+        heap_imports_into(&mut types, &mut imports);
     }
+    if !math.is_empty() {
+        math_imports_into(&mut types, &mut imports, &math, heap);
+    }
+    let host = Host {
+        first: heap_imports,
+        math: &math,
+    };
     let mut sites = Vec::new();
+    let mut vectors = false;
     for (position, function) in module.functions.iter().enumerate() {
         let position = u32::try_from(position).unwrap_or(u32::MAX);
         let index = position + offset;
@@ -127,16 +218,18 @@ pub fn compile_module(module: &Module) -> Compiled {
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
+        vectors |= simd && simd::vectorizes(&function.body);
         code.function(&FnEncoder::encode(
             function,
-            offset,
+            (offset, simd),
+            host,
             &mut sites,
             &module.data,
         ));
     }
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
-    if heap {
+    if heap || !math.is_empty() {
         wasm.section(&imports);
     }
     wasm.section(&functions).section(&exports);
@@ -155,6 +248,7 @@ pub fn compile_module(module: &Module) -> Compiled {
     }
     Compiled {
         wasm: wasm.finish(),
+        vectors,
         sites,
     }
 }
@@ -179,6 +273,8 @@ struct FnEncoder<'a> {
     frames: Vec<Frame>,
     /// Index of the module's first own function: the imports come before.
     offset: u32,
+    /// The functions imported from `Math`.
+    host: Host<'a>,
     /// The function's name, and how many sites of each kind it has so far.
     name: &'a str,
     allocs: u32,
@@ -194,6 +290,10 @@ struct FnEncoder<'a> {
     temp_f64: u32,
     /// The buffer a string literal is copied into.
     temp_buffer: u32,
+    /// The first of the vector locals of the function's vector loops.
+    temp_v128: u32,
+    /// Whether loops may run several turns at once.
+    simd: bool,
     /// The bytes of each literal, for their lengths.
     data: &'a [Vec<u8>],
 }
@@ -201,7 +301,8 @@ struct FnEncoder<'a> {
 impl<'a> FnEncoder<'a> {
     fn encode(
         function: &'a Function,
-        offset: u32,
+        (offset, simd): (u32, bool),
+        host: Host<'a>,
         sites: &'a mut Vec<String>,
         data: &'a [Vec<u8>],
     ) -> WasmFunction {
@@ -223,10 +324,19 @@ impl<'a> FnEncoder<'a> {
         ] {
             locals.push((1, ty));
         }
+        let vectors = if simd {
+            simd::vectors_needed(&function.body)
+        } else {
+            0
+        };
+        if vectors > 0 {
+            locals.push((vectors, simd::V128));
+        }
         let mut encoder = Self {
             out: WasmFunction::new(locals),
             frames: Vec::new(),
             offset,
+            host,
             name: &function.name,
             allocs: 0,
             releases: 0,
@@ -237,6 +347,8 @@ impl<'a> FnEncoder<'a> {
             temp_f32: count + 3,
             temp_f64: count + 4,
             temp_buffer: count + 5,
+            temp_v128: count + 6,
+            simd,
             data,
         };
         encoder.stmts(&function.body);
@@ -379,6 +491,10 @@ impl<'a> FnEncoder<'a> {
     /// `block $break { br_if $break !cond; loop $top { block $continue { body } step;
     /// br_if $top cond } }`; without a condition, the bottom is `br $top`.
     fn loop_(&mut self, cond: Option<&Expr>, body: &[Stmt], step: &[Stmt]) {
+        // Several turns at once first, when they are independent.
+        if let (true, Some(plan), Some(cond)) = (self.simd, simd::plan(cond, body, step), cond) {
+            self.vector_loop(&plan, cond, body);
+        }
         self.emit(&I::Block(BlockType::Empty));
         self.frames.push(Frame::Break);
         if let Some(cond) = cond {
@@ -530,6 +646,16 @@ impl<'a> FnEncoder<'a> {
                 self.emit(&I::I32Store(mem(0, 4)));
                 self.emit(&I::LocalGet(self.temp_buffer));
             }
+            (BufOp::Runtime(f), operands) => {
+                for operand in operands {
+                    self.expr(operand);
+                }
+                if f.result() == Ty::Owned {
+                    // A new buffer: its site, for the allocator's messages.
+                    let _ = self.alloc_site();
+                }
+                self.emit(&I::Call(RUNTIME_FIRST + f.position()));
+            }
             // The verifier refuses any other shape.
             _ => self.emit(&I::Unreachable),
         }
@@ -608,12 +734,23 @@ impl<'a> FnEncoder<'a> {
                 };
                 self.expr(value);
                 self.emit(&I::LocalSet(temp));
+                // Room is made by the runtime only when the buffer is full: a
+                // call into another module, which most pushes do not need.
+                let site = self.alloc_site();
+                self.expr(buffer);
+                self.emit(&I::I32Load(mem(0, 4)));
+                self.expr(buffer);
+                self.emit(&I::I32Load(mem(4, 4)));
+                self.emit(&I::I32GeU);
+                self.emit(&I::If(BlockType::Empty));
+                self.frames.push(Frame::Other);
                 self.expr(buffer);
                 self.emit(&I::I32Const(1));
                 self.emit(&I::I32Const(i32::try_from(elem.size()).unwrap_or(1)));
-                let site = self.alloc_site();
                 self.emit(&I::I32Const(site));
                 self.emit(&I::Call(BUF_RESERVE));
+                self.frames.pop();
+                self.emit(&I::End);
                 let len = Expr {
                     kind: ExprKind::Buf(BufOp::Len, vec![buffer.clone()]),
                     ty: Ty::I32,
@@ -729,6 +866,15 @@ impl<'a> FnEncoder<'a> {
         }
         self.expr(lhs);
         self.expr(rhs);
+        if matches!(op, BinOp::Pow | BinOp::Atan2) {
+            let h = if op == BinOp::Pow {
+                HostMath::Pow
+            } else {
+                HostMath::Atan2
+            };
+            self.host_call(h, lhs.ty);
+            return;
+        }
         let instruction = match lhs.ty {
             Ty::I32 | Ty::Bool | Ty::Owned | Ty::Borrowed => int32(op),
             Ty::I64 => int64(op),
@@ -740,6 +886,10 @@ impl<'a> FnEncoder<'a> {
 
     fn math(&mut self, op: MathOp, operand: &Expr) {
         self.expr(operand);
+        if let Some(h) = op.host() {
+            self.host_call(h, operand.ty);
+            return;
+        }
         let instruction = match (op, operand.ty) {
             (MathOp::Abs, Ty::I32) => return self.int_abs(false),
             (MathOp::Abs, Ty::I64) => return self.int_abs(true),
@@ -751,8 +901,29 @@ impl<'a> FnEncoder<'a> {
             (MathOp::Sqrt, _) => I::F64Sqrt,
             (MathOp::Floor, _) => I::F64Floor,
             (MathOp::Ceil, _) => I::F64Ceil,
+            // Computed by `Math`, above.
+            _ => I::Unreachable,
         };
         self.emit(&instruction);
+    }
+
+    /// A function of `Math` on the operands on the stack, of type `ty`: an
+    /// `f32` goes through `f64`, as JavaScript computes.
+    fn host_call(&mut self, h: HostMath, ty: Ty) {
+        let narrow = ty == Ty::F32;
+        if narrow && h.binary() {
+            // The second operand is on top: widened through a scratch local.
+            self.emit(&I::LocalSet(self.temp_f32));
+            self.emit(&I::F64PromoteF32);
+            self.emit(&I::LocalGet(self.temp_f32));
+        }
+        if narrow {
+            self.emit(&I::F64PromoteF32);
+        }
+        self.emit(&I::Call(self.host.index(h)));
+        if narrow {
+            self.emit(&I::F32DemoteF64);
+        }
     }
 
     /// `x < 0 ? 0 - x : x`, wrapping for the smallest value, with a scratch local.
@@ -828,6 +999,7 @@ const fn int32(op: BinOp) -> I<'static> {
         BinOp::Le => I::I32LeS,
         BinOp::Gt => I::I32GtS,
         BinOp::Ge => I::I32GeS,
+        BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
 
@@ -849,6 +1021,7 @@ const fn int64(op: BinOp) -> I<'static> {
         BinOp::Le => I::I64LeS,
         BinOp::Gt => I::I64GtS,
         BinOp::Ge => I::I64GeS,
+        BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
 
@@ -916,7 +1089,7 @@ pub const EXPORTS_MARKER: &str = "// perasc:exports (needs `$instance`)";
 /// What a loader needs to link the debug allocator into a module using the heap.
 #[derive(Debug, Clone, Copy)]
 pub struct Runtime<'a> {
-    /// The allocator module: `perasc_runtime::DEBUG_ALLOCATOR`.
+    /// The allocator module: `perasc_runtime::DEBUG_ALLOCATOR` or the TLSF one.
     pub allocator: &'a [u8],
     /// The sites of the module, from [`compile_module`].
     pub sites: &'a [String],
@@ -925,7 +1098,14 @@ pub struct Runtime<'a> {
     pub faults: &'a [String],
     /// The message of an index out of bounds, with `{index}` and `{length}`.
     pub bounds: &'a str,
+    /// When the module uses WebAssembly SIMD, in its runtime or its loops:
+    /// the message thrown before loading it where the engine has none.
+    pub simd: Option<&'a str>,
 }
+
+/// The smallest module that uses WebAssembly SIMD, `v128.const` in a
+/// function: an engine that validates it has SIMD.
+const SIMD_PROBE: &str = "0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,22,1,20,0,253,12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,11";
 
 /// A JavaScript ES module that loads the `.wasm` file next to it and exports its
 /// functions; `bool` results become JavaScript booleans. A module that uses the
@@ -937,12 +1117,19 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         "// Generated by perasc. Loads {wasm_file} and exports its functions.\n{IMPORTS_MARKER}\n"
     );
     let heap = module.uses_heap();
+    if let Some(message) = runtime.and_then(|r| r.simd) {
+        let _ = writeln!(
+            js,
+            "if (!WebAssembly.validate(new Uint8Array([{SIMD_PROBE}]))) throw new Error({});",
+            js_string(message)
+        );
+    }
     match runtime.filter(|_| heap) {
         Some(runtime) => js.push_str(&runtime_imports(runtime)),
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
-        None => js.push_str("const $imports = {};\n"),
+        None => js.push_str("const $imports = { Math };\n"),
     }
     let _ = write!(
         js,
@@ -979,7 +1166,9 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         js.push_str(
             "export const __perasHeap = {\n  \
              live: () => $runtime.live_count(),\n  \
-             checkLeaks: () => $runtime.check_leaks(),\n};\n",
+             checkLeaks: () => $runtime.check_leaks(),\n  \
+             array: $array,\n};\n\
+             export { PerasArray };\n",
         );
     }
     js
@@ -1030,6 +1219,13 @@ fn object_wrapper(name: &str, shape: &JsShape) -> String {
     let pre = marshal.pre.join(" ");
     let body = if marshal.post.is_empty() {
         format!("{{ {pre} {body} }}")
+    } else if marshal.post.iter().any(|p| p.contains("$copyBack")) {
+        // A copy back that cannot be made is thrown after every buffer is
+        // released, so that none is left alive.
+        format!(
+            "{{ {pre} let $e; try {{ {body} }} finally {{ {} if ($e) throw $e; }} }}",
+            marshal.post.join(" ")
+        )
     } else {
         format!(
             "{{ {pre} try {{ {body} }} finally {{ {} }} }}",
@@ -1205,31 +1401,42 @@ const fn elem_kind(elem: Elem) -> &'static str {
     }
 }
 
+/// An array of scalars passed as a parameter: copied into a new buffer, or
+/// a `PerasArray` passed as it is.
+fn flatten_array(path: &str, elem: Elem, pass: Pass, optional: bool, out: &mut Marshal) {
+    let buffer = format!("$a{}", out.pre.len());
+    let kind = elem_kind(elem);
+    let values = if optional {
+        format!("({path} ?? [])")
+    } else {
+        path.to_owned()
+    };
+    // A `PerasArray` already lives in the module's memory: it is lent,
+    // or given to a `sink` parameter, with no copy.
+    let take = if pass == Pass::Sink { "$give" } else { "$lend" };
+    out.pre.push(format!(
+        "const {buffer} = {values} instanceof PerasArray ? {values}.{take}(\"{kind}\") : $toBuf({values}, \"{kind}\");"
+    ));
+    let copied = format!("!({values} instanceof PerasArray)");
+    if pass == Pass::Inout {
+        out.post.push(format!(
+            "if ({copied}) $e ??= $copyBack({path}, {buffer}, \"{kind}\");"
+        ));
+    }
+    // A `sink` parameter is released by the function itself.
+    if pass != Pass::Sink {
+        out.post
+            .push(format!("if ({copied}) $runtime.buf_release({buffer}, 0);"));
+    }
+    out.args.push(buffer);
+}
+
 /// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
 /// Inside an option, which JavaScript passes as `undefined` when it is empty,
 /// fields are read with `?.` and an absent scalar is zero.
 fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
     match shape {
-        Shape::Array(elem, pass) => {
-            let buffer = format!("$a{}", out.pre.len());
-            let kind = elem_kind(*elem);
-            let values = if optional {
-                format!("({path} ?? [])")
-            } else {
-                path.to_owned()
-            };
-            out.pre
-                .push(format!("const {buffer} = $toBuf({values}, \"{kind}\");"));
-            if *pass == Pass::Inout {
-                out.post
-                    .push(format!("$copyBack({path}, {buffer}, \"{kind}\");"));
-            }
-            // A `sink` parameter is released by the function itself.
-            if *pass != Pass::Sink {
-                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
-            }
-            out.args.push(buffer);
-        }
+        Shape::Array(elem, pass) => flatten_array(path, *elem, *pass, optional, out),
         Shape::Records(element, pass) => {
             // One column per scalar of an element: `(v) => v.x`, or a new
             // buffer for a string or an array inside it.
@@ -1415,7 +1622,8 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         .map(|s| js_string(&s))
         .collect();
     let imports = format!(
-        "// The debug allocator (decision 0001): a memory bug throws a PerasMemoryError.\n\
+        "// The allocator chosen at build time, inlined: debug (decision 0001) or TLSF\n\
+         // (decision 0002). A memory fault throws a PerasMemoryError.\n\
          const $faults = [{faults}];\n\
          const $sites = [{sites}];\n\
          const $site = (n) => $sites[n] ?? \"?\";\n\
@@ -1430,13 +1638,33 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          Object.assign(error, {{ kind, allocSite: $site(allocSite), releaseSite: $site(releaseSite) }});\n  \
          throw error;\n\
          }};\n\
+         let $memoryBytes = new Uint8Array(0);\n\
+         const $floatText = (x, single, at) => {{\n  \
+         let text = String(x);\n  \
+         if (single && Number.isFinite(x))\n    \
+         for (let p = 1; p < 10; p++) {{\n      \
+         const t = x.toPrecision(p);\n      \
+         if (Math.fround(Number(t)) === x) {{\n        \
+         text = String(Number(t));\n        \
+         break;\n      \
+         }}\n    \
+         }}\n  \
+         // One view of the memory, made again only when it has grown.\n  \
+         if ($memoryBytes.buffer !== $runtime.memory.buffer) $memoryBytes = new Uint8Array($runtime.memory.buffer);\n  \
+         for (let i = 0; i < text.length; i++) $memoryBytes[at + i] = text.charCodeAt(i);\n  \
+         return text.length;\n\
+         }};\n\
          const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
-         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault }} }})).instance.exports;\n\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }} }})).instance.exports;\n\
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
-         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, memory: $runtime.memory }} }};\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math }};\n\
 ",
+        strings = RuntimeFn::ALL.iter().fold(String::new(), |mut out, f| {
+            let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
+            out
+        }),
         bounds = js_string(runtime.bounds),
         faults = faults.join(", "),
         sites = sites.join(", "),
@@ -1489,16 +1717,67 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          $runtime.buf_release(h, 0);\n  \
          return out;\n\
          };\n\
+         // An array of numbers can also stay in the module's memory, and be\n\
+         // passed and read with no copy: a `PerasArray`, made by `__perasHeap.array`.\n\
+         const $typed = { i32: Int32Array, i64: BigInt64Array, f32: Float32Array, f64: Float64Array, bool: Int32Array, u8: Uint8Array };\n\
+         const $collected = new FinalizationRegistry((h) => $runtime.buf_release(h, 0));\n\
+         class PerasArray {\n  \
+         #h; #kind;\n  \
+         constructor(h, kind) { this.#h = h; this.#kind = kind; $collected.register(this, h, this); }\n  \
+         get kind() { return this.#kind; }\n  \
+         get length() { return new DataView($runtime.memory.buffer).getUint32(this.#check(), true); }\n  \
+         // A typed array over the elements, no copy: valid until the next call\n  \
+         // into the module, which may grow its memory or move the elements.\n  \
+         view() {\n    \
+         const h = this.#check();\n    \
+         const v = new DataView($runtime.memory.buffer);\n    \
+         return new $typed[this.#kind]($runtime.memory.buffer, v.getUint32(h + 8, true), v.getUint32(h, true));\n  \
+         }\n  \
+         toArray() { return $fromBuf(this.#check(), this.#kind); }\n  \
+         release() { const h = this.#check(); $collected.unregister(this); this.#h = 0; $runtime.buf_release(h, 0); }\n  \
+         $lend(kind) {\n    \
+         const h = this.#check();\n    \
+         if (kind !== this.#kind) throw new TypeError(`a PerasArray of ${this.#kind} where ${kind} is expected`);\n    \
+         return h;\n  \
+         }\n  \
+         $give(kind) { const h = this.$lend(kind); $collected.unregister(this); this.#h = 0; return h; }\n  \
+         #check() {\n    \
+         if (this.#h === 0) throw new Error(\"this PerasArray was released, or given to a sink parameter\");\n    \
+         return this.#h;\n  \
+         }\n\
+         }\n\
+         const $array = (kind, init) => {\n  \
+         if (!(kind in $typed)) throw new TypeError(`no PerasArray of ${kind}`);\n  \
+         if (typeof init !== \"number\") return new PerasArray($toBuf(init, kind), kind);\n  \
+         const [size] = $kinds[kind];\n  \
+         const h = $runtime.buf_new(init, size, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), init * size).fill(0);\n  \
+         view.setUint32(h, init, true);\n  \
+         return new PerasArray(h, kind);\n\
+         };\n\
          // Strings cross as UTF-8 bytes.\n\
          const $encoder = new TextEncoder();\n\
          const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
+         // Written straight into the module's memory: room for one byte per\n\
+         // character and an eighth more first, enough for English or French\n\
+         // in one block; then, if needed, for 3 bytes per character left.\n\
          const $toStr = (text) => {\n  \
-         const bytes = $encoder.encode(text);\n  \
-         const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
-         const view = new DataView($runtime.memory.buffer);\n  \
-         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
-         view.setUint32(h, bytes.length, true);\n  \
-         return h;\n\
+         let room = text.length + (text.length >>> 3);\n  \
+         const h = $runtime.buf_new(room, 1, 0);\n  \
+         let rest = text;\n  \
+         let done = 0;\n  \
+         for (;;) {\n    \
+         const view = new DataView($runtime.memory.buffer);\n    \
+         const into = new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true) + done, room);\n    \
+         const { read, written } = $encoder.encodeInto(rest, into);\n    \
+         done += written;\n    \
+         view.setUint32(h, done, true);\n    \
+         if (read === rest.length) return h;\n    \
+         rest = rest.slice(read);\n    \
+         room = rest.length * 3;\n    \
+         $runtime.buf_reserve(h, room, 1, 0);\n  \
+         }\n\
          };\n\
          const $readStr = (h) => {\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
@@ -1530,10 +1809,18 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          values.length = n;\n  \
          for (let i = 0; i < n; i++) values[i] = build(c, i);\n\
          };\n\
+         // The values of an `inout` array, back into the array JavaScript\n\
+         // passed; a typed array cannot change length: the error is returned.\n\
          const $copyBack = (values, h, kind) => {\n  \
          const out = $fromBuf(h, kind);\n  \
+         if (ArrayBuffer.isView(values)) {\n    \
+         if (values.length !== out.length) return new RangeError(`a ${values.constructor.name} of ${values.length} cannot become ${out.length} long: pass an array or a PerasArray`);\n    \
+         values.set(out);\n    \
+         return undefined;\n  \
+         }\n  \
          values.length = out.length;\n  \
-         for (let i = 0; i < out.length; i++) values[i] = out[i];\n\
+         for (let i = 0; i < out.length; i++) values[i] = out[i];\n  \
+         return undefined;\n\
          };\n";
 
 /// A JavaScript string literal.
@@ -1605,8 +1892,24 @@ pub fn dts(module: &Module) -> String {
     }
     if module.uses_heap() {
         out.push_str(
-            "/** Blocks still alive in the debug allocator, and a check that throws on a leak. */\n\
-             export declare const __perasHeap: { live(): number; checkLeaks(): void };\n",
+            "/** The kinds of number a `PerasArray` holds, and the typed array that views each. */\n\
+             export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array }\n\
+             /** An array of numbers in the module's memory, passed to its functions with no copy. */\n\
+             export declare class PerasArray<K extends keyof PerasKinds> {\n  \
+             readonly kind: K;\n  \
+             readonly length: number;\n  \
+             /** A view of the elements, with no copy; valid until the next call into the module. */\n  \
+             view(): PerasKinds[K];\n  \
+             toArray(): (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[];\n  \
+             /** Gives its memory back; released when collected otherwise. */\n  \
+             release(): void;\n\
+             }\n\
+             /** Blocks still alive, a check that throws on a leak, and arrays made in the module's memory. */\n\
+             export declare const __perasHeap: {\n  \
+             live(): number;\n  \
+             checkLeaks(): void;\n  \
+             array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[]): PerasArray<K>;\n\
+             };\n",
         );
     }
     for f in module.functions.iter().filter(|f| f.exported) {
@@ -1614,7 +1917,7 @@ pub fn dts(module: &Module) -> String {
             let params: Vec<String> = shape
                 .params
                 .iter()
-                .map(|(name, value)| format!("{name}: {}", ts_shape(value)))
+                .map(|(name, value)| format!("{name}: {}", ts_param(value)))
                 .collect();
             let result = shape
                 .result
@@ -1701,6 +2004,29 @@ fn ts_shape(shape: &Shape) -> String {
                 format!("{item}[]")
             }
         }
+    }
+}
+
+/// The TypeScript type of a parameter: an array of numbers can also be a
+/// typed array, copied in, or a `PerasArray`, passed with no copy.
+fn ts_param(shape: &Shape) -> String {
+    match shape {
+        Shape::Array(elem, _) => {
+            // A typed array of the same numbers is copied in, as an array is.
+            let typed = match elem {
+                Elem::I32 => " | Int32Array",
+                Elem::I64 => " | BigInt64Array",
+                Elem::F32 => " | Float32Array",
+                Elem::F64 => " | Float64Array",
+                Elem::Bool | Elem::U8 | Elem::Handle => "",
+            };
+            format!(
+                "{}{typed} | PerasArray<\"{}\">",
+                ts_shape(shape),
+                elem_kind(*elem)
+            )
+        }
+        other => ts_shape(other),
     }
 }
 

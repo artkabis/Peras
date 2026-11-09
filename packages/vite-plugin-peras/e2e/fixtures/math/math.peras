@@ -1,0 +1,12 @@
+// The functions of numbers imported from JavaScript's Math, and hypot.
+export fn polar(x: f64, y: f64): f64 {
+  return y.atan2(x) + x.hypot(y) + x.pow(2.0) + x.exp().log() + x.sin() * x.sin() + x.cos() * x.cos() + (x * 0.5).tan();
+}
+
+export fn rounded(x: f64): f64 {
+  return x.round();
+}
+
+export fn single(x: f32): f32 {
+  return x.pow(3.0) + x.sin() + x.round();
+}

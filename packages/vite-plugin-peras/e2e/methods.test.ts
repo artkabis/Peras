@@ -49,7 +49,7 @@ describe("methods, interfaces and tuples in JavaScript", () => {
   it("declare tuples to TypeScript as tuples", async () => {
     const { dts } = await load();
     expect(dts).toContain(
-      "export declare function bounds(xs: readonly number[]): [number, number];",
+      'export declare function bounds(xs: readonly number[] | Int32Array | PerasArray<"i32">): [number, number];',
     );
     expect(dts).toContain("export declare function label(pair: [number, string]): string;");
     expect(dts).not.toContain("Circle_area");

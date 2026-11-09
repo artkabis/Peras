@@ -48,6 +48,44 @@ big({ width: 30, height: 4 }); // true
 
 The loader converts at the boundary: an object passed in is copied field by field, so Peras never keeps a reference to it, and changes made by Peras never reach it. An array is copied the same way, element by element; only an `inout` parameter is copied back into the array passed ([collections](collections.md#in-javascript)).
 
+## Arrays without a copy
+
+An array of numbers passed to an exported function is copied into the module's memory, and back for an `inout` one: O(n) each call. For large arrays, a `PerasArray` stays in the module's memory and is passed with no copy. <span class="status compiled">compiled</span>
+
+```js
+import { scale, sum, __perasHeap } from "./points.peras";
+
+const xs = __perasHeap.array("f32", 1_000_000); // zeros; or from an array of numbers
+xs.view().set(samples); // a Float32Array over the module's memory
+scale(xs, 2); // inout: changed in place, nothing copied back
+const total = sum(xs); // lent: nothing copied in
+xs.release(); // gives its memory back
+```
+
+- `__perasHeap.array(kind, init)` makes one: `kind` is `"i32"`, `"i64"`, `"f32"`, `"f64"`, `"bool"` or `"u8"`, and `init` a length (zeros) or an array of values.
+- Every exported function that takes an array of numbers accepts one: lent to a plain parameter, changed in place by an `inout` one, given to a `sink` one, after which it can no longer be used.
+- `view()` is a typed array over its elements, with no copy. It is valid until the next call into the module, which may grow its memory or move the elements: take a new view after each call.
+- `toArray()` copies it into a JavaScript array; `length` and `kind` describe it.
+- `release()` gives its memory back at once. One never released is given back when the garbage collector collects it.
+
+On a million `f32`, `sum` goes from 5.2 to 1.5 ms, and `scale`, which changes its array, from 11.5 to 0.8 ms: the copies were most of the time.
+
+## Vector loops
+
+A loop whose turns are independent runs four `i32` or `f32`, or two `f64`, at once, with WebAssembly's 128-bit vectors; the loop as written finishes the last turns. The result is exactly the one the loop as written gives: Peras vectorizes only what every lane computes the same way. An `if` that compares numbers is vectorized too: both branches run in every lane, and each lane keeps the result of the branch it would have taken. In `bench/browser`, a grayscale filter on 4 million pixels goes from about 10 to 5 ms, twice as fast as the same JavaScript.
+
+```peras build
+export fn gain(samples: inout Array<f32>, g: f32): void {
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = samples[i] * g;
+  }
+}
+```
+
+The runtime uses them too, to look for a byte sixteen at a time: `split` on a million characters takes 35 % less time.
+
+WebAssembly SIMD is on by default. A module that uses it, in its loops or its runtime, needs Chrome and Edge 91, Firefox 89, Safari 16.4, Node 16.4 or later; elsewhere, its loader throws an error that says so before loading anything. `perasc build --simd off`, or `simd: false` for Vite, builds without it, for engines that have none, such as Safari before 16.4 on iPhones that cannot update past iOS 15.
+
 ## With Vite
 
 ```ts
@@ -60,11 +98,13 @@ export default defineConfig({
 });
 ```
 
-| Option   | Default                               | Meaning                                           |
-| -------- | ------------------------------------- | ------------------------------------------------- |
-| `perasc` | `PERASC`, then `perasc` on the `PATH` | the compiler to run                               |
-| `lang`   | the system's                          | `"en"` or `"fr"` for diagnostics                  |
-| `dts`    | `true`                                | write `name.d.peras.ts` next to each `name.peras` |
+| Option      | Default                                             | Meaning                                                                   |
+| ----------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| `perasc`    | `PERASC`, then `perasc` on the `PATH`               | the compiler to run                                                       |
+| `lang`      | the system's                                        | `"en"` or `"fr"` for diagnostics                                          |
+| `dts`       | `true`                                              | write `name.d.peras.ts` next to each `name.peras`                         |
+| `allocator` | `debug` for the dev server, `tlsf` for `vite build` | the allocator of modules that use the heap                                |
+| `simd`      | `true`                                              | WebAssembly SIMD in loops and the runtime; `false` for engines without it |
 
 In development the WebAssembly is inlined in the module; `vite build` emits it as a separate file, compiled while it downloads. An error in a `.peras` file shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`.
 

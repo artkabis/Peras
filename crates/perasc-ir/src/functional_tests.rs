@@ -35,6 +35,270 @@ fn map_filter_reduce_find_some_and_every_run_without_a_leak() {
     }
 }
 
+#[test]
+fn text_methods_give_what_the_runtime_gives() {
+    let parsed = perasc_syntax::parse(TEXT);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, TEXT);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The same value as the WebAssembly runtime gives, checked by hand.
+    for (n, expected) in [(3, 3_271_180), (0, 3_271_174)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+#[test]
+fn slice_concat_reverse_sort_and_search_give_what_the_runtime_gives() {
+    let parsed = perasc_syntax::parse(ARRAYS);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, ARRAYS);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The values the WebAssembly runtime gives, checked by hand.
+    for (n, expected) in [(4, 2_493_165), (20, 2_503_165)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+#[test]
+fn the_functions_of_numbers_round_halves_up_and_compute_as_math_does() {
+    let source = "export fn f(x: f64): f64 {\n  return x.round() * 1000.0 + x.pow(2.0) + x.hypot(4.0) + x.atan2(1.0) + x.exp().log();\n}\n";
+    let parsed = perasc_syntax::parse(source);
+    let analysis = perasc_check::analyze(&parsed.ast, source);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    for x in [2.5_f64, -2.5, 3.0, 0.499_999_999_999_999_94] {
+        let (value, _) = run_with_heap(&module, FnId(0), &[Value::F64(x)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        let down = x.floor();
+        let round = if x - down >= 0.5 { down + 1.0 } else { down };
+        let expected = round * 1000.0 + x.powf(2.0) + x.hypot(4.0) + x.atan2(1.0) + x.exp().ln();
+        let Value::F64(got) = value else {
+            unreachable!("{value:?}")
+        };
+        assert!((got - expected).abs() < 1e-9, "{x}: {got} for {expected}");
+    }
+}
+
+#[test]
+fn integers_and_booleans_become_text_and_text_becomes_integers() {
+    let parsed = perasc_syntax::parse(FORMAT);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, FORMAT);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The smallest `i64` round-trips, and is out of the range of `i32`.
+    for (n, expected) in [(i64::MIN, 253_305), (42, 253_126), (0, 253_116)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I64(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I64(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const FORMAT: &str = r#"export fn run(n: i64): i64 {
+  const text = n.toString();
+  let score = text.parseI64().unwrapOr(7) - n;
+  if (text.parseI32().isSome()) score += 1;
+  score += text.length.toI64() * 10;
+  if (true.toString() == "true") score += 100;
+  score += false.toString().length.toI64();
+  const m: i32 = -7;
+  score += m.toString().length.toI64() * 100000;
+  let valid = 0;
+  const inputs: Array<String> = ["", "-", "+5", "12a", " 1", "2147483648", "-2147483648", "9223372036854775807", "-9223372036854775809", "007"];
+  for (const s of inputs) {
+    if (s.parseI32().isSome()) valid += 1;
+    if (s.parseI64().isSome()) valid += 10;
+  }
+  return score + valid.toI64() * 1000;
+}
+"#;
+
+#[test]
+fn filter_on_a_temporary_keeps_its_elements_in_place_without_a_leak() {
+    let parsed = perasc_syntax::parse(KEEP);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, KEEP);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    assert!(module.to_string().contains("arr_keep"), "{module}");
+    // Checked by hand: 5 words in " a  bb ccc  dddd e "; "bb-ccc-dddd", 11
+    // bytes; the tags past 1.0, "bbc" or "bbcdd"; 5 or 2 even numbers; 7
+    // letters in the words longer than 2.
+    for (n, expected) in [(0, 75_011_352), (3, 75_011_523)] {
+        let (value, heap) = run_with_heap(&module, FnId(2), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const KEEP: &str = r#"struct Tag {
+  x: f64;
+  name: String;
+}
+
+fn tags(n: i32): Array<Tag> {
+  return [Tag(0.5, "a"), Tag(2.0, "bb"), Tag(3.0, "c"), Tag(n.toF64(), "dd")];
+}
+
+fn long(text: String): Array<String> {
+  return text.split(" ").filter((w) => w.length > 1);
+}
+
+export fn run(n: i32): i32 {
+  const words = " a  bb ccc  dddd e ".split(" ").filter((w) => w.length > 0).length;
+  const kept = long(" a  bb ccc  dddd e ");
+  const joined = kept.join("-");
+  const big = tags(n).filter((t) => t.x > 1.0);
+  let names = "";
+  for (const t of big) {
+    names += t.name;
+  }
+  const doubled = [1, 2, 3, 4, 5].map((x) => x * n).filter((x) => x % 2 == 0).length;
+  // A loop over a temporary array, which lives through every turn.
+  let letters = 0;
+  for (const w of " a  bb ccc  dddd e ".split(" ")) {
+    if (w.length > 2) letters += w.length;
+    if (letters > 100) return -1;
+    if (w.length > 10) break;
+  }
+  return words * 1000000 + joined.length * 1000 + names.length * 100 + doubled * 10 + big.length + letters * 10000000;
+}
+"#;
+
+#[test]
+fn template_literals_write_strings_numbers_and_booleans_in_order() {
+    let parsed = perasc_syntax::parse(TEMPLATES);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, TEMPLATES);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // Each case adds its bit when the template gives the text expected.
+    let (value, heap) = run_with_heap(&module, FnId(1), &[Value::I32(3)])
+        .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+    assert_eq!(value, Value::I32(4095), "{module}");
+    assert_eq!(heap.live, Vec::<u32>::new(), "leak\n{module}");
+}
+
+const TEMPLATES: &str = r#"fn angled(n: i64): String {
+  return `<${n}>`;
+}
+
+export fn run(k: i32): i32 {
+  let ok = 0;
+  const name = "Ada";
+  const low: i64 = -9223372036854775808;
+  const high: i64 = 9223372036854775807;
+  if (`hello ${name}!` == "hello Ada!") ok += 1;
+  if (`${low}|${high}` == "-9223372036854775808|9223372036854775807") ok += 2;
+  if (`${true}/${false}` == "true/false") ok += 4;
+  if (`${k}${k}` == "33") ok += 8;
+  if (`` == "") ok += 16;
+  if (`a${`b${name}c`}d` == "abAdacd") ok += 32;
+  if (`\`\${x}\n` == "`${x}\n") ok += 64;
+  if (`été ${match (k) { 3 => "trois", _ => "?" }}` == "été trois") ok += 128;
+  if (`line
+two` == "line\ntwo") ok += 256;
+  if (angled(-5) == "<-5>") ok += 512;
+  let built = "";
+  for (let i = 0; i < k; i++) {
+    built = `${built}${i},`;
+  }
+  if (built == "0,1,2,") ok += 1024;
+  const y: f32 = 0.1;
+  if (`${k.toF64() / 8.0}|${0.1 + 0.2}|${y}` == "0.375|0.30000000000000004|0.1") ok += 2048;
+  return ok;
+}
+"#;
+
+const ARRAYS: &str = r#"struct Point {
+  x: f64;
+  name: String;
+}
+
+export fn run(n: i32): i32 {
+  let xs: Array<i32> = [5, n, 3, 9, 1, 7];
+  xs.sort();
+  let floats: Array<f64> = [2.5, -1.0, 0.5];
+  floats.sort();
+  let words: Array<String> = ["c", "a", "b"];
+  words.reverse();
+  const middle = xs.slice(1, -1);
+  const both = middle.concat(xs.slice(0, 1));
+  const tail = words.slice(-2, 10);
+  const points: Array<Point> = [Point(1.0, "p"), Point(2.0, "q")];
+  let more = points.concat(points.slice(1, 2));
+  more.reverse();
+  let score = 0;
+  if (xs.includes(9)) {
+    score += 1;
+  }
+  if (!xs.includes(100)) {
+    score += 10;
+  }
+  if (words.includes("a")) {
+    score += 100;
+  }
+  return score + xs[0] * 1000 + xs[5] * 10000 + xs.indexOf(7) * 100000 + words.indexOf("c") * 1000000
+    + both.length * 10 + tail.length * 1000 + more.length + more[0].name.length + floats[0].toI32() * 5 + (floats[2] * 2.0).toI32();
+}
+"#;
+
+const TEXT: &str = r#"export fn run(n: i32): i32 {
+  const s = "  Hello, wörld!  ";
+  const t = s.trim();
+  const words = t.split(", ");
+  const chars = "hé!".split("");
+  const joined = words.join(" | ");
+  const up = t.toUpperCase();
+  const low = t.toLowerCase();
+  const part = t.slice(0, 5);
+  const tail = t.slice(-6, 100);
+  const cut = "aé".slice(0, 2);
+  const rep = "ab".repeat(n);
+  const one = "a-b-c".replace("-", "+");
+  const all = "a-b-c".replaceAll("-", "");
+  let score = 0;
+  if (t.startsWith("Hello")) {
+    score += 1;
+  }
+  if (t.endsWith("!")) {
+    score += 10;
+  }
+  if (t.includes("wör")) {
+    score += 100;
+  }
+  if (!t.includes("xyz")) {
+    score += 1000;
+  }
+  return score + t.indexOf("w") * 10000 + words.length * 100000 + chars.length * 1000000
+    + joined.length + up.length + low.length + part.length + tail.length + cut.length + rep.length + one.length + all.length;
+}
+
+export fn shout(s: String): String {
+  return s.trim().toUpperCase().replaceAll(" ", "_");
+}
+
+export fn csv(line: String): Array<String> {
+  return line.split(",").map((x) => x.trim());
+}
+"#;
+
 const SOURCE: &str = r#"export fn run(n: i32): f64 {
   const xs: Array<i32> = [n, 2, 7, -3, 4];
   const doubled = xs.map((x) => x * 2);

@@ -10,6 +10,7 @@
 
 use std::fmt::{self, Write as _};
 
+mod bounds;
 mod inline;
 #[cfg(test)]
 mod interp;
@@ -17,6 +18,7 @@ mod licm;
 mod lower;
 mod opt;
 mod own;
+pub mod text;
 mod verify;
 
 pub use lower::lower;
@@ -466,6 +468,200 @@ pub enum BufOp {
     /// code then shortens the buffer below it ([`BufStmt::Truncate`]), so
     /// that the buffer no longer owns it. This is `pop` on an array of strings.
     Take,
+    /// A function of the runtime on strings, its operands lent; see
+    /// [`RuntimeFn`].
+    Runtime(RuntimeFn),
+}
+
+/// A function of the runtime on strings and arrays of strings, written once
+/// in `perasc-runtime/runtime/buffers.wat` and imported by every module that
+/// uses the heap. Indices and lengths count bytes, as `length` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RuntimeFn {
+    /// `(s, needle, from) -> i32`: the first byte index at or after `from`
+    /// where `needle` occurs, or -1.
+    IndexOf,
+    /// `(s, prefix) -> bool`
+    StartsWith,
+    /// `(s, suffix) -> bool`
+    EndsWith,
+    /// `(s, start, end) -> owned`: the bytes between, negative counting from
+    /// the end, clamped, and moved back to the start of a character.
+    Slice,
+    /// `(s) -> owned`: without the spaces, tabs and line breaks at both ends.
+    Trim,
+    /// `(s) -> owned`: ASCII letters in upper case.
+    Upper,
+    /// `(s) -> owned`: ASCII letters in lower case.
+    Lower,
+    /// `(s, n) -> owned`: `s` repeated `n` times.
+    Repeat,
+    /// `(s, from, to) -> owned`: the first `from` replaced by `to`.
+    Replace,
+    /// `(s, from, to) -> owned`: every `from` replaced by `to`.
+    ReplaceAll,
+    /// `(s, separator) -> owned`: an array of the parts, which it owns; an
+    /// empty separator splits into characters.
+    Split,
+    /// `(strings, separator) -> owned`: the strings of an array, joined.
+    Join,
+    /// `(column, start, end) -> owned`: a new column of the elements
+    /// between, negative counting from the end, clamped; buffers copied.
+    ArrSlice,
+    /// `(a, b) -> owned`: a new column of the elements of `a`, then `b`.
+    ArrConcat,
+    /// `(column)`: reverses its elements in place.
+    ArrReverse,
+    /// `(column, kind)`: sorts its numbers in increasing order, in place;
+    /// `kind` is 0 for `i32`, 1 `i64`, 2 `f32`, 3 `f64`.
+    ArrSort,
+    /// `(strings, s) -> i32`: the index of the first string equal to `s`, or -1.
+    ArrIndexOfStr,
+    /// `(n: i64) -> owned`: the decimal digits of `n`, after `-` if negative.
+    FmtInt,
+    /// `(b: bool) -> owned`: `true` or `false`.
+    FmtBool,
+    /// `(x: f64, single) -> owned`: `x` as JavaScript's `String()` writes it;
+    /// with `single` set, `x` is an `f32`, written with the fewest digits
+    /// that read back as it ([`text::number_text`]).
+    FmtFloat,
+    /// `(s, bits) -> bool`: whether `s` is an optional sign then decimal
+    /// digits, nothing else, in the range of a signed integer of `bits` bits.
+    IsInt,
+    /// `(s) -> i64`: the integer `s` writes, which [`Self::IsInt`] accepted.
+    ParseInt,
+    /// `(column, flags)`: keeps, in place and in order, the elements whose flag
+    /// (an array of `bool`) is set, and releases the buffers among the others.
+    /// `filter` on a temporary array, which it then gives as its result.
+    ArrKeep,
+    /// `(s, separator) -> owned`: the parts `Split` gives, as views of the
+    /// bytes of `s` in one block. Given only where `s` outlives the array and
+    /// does not change meanwhile ([decision 0004]); a copy of it, or of a
+    /// part, is an ordinary string.
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    SplitViews,
+}
+
+impl RuntimeFn {
+    /// Every function, in the order a module imports them.
+    pub const ALL: [Self; 24] = [
+        Self::IndexOf,
+        Self::StartsWith,
+        Self::EndsWith,
+        Self::Slice,
+        Self::Trim,
+        Self::Upper,
+        Self::Lower,
+        Self::Repeat,
+        Self::Replace,
+        Self::ReplaceAll,
+        Self::Split,
+        Self::Join,
+        Self::ArrSlice,
+        Self::ArrConcat,
+        Self::ArrReverse,
+        Self::ArrSort,
+        Self::ArrIndexOfStr,
+        Self::FmtInt,
+        Self::FmtBool,
+        Self::IsInt,
+        Self::ParseInt,
+        Self::ArrKeep,
+        Self::SplitViews,
+        Self::FmtFloat,
+    ];
+
+    /// Its name, in the runtime's exports and in the text form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::IndexOf => "str_index_of",
+            Self::StartsWith => "str_starts_with",
+            Self::EndsWith => "str_ends_with",
+            Self::Slice => "str_slice",
+            Self::Trim => "str_trim",
+            Self::Upper => "str_upper",
+            Self::Lower => "str_lower",
+            Self::Repeat => "str_repeat",
+            Self::Replace => "str_replace",
+            Self::ReplaceAll => "str_replace_all",
+            Self::Split => "str_split",
+            Self::Join => "arr_join",
+            Self::ArrSlice => "arr_slice",
+            Self::ArrConcat => "arr_concat",
+            Self::ArrReverse => "arr_reverse",
+            Self::ArrSort => "arr_sort",
+            Self::ArrIndexOfStr => "arr_index_of_str",
+            Self::FmtInt => "fmt_int",
+            Self::FmtBool => "fmt_bool",
+            Self::IsInt => "str_is_int",
+            Self::ParseInt => "str_parse_int",
+            Self::ArrKeep => "arr_keep",
+            Self::SplitViews => "str_split_views",
+            Self::FmtFloat => "fmt_float",
+        }
+    }
+
+    /// The type of its first operand: a lent buffer, or the number or
+    /// boolean it formats.
+    #[must_use]
+    pub const fn receiver(self) -> Ty {
+        match self {
+            Self::FmtInt => Ty::I64,
+            Self::FmtBool => Ty::Bool,
+            Self::FmtFloat => Ty::F64,
+            _ => Ty::Borrowed,
+        }
+    }
+
+    /// The types of its operands after the first.
+    #[must_use]
+    pub const fn operands(self) -> &'static [Ty] {
+        match self {
+            Self::IndexOf => &[Ty::Borrowed, Ty::I32],
+            Self::StartsWith
+            | Self::EndsWith
+            | Self::Split
+            | Self::SplitViews
+            | Self::Join
+            | Self::ArrConcat
+            | Self::ArrIndexOfStr
+            | Self::ArrKeep => &[Ty::Borrowed],
+            Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
+            Self::Trim
+            | Self::Upper
+            | Self::Lower
+            | Self::ArrReverse
+            | Self::FmtInt
+            | Self::FmtBool
+            | Self::ParseInt => &[],
+            Self::Repeat | Self::ArrSort | Self::IsInt | Self::FmtFloat => &[Ty::I32],
+            Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
+        }
+    }
+
+    /// The type of its result.
+    #[must_use]
+    pub const fn result(self) -> Ty {
+        match self {
+            Self::IndexOf | Self::ArrIndexOfStr => Ty::I32,
+            Self::StartsWith | Self::EndsWith | Self::IsInt => Ty::Bool,
+            Self::ParseInt => Ty::I64,
+            Self::ArrReverse | Self::ArrSort | Self::ArrKeep => Ty::Void,
+            _ => Ty::Owned,
+        }
+    }
+
+    /// Its position among the runtime's imports, after the allocator's.
+    #[must_use]
+    pub fn position(self) -> u32 {
+        Self::ALL
+            .iter()
+            .position(|&f| f == self)
+            .and_then(|i| u32::try_from(i).ok())
+            .unwrap_or(0)
+    }
 }
 
 /// A statement on a buffer.
@@ -497,6 +693,7 @@ impl BufOp {
             Self::Literal(index) => format!("buf.literal #{index}"),
             Self::Clone => "buf.clone".to_owned(),
             Self::Take => "buf.take".to_owned(),
+            Self::Runtime(f) => f.name().to_owned(),
         }
     }
 }
@@ -566,6 +763,10 @@ pub enum BinOp {
     And,
     /// `||`, short-circuit.
     Or,
+    /// `a` to the power `b`, on floats.
+    Pow,
+    /// The angle of the point `(b, a)`, `a.atan2(b)`, on floats.
+    Atan2,
 }
 
 impl BinOp {
@@ -591,6 +792,8 @@ impl BinOp {
             Self::Ge => ">=",
             Self::And => "&&",
             Self::Or => "||",
+            Self::Pow => "pow",
+            Self::Atan2 => "atan2",
         }
     }
 
@@ -615,6 +818,18 @@ pub enum MathOp {
     Floor,
     /// Rounds up.
     Ceil,
+    /// `e` to the power of the operand.
+    Exp,
+    /// The natural logarithm.
+    Log,
+    /// Sine, in radians.
+    Sin,
+    /// Cosine, in radians.
+    Cos,
+    /// Tangent, in radians.
+    Tan,
+    /// Rounds to the nearest; halves up, as JavaScript's `Math.round`.
+    Round,
 }
 
 impl MathOp {
@@ -626,7 +841,153 @@ impl MathOp {
             Self::Sqrt => "sqrt",
             Self::Floor => "floor",
             Self::Ceil => "ceil",
+            Self::Exp => "exp",
+            Self::Log => "log",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Round => "round",
         }
+    }
+
+    /// The function of JavaScript's `Math` that computes it, for those
+    /// WebAssembly has no instruction for.
+    #[must_use]
+    pub const fn host(self) -> Option<HostMath> {
+        Some(match self {
+            Self::Exp => HostMath::Exp,
+            Self::Log => HostMath::Log,
+            Self::Sin => HostMath::Sin,
+            Self::Cos => HostMath::Cos,
+            Self::Tan => HostMath::Tan,
+            Self::Round => HostMath::Round,
+            _ => return None,
+        })
+    }
+}
+
+/// A function of JavaScript's `Math` that a module imports, on `f64`: the
+/// functions of numbers WebAssembly has no instruction for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HostMath {
+    /// `Math.exp`
+    Exp,
+    /// `Math.log`
+    Log,
+    /// `Math.sin`
+    Sin,
+    /// `Math.cos`
+    Cos,
+    /// `Math.tan`
+    Tan,
+    /// `Math.round`
+    Round,
+    /// `Math.pow`, with two operands.
+    Pow,
+    /// `Math.atan2`, with two operands.
+    Atan2,
+}
+
+impl HostMath {
+    /// Its name in `Math`.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Exp => "exp",
+            Self::Log => "log",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Round => "round",
+            Self::Pow => "pow",
+            Self::Atan2 => "atan2",
+        }
+    }
+
+    /// Whether it takes two operands.
+    #[must_use]
+    pub const fn binary(self) -> bool {
+        matches!(self, Self::Pow | Self::Atan2)
+    }
+}
+
+impl Module {
+    /// The functions of `Math` the module calls, each once, in order.
+    #[must_use]
+    pub fn host_math(&self) -> Vec<HostMath> {
+        let mut found = std::collections::BTreeSet::new();
+        for f in &self.functions {
+            host_in_stmts(&f.body, &mut found);
+        }
+        found.into_iter().collect()
+    }
+}
+
+fn host_in_stmts(stmts: &[Stmt], found: &mut std::collections::BTreeSet<HostMath>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => host_in_expr(e, found),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                host_in_expr(cond, found);
+                host_in_stmts(then, found);
+                host_in_stmts(otherwise, found);
+            }
+            Stmt::Loop { cond, body, step } => {
+                if let Some(cond) = cond {
+                    host_in_expr(cond, found);
+                }
+                host_in_stmts(body, found);
+                host_in_stmts(step, found);
+            }
+            Stmt::Block(body) => host_in_stmts(body, found),
+            Stmt::ReturnMany(values)
+            | Stmt::Buf(_, values)
+            | Stmt::CallMany { args: values, .. } => {
+                for e in values {
+                    host_in_expr(e, found);
+                }
+            }
+            Stmt::Leave(_)
+            | Stmt::Break
+            | Stmt::Continue
+            | Stmt::Return(None)
+            | Stmt::Release(_) => {}
+        }
+    }
+}
+
+fn host_in_expr(e: &Expr, found: &mut std::collections::BTreeSet<HostMath>) {
+    match &e.kind {
+        ExprKind::Math(op, x) => {
+            if let Some(h) = op.host() {
+                found.insert(h);
+            }
+            host_in_expr(x, found);
+        }
+        ExprKind::Binary(op, a, b) => {
+            match op {
+                BinOp::Pow => {
+                    found.insert(HostMath::Pow);
+                }
+                BinOp::Atan2 => {
+                    found.insert(HostMath::Atan2);
+                }
+                _ => {}
+            }
+            host_in_expr(a, found);
+            host_in_expr(b, found);
+        }
+        ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Alloc(x) => host_in_expr(x, found),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+            for a in args {
+                host_in_expr(a, found);
+            }
+        }
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}
     }
 }
 

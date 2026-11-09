@@ -1,0 +1,9 @@
+// E0239: a template literal writes strings, numbers and booleans; not yet a structure or an array.
+struct Point {
+  x: i32;
+  y: i32;
+}
+
+export fn label(name: String, count: i64, done: bool, ratio: f64, p: Point, xs: Array<i32>): String {
+  return `${name}: ${count} items, done ${done}, ratio ${ratio} at ${p} in ${xs}`;
+}

@@ -83,6 +83,14 @@ impl Heap {
                 Err(wasmi::Error::new("peras fault"))
             },
         )?;
+        // Floats as text are the host's; these tests write none.
+        linker.func_wrap(
+            "peras",
+            "float_text",
+            |_: Caller<'_, Host>, _x: f64, _single: i32, _at: i32| -> Result<i32, wasmi::Error> {
+                Err(wasmi::Error::new("float_text is not called here"))
+            },
+        )?;
         let instance = linker.instantiate_and_start(&mut store, &module)?;
         let memory = instance
             .get_memory(&store, "memory")
@@ -483,12 +491,14 @@ fn a_deep_buffer_releases_and_copies_the_buffers_it_owns() {
         heap.write(data + 4 * k, &inner.to_le_bytes());
     }
     heap.write(outer, &3_u32.to_le_bytes());
-    assert_eq!(heap.live().0, 1 + 1 + 3 * 2);
+    // The array of handles: a header and its elements, two blocks, as it owns
+    // buffers; each short string: one block, its bytes after its header.
+    assert_eq!(heap.live().0, 1 + 1 + 3);
     let clone = heap
         .buf_clone
         .call(&mut heap.store, (i(outer), 5))
         .map_or(0, u);
-    assert_eq!(heap.live().0, 2 * (1 + 1 + 3 * 2));
+    assert_eq!(heap.live().0, 2 * (1 + 1 + 3));
     // The copy owns copies: its strings are other blocks with the same bytes.
     let first = heap.word(heap.word(clone + 8));
     assert_ne!(first, heap.word(data));
@@ -496,4 +506,65 @@ fn a_deep_buffer_releases_and_copies_the_buffers_it_owns() {
     assert_eq!(heap.buf_release(outer), Ok(()));
     assert_eq!(heap.buf_release(clone), Ok(()));
     assert_eq!(heap.live(), (0, 0));
+}
+
+#[test]
+fn a_short_string_is_one_block_until_it_grows() {
+    const INLINE: u32 = 0x200;
+    let mut heap = heap();
+    // Its bytes follow its header, in the same block.
+    let h = heap.buf_new(4, 1).unwrap_or(0);
+    assert_eq!(heap.word(h + 8), h + 16);
+    assert_eq!(heap.word(h + 12) & INLINE, INLINE);
+    assert_eq!(heap.live(), (1, 16 + 4));
+    heap.write(h + 16, b"abcd");
+    heap.write(h, &4_u32.to_le_bytes());
+    // Growing moves them to a block of their own, twice: the first one stays
+    // in the header's block, the second is released, nothing leaks.
+    assert_eq!(heap.buf_reserve(h, 4, 1), Ok(()));
+    assert_ne!(heap.word(h + 8), h + 16);
+    assert_eq!(heap.word(h + 12) & INLINE, 0);
+    assert_eq!(heap.bytes(heap.word(h + 8), 4), b"abcd");
+    assert_eq!(heap.buf_reserve(h, 100, 1), Ok(()));
+    assert_eq!(heap.bytes(heap.word(h + 8), 4), b"abcd");
+    assert_eq!(heap.live().0, 2);
+    assert_eq!(heap.buf_release(h), Ok(()));
+    assert_eq!(heap.live(), (0, 0));
+    assert_eq!(heap.check_leaks(), Ok(()));
+}
+
+#[test]
+fn only_small_buffers_of_scalars_share_their_header_block() {
+    let mut heap = heap();
+    // 256 bytes of elements: one block; 257: two.
+    let small = heap.buf_new(64, 4).unwrap_or(0);
+    assert_eq!(heap.live().0, 1);
+    let large = heap.buf_new(257, 1).unwrap_or(0);
+    assert_eq!(heap.live().0, 3);
+    // A buffer of buffers never: its elements are read after its header is
+    // released.
+    let deep = heap.buf_new(2, 4 | perasc_runtime::DEEP).unwrap_or(0);
+    assert_ne!(heap.word(deep + 8), deep + 16);
+    assert_eq!(heap.live().0, 5);
+    for h in [small, large, deep] {
+        assert_eq!(heap.buf_release(h), Ok(()));
+    }
+    assert_eq!(heap.live(), (0, 0));
+}
+
+#[test]
+fn a_short_string_released_twice_is_caught_and_its_copy_is_its_own() {
+    let mut heap = heap();
+    let h = heap.buf_new(3, 1).unwrap_or(0);
+    heap.write(h + 16, b"xyz");
+    heap.write(h, &3_u32.to_le_bytes());
+    let copy = heap.buf_clone.call(&mut heap.store, (i(h), 5)).map_or(0, u);
+    assert_eq!(heap.word(copy + 8), copy + 16);
+    assert_eq!(heap.bytes(copy + 16, 3), b"xyz");
+    assert_eq!(heap.buf_release(h), Ok(()));
+    assert_eq!(
+        heap.buf_release(h).map_err(|r| r.fault),
+        Err(Some(Fault::DoubleRelease))
+    );
+    assert_eq!(heap.buf_release(copy), Ok(()));
 }

@@ -16,15 +16,16 @@ perasc <command> [options]
 
 ## Options
 
-| Option                        | Applies to       | Meaning                                                                                                                                                                                      |
-| ----------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--lang en\|fr`               | all              | the language of messages; default: the `PERAS_LANG` variable, then the system's language                                                                                                     |
-| `--json`                      | `check`, `build` | diagnostics as JSON on standard output                                                                                                                                                       |
-| `--color auto\|always\|never` | `check`, `build` | colours in diagnostics; `auto` (the default) colours a terminal, and the `NO_COLOR` variable turns colours off                                                                               |
-| `--out <dir>`                 | `build`          | where to write the files; default: `dist`                                                                                                                                                    |
-| `--backend direct\|rust`      | `build`          | the code generator; `rust` needs a Rust toolchain and is used by the project's tests                                                                                                         |
-| `--no-optimize`               | `build`          | skips the IR optimizations                                                                                                                                                                   |
-| `--allocator debug\|tlsf`     | `build`          | the allocator of a module that uses the heap: `debug`, the default, catches every memory bug; `tlsf` allocates in bounded time, for production ([0002](../decisions/0002-tlsf-allocator.md)) |
+| Option                        | Applies to       | Meaning                                                                                                                                                                                          |
+| ----------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--lang en\|fr`               | all              | the language of messages; default: the `PERAS_LANG` variable, then the system's language                                                                                                         |
+| `--json`                      | `check`, `build` | diagnostics as JSON on standard output                                                                                                                                                           |
+| `--color auto\|always\|never` | `check`, `build` | colours in diagnostics; `auto` (the default) colours a terminal, and the `NO_COLOR` variable turns colours off                                                                                   |
+| `--out <dir>`                 | `build`          | where to write the files; default: `dist`                                                                                                                                                        |
+| `--backend direct\|rust`      | `build`          | the code generator; `rust` needs a Rust toolchain and is used by the project's tests                                                                                                             |
+| `--no-optimize`               | `build`          | skips the IR optimizations                                                                                                                                                                       |
+| `--allocator debug\|tlsf`     | `build`          | the allocator of a module that uses the heap: `debug`, the default, catches every memory bug; `tlsf` allocates in bounded time, for production ([0002](../decisions/0002-tlsf-allocator.md))     |
+| `--simd on\|off`              | `build`          | WebAssembly SIMD in loops and the runtime: `on`, the default, is faster; `off` loads in engines without it, such as Safari before 16.4 ([0004](../decisions/0004-strings-without-allocation.md)) |
 
 ## Exit codes
 

@@ -191,6 +191,22 @@ impl Checker<'_> {
                 types,
                 args,
             } => self.call(id, *callee, types, args, span, expected),
+            ExprKind::Template { exprs, .. } => {
+                // Strings as they are; numbers and booleans as `toString()`
+                // writes them.
+                for &e in exprs {
+                    let ty = self.infer(e, None).defaulted();
+                    let fits = matches!(
+                        ty,
+                        Ty::String | Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Error
+                    );
+                    if !fits {
+                        let span = self.ast.expr(e).span;
+                        self.report(errors::template_value(span, &ty));
+                    }
+                }
+                Ty::String
+            }
             ExprKind::Field { base, name } => {
                 if let Some(ty) = self.enum_variant(*base, name, None, span, expected) {
                     return ty;
@@ -496,7 +512,7 @@ impl Checker<'_> {
                 }
                 // `push` and `pop` change the array: it must be one that can change.
                 if matches!(receiver, Ty::Array(_))
-                    && matches!(self.name(name.symbol), "push" | "pop")
+                    && matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
                     && let Some(root) = self.root(*base)
                 {
                     let base_span = self.ast.expr(*base).span;

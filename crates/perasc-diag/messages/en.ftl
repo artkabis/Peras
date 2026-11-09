@@ -17,6 +17,7 @@ cli-usage =
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
       --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
+      --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help
@@ -68,7 +69,6 @@ lex-invalid-character-fix-remove = { $count ->
 }
 lex-invalid-character-fix-replace = replace { $character } with `{ $replacement }`, the ASCII character it looks like
 lex-invalid-character-fix-identifier = names use ASCII letters, digits and `_` only: rename it, e.g. `cafe` instead of `café`; to show text, put it in a string
-lex-invalid-character-fix-template = template literals are not supported yet: join strings with `+`
 
 # E0002
 lex-unterminated-string = unterminated string
@@ -629,6 +629,10 @@ check-arrow-expected-label = expected `(x) => …`
 check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
 check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
 check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
+check-template = a template literal cannot write a `{ $type }` as text yet
+check-template-label = a `{ $type }`
+check-template-why = A template literal writes each of its values as text: a string as it is, a number or a boolean as `toString()` writes it, as JavaScript does. A structure, an array or an option has no text of its own yet: which fields, in which order, is for the program to say.
+check-template-fix = write its fields there, one value each
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->
@@ -680,3 +684,4 @@ runtime-double-release = the block allocated at { $alloc } is released a second 
 runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
 runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }
 runtime-index = index { $index } is out of bounds: the length is { $length }
+runtime-simd = this module uses WebAssembly SIMD, which this browser does not have: Chrome or Edge 91, Firefox 89 and Safari 16.4 do. Build it with `--simd off` to load it everywhere.

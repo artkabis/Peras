@@ -4,5 +4,4 @@ let b = “hello”;
 let c = 4 − 1;
 let d = 2;
 let café = 3;
-let e = `template`;
 let f = 1 €£ 2;

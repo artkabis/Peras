@@ -43,8 +43,14 @@ pub enum TokenKind {
     Int,
     /// `0.5`, `1e3`, `2.5e-4`.
     Float,
-    /// `"text"` or `'text'`, quotes included.
+    /// `"text"`, `'text'` or `` `text` `` with no `${`, quotes included.
     String,
+    /// `` `text${ ``: a template literal up to its first `${`.
+    TemplateHead,
+    /// `}text${`: a template literal's text between two `${…}`.
+    TemplateMiddle,
+    /// `` }text` ``: a template literal's text after its last `${…}`.
+    TemplateTail,
 
     // Keywords.
     /// `async`

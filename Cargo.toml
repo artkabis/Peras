@@ -32,7 +32,7 @@ unicode-width = "0.2.3"
 wasm-encoder = "0.263.0"
 wasmparser = "0.263.0"
 wat = "1.263.0"
-wasmi = "2.0.0"
+wasmi = { version = "2.0.0", features = ["simd"] }
 insta = { version = "1.49.0", features = ["glob"] }
 
 # The compiler holds itself to the rules it enforces: no unsafe, no warnings.

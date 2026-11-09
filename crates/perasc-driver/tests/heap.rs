@@ -8,18 +8,12 @@ mod heap_ir;
 use perasc_diag::i18n::Localizer;
 use perasc_diag::messages::Language;
 use perasc_ir::{Module, verify};
-use perasc_runtime::{DEBUG_ALLOCATOR, Fault};
-use wasmi::{Caller, Engine, Extern, Instance, Linker, Store};
+use perasc_runtime::Fault;
 
-/// The first fault reported: its kind and the sites it names, by number.
-type Reported = Option<(Option<Fault>, i32, i32)>;
+#[path = "fixtures/link.rs"]
+mod link;
 
-/// The allocator and the module, linked.
-struct Linked {
-    store: Store<Reported>,
-    allocator: Instance,
-    module: Instance,
-}
+use link::{Linked, Reported};
 
 fn link(module: &Module) -> Result<Linked, wasmi::Error> {
     let output = perasc_driver::emit_direct(
@@ -28,64 +22,7 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
         perasc_runtime::Allocator::Debug,
         &Localizer::new(Language::English),
     );
-    let validated = wasmparser::Validator::new().validate_all(&output.wasm);
-    assert!(validated.is_ok(), "{:?}", validated.err());
-    let engine = Engine::default();
-    let mut store = Store::new(&engine, None);
-    let mut runtime = Linker::new(&engine);
-    runtime.func_wrap(
-        "peras",
-        "fault",
-        |mut caller: Caller<'_, Reported>, kind: i32, _ptr: i32, alloc: i32, release: i32| {
-            caller
-                .data_mut()
-                .get_or_insert((Fault::from_kind(kind), alloc, release));
-            Err::<(), _>(wasmi::Error::new("peras fault"))
-        },
-    )?;
-    let allocator = runtime
-        .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, DEBUG_ALLOCATOR)?)?;
-    let mut linker = Linker::new(&engine);
-    for name in [
-        "alloc",
-        "release",
-        "buf_new",
-        "buf_reserve",
-        "buf_release",
-        "buf_clone",
-    ] {
-        let func = allocator
-            .get_func(&store, name)
-            .ok_or_else(|| wasmi::Error::new(name))?;
-        linker.define(
-            perasc_codegen_wasm::RUNTIME_MODULE,
-            name,
-            Extern::Func(func),
-        )?;
-    }
-    let memory = allocator
-        .get_memory(&store, "memory")
-        .ok_or_else(|| wasmi::Error::new("memory"))?;
-    linker.define(
-        perasc_codegen_wasm::RUNTIME_MODULE,
-        "memory",
-        Extern::Memory(memory),
-    )?;
-    // An index out of bounds: JavaScript throws a `RangeError` here.
-    linker.func_wrap(
-        perasc_codegen_wasm::RUNTIME_MODULE,
-        "bounds",
-        |_: Caller<'_, Reported>, _index: i32, _len: i32| {
-            Err::<(), _>(wasmi::Error::new("index out of bounds"))
-        },
-    )?;
-    let module =
-        linker.instantiate_and_start(&mut store, &wasmi::Module::new(&engine, &output.wasm)?)?;
-    Ok(Linked {
-        store,
-        allocator,
-        module,
-    })
+    link::instantiate_with(&output.wasm, perasc_runtime::DEBUG_ALLOCATOR)
 }
 
 impl Linked {
@@ -183,7 +120,7 @@ fn the_loader_speaks_the_language_asked() {
     );
     let js = plain.map(|o| o.js).unwrap_or_default();
     assert!(
-        js.contains("const $imports = {};") && !js.contains("PerasMemoryError"),
+        js.contains("const $imports = { Math };") && !js.contains("PerasMemoryError"),
         "{js}"
     );
 }
@@ -246,4 +183,32 @@ fn arrays_of_buffers_release_and_copy_what_they_own() {
     assert_eq!(m.call("table", 30), Ok(Some(841)));
     assert_eq!(m.runtime("live_count"), Ok(0));
     assert_eq!(m.check_leaks(), Ok(()));
+}
+
+/// Floats as text: the runtime asks the host, here the fixture, which writes
+/// what the loader writes; each case adds its bit when the text is right.
+#[test]
+fn floats_as_text_go_through_the_host_without_a_leak() {
+    let source = "export fn check(n: i32): i32 {\n  let ok = 0;\n  const x = n.toF64() / 8.0;\n  const y: f32 = 0.1;\n  const zero = 0.0;\n  if ((0.1 + 0.2).toString() == \"0.30000000000000004\") ok += 1;\n  if (`${x}` == \"0.375\") ok += 2;\n  if (y.toString() == \"0.1\") ok += 4;\n  if (`${1000000000000000000000.0}|${0.0000001}` == \"1e+21|1e-7\") ok += 8;\n  if (`${zero / zero}, ${-x / zero}, ${-zero}` == \"NaN, -Infinity, 0\") ok += 16;\n  if (`${-x * 1000000.0}` == \"-375000\") ok += 32;\n  return ok;\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    let mut m = linked(&module);
+    assert_eq!(m.call("check", 3), Ok(Some(63)));
+    assert_eq!(m.runtime("live_count"), Ok(0));
+    assert_eq!(m.check_leaks(), Ok(()));
+}
+
+/// `&&` and `||` whose right side makes a temporary, here the string `"1"`:
+/// it is released in the branch that made it, whether that side runs or not.
+#[test]
+fn temporaries_of_a_right_side_that_may_not_run_are_released_where_made() {
+    let source = "export fn check(n: i32): i32 {\n  const s = \"x\" + n.toString();\n  let k = 0;\n  if (n < 50 && s.endsWith(\"1\")) k += 1;\n  if (n > 50 || s.startsWith(\"y\" + \"z\")) k += 2;\n  return k;\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    for (n, expected) in [(1, 1), (31, 1), (7, 0), (60, 2), (51, 2)] {
+        let mut m = linked(&module);
+        assert_eq!(m.call("check", n), Ok(Some(expected)), "check({n})");
+        assert_eq!(m.runtime("live_count"), Ok(0), "check({n})");
+        assert_eq!(m.check_leaks(), Ok(()));
+    }
 }

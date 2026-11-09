@@ -26,7 +26,11 @@ const CONVERSIONS: [(&str, Ty); 10] = [
     ("toF64", Ty::Float(FloatTy::F64)),
 ];
 
-const FLOAT_METHODS: [&str; 7] = ["sqrt", "sin", "cos", "tan", "floor", "ceil", "round"];
+const FLOAT_METHODS: [&str; 9] = [
+    "sqrt", "sin", "cos", "tan", "floor", "ceil", "round", "exp", "log",
+];
+/// The methods of floats with a second operand of the same type.
+const FLOAT_BINARY: [&str; 3] = ["pow", "atan2", "hypot"];
 const WRAPPING: [&str; 3] = ["wrappingAdd", "wrappingSub", "wrappingMul"];
 const CHECKED: [&str; 3] = ["checkedAdd", "checkedSub", "checkedMul"];
 
@@ -63,11 +67,20 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             if name == "abs" || (me.is_float() && FLOAT_METHODS.contains(&name)) {
                 return simple(me);
             }
+            if me.is_float() && FLOAT_BINARY.contains(&name) {
+                return Some(Method {
+                    params: vec![me.clone()],
+                    ret: me,
+                });
+            }
             if me.is_integer() && WRAPPING.contains(&name) {
                 return Some(Method {
                     params: vec![me.clone()],
                     ret: me,
                 });
+            }
+            if name == "toString" {
+                return simple(Ty::String);
             }
             if me.is_integer() && CHECKED.contains(&name) {
                 return Some(Method {
@@ -84,12 +97,33 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             }),
             "pop" => simple(Ty::Option(element.clone())),
             "copy" => simple(me.clone()),
+            // The strings of an array, joined.
+            "join" if **element == Ty::String => Some(Method {
+                params: vec![Ty::String],
+                ret: Ty::String,
+            }),
+            "slice" => Some(Method {
+                params: vec![Ty::Int(IntTy::I32), Ty::Int(IntTy::I32)],
+                ret: me.clone(),
+            }),
+            "concat" => Some(Method {
+                params: vec![me.clone()],
+                ret: me.clone(),
+            }),
+            "reverse" => simple(Ty::Void),
+            "sort" if sortable(element) => simple(Ty::Void),
+            "includes" if searchable(element) => Some(Method {
+                params: vec![(**element).clone()],
+                ret: Ty::Bool,
+            }),
+            "indexOf" if searchable(element) => Some(Method {
+                params: vec![(**element).clone()],
+                ret: Ty::Int(IntTy::I32),
+            }),
             _ => None,
         },
-        Ty::String => match name {
-            "copy" => simple(Ty::String),
-            _ => None,
-        },
+        Ty::Bool if name == "toString" => simple(Ty::String),
+        Ty::String => string_method(name),
         Ty::Result(ok, _) => match name {
             "isOk" | "isErr" => simple(Ty::Bool),
             "unwrapOr" => Some(Method {
@@ -110,6 +144,56 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
     }
 }
 
+/// Whether `sort()` orders elements of this type: `i32`, `i64` and floats.
+fn sortable(element: &Ty) -> bool {
+    matches!(
+        element,
+        Ty::Int(IntTy::I32 | IntTy::I64) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit
+    )
+}
+
+/// Whether `includes` and `indexOf` find elements of this type: numbers,
+/// booleans and strings.
+fn searchable(element: &Ty) -> bool {
+    sortable(element) || matches!(element, Ty::Bool | Ty::String)
+}
+
+/// The methods of strings beyond `copy`.
+const STRING_METHODS: [&str; 14] = [
+    "indexOf",
+    "includes",
+    "startsWith",
+    "endsWith",
+    "slice",
+    "trim",
+    "toUpperCase",
+    "toLowerCase",
+    "repeat",
+    "replace",
+    "replaceAll",
+    "split",
+    "parseI32",
+    "parseI64",
+];
+
+/// A method of `String`.
+fn string_method(name: &str) -> Option<Method> {
+    let int = Ty::Int(IntTy::I32);
+    let (params, ret) = match name {
+        "copy" | "trim" | "toUpperCase" | "toLowerCase" => (Vec::new(), Ty::String),
+        "indexOf" => (vec![Ty::String], int),
+        "includes" | "startsWith" | "endsWith" => (vec![Ty::String], Ty::Bool),
+        "slice" => (vec![int.clone(), int], Ty::String),
+        "repeat" => (vec![int], Ty::String),
+        "replace" | "replaceAll" => (vec![Ty::String, Ty::String], Ty::String),
+        "split" => (vec![Ty::String], Ty::Array(Box::new(Ty::String))),
+        "parseI32" => (Vec::new(), Ty::Option(Box::new(int))),
+        "parseI64" => (Vec::new(), Ty::Option(Box::new(Ty::Int(IntTy::I64)))),
+        _ => return None,
+    };
+    Some(Method { params, ret })
+}
+
 /// Every member name of a built-in type, for suggestions.
 #[must_use]
 pub fn members(receiver: &Ty) -> Vec<&'static str> {
@@ -121,16 +205,33 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             names.extend(["abs", "min", "max", "clamp"]);
             if me.is_float() {
                 names.extend(FLOAT_METHODS);
+                names.extend(FLOAT_BINARY);
             } else {
                 names.extend(WRAPPING);
                 names.extend(CHECKED);
             }
+            names.push("toString");
         }
-        Ty::Array(_) => {
-            names.extend(["length", "push", "pop", "copy"]);
+        Ty::Array(element) => {
+            names.extend([
+                "length", "push", "pop", "copy", "slice", "concat", "reverse",
+            ]);
+            if **element == Ty::String {
+                names.push("join");
+            }
+            if sortable(element) {
+                names.push("sort");
+            }
+            if searchable(element) {
+                names.extend(["includes", "indexOf"]);
+            }
             names.extend(crate::stdlib::FUNCTION_METHODS);
         }
-        Ty::String => names.extend(["length", "copy"]),
+        Ty::String => {
+            names.extend(["length", "copy"]);
+            names.extend(STRING_METHODS);
+        }
+        Ty::Bool => names.push("toString"),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}

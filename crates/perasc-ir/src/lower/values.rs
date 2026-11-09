@@ -293,6 +293,7 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
+            AstExpr::Template { parts, exprs } => self.template(state, parts, exprs, mode),
             AstExpr::Binary {
                 op: perasc_syntax::ast::BinaryOp::Add,
                 lhs,
@@ -489,6 +490,9 @@ impl Lowering<'_> {
             return self.array_method(state, base, method, args, mode, span);
         }
         if !self.is_aggregate(base) {
+            if method == "toString" {
+                return self.stringified(state, base, mode);
+            }
             let op = match method {
                 "checkedAdd" => BinOp::Add,
                 "checkedSub" => BinOp::Sub,

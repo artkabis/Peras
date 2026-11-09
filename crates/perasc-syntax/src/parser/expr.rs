@@ -13,7 +13,7 @@ use super::{NameOf, Parser, errors};
 use crate::ast::{
     Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, Pattern, PatternKind, Type, TypeKind, UnaryOp,
 };
-use crate::lexer::string_value;
+use crate::lexer::{string_value, template_value};
 use crate::token::{Token, TokenKind};
 
 /// Binding power of prefix operators.
@@ -101,6 +101,39 @@ impl Parser<'_> {
         lhs
     }
 
+    /// `` `text${a}text${b}text` ``: the pieces of text and the values between.
+    fn template(&mut self, head: Token) -> ExprId {
+        self.bump();
+        let mut parts = vec![template_value(self.text(head))];
+        let mut exprs = Vec::new();
+        loop {
+            exprs.push(self.expr());
+            if self.recovering {
+                break;
+            }
+            let next = self.peek();
+            match next.kind {
+                TokenKind::TemplateMiddle => {
+                    self.bump();
+                    parts.push(template_value(self.text(next)));
+                }
+                TokenKind::TemplateTail => {
+                    self.bump();
+                    parts.push(template_value(self.text(next)));
+                    break;
+                }
+                _ => {
+                    self.expect(TokenKind::TemplateTail, "}");
+                    break;
+                }
+            }
+        }
+        // One more piece of text than values, even after an error.
+        parts.resize(exprs.len() + 1, String::new());
+        let span = self.since(head.span.start);
+        self.alloc(ExprKind::Template { parts, exprs }, span)
+    }
+
     fn prefix(&mut self) -> ExprId {
         let token = self.peek();
         let unary = match token.kind {
@@ -126,6 +159,7 @@ impl Parser<'_> {
                 let value = string_value(self.text(token));
                 self.alloc(ExprKind::String(value), token.span)
             }
+            TokenKind::TemplateHead => self.template(token),
             TokenKind::True | TokenKind::False => {
                 self.bump();
                 self.alloc(ExprKind::Bool(token.kind == TokenKind::True), token.span)

@@ -35,18 +35,18 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 ## Phase 3 : une bibliothèque standard
 
-Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)).
+Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)). Le texte vient ensuite : des morceaux de texte qui sont des vues sur le texte dont ils viennent, puis des chaînes de méthodes fusionnées en une seule boucle, choisies par le compilateur ([décision 0004](../decisions/0004-strings-without-allocation.md)).
 
-| Domaine     | Quoi                                                                                                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| texte       | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, mise en forme et chaînes gabarits                                                 |
-| tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), `sort`, `slice`, `concat`, `join`, `reverse`, itérateurs et intervalles |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                |
-| nombres     | ~~`min`, `max`, `clamp`~~ (fait), `pow`, `exp`, `log`, `atan2`, `hypot`, constantes, nombres aléatoires avec graine                                                              |
-| temps       | durées et instants                                                                                                                                                               |
-| données     | JSON, encodage de texte, octets                                                                                                                                                  |
+| Domaine     | Quoi                                                                                                                                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`, `toString` sur les entiers et les booléens, `parseI32`, `parseI64`, chaînes gabarits, flottants en texte~~ (fait) |
+| tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles         |
+| collections | `Map<K, V>`, `Set<T>` ([décision 0005](../decisions/0005-maps-and-sets.md)), `Deque<T>`                                                                                                                                    |
+| nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                        |
+| temps       | durées et instants                                                                                                                                                                                                         |
+| données     | JSON, encodage de texte, octets                                                                                                                                                                                            |
 
-```peras planned
+```peras build
 export fn words(text: String): i32 {
   return text.split(" ").filter((w) => w.length > 0).length;
 }

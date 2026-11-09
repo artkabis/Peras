@@ -66,6 +66,9 @@ const ALLOCATORS: [(&str, perasc_driver::Allocator); 2] = [
     ("tlsf", perasc_driver::Allocator::Tlsf),
 ];
 
+/// The values of `--simd`.
+const SIMD: [(&str, bool); 2] = [("on", true), ("off", false)];
+
 /// The values of `--color`.
 const COLORS: [(&str, Color); 3] = [
     ("auto", Color::Auto),
@@ -136,6 +139,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             "--allocator" => {
                 options.direct.allocator = pick("--allocator", value("--allocator")?, &ALLOCATORS)?;
             }
+            "--simd" => options.direct.simd = pick("--simd", value("--simd")?, &SIMD)?,
             "--color" => options.color = pick("--color", value("--color")?, &COLORS)?,
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(Message::new("cli-unknown-argument").text("argument", other));

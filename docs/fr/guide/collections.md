@@ -134,6 +134,18 @@ export fn repeat(s: String, n: i32): String {
 
 **`length` compte des octets**, comme en Rust et comme la mémoire qu’occupe la chaîne : `"é".length` vaut 2, un emoji 4. La `length` de JavaScript compte plutôt des unités UTF-16 ; les méthodes sur les caractères arrivent avec la [bibliothèque standard](../reference/roadmap.md#phase-3--une-bibliothèque-standard).
 
+### Les chaînes gabarits
+
+Entre accents graves, `${…}` écrit une valeur dans le texte : une chaîne telle quelle, un nombre ou un booléen comme l’écrit `toString()`, donc comme le fait JavaScript. Toute expression y tient, un autre gabarit compris ; `` \` `` et `\${` écrivent les caractères eux-mêmes, et un gabarit peut s’étendre sur plusieurs lignes. <span class="status compiled">compilé</span>
+
+```peras build
+export fn label(name: String, count: i64, done: bool, ratio: f64): String {
+  return `${name}: ${count} items, done ${done}, ${ratio * 100.0} %`;
+}
+```
+
+Le compilateur mesure d’abord chaque morceau, puis les écrit dans un seul buffer : une allocation par gabarit, quel que soit le nombre de valeurs. Une structure, un tableau ou une option est refusé ([E0239](../errors/E0239.md)) : le programme dit lesquels de ses champs écrire, et comment. Un gabarit sans `${…}` est un littéral de chaîne ordinaire.
+
 Un littéral est stocké une seule fois dans le module, et copié dans un nouveau buffer là où il sert. En JavaScript, une chaîne passe la frontière par copie, encodée et décodée en UTF-8 ; TypeScript voit `string`. Une fonction exportée ne peut pas prendre une chaîne `inout`, puisqu’une chaîne JavaScript ne change jamais.
 
 Les caractères invisibles qui peuvent réordonner ce que vous lisez, l’attaque « Trojan Source », sont refusés dans le code source ([E0007](../errors/E0007.md)).

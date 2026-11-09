@@ -31,14 +31,34 @@ export fn wrapped(a: i32): i32 {
 }
 ```
 
+### En texte
+
+| Méthode      | Sur                  | Donne                                                                                                                     | État                                         |
+| ------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `toString()` | nombres, et booléens | les chiffres décimaux, après `-` si négatif ; pour un flottant, sa forme la plus courte ; `true` ou `false`, une `String` | <span class="status compiled">compilé</span> |
+
+Le texte est celui qu’écrit `String()` en JavaScript pour la même valeur. Un flottant reçoit le moins de chiffres qui se relisent en le même nombre : `0.1`, `0.30000000000000004`, en notation simple de `0.000001` jusqu’à `1e21`, avec un exposant au-delà (`1e-7`, `1e+21`), et `NaN`, `Infinity`, `-Infinity` ; les deux zéros donnent `0`. JavaScript n’a pas de `f32` : un `f32` reçoit le moins de chiffres qui se relisent en ce même `f32`, arrondis comme le fait `toPrecision`, donc `0.1` et non le `0.10000000149011612` du `f64` qu’il devient. Le runtime le demande à l’hôte, le chargeur, qui appelle `String()` lui-même : le texte est celui de JavaScript par construction, comme pour les fonctions de `Math`.
+
+```peras build
+export fn label(count: i64, done: bool): String {
+  return count.toString() + " items, done: " + done.toString();
+}
+```
+
 ### Flottants
 
-| Méthode                   | Donne                                     | État                                         |
-| ------------------------- | ----------------------------------------- | -------------------------------------------- |
-| `sqrt()`                  | la racine carrée ; NaN en dessous de zéro | <span class="status compiled">compilé</span> |
-| `floor()`, `ceil()`       | arrondi vers le bas, vers le haut         | <span class="status compiled">compilé</span> |
-| `round()`                 | arrondi au plus proche                    | <span class="status checked">vérifié</span>  |
-| `sin()`, `cos()`, `tan()` | trigonométrie, en radians                 | <span class="status checked">vérifié</span>  |
+| Méthode                   | Donne                                                                | État                                         |
+| ------------------------- | -------------------------------------------------------------------- | -------------------------------------------- |
+| `sqrt()`                  | la racine carrée ; NaN en dessous de zéro                            | <span class="status compiled">compilé</span> |
+| `floor()`, `ceil()`       | arrondi vers le bas, vers le haut                                    | <span class="status compiled">compilé</span> |
+| `round()`                 | arrondi au plus proche, les moitiés vers le haut, comme `Math.round` | <span class="status compiled">compilé</span> |
+| `sin()`, `cos()`, `tan()` | trigonométrie, en radians                                            | <span class="status compiled">compilé</span> |
+| `exp()`, `log()`          | `e` à la puissance de la valeur, le logarithme naturel               | <span class="status compiled">compilé</span> |
+| `pow(b)`                  | la valeur à la puissance `b`                                         | <span class="status compiled">compilé</span> |
+| `atan2(x)`                | sur `y`, l’angle du point `(x, y)`, en radians                       | <span class="status compiled">compilé</span> |
+| `hypot(b)`                | `sqrt(a * a + b * b)`                                                | <span class="status compiled">compilé</span> |
+
+WebAssembly n’a pas d’instruction pour `round`, `exp`, `log`, la trigonométrie, `pow` et `atan2` : un module qui s’en sert les importe du `Math` de JavaScript, et ils donnent donc exactement ce que donne JavaScript. Un `f32` est calculé comme un `f64`, puis rearrondi.
 
 ## `Array<T>`
 
@@ -49,18 +69,39 @@ export fn wrapped(a: i32): i32 {
 | `pop()`   | retire et donne le dernier élément, `None` si vide | <span class="status compiled">compilé</span> |
 | `copy()`  | un nouveau tableau avec les mêmes éléments         | <span class="status compiled">compilé</span> |
 
+### Ordre, morceaux et recherche
+
+| Méthode             | Donne                                                                                                               | Statut                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `slice(start, end)` | un nouveau tableau des éléments de `start` à `end` ; un négatif compte depuis la fin, au-delà est ramené dedans     | <span class="status compiled">compilé</span> |
+| `concat(other)`     | un nouveau tableau de ses éléments, puis de ceux de `other`                                                         | <span class="status compiled">compilé</span> |
+| `reverse()`         | renverse les éléments, sur place : le tableau est un `let`                                                          | <span class="status compiled">compilé</span> |
+| `sort()`            | trie des nombres par ordre croissant, sur place, comme les tableaux typés de JavaScript : -0 avant +0, NaN à la fin | <span class="status compiled">compilé</span> |
+| `includes(x)`       | si un élément vaut `x` ; nombres, booléens et chaînes                                                               | <span class="status compiled">compilé</span> |
+| `indexOf(x)`        | l’indice du premier élément égal à `x`, ou `-1`                                                                     | <span class="status compiled">compilé</span> |
+
+```peras build
+export fn median(samples: Array<f64>): f64 {
+  let sorted = samples.copy();
+  sorted.sort();
+  return sorted[sorted.length / 2];
+}
+```
+
+`sort()` ordonne les nombres par leurs bits, un tri par base : son temps croît avec la longueur, non avec longueur × log(longueur), et un million de `f64` prennent environ 30 ms dans un navigateur. Il utilise une copie de travail du tableau, rendue avant de terminer.
+
 ### Avec une fonction fléchée
 
 Chacune de ces méthodes prend une fonction fléchée, écrite sur place, `(x) => …`, et la compile comme le corps d’une boucle : aucune valeur de fonction, aucun appel à l’exécution. Ses paramètres prêtent les éléments, comme `for…of` : ils sont lus, jamais déplacés. <span class="status compiled">compilé</span>
 
-| Méthode               | Donne                                                                                  | Statut                                       |
-| --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `map(f)`              | un nouveau tableau des `f(x)` de chaque élément                                        | <span class="status compiled">compilé</span> |
-| `filter(f)`           | un nouveau tableau des copies des éléments pour lesquels `f(x)` vaut `true`            | <span class="status compiled">compilé</span> |
-| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start` ; nombres et structures de nombres | <span class="status compiled">compilé</span> |
-| `find(f)`             | une copie du premier élément pour lequel `f(x)` vaut `true`, ou `None`                 | <span class="status compiled">compilé</span> |
-| `findIndex(f)`        | l’indice du premier élément pour lequel `f(x)` vaut `true`, ou `-1`                    | <span class="status compiled">compilé</span> |
-| `some(f)`, `every(f)` | si `f(x)` vaut `true` pour un élément, pour tous ; s’arrête dès que c’est connu        | <span class="status compiled">compilé</span> |
+| Méthode               | Donne                                                                                                                                                                         | Statut                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `map(f)`              | un nouveau tableau des `f(x)` de chaque élément                                                                                                                               | <span class="status compiled">compilé</span> |
+| `filter(f)`           | un nouveau tableau des copies des éléments pour lesquels `f(x)` vaut `true` ; sur un tableau temporaire, comme `text.split(" ")`, le même tableau, gardé sur place sans copie | <span class="status compiled">compilé</span> |
+| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start` ; nombres et structures de nombres                                                                                        | <span class="status compiled">compilé</span> |
+| `find(f)`             | une copie du premier élément pour lequel `f(x)` vaut `true`, ou `None`                                                                                                        | <span class="status compiled">compilé</span> |
+| `findIndex(f)`        | l’indice du premier élément pour lequel `f(x)` vaut `true`, ou `-1`                                                                                                           | <span class="status compiled">compilé</span> |
+| `some(f)`, `every(f)` | si `f(x)` vaut `true` pour un élément, pour tous ; s’arrête dès que c’est connu                                                                                               | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn summary(xs: Array<i32>, words: Array<String>): i32 {
@@ -81,6 +122,39 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
 | -------- | -------------------------------------- | -------------------------------------------- |
 | `length` | la longueur                            | <span class="status compiled">compilé</span> |
 | `copy()` | une nouvelle chaîne avec le même texte | <span class="status compiled">compilé</span> |
+
+Les indices et les longueurs comptent les octets UTF-8, comme `length`. Un indice tombé au milieu d’un caractère recule à son début : une tranche est toujours un texte valide. Chaque méthode qui donne une chaîne en donne une nouvelle ; la chaîne sur laquelle on l’appelle ne change pas.
+
+| Méthode                                       | Donne                                                                                                                                                                                            | Statut                                       |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `indexOf(s)`                                  | l’indice en octets du premier `s`, ou `-1`                                                                                                                                                       | <span class="status compiled">compilé</span> |
+| `includes(s)`, `startsWith(s)`, `endsWith(s)` | si `s` s’y trouve, au début, à la fin                                                                                                                                                            | <span class="status compiled">compilé</span> |
+| `slice(start, end)`                           | les octets de `start` à `end` ; un négatif compte depuis la fin, au-delà des bornes est ramené dedans                                                                                            | <span class="status compiled">compilé</span> |
+| `trim()`                                      | sans les espaces, tabulations et retours à la ligne aux deux bouts                                                                                                                               | <span class="status compiled">compilé</span> |
+| `toUpperCase()`, `toLowerCase()`              | les lettres ASCII en majuscules ou en minuscules ; les autres caractères inchangés                                                                                                               | <span class="status compiled">compilé</span> |
+| `repeat(n)`                                   | le texte `n` fois                                                                                                                                                                                | <span class="status compiled">compilé</span> |
+| `replace(from, to)`, `replaceAll(from, to)`   | le premier `from`, ou tous, remplacés par `to`                                                                                                                                                   | <span class="status compiled">compilé</span> |
+| `split(separator)`                            | les morceaux entre chaque séparateur, un `Array<String>` ; avec `""`, les caractères ; lus aussitôt, comme dans `text.split(" ").filter(…)`, les morceaux sont des vues du texte, pas des copies | <span class="status compiled">compilé</span> |
+| `parseI32()`, `parseI64()`                    | `Some(n)` quand le texte est un entier dans l’intervalle, sinon `None` ; voir plus bas                                                                                                           | <span class="status compiled">compilé</span> |
+
+```peras build
+export fn tidy(line: String): String {
+  const fields = line.split(",").map((f) => f.trim().toLowerCase());
+  const named = fields.filter((f) => !f.startsWith("#"));
+  return named.join(" ").replaceAll("  ", " ");
+}
+```
+
+`parseI32()` et `parseI64()` sont strictes : le texte est un `+`, un `-` ou rien, puis des chiffres ASCII, et rien d’autre. Ni espace, ni `_`, ni `0x`, ni exposant ; une valeur hors de l’intervalle du type donne `None`, jamais un résultat tronqué. Appliquez `trim()` d’abord si le texte peut porter des espaces.
+
+```peras build
+export fn port(text: String): i32 {
+  const n = text.trim().parseI32().unwrapOr(-1);
+  return n.clamp(-1, 65535);
+}
+```
+
+Sur un `Array<String>`, `join(separator)` donne ses chaînes avec `separator` entre chaque paire. <span class="status compiled">compilé</span>
 
 ## `Option<T>`
 

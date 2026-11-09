@@ -6,6 +6,7 @@
 //! `inout` and the other constructs listed in `E0900`) is reported, every
 //! occurrence at once, instead of being miscompiled.
 
+mod format;
 mod functional;
 mod heap;
 mod matching;
@@ -183,6 +184,19 @@ struct FnState {
     drops: Vec<LocalId>,
     /// The loops around the code being lowered, innermost last.
     loops: Vec<heap::LoopFrame>,
+    /// The temporaries that hold an array of views ([decision 0004]), with
+    /// the local their text comes from, if it comes from one.
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    views: HashMap<LocalId, Option<Symbol>>,
+    /// The text whose `split`, lowered next, may give views: set by the
+    /// consumer that reads the array at once.
+    views_for: Option<ExprId>,
+    /// The array whose `filter`, lowered next, only counts the elements it
+    /// keeps: set by `.length` read on it at once ([decision 0004], fusion).
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    counted: Option<ExprId>,
 }
 
 impl FnState {
@@ -198,6 +212,9 @@ impl FnState {
             gone: false,
             drops: Vec::new(),
             loops: Vec::new(),
+            views: HashMap::new(),
+            views_for: None,
+            counted: None,
         }
     }
 
@@ -955,7 +972,9 @@ impl Lowering<'_> {
             AstExpr::Call { callee, args, .. } => {
                 return self.call(state, id, *callee, args, ty, span);
             }
-            AstExpr::String(_) => return self.not_yet(span, "string", ty),
+            AstExpr::String(_) | AstExpr::Template { .. } => {
+                return self.not_yet(span, "string", ty);
+            }
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
             AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),
@@ -1001,8 +1020,23 @@ impl Lowering<'_> {
     /// `b` would: `t = a; if (t) { …; t = b }` for `&&`.
     fn short_circuit(&mut self, state: &mut FnState, op: BinaryOp, lhs: Expr, rhs: ExprId) -> Expr {
         let outer = std::mem::take(&mut state.pre);
+        let outer_drops = std::mem::take(&mut state.drops);
         let live = state.live.clone();
         let rhs = self.expr(state, rhs);
+        // The right side's temporaries, as `s.endsWith("1")` makes: its value
+        // first, then they are released in its branch, the only path that
+        // made them.
+        let rhs = if state.drops.is_empty() {
+            rhs
+        } else {
+            let value = state.temp(Ty::Bool);
+            state.pre.push(Stmt::Set(value, rhs));
+            let mut released = Vec::new();
+            state.end_statement(&mut released);
+            state.pre.extend(released);
+            local_expr(state, value)
+        };
+        state.drops = outer_drops;
         let inner = std::mem::replace(&mut state.pre, outer);
         let op = bin_op(op);
         // Buffers moved by the right side, which may not run: released when it
@@ -1111,8 +1145,46 @@ impl Lowering<'_> {
             "sqrt" => Some(MathOp::Sqrt),
             "floor" => Some(MathOp::Floor),
             "ceil" => Some(MathOp::Ceil),
+            "exp" => Some(MathOp::Exp),
+            "log" => Some(MathOp::Log),
+            "sin" => Some(MathOp::Sin),
+            "cos" => Some(MathOp::Cos),
+            "tan" => Some(MathOp::Tan),
+            "round" => Some(MathOp::Round),
             _ => None,
         };
+        if let (Some(op), Some(&arg)) = (
+            match method {
+                "pow" => Some(BinOp::Pow),
+                "atan2" => Some(BinOp::Atan2),
+                "hypot" => Some(BinOp::Add),
+                _ => None,
+            },
+            args.first(),
+        ) {
+            let mark = state.pre.len();
+            let other = self.expr(state, arg);
+            let mut operands = [receiver];
+            state.keep_before(mark, &mut operands);
+            let [receiver] = operands;
+            if method != "hypot" {
+                return binary(op, receiver, other);
+            }
+            // `sqrt(a * a + b * b)`, each operand computed once.
+            let (a, b) = (state.temp(ty), state.temp(ty));
+            state.pre.push(Stmt::Set(a, receiver));
+            state.pre.push(Stmt::Set(b, other));
+            let (a, b) = (local_expr(state, a), local_expr(state, b));
+            let sum = binary(
+                BinOp::Add,
+                binary(BinOp::Mul, a.clone(), a),
+                binary(BinOp::Mul, b.clone(), b),
+            );
+            return Expr {
+                kind: ExprKind::Math(MathOp::Sqrt, Box::new(sum)),
+                ty,
+            };
+        }
         if let Some(op) = math {
             return Expr {
                 kind: ExprKind::Math(op, Box::new(receiver)),

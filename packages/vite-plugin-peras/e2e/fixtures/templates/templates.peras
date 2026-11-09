@@ -1,0 +1,25 @@
+// Template literals: each value written as JavaScript writes it, in order.
+export fn greet(name: String, count: i64, done: bool): String {
+  return `${name}: ${count} items, done ${done}`;
+}
+
+export fn small(k: i32, n: i64): String {
+  return `[${k}|${n}]`;
+}
+
+export fn nested(name: String, k: i32): String {
+  return `<${`${name}=${k}`}> ${match (k) { 0 => "none", 1 => "one", _ => "many" }}`;
+}
+
+export fn escaped(name: String): String {
+  return `\`${name}\` costs \${price}
+next line`;
+}
+
+export fn joined(n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    out = `${out}${i};`;
+  }
+  return out;
+}

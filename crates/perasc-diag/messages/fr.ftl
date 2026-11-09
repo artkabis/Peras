@@ -17,6 +17,7 @@ cli-usage =
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
       --allocator <nom>  allocateur d’un module qui utilise le tas : debug (par défaut, chaque bug mémoire détecté) ou tlsf (production, temps borné)
+      --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide
@@ -68,7 +69,6 @@ lex-invalid-character-fix-remove = { $count ->
 }
 lex-invalid-character-fix-replace = remplace { $character } par `{ $replacement }`, le caractère ASCII auquel il ressemble
 lex-invalid-character-fix-identifier = les noms n’utilisent que des lettres ASCII, des chiffres et `_` : renomme-le, par exemple `cafe` au lieu de `café` ; pour afficher du texte, mets-le dans une chaîne
-lex-invalid-character-fix-template = les gabarits de chaîne (template literals) ne sont pas encore pris en charge : concatène les chaînes avec `+`
 
 # E0002
 lex-unterminated-string = chaîne non terminée
@@ -629,6 +629,10 @@ check-arrow-expected-label = attendu `(x) => …`
 check-arrow-why = Une fonction fléchée est compilée sur place, comme le corps d’une boucle, par les méthodes de tableaux qui en prennent une : `map`, `filter`, `reduce`, `find`, `findIndex`, `some` et `every`. Les fonctions comme valeurs, stockées ou transmises, arriveront avec les fermetures.
 check-arrow-fix = passe-la à `map`, `filter`, `reduce`, `find`, `findIndex`, `some` ou `every`, ou écris une fonction avec `fn`
 check-arrow-expected-fix = écris la fonction sur place : `xs.map((x) => x * 2)`
+check-template = un gabarit ne sait pas encore écrire un `{ $type }` en texte
+check-template-label = un `{ $type }`
+check-template-why = Un gabarit écrit chacune de ses valeurs en texte : une chaîne telle quelle, un nombre ou un booléen comme l’écrit `toString()`, comme le fait JavaScript. Une structure, un tableau ou une option n’a pas encore de texte à elle : quels champs, dans quel ordre, c’est au programme de le dire.
+check-template-fix = mettez-y ses champs, une valeur chacun
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
@@ -680,3 +684,4 @@ runtime-double-release = le bloc alloué à { $alloc } est libéré une seconde 
 runtime-use-after-release = le bloc alloué à { $alloc } a été modifié après que { $release } l’a libéré
 runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a été alloué à { $alloc }
 runtime-index = l’indice { $index } est hors limites : la longueur est { $length }
+runtime-simd = ce module utilise le SIMD de WebAssembly, que ce navigateur n’a pas : Chrome ou Edge 91, Firefox 89 et Safari 16.4 l’ont. Compilez-le avec `--simd off` pour le charger partout.

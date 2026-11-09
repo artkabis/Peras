@@ -362,6 +362,7 @@ impl Machine<'_> {
                 Value::Handle(self.allocated)
             }
             (BufOp::Clone, [buf]) => self.clone_buffer(*buf)?,
+            (BufOp::Runtime(f), operands) => self.runtime(f, operands)?,
             (BufOp::Take, [buf, Value::I32(index)]) => {
                 let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
                 *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
@@ -387,6 +388,231 @@ impl Machine<'_> {
             }
             _ => return Err(Trap::Unreachable),
         })
+    }
+
+    /// The bytes of a string.
+    fn bytes(&mut self, value: Value) -> Result<Vec<u8>, Trap> {
+        Ok(self
+            .elements(value)?
+            .iter()
+            .map(|v| match v {
+                Value::I32(b) => u8::try_from(*b).unwrap_or(0),
+                _ => 0,
+            })
+            .collect())
+    }
+
+    /// A new string of these bytes.
+    fn string(&mut self, bytes: &[u8]) -> Value {
+        self.allocated += 1;
+        let elements = bytes.iter().map(|&b| Value::I32(i32::from(b))).collect();
+        self.heap.insert(self.allocated, elements);
+        Value::Handle(self.allocated)
+    }
+
+    /// A function of the runtime on strings.
+    fn runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
+        use crate::RuntimeFn as F;
+        let int = |i: usize| -> Result<i32, Trap> {
+            match operands.get(i) {
+                Some(Value::I32(n)) => Ok(*n),
+                _ => Err(Trap::Unreachable),
+            }
+        };
+        let text = |this: &mut Self, i: usize| -> Result<Vec<u8>, Trap> {
+            let value = *operands.get(i).ok_or(Trap::Unreachable)?;
+            this.bytes(value)
+        };
+        if let Some(value) = self.array_runtime(f, operands)? {
+            return Ok(value);
+        }
+        match (f, operands.first()) {
+            (F::FmtInt, Some(Value::I64(n))) => return Ok(self.string(n.to_string().as_bytes())),
+            (F::FmtBool, Some(Value::Bool(b))) => {
+                return Ok(self.string(b.to_string().as_bytes()));
+            }
+            (F::FmtFloat, Some(Value::F64(x))) => {
+                let single = matches!(operands.get(1), Some(Value::I32(1)));
+                return Ok(self.string(crate::text::number_text(*x, single).as_bytes()));
+            }
+            (F::FmtInt | F::FmtBool | F::FmtFloat, _) => return Err(Trap::Unreachable),
+            _ => {}
+        }
+        let s = text(self, 0)?;
+        Ok(match f {
+            F::IndexOf => Value::I32(crate::text::index_of(&s, &text(self, 1)?, int(2)?)),
+            F::StartsWith => Value::Bool(s.starts_with(&text(self, 1)?)),
+            F::EndsWith => Value::Bool(s.ends_with(&text(self, 1)?)),
+            F::Slice => {
+                let part = crate::text::slice(&s, int(1)?, int(2)?);
+                self.string(&part)
+            }
+            F::Trim => {
+                let part = crate::text::trim(&s);
+                self.string(&part)
+            }
+            F::Upper => self.string(&s.to_ascii_uppercase()),
+            F::Lower => self.string(&s.to_ascii_lowercase()),
+            F::Repeat => {
+                let n = usize::try_from(int(1)?.max(0)).unwrap_or(0);
+                self.string(&s.repeat(n))
+            }
+            F::Replace | F::ReplaceAll => {
+                let (from, to) = (text(self, 1)?, text(self, 2)?);
+                let out = crate::text::replace(&s, &from, &to, f == F::ReplaceAll);
+                self.string(&out)
+            }
+            // Views are an encoding of the WebAssembly runtime: here, the same
+            // parts as `split`.
+            F::Split | F::SplitViews => {
+                let separator = text(self, 1)?;
+                let parts: Vec<Value> = crate::text::split(&s, &separator)
+                    .iter()
+                    .map(|p| self.string(p))
+                    .collect();
+                self.allocated += 1;
+                self.heap.insert(self.allocated, parts);
+                self.deep.insert(self.allocated);
+                Value::Handle(self.allocated)
+            }
+            F::IsInt => Value::Bool(crate::text::parse_int(&s, int(1)?).is_some()),
+            F::ParseInt => Value::I64(crate::text::parse_int(&s, 64).unwrap_or(0)),
+            F::ArrSlice
+            | F::ArrConcat
+            | F::ArrReverse
+            | F::ArrSort
+            | F::ArrIndexOfStr
+            | F::ArrKeep
+            | F::FmtInt
+            | F::FmtBool
+            | F::FmtFloat => {
+                return Err(Trap::Unreachable);
+            }
+            F::Join => {
+                let separator = text(self, 1)?;
+                let parts = self
+                    .elements(*operands.first().ok_or(Trap::Unreachable)?)?
+                    .clone();
+                let mut out = Vec::new();
+                for (i, part) in parts.into_iter().enumerate() {
+                    if i > 0 {
+                        out.extend_from_slice(&separator);
+                    }
+                    out.extend(self.bytes(part)?);
+                }
+                self.string(&out)
+            }
+        })
+    }
+
+    /// The functions of the runtime on columns of arrays; `None` for the
+    /// others.
+    fn array_runtime(
+        &mut self,
+        f: crate::RuntimeFn,
+        operands: &[Value],
+    ) -> Result<Option<Value>, Trap> {
+        use crate::RuntimeFn as F;
+        let first = *operands.first().ok_or(Trap::Unreachable)?;
+        let int = |i: usize| match operands.get(i) {
+            Some(Value::I32(n)) => Ok(*n),
+            _ => Err(Trap::Unreachable),
+        };
+        let deep = matches!(first, Value::Handle(b) if self.deep.contains(&b));
+        let column = |this: &mut Self, elements: Vec<Value>| -> Result<Value, Trap> {
+            let mut elements = elements;
+            if deep {
+                for element in &mut elements {
+                    *element = this.clone_buffer(*element)?;
+                }
+            }
+            this.allocated += 1;
+            this.heap.insert(this.allocated, elements);
+            if deep {
+                this.deep.insert(this.allocated);
+            }
+            Ok(Value::Handle(this.allocated))
+        };
+        let clamp = |len: usize, i: i32| -> usize {
+            let len = i64::try_from(len).unwrap_or(i64::MAX);
+            let i = if i < 0 {
+                i64::from(i) + len
+            } else {
+                i64::from(i)
+            };
+            usize::try_from(i.clamp(0, len)).unwrap_or(0)
+        };
+        Ok(Some(match f {
+            F::ArrSlice => {
+                let elements = self.elements(first)?.clone();
+                let a = clamp(elements.len(), int(1)?);
+                let b = clamp(elements.len(), int(2)?).max(a);
+                let part = elements.get(a..b).unwrap_or_default().to_vec();
+                column(self, part)?
+            }
+            F::ArrConcat => {
+                let mut elements = self.elements(first)?.clone();
+                let other = *operands.get(1).ok_or(Trap::Unreachable)?;
+                elements.extend(self.elements(other)?.clone());
+                column(self, elements)?
+            }
+            F::ArrReverse => {
+                self.elements(first)?.reverse();
+                Value::Void
+            }
+            F::ArrKeep => {
+                let flags = self
+                    .elements(*operands.get(1).ok_or(Trap::Unreachable)?)?
+                    .clone();
+                let elements = std::mem::take(self.elements(first)?);
+                let mut kept = Vec::with_capacity(elements.len());
+                for (element, flag) in elements
+                    .into_iter()
+                    .zip(flags.iter().chain(std::iter::repeat(&Value::Bool(false))))
+                {
+                    if *flag == Value::Bool(true) {
+                        kept.push(element);
+                    } else if let (true, Value::Handle(block)) = (deep, element) {
+                        self.free(block)?;
+                    }
+                }
+                *self.elements(first)? = kept;
+                Value::Void
+            }
+            F::ArrSort => {
+                let elements = self.elements(first)?;
+                // JavaScript's order for typed arrays, as the runtime's: -0
+                // before +0, every NaN last, as the canonical NaN.
+                for v in elements.iter_mut() {
+                    match v {
+                        Value::F32(x) if x.is_nan() => *x = f32::NAN,
+                        Value::F64(x) if x.is_nan() => *x = f64::NAN,
+                        _ => {}
+                    }
+                }
+                elements.sort_by(|a, b| match (a, b) {
+                    (Value::I32(x), Value::I32(y)) => x.cmp(y),
+                    (Value::I64(x), Value::I64(y)) => x.cmp(y),
+                    (Value::F32(x), Value::F32(y)) => x.total_cmp(y),
+                    (Value::F64(x), Value::F64(y)) => x.total_cmp(y),
+                    _ => std::cmp::Ordering::Equal,
+                });
+                Value::Void
+            }
+            F::ArrIndexOfStr => {
+                let needle = self.bytes(*operands.get(1).ok_or(Trap::Unreachable)?)?;
+                let strings = self.elements(first)?.clone();
+                let mut found = -1;
+                for (i, s) in strings.into_iter().enumerate() {
+                    if self.bytes(s)? == needle {
+                        found = i32::try_from(i).unwrap_or(-1);
+                        break;
+                    }
+                }
+                Value::I32(found)
+            }
+            _ => return Ok(None),
+        }))
     }
 
     /// Releases a buffer, and the buffers it owns.
@@ -530,7 +756,9 @@ macro_rules! int_op {
             BinOp::Le => return Ok(Value::Bool(a <= b)),
             BinOp::Gt => return Ok(Value::Bool(a > b)),
             BinOp::Ge => return Ok(Value::Bool(a >= b)),
-            BinOp::And | BinOp::Or => return Err(Trap::Unreachable),
+            BinOp::And | BinOp::Or | BinOp::Pow | BinOp::Atan2 => {
+                return Err(Trap::Unreachable);
+            }
         }))
     }};
 }
@@ -549,6 +777,10 @@ macro_rules! float_op {
             BinOp::Le => Value::Bool(a <= b),
             BinOp::Gt => Value::Bool(a > b),
             BinOp::Ge => Value::Bool(a >= b),
+            #[allow(clippy::cast_possible_truncation)]
+            BinOp::Pow => $wrap((f64::from(a).powf(f64::from(b))) as _),
+            #[allow(clippy::cast_possible_truncation)]
+            BinOp::Atan2 => $wrap((f64::from(a).atan2(f64::from(b))) as _),
             _ => return Err(Trap::Unreachable),
         })
     }};
@@ -602,6 +834,24 @@ fn math(op: MathOp, v: Value) -> Value {
         (MathOp::Floor, Value::F64(x)) => Value::F64(x.floor()),
         (MathOp::Ceil, Value::F32(x)) => Value::F32(x.ceil()),
         (MathOp::Ceil, Value::F64(x)) => Value::F64(x.ceil()),
+        // The functions of `Math`, on `f64`, an `f32` widened then narrowed.
+        #[allow(clippy::cast_possible_truncation)]
+        (op, Value::F32(x)) => match math(op, Value::F64(f64::from(x))) {
+            Value::F64(y) => Value::F32(y as f32),
+            other => other,
+        },
+        (MathOp::Exp, Value::F64(x)) => Value::F64(x.exp()),
+        (MathOp::Log, Value::F64(x)) => Value::F64(x.ln()),
+        (MathOp::Sin, Value::F64(x)) => Value::F64(x.sin()),
+        (MathOp::Cos, Value::F64(x)) => Value::F64(x.cos()),
+        (MathOp::Tan, Value::F64(x)) => Value::F64(x.tan()),
+        (MathOp::Round, Value::F64(x)) => Value::F64(js_round(x)),
         (_, other) => other,
     }
+}
+
+/// `Math.round`: the nearest integer, halves toward positive infinity.
+fn js_round(x: f64) -> f64 {
+    let down = x.floor();
+    if x - down >= 0.5 { down + 1.0 } else { down }
 }

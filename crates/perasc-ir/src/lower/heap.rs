@@ -500,7 +500,21 @@ impl Lowering<'_> {
 
     /// `xs.length`: the length of the first column.
     pub(super) fn array_length(&mut self, state: &mut FnState, base: ExprId) -> Expr {
-        match self.buffer(state, base) {
+        // `xs.filter((x) => …).length`: the elements kept are counted, with
+        // no array between. One function runs, as written, element by
+        // element: the order of its calls is that of the program.
+        if let Some((array, args)) = self.filter_call(base) {
+            state.counted = Some(array);
+            let span = self.ast.expr(base).span;
+            let values = self.array_method(state, array, "filter", &args, Mode::Borrow, span);
+            state.counted = None;
+            return values.into_iter().next().unwrap_or_else(|| int(0));
+        }
+        // `text.split(" ").length`: read at once, views are enough.
+        state.views_for = self.split_source(base);
+        let buffer = self.buffer(state, base);
+        state.views_for = None;
+        match buffer {
             Some(buffer) => len(&buffer),
             None => int(0),
         }
@@ -666,16 +680,33 @@ impl Lowering<'_> {
         mode: Mode,
         span: Span,
     ) -> Vec<Expr> {
+        let views = Self::gives_views(state, base, method, mode);
         let Some(columns) = self.columns_of(base, span) else {
             return Vec::new();
         };
-        let buffers = self.value_as(state, base, Mode::Borrow);
+        let buffers = self.receiver(state, base, args);
         let Some(first) = buffers.first().cloned() else {
             return Vec::new();
         };
         if let Some(values) =
             self.function_method(state, base, method, args, mode, (&columns, &buffers))
         {
+            return values;
+        }
+        let is_string = matches!(self.check_type(base), Some(CheckTy::String));
+        if !is_string
+            && let Some(values) =
+                self.column_method(state, method, args, mode, (&columns, &buffers))
+        {
+            return values;
+        }
+        if is_string
+            && let Some(values) =
+                self.string_method(state, (base, &first), method, args, mode, views)
+        {
+            return values;
+        }
+        if let Some(values) = self.text_method(state, &first, method, args, mode, false) {
             return values;
         }
         match method {
@@ -691,54 +722,7 @@ impl Lowering<'_> {
                 }
                 Vec::new()
             }
-            "pop" => {
-                // n = len; if (n > 0) { v = xs[n - 1]; truncate to n - 1 }
-                let n = state.temp(Ty::I32);
-                state.pre.push(Stmt::Set(n, len(&first)));
-                let n = super::local_expr(state, n);
-                let some = super::binary(BinOp::Gt, n.clone(), int(0));
-                let last = super::binary(BinOp::Sub, n, int(1));
-                let some_temp = state.temp(Ty::Bool);
-                state.pre.push(Stmt::Set(some_temp, some));
-                let mut out = vec![super::local_expr(state, some_temp)];
-                let mut then = Vec::new();
-                for (buffer, elem) in buffers.iter().zip(columns) {
-                    if elem == Elem::Handle {
-                        // An empty buffer when there is none, else the element
-                        // itself, taken out before the array is shortened.
-                        let value = state.owned_temp(new_buffer(int(0), Elem::U8));
-                        then.push(release_stmt(value));
-                        then.push(Stmt::Set(
-                            value,
-                            Expr {
-                                kind: ExprKind::Buf(
-                                    BufOp::Take,
-                                    vec![buffer.clone(), last.clone()],
-                                ),
-                                ty: Ty::Owned,
-                            },
-                        ));
-                        out.push(Expr {
-                            kind: ExprKind::Local(value),
-                            ty: Ty::Owned,
-                        });
-                        continue;
-                    }
-                    let value = state.temp(elem.ty());
-                    state.pre.push(Stmt::Set(value, super::zero(elem.ty())));
-                    then.push(Stmt::Set(value, get(buffer, last.clone(), elem)));
-                    out.push(super::local_expr(state, value));
-                }
-                for buffer in buffers {
-                    then.push(Stmt::Buf(BufStmt::Truncate, vec![buffer, last.clone()]));
-                }
-                state.pre.push(Stmt::If {
-                    cond: super::local_expr(state, some_temp),
-                    then,
-                    otherwise: Vec::new(),
-                });
-                Self::fresh(state, out, mode)
-            }
+            "pop" => Self::pop_values(state, &first, buffers, &columns, mode),
             "copy" => {
                 // Each column copied by the runtime, with the buffers it owns.
                 let copies = buffers
@@ -775,7 +759,10 @@ impl Lowering<'_> {
             Some(CheckTy::Array(inner)) => *inner,
             _ => CheckTy::Int(perasc_check::ty::IntTy::U8),
         };
+        state.views_for = self.split_source(iterable);
         let buffers = self.value_as(state, iterable, Mode::Borrow);
+        state.views_for = None;
+        let buffers = self.unviewed(state, buffers, &[body.span]);
         let Some(first) = buffers.first().cloned() else {
             return;
         };
@@ -784,6 +771,13 @@ impl Lowering<'_> {
         state.flush(out);
         let i_expr = super::local_expr(state, i);
         state.open();
+        // A temporary array, `for (const w of text.split(" "))`, belongs to
+        // the loop's scope: it lives through every turn, which releases only
+        // its own temporaries, and goes after the loop or on a `return`.
+        let temporaries = std::mem::take(&mut state.drops);
+        if let Some(scope) = state.owned.last_mut() {
+            scope.extend(temporaries);
+        }
         let text = self.ast.name(name.symbol);
         let mut turn: Vec<Stmt> = Vec::new();
         if columns.contains(&Elem::Handle) {
@@ -818,6 +812,189 @@ impl Lowering<'_> {
         out.extend(lowered);
         state.close(out);
         state.end_statement(out);
+    }
+
+    /// The receiver of a method, lent. The method reads it at once: a
+    /// `split` there may give views, copied when an argument could change
+    /// their text.
+    fn receiver(&mut self, state: &mut FnState, base: ExprId, args: &[ExprId]) -> Vec<Expr> {
+        state.views_for = self.split_source(base);
+        let buffers = self.value_as(state, base, Mode::Borrow);
+        state.views_for = None;
+        let spans: Vec<Span> = args.iter().map(|&a| self.ast.expr(a).span).collect();
+        self.unviewed(state, buffers, &spans)
+    }
+
+    /// `xs.pop()`: whether there was a last element, and the element, taken
+    /// out of each column before the array is shortened.
+    fn pop_values(
+        state: &mut FnState,
+        first: &Expr,
+        buffers: Vec<Expr>,
+        columns: &[Elem],
+        mode: Mode,
+    ) -> Vec<Expr> {
+        // n = len; if (n > 0) { v = xs[n - 1]; truncate to n - 1 }
+        let n = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(n, len(first)));
+        let n = super::local_expr(state, n);
+        let some = super::binary(BinOp::Gt, n.clone(), int(0));
+        let last = super::binary(BinOp::Sub, n, int(1));
+        let some_temp = state.temp(Ty::Bool);
+        state.pre.push(Stmt::Set(some_temp, some));
+        let mut out = vec![super::local_expr(state, some_temp)];
+        let mut then = Vec::new();
+        for (buffer, &elem) in buffers.iter().zip(columns) {
+            if elem == Elem::Handle {
+                // An empty buffer when there is none, else the element
+                // itself, taken out before the array is shortened.
+                let value = state.owned_temp(new_buffer(int(0), Elem::U8));
+                then.push(release_stmt(value));
+                then.push(Stmt::Set(
+                    value,
+                    Expr {
+                        kind: ExprKind::Buf(BufOp::Take, vec![buffer.clone(), last.clone()]),
+                        ty: Ty::Owned,
+                    },
+                ));
+                out.push(Expr {
+                    kind: ExprKind::Local(value),
+                    ty: Ty::Owned,
+                });
+                continue;
+            }
+            let value = state.temp(elem.ty());
+            state.pre.push(Stmt::Set(value, super::zero(elem.ty())));
+            then.push(Stmt::Set(value, get(buffer, last.clone(), elem)));
+            out.push(super::local_expr(state, value));
+        }
+        for buffer in buffers {
+            then.push(Stmt::Buf(BufStmt::Truncate, vec![buffer, last.clone()]));
+        }
+        state.pre.push(Stmt::If {
+            cond: super::local_expr(state, some_temp),
+            then,
+            otherwise: Vec::new(),
+        });
+        Self::fresh(state, out, mode)
+    }
+
+    /// A method of a string: an integer read from it, or a function of the
+    /// runtime, `split` giving views when `views` holds.
+    fn string_method(
+        &mut self,
+        state: &mut FnState,
+        text: (ExprId, &Expr),
+        method: &str,
+        args: &[ExprId],
+        mode: Mode,
+        views: bool,
+    ) -> Option<Vec<Expr>> {
+        let (id, buffer) = text;
+        if matches!(method, "parseI32" | "parseI64") {
+            return Some(Self::parse_int(state, buffer.clone(), method == "parseI32"));
+        }
+        let values = self.text_method(state, buffer, method, args, mode, views)?;
+        if views {
+            self.note_views(state, &values, id);
+        }
+        Some(values)
+    }
+
+    /// Whether this `split` of `text` gives views: the array it makes is
+    /// read at once, by the consumer that asked (`views_for`).
+    fn gives_views(state: &mut FnState, text: ExprId, method: &str, mode: Mode) -> bool {
+        let asked = state.views_for.take() == Some(text);
+        asked && method == "split" && mode == Mode::Borrow
+    }
+
+    /// Notes the temporary `split` just filled with views of `text`.
+    fn note_views(&self, state: &mut FnState, values: &[Expr], text: ExprId) {
+        if let Some(ExprKind::Borrow(t)) = values.first().map(|v| &v.kind) {
+            let source = self.root(text);
+            state.views.insert(*t, source);
+        }
+    }
+
+    /// The array `id` filters with an arrow function, and the arguments, when
+    /// it is `xs.filter((x) => …)`.
+    fn filter_call(&self, id: ExprId) -> Option<(ExprId, Vec<ExprId>)> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Paren(inner) => self.filter_call(*inner),
+            AstExpr::Call { callee, args, .. } => match &self.ast.expr(*callee).kind {
+                AstExpr::Field { base, name }
+                    if self.ast.name(name.symbol) == "filter"
+                        && self.is_buffer(*base)
+                        && args.first().is_some_and(|&a| {
+                            matches!(self.ast.expr(a).kind, AstExpr::Lambda { .. })
+                        }) =>
+                {
+                    Some((*base, args.clone()))
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The text `id` splits, when it is `text.split(…)`.
+    pub(super) fn split_source(&self, id: ExprId) -> Option<ExprId> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Paren(inner) => self.split_source(*inner),
+            AstExpr::Call { callee, .. } => match &self.ast.expr(*callee).kind {
+                AstExpr::Field { base, name } if self.ast.name(name.symbol) == "split" => {
+                    Some(*base)
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The local a value is read from, through fields, indices and
+    /// parentheses; `None` for a value made by the expression itself.
+    pub(super) fn root(&self, id: ExprId) -> Option<perasc_syntax::ast::Symbol> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Name(symbol) => Some(*symbol),
+            AstExpr::Paren(inner) => self.root(*inner),
+            AstExpr::Field { base, .. } | AstExpr::Index { base, .. } => self.root(*base),
+            _ => None,
+        }
+    }
+
+    /// Whether code in `spans` names `symbol`: it could then change it.
+    fn mentions(&self, spans: &[Span], symbol: perasc_syntax::ast::Symbol) -> bool {
+        self.ast.exprs.iter().any(|e| {
+            matches!(e.kind, AstExpr::Name(s) if s == symbol)
+                && spans
+                    .iter()
+                    .any(|span| span.start <= e.span.start && e.span.end <= span.end)
+        })
+    }
+
+    /// `buffers`, with each array of views whose text the code in `spans`
+    /// names replaced by a copy, an ordinary array: that code could change the
+    /// text while the views are read.
+    fn unviewed(&self, state: &mut FnState, buffers: Vec<Expr>, spans: &[Span]) -> Vec<Expr> {
+        buffers
+            .into_iter()
+            .map(|buffer| {
+                let ExprKind::Borrow(t) = buffer.kind else {
+                    return buffer;
+                };
+                match state.views.get(&t) {
+                    Some(Some(symbol)) if self.mentions(spans, *symbol) => {
+                        let copy = state.owned_temp(Expr {
+                            kind: ExprKind::Buf(BufOp::Clone, vec![buffer]),
+                            ty: Ty::Owned,
+                        });
+                        state.drops.push(copy);
+                        borrowed(copy)
+                    }
+                    _ => buffer,
+                }
+            })
+            .collect()
     }
 
     /// Two paths meet: a local live on one and not the other is released on

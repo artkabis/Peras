@@ -14,6 +14,7 @@ export default defineConfig(
       "bench/bugs/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
+      "bench/browser/kernels.d.ts",
     ],
   },
   js.configs.recommended,
@@ -29,6 +30,8 @@ export default defineConfig(
             "vitest.e2e.config.ts",
             "scripts/*.mjs",
           ],
+          // The root configs and the scripts: more than the default of 8.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -38,7 +41,19 @@ export default defineConfig(
     // Plain JS scripts run on Node: declare its globals (no extra dependency needed).
     files: ["**/*.js", "**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly" },
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+        performance: "readonly",
+      },
+    },
+  },
+  {
+    // The browser benchmark's page code runs in a browser.
+    files: ["bench/browser/*.js"],
+    languageOptions: {
+      globals: { document: "readonly", navigator: "readonly" },
     },
   },
 );

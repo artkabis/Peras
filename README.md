@@ -6,7 +6,9 @@ Peras is a web language with TypeScript syntax and Rust-grade rigour. `.peras` m
 
 > Peras (πέρας) is Greek for _the limit_. For the Pythagoreans, everything good arises from limit imposed on the unlimited (_apeiron_).
 
-**Status:** version 0.0.1, the end of phase 0 of the kickoff plan ([changelog](CHANGELOG.md)). `perasc` checks the syntax, names and types of a source, and compiles functions on numbers, booleans and structures of these to WebAssembly, without a Rust toolchain; `vite-plugin-peras` runs them in the browser, structures crossing into JavaScript as objects. Arrays, ownership and `.apeiron` modules come next.
+**Status:** version 0.0.1, in phase 3 of the [roadmap](docs/en/reference/roadmap.md), the standard library ([changelog](CHANGELOG.md), [what is compiled today](docs/en/reference/status.md)). `perasc` checks the syntax, names, types and ownership of a source, and compiles it to WebAssembly without a Rust toolchain: numbers, structures, enumerations and `match`, options and results, generics, methods and interfaces, arrays and strings with their methods, arrow functions for `map`, `filter` and the others, and template literals. Every block of memory is released by the compiler, checked by a verifier, with a debug allocator in development and TLSF in production. `vite-plugin-peras` runs modules in the browser. `Map` and `Set` ([decision 0005](docs/en/decisions/0005-maps-and-sets.md)) and `.apeiron` modules come next.
+
+**Speed**, measured in Chromium against JavaScript written for speed ([benchmark](bench/README.md#browser-benchmark-benchbrowser)): 5.4 times faster on 64-bit integers, 1.6 to 2.4 times on numbers in arrays, sorting and text, the same speed on structures and floating-point arithmetic alone, and slower on very short calls across the boundary. Against JavaScript as usually written, the gaps are larger; both are published.
 
 ## Pillars
 
@@ -18,8 +20,12 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 
 ## Documentation
 
-- [Language spec](docs/en/spec.md)
-- [Compiler kickoff plan](docs/en/kickoff-plan.md)
+- [Guide](docs/en/guide/introduction.md), from the first program to JavaScript interop
+- [Reference](docs/en/reference/status.md): status, types, operators, methods, keywords, CLI, [roadmap](docs/en/reference/roadmap.md)
+- [Error codes](docs/en/errors/index.md), each with its cause and fix
+- Decisions: [0001 WebAssembly backend](docs/en/decisions/0001-webassembly-backend.md), [0002 TLSF allocator](docs/en/decisions/0002-tlsf-allocator.md), [0003 a runtime proved at compile time](docs/en/decisions/0003-runtime-proved-at-compile-time.md), [0004 strings without allocation](docs/en/decisions/0004-strings-without-allocation.md), [0005 maps and sets](docs/en/decisions/0005-maps-and-sets.md)
+- [Benchmarks](bench/README.md), what they measure and what they do not
+- [Language spec](docs/en/spec.md), [architecture](docs/en/architecture.md), [compiler kickoff plan](docs/en/kickoff-plan.md)
 
 ## Repository layout
 
@@ -33,7 +39,7 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 | `crates/perasc-codegen-wasm` | `.peras` → WASM, directly, without a Rust toolchain |
 | `crates/perasc-codegen-js`   | `.apeiron` → JavaScript                             |
 | `crates/perasc-driver`       | Pipeline and build orchestration                    |
-| `crates/perasc-runtime`      | WebAssembly runtime: the debug allocator            |
+| `crates/perasc-runtime`      | WebAssembly runtime: allocators, strings, arrays    |
 | `crates/perasc`              | Command-line interface                              |
 | `packages/vite-plugin-peras` | Vite plugin                                         |
 | `packages/vitest-peras`      | Vitest adapter                                      |

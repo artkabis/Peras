@@ -449,3 +449,57 @@ fn values_that_could_change_stay_in_their_loop() {
         assert_eq!(after, before, "{source}\n{after}");
     }
 }
+
+/// Every pair of `(n, m)` in the ranges, as `i32` arguments.
+fn pairs(ns: std::ops::RangeInclusive<i32>, ms: std::ops::RangeInclusive<i32>) -> Vec<Vec<Value>> {
+    ns.flat_map(|n| ms.clone().map(move |m| vec![Value::I32(n), Value::I32(m)]))
+        .collect()
+}
+
+fn checks(module: &Module) -> usize {
+    module.to_string().matches("check_index").count()
+}
+
+#[test]
+fn a_counted_loop_needs_no_check_on_the_array_it_counts() {
+    let source = "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < n; k++) xs.push(k * m);\n  let total = 0;\n  for (let i = 0; i < xs.length; i++) {\n    if (xs[i] > 4) continue;\n    xs[i] = xs[i] + total;\n    total += xs[i];\n  }\n  return total;\n}\n";
+    let (before, after) = same_results(source, &pairs(0..=6, -2..=3));
+    assert_eq!(checks(&before), 4, "{before}");
+    assert_eq!(checks(&after), 0, "{after}");
+}
+
+#[test]
+fn another_array_is_guarded_once_and_the_loop_as_written_traps_the_same() {
+    // `ys` may be shorter than `xs`: the original loop runs then, and traps at
+    // the same index after the same writes.
+    let source = "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < n; k++) xs.push(k);\n  let ys: Array<i32> = [];\n  for (let k = 0; k < m; k++) ys.push(k * 2);\n  let total = 0;\n  for (let i = 0; i < xs.length; i++) {\n    ys[i] = ys[i] + xs[i];\n    total = total * 3 + ys[i];\n  }\n  return total;\n}\n";
+    let (_, after) = same_results(source, &pairs(0..=6, 0..=6));
+    let text = after.to_string();
+    assert!(text.contains("if (i32.>= (buf.len (borrow %"), "{text}");
+}
+
+#[test]
+fn a_bound_that_is_not_a_length_is_guarded_and_nested_loops_inherit_the_proof() {
+    let source = "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < m; k++) xs.push(k + 1);\n  let total = 0;\n  for (let i = 0; i < n; i++) {\n    for (let j = 0; j < n; j++) {\n      total += xs[i] * xs[j];\n    }\n    xs[i] = total % 7;\n  }\n  return total;\n}\n";
+    let (_, after) = same_results(source, &pairs(-1..=5, 0..=5));
+    let text = after.to_string();
+    // One guard, on the outer loop; the inner loop of its fast copy needs none.
+    assert_eq!(text.matches("if (i32.>=").count(), 1, "{text}");
+}
+
+#[test]
+fn loops_that_change_a_length_assign_the_index_or_call_keep_their_checks() {
+    for source in [
+        // `push` in the body: the length changes.
+        "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < m; k++) xs.push(k);\n  let total = 0;\n  for (let i = 0; i < n; i++) {\n    total += xs[i];\n    xs.push(i);\n  }\n  return total;\n}\n",
+        // The index moves in the body (by `n`, at least 0: a loop that ends).
+        "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < m; k++) xs.push(k);\n  let total = 0;\n  for (let i = 0; i < xs.length; i++) {\n    total += xs[i];\n    i += n;\n  }\n  return total;\n}\n",
+        // A start below zero.
+        "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < m; k++) xs.push(k);\n  let total = 0;\n  for (let i = -1; i < xs.length; i++) {\n    total += xs[i] + n;\n  }\n  return total;\n}\n",
+        // A call, which could take the array `inout` and shorten it.
+        "fn g(xs: inout Array<i32>): void {\n  xs.pop();\n}\nexport fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < m; k++) xs.push(k);\n  let total = 0;\n  for (let i = 0; i < n; i++) {\n    total += xs[i];\n    g(&xs);\n  }\n  return total;\n}\n",
+    ] {
+        let (before, after) = same_results(source, &pairs(0..=5, 0..=6));
+        assert_eq!(checks(&after), checks(&before), "{after}");
+    }
+}

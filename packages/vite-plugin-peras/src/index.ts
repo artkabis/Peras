@@ -51,6 +51,12 @@ export interface PerasOptions {
    * `tlsf` for `vite build`.
    */
   allocator?: "debug" | "tlsf";
+  /**
+   * WebAssembly SIMD, in loops whose turns are independent and in the runtime:
+   * faster, but the module does not load in engines without it (Safari before
+   * 16.4), where its loader says so. `false` builds without it. Default: `true`.
+   */
+  simd?: boolean;
 }
 
 /** A compiled `.peras` module. */
@@ -152,9 +158,19 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
   const perasc = options.perasc ?? process.env.PERASC ?? "perasc";
   const lang = options.lang === undefined ? [] : ["--lang", options.lang];
   const allocator = options.allocator === undefined ? [] : ["--allocator", options.allocator];
+  const simd = options.simd === false ? ["--simd", "off"] : [];
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
-    const built = await run(perasc, ["build", file, "--out", out, "--json", ...lang, ...allocator]);
+    const built = await run(perasc, [
+      "build",
+      file,
+      "--out",
+      out,
+      "--json",
+      ...lang,
+      ...allocator,
+      ...simd,
+    ]);
     if (built.code === 1) {
       const { summary, loc } = firstError(JSON.parse(built.stdout) as Report);
       // The same errors, rendered as in a terminal, for the overlay.

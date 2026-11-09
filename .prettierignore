@@ -4,5 +4,7 @@ Cargo.lock
 crates/
 bench/bugs/
 bench/backends/RESULTS.md
+bench/browser/RESULTS.md
+bench/browser/kernels.d.ts
 website/.pages/
 website/dist/

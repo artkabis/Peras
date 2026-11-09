@@ -259,6 +259,39 @@ fn build_links_the_allocator_asked_for() {
 }
 
 #[test]
+fn build_uses_simd_unless_told_otherwise() {
+    let heap = std::env::temp_dir().join("perasc-heap-simd.peras");
+    let _ = std::fs::write(
+        &heap,
+        "export fn count(text: String): i32 {\n  return text.split(\" \").length;\n}\n",
+    );
+    let heap_path = heap.to_string_lossy().into_owned();
+    let mut loaders = Vec::new();
+    for simd in [None, Some("on"), Some("off")] {
+        let dir = out_dir(&format!("simd-{}", simd.unwrap_or("default")));
+        let out_path = dir.to_string_lossy().into_owned();
+        let mut args = vec!["build", heap_path.as_str(), "--out", out_path.as_str()];
+        if let Some(value) = simd {
+            args.extend(["--simd", value]);
+        }
+        let (code, _, err) = cli(&args);
+        assert_eq!((code, err.as_str()), (SUCCESS, ""));
+        loaders.push(std::fs::read_to_string(dir.join("perasc-heap-simd.js")).unwrap_or_default());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    // With SIMD, by default or asked, the loader checks for it first.
+    let checks: Vec<bool> = loaders
+        .iter()
+        .map(|l| l.contains("WebAssembly.validate"))
+        .collect();
+    assert_eq!(checks, [true, true, false]);
+    let (code, _, err) = cli(&["build", &heap_path, "--simd", "maybe"]);
+    assert_eq!(code, USAGE_OR_IO);
+    assert!(err.contains("`--simd`"), "{err}");
+    let _ = std::fs::remove_file(&heap);
+}
+
+#[test]
 fn build_reports_as_json_on_request() {
     let dir = out_dir("json");
     let out_path = dir.to_string_lossy().into_owned();

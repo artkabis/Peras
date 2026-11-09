@@ -581,6 +581,14 @@ pub enum ExprKind {
         /// Arguments, in order.
         args: Vec<ExprId>,
     },
+    /// `` `text${value}text` ``: one more piece of text than values, the
+    /// pieces decoded, escapes included.
+    Template {
+        /// The text before, between and after the values.
+        parts: Vec<String>,
+        /// The values written into it.
+        exprs: Vec<ExprId>,
+    },
     /// `base.name`.
     Field {
         /// The value.
@@ -1086,6 +1094,17 @@ impl Ast {
                 let mut s = format!("(call {}", self.sexpr(*callee));
                 for arg in args {
                     let _ = write!(s, " {}", self.sexpr(*arg));
+                }
+                s.push(')');
+                s
+            }
+            ExprKind::Template { parts, exprs } => {
+                let mut s = String::from("(template");
+                for (k, part) in parts.iter().enumerate() {
+                    let _ = write!(s, " {part:?}");
+                    if let Some(e) = exprs.get(k) {
+                        let _ = write!(s, " {}", self.sexpr(*e));
+                    }
                 }
                 s.push(')');
                 s

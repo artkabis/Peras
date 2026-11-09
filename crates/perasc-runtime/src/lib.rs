@@ -32,6 +32,15 @@ pub const DEBUG_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/all
 /// byte its blocks do not use.
 pub const TLSF_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf.wasm"));
 
+/// [`DEBUG_ALLOCATOR`] without WebAssembly SIMD, for `--simd off`: the same
+/// functions, a byte at a time where the other compares sixteen.
+pub const DEBUG_ALLOCATOR_SCALAR: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug_scalar.wasm"));
+
+/// [`TLSF_ALLOCATOR`] without WebAssembly SIMD, for `--simd off`.
+pub const TLSF_ALLOCATOR_SCALAR: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf_scalar.wasm"));
+
 /// Which allocator a module is linked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Allocator {
@@ -43,12 +52,20 @@ pub enum Allocator {
 }
 
 impl Allocator {
-    /// The allocator module.
+    /// The allocator module, with WebAssembly SIMD.
     #[must_use]
     pub const fn module(self) -> &'static [u8] {
-        match self {
-            Self::Debug => DEBUG_ALLOCATOR,
-            Self::Tlsf => TLSF_ALLOCATOR,
+        self.runtime(true)
+    }
+
+    /// The allocator module, with WebAssembly SIMD or without.
+    #[must_use]
+    pub const fn runtime(self, simd: bool) -> &'static [u8] {
+        match (self, simd) {
+            (Self::Debug, true) => DEBUG_ALLOCATOR,
+            (Self::Tlsf, true) => TLSF_ALLOCATOR,
+            (Self::Debug, false) => DEBUG_ALLOCATOR_SCALAR,
+            (Self::Tlsf, false) => TLSF_ALLOCATOR_SCALAR,
         }
     }
 }

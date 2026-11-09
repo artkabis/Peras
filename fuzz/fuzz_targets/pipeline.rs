@@ -29,7 +29,7 @@ fuzz_target!(|data: &[u8]| {
     if !checked.diagnostics.is_empty() {
         return;
     }
-    // Without optimizations on the debug allocator, with them on TLSF.
+    // Without optimizations or SIMD on the debug allocator, with both on TLSF.
     for (optimize, allocator) in [(false, Allocator::Debug), (true, Allocator::Tlsf)] {
         match build_direct(
             source,
@@ -37,6 +37,7 @@ fuzz_target!(|data: &[u8]| {
             DirectOptions {
                 optimize,
                 allocator,
+                simd: optimize,
             },
             &Localizer::new(Language::English),
         ) {
