@@ -75,6 +75,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Banc d’essai
 
+- **La décision 0004, mesurée d’abord** ([décision 0004](docs/fr/decisions/0004-strings-without-allocation.md)) : du texte sans une allocation par morceau. Des fonctions écrites à la main dans un runtime à part fixent le plafond de chaque voie dans Chromium : compter les mots d’un million de caractères sans aucun tableau prend 7,3 à 7,6 ms, avec des vues 7,8 à 8,0 ms, contre 19 à 21 ms aujourd’hui et 10,4 à 10,8 ms pour JavaScript. Les vues viennent d’abord, choisies par le compilateur là où il prouve qu’un morceau ne survit pas à son texte ; la fusion des chaînes de méthodes suit.
 - `overflows` exerce les options et l’arithmétique vérifiée ; les deux backends s’accordent avec la référence JavaScript.
 - `cmandel` calcule l’ensemble de Mandelbrot avec `struct Complex`. Les deux backends s’accordent avec la référence JavaScript. Le backend direct prend 15 ms contre 13 ms pour le code `f64` simple et pour Rust ; JavaScript, qui alloue un objet par nombre complexe, prend 49 ms. L’optimiseur ne touche pas encore aux fonctions à plusieurs résultats.
 

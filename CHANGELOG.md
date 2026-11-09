@@ -75,6 +75,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Benchmark
 
+- **Decision 0004, measured first** ([decision 0004](docs/en/decisions/0004-strings-without-allocation.md)): text without an allocation per piece. Functions written by hand in a scratch runtime set the ceiling of each path in Chromium: counting the words of a million characters with no array at all takes 7.3 to 7.6 ms, with views 7.8 to 8.0 ms, against 19 to 21 ms today and 10.4 to 10.8 ms for JavaScript. Views come first, chosen by the compiler where it proves a piece does not outlive its text; fusion of chains of methods follows.
 - `overflows` exercises options and checked arithmetic; both backends agree with the JavaScript reference.
 - `cmandel` computes the Mandelbrot set with `struct Complex`. Both backends agree with the JavaScript reference. The direct backend takes 15 ms against 13 ms for plain `f64` code and for Rust; JavaScript, which allocates an object per complex number, takes 49 ms. The optimizer does not touch functions with several results yet.
 

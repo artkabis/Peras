@@ -35,7 +35,7 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 ## Phase 3 : une bibliothèque standard
 
-Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)).
+Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)). Le texte vient ensuite : des morceaux de texte qui sont des vues sur le texte dont ils viennent, puis des chaînes de méthodes fusionnées en une seule boucle, choisies par le compilateur ([décision 0004](../decisions/0004-strings-without-allocation.md)).
 
 | Domaine     | Quoi                                                                                                                                                                                                                         |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

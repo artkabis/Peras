@@ -52,6 +52,7 @@ export const sections: Section[] = [
       "decisions/0001-webassembly-backend",
       "decisions/0002-tlsf-allocator",
       "decisions/0003-runtime-proved-at-compile-time",
+      "decisions/0004-strings-without-allocation",
     ],
   },
 ];

@@ -35,7 +35,7 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 ## Phase 3: a standard library
 
-The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values. In progress: the array methods that take an arrow function, compiled in place as loops, and `min`, `max`, `clamp` are [done](methods.md); the production allocator, TLSF, came first ([decision 0002](../decisions/0002-tlsf-allocator.md)).
+The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values. In progress: the array methods that take an arrow function, compiled in place as loops, and `min`, `max`, `clamp` are [done](methods.md); the production allocator, TLSF, came first ([decision 0002](../decisions/0002-tlsf-allocator.md)). Text is next: pieces of text as views into the text they come from, then chains of methods fused into one loop, chosen by the compiler ([decision 0004](../decisions/0004-strings-without-allocation.md)).
 
 | Area        | What                                                                                                                                                                                                           |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
