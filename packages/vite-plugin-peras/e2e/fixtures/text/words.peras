@@ -1,0 +1,25 @@
+// The methods of strings, behind exported functions.
+export fn shout(s: String): String {
+  return s.trim().toUpperCase().replaceAll(" ", "_");
+}
+
+export fn fields(line: String): Array<String> {
+  return line.split(",").map((f) => f.trim());
+}
+
+export fn tidy(line: String): String {
+  const named = line.split(",").map((f) => f.trim().toLowerCase()).filter((f) => !f.startsWith("#"));
+  return named.join(" ");
+}
+
+export fn middle(s: String, start: i32, end: i32): String {
+  return s.slice(start, end);
+}
+
+export fn find(s: String, needle: String): i32 {
+  return s.indexOf(needle);
+}
+
+export fn characters(s: String): i32 {
+  return s.split("").length;
+}

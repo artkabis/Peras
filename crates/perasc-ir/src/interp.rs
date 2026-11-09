@@ -362,6 +362,7 @@ impl Machine<'_> {
                 Value::Handle(self.allocated)
             }
             (BufOp::Clone, [buf]) => self.clone_buffer(*buf)?,
+            (BufOp::Runtime(f), operands) => self.runtime(f, operands)?,
             (BufOp::Take, [buf, Value::I32(index)]) => {
                 let index = usize::try_from(*index).map_err(|_| Trap::Unchecked)?;
                 *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
@@ -386,6 +387,91 @@ impl Machine<'_> {
                 *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
             }
             _ => return Err(Trap::Unreachable),
+        })
+    }
+
+    /// The bytes of a string.
+    fn bytes(&mut self, value: Value) -> Result<Vec<u8>, Trap> {
+        Ok(self
+            .elements(value)?
+            .iter()
+            .map(|v| match v {
+                Value::I32(b) => u8::try_from(*b).unwrap_or(0),
+                _ => 0,
+            })
+            .collect())
+    }
+
+    /// A new string of these bytes.
+    fn string(&mut self, bytes: &[u8]) -> Value {
+        self.allocated += 1;
+        let elements = bytes.iter().map(|&b| Value::I32(i32::from(b))).collect();
+        self.heap.insert(self.allocated, elements);
+        Value::Handle(self.allocated)
+    }
+
+    /// A function of the runtime on strings.
+    fn runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
+        use crate::RuntimeFn as F;
+        let int = |i: usize| -> Result<i32, Trap> {
+            match operands.get(i) {
+                Some(Value::I32(n)) => Ok(*n),
+                _ => Err(Trap::Unreachable),
+            }
+        };
+        let text = |this: &mut Self, i: usize| -> Result<Vec<u8>, Trap> {
+            let value = *operands.get(i).ok_or(Trap::Unreachable)?;
+            this.bytes(value)
+        };
+        let s = text(self, 0)?;
+        Ok(match f {
+            F::IndexOf => Value::I32(crate::text::index_of(&s, &text(self, 1)?, int(2)?)),
+            F::StartsWith => Value::Bool(s.starts_with(&text(self, 1)?)),
+            F::EndsWith => Value::Bool(s.ends_with(&text(self, 1)?)),
+            F::Slice => {
+                let part = crate::text::slice(&s, int(1)?, int(2)?);
+                self.string(&part)
+            }
+            F::Trim => {
+                let part = crate::text::trim(&s);
+                self.string(&part)
+            }
+            F::Upper => self.string(&s.to_ascii_uppercase()),
+            F::Lower => self.string(&s.to_ascii_lowercase()),
+            F::Repeat => {
+                let n = usize::try_from(int(1)?.max(0)).unwrap_or(0);
+                self.string(&s.repeat(n))
+            }
+            F::Replace | F::ReplaceAll => {
+                let (from, to) = (text(self, 1)?, text(self, 2)?);
+                let out = crate::text::replace(&s, &from, &to, f == F::ReplaceAll);
+                self.string(&out)
+            }
+            F::Split => {
+                let separator = text(self, 1)?;
+                let parts: Vec<Value> = crate::text::split(&s, &separator)
+                    .iter()
+                    .map(|p| self.string(p))
+                    .collect();
+                self.allocated += 1;
+                self.heap.insert(self.allocated, parts);
+                self.deep.insert(self.allocated);
+                Value::Handle(self.allocated)
+            }
+            F::Join => {
+                let separator = text(self, 1)?;
+                let parts = self
+                    .elements(*operands.first().ok_or(Trap::Unreachable)?)?
+                    .clone();
+                let mut out = Vec::new();
+                for (i, part) in parts.into_iter().enumerate() {
+                    if i > 0 {
+                        out.extend_from_slice(&separator);
+                    }
+                    out.extend(self.bytes(part)?);
+                }
+                self.string(&out)
+            }
         })
     }
 

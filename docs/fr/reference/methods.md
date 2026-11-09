@@ -82,6 +82,29 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
 | `length` | la longueur                            | <span class="status compiled">compilé</span> |
 | `copy()` | une nouvelle chaîne avec le même texte | <span class="status compiled">compilé</span> |
 
+Les indices et les longueurs comptent les octets UTF-8, comme `length`. Un indice tombé au milieu d’un caractère recule à son début : une tranche est toujours un texte valide. Chaque méthode qui donne une chaîne en donne une nouvelle ; la chaîne sur laquelle on l’appelle ne change pas.
+
+| Méthode                                       | Donne                                                                                                 | Statut                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `indexOf(s)`                                  | l’indice en octets du premier `s`, ou `-1`                                                            | <span class="status compiled">compilé</span> |
+| `includes(s)`, `startsWith(s)`, `endsWith(s)` | si `s` s’y trouve, au début, à la fin                                                                 | <span class="status compiled">compilé</span> |
+| `slice(start, end)`                           | les octets de `start` à `end` ; un négatif compte depuis la fin, au-delà des bornes est ramené dedans | <span class="status compiled">compilé</span> |
+| `trim()`                                      | sans les espaces, tabulations et retours à la ligne aux deux bouts                                    | <span class="status compiled">compilé</span> |
+| `toUpperCase()`, `toLowerCase()`              | les lettres ASCII en majuscules ou en minuscules ; les autres caractères inchangés                    | <span class="status compiled">compilé</span> |
+| `repeat(n)`                                   | le texte `n` fois                                                                                     | <span class="status compiled">compilé</span> |
+| `replace(from, to)`, `replaceAll(from, to)`   | le premier `from`, ou tous, remplacés par `to`                                                        | <span class="status compiled">compilé</span> |
+| `split(separator)`                            | les morceaux entre chaque séparateur, un `Array<String>` ; avec `""`, les caractères                  | <span class="status compiled">compilé</span> |
+
+```peras build
+export fn tidy(line: String): String {
+  const fields = line.split(",").map((f) => f.trim().toLowerCase());
+  const named = fields.filter((f) => !f.startsWith("#"));
+  return named.join(" ").replaceAll("  ", " ");
+}
+```
+
+Sur un `Array<String>`, `join(separator)` donne ses chaînes avec `separator` entre chaque paire. <span class="status compiled">compilé</span>
+
 ## `Option<T>`
 
 | Méthode                | Donne                      | État                                         |

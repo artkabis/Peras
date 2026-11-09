@@ -39,14 +39,14 @@ Les outils de tous les jours, avec les mêmes règles : types explicites, aucune
 
 | Domaine     | Quoi                                                                                                                                                                             |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| texte       | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, mise en forme et chaînes gabarits                                                 |
+| texte       | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, `join`~~ (fait), mise en forme et chaînes gabarits                              |
 | tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), `sort`, `slice`, `concat`, `join`, `reverse`, itérateurs et intervalles |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                |
 | nombres     | ~~`min`, `max`, `clamp`~~ (fait), `pow`, `exp`, `log`, `atan2`, `hypot`, constantes, nombres aléatoires avec graine                                                              |
 | temps       | durées et instants                                                                                                                                                               |
 | données     | JSON, encodage de texte, octets                                                                                                                                                  |
 
-```peras planned
+```peras build
 export fn words(text: String): i32 {
   return text.split(" ").filter((w) => w.length > 0).length;
 }

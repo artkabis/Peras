@@ -84,12 +84,14 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             }),
             "pop" => simple(Ty::Option(element.clone())),
             "copy" => simple(me.clone()),
+            // The strings of an array, joined.
+            "join" if **element == Ty::String => Some(Method {
+                params: vec![Ty::String],
+                ret: Ty::String,
+            }),
             _ => None,
         },
-        Ty::String => match name {
-            "copy" => simple(Ty::String),
-            _ => None,
-        },
+        Ty::String => string_method(name),
         Ty::Result(ok, _) => match name {
             "isOk" | "isErr" => simple(Ty::Bool),
             "unwrapOr" => Some(Method {
@@ -110,6 +112,38 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
     }
 }
 
+/// The methods of strings beyond `copy`.
+const STRING_METHODS: [&str; 12] = [
+    "indexOf",
+    "includes",
+    "startsWith",
+    "endsWith",
+    "slice",
+    "trim",
+    "toUpperCase",
+    "toLowerCase",
+    "repeat",
+    "replace",
+    "replaceAll",
+    "split",
+];
+
+/// A method of `String`.
+fn string_method(name: &str) -> Option<Method> {
+    let int = Ty::Int(IntTy::I32);
+    let (params, ret) = match name {
+        "copy" | "trim" | "toUpperCase" | "toLowerCase" => (Vec::new(), Ty::String),
+        "indexOf" => (vec![Ty::String], int),
+        "includes" | "startsWith" | "endsWith" => (vec![Ty::String], Ty::Bool),
+        "slice" => (vec![int.clone(), int], Ty::String),
+        "repeat" => (vec![int], Ty::String),
+        "replace" | "replaceAll" => (vec![Ty::String, Ty::String], Ty::String),
+        "split" => (vec![Ty::String], Ty::Array(Box::new(Ty::String))),
+        _ => return None,
+    };
+    Some(Method { params, ret })
+}
+
 /// Every member name of a built-in type, for suggestions.
 #[must_use]
 pub fn members(receiver: &Ty) -> Vec<&'static str> {
@@ -126,11 +160,17 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
                 names.extend(CHECKED);
             }
         }
-        Ty::Array(_) => {
+        Ty::Array(element) => {
             names.extend(["length", "push", "pop", "copy"]);
+            if **element == Ty::String {
+                names.push("join");
+            }
             names.extend(crate::stdlib::FUNCTION_METHODS);
         }
-        Ty::String => names.extend(["length", "copy"]),
+        Ty::String => {
+            names.extend(["length", "copy"]);
+            names.extend(STRING_METHODS);
+        }
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}

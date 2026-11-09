@@ -278,6 +278,56 @@ impl Lowering<'_> {
         }
     }
 
+    /// A method of strings, or `join` on an array of strings: a function of
+    /// the runtime, its operands lent; `None` for another method.
+    pub(super) fn text_method(
+        &mut self,
+        state: &mut FnState,
+        receiver: &Expr,
+        method: &str,
+        args: &[ExprId],
+        mode: Mode,
+    ) -> Option<Vec<Expr>> {
+        use crate::RuntimeFn as F;
+        let f = match method {
+            "indexOf" | "includes" => F::IndexOf,
+            "startsWith" => F::StartsWith,
+            "endsWith" => F::EndsWith,
+            "slice" => F::Slice,
+            "trim" => F::Trim,
+            "toUpperCase" => F::Upper,
+            "toLowerCase" => F::Lower,
+            "repeat" => F::Repeat,
+            "replace" => F::Replace,
+            "replaceAll" => F::ReplaceAll,
+            "split" => F::Split,
+            "join" => F::Join,
+            _ => return None,
+        };
+        let mut operands = vec![receiver.clone()];
+        for &arg in args {
+            let value = if self.is_aggregate(arg) {
+                self.value_as(state, arg, Mode::Borrow).into_iter().next()?
+            } else {
+                self.expr(state, arg)
+            };
+            operands.push(value);
+        }
+        if f == F::IndexOf {
+            operands.push(int(0));
+        }
+        let call = Expr {
+            kind: ExprKind::Buf(BufOp::Runtime(f), operands),
+            ty: f.result(),
+        };
+        let value = if method == "includes" {
+            super::binary(BinOp::Ge, call, int(0))
+        } else {
+            call
+        };
+        Some(Self::fresh(state, vec![value], mode))
+    }
+
     /// The option `find` gives, from the index of the element found, or -1:
     /// whether there is one, then a copy of it, or zeros and empty buffers.
     fn found(state: &mut FnState, index: LocalId, columns: &[Elem], buffers: &[Expr]) -> Vec<Expr> {

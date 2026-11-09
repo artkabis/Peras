@@ -46,14 +46,16 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, DEBUG_ALLOCATOR)?)?;
     let mut linker = Linker::new(&engine);
-    for name in [
+    let strings = perasc_ir::RuntimeFn::ALL.map(perasc_ir::RuntimeFn::name);
+    let core = [
         "alloc",
         "release",
         "buf_new",
         "buf_reserve",
         "buf_release",
         "buf_clone",
-    ] {
+    ];
+    for name in core.into_iter().chain(strings) {
         let func = allocator
             .get_func(&store, name)
             .ok_or_else(|| wasmi::Error::new(name))?;

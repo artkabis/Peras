@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 
 use perasc_ir::{
     BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, JsShape, MathOp, Module, Pass,
-    Shape, Stmt, Ty, UnOp,
+    RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
@@ -43,12 +43,15 @@ const BUF_RESERVE: u32 = 3;
 const BUF_RELEASE: u32 = 4;
 const BOUNDS: u32 = 5;
 const BUF_CLONE: u32 = 6;
-const IMPORTED: u32 = 7;
+/// The first function of the runtime on strings, [`RuntimeFn::ALL`] in order.
+const RUNTIME_FIRST: u32 = 7;
+#[allow(clippy::cast_possible_truncation)]
+const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// Added to an element size: the elements are buffers the buffer owns
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 4;
+const IMPORT_TYPES: u32 = 5;
 
 /// A compiled module, and what its allocation sites are.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +90,7 @@ pub fn compile_module(module: &Module) -> Compiled {
         types.ty().function([T, T], []);
         types.ty().function([T, T, T], [T]);
         types.ty().function([T, T, T, T], []);
+        types.ty().function([T], [T]);
         for (name, ty) in [
             ("alloc", 0),
             ("release", 1),
@@ -97,6 +101,15 @@ pub fn compile_module(module: &Module) -> Compiled {
             ("buf_clone", 0),
         ] {
             imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
+        }
+        for f in RuntimeFn::ALL {
+            // Every operand and the result are `i32`: the type by count.
+            let ty = match f.operands().len() {
+                0 => 4,
+                1 => 0,
+                _ => 2,
+            };
+            imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
         }
         // The allocator's memory, which buffers live in.
         imports.import(
@@ -529,6 +542,16 @@ impl<'a> FnEncoder<'a> {
                 self.emit(&I::I32Const(len));
                 self.emit(&I::I32Store(mem(0, 4)));
                 self.emit(&I::LocalGet(self.temp_buffer));
+            }
+            (BufOp::Runtime(f), operands) => {
+                for operand in operands {
+                    self.expr(operand);
+                }
+                if f.result() == Ty::Owned {
+                    // A new buffer: its site, for the allocator's messages.
+                    let _ = self.alloc_site();
+                }
+                self.emit(&I::Call(RUNTIME_FIRST + f.position()));
             }
             // The verifier refuses any other shape.
             _ => self.emit(&I::Unreachable),
@@ -1435,8 +1458,12 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
-         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, memory: $runtime.memory }} }};\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }} }};\n\
 ",
+        strings = RuntimeFn::ALL.iter().fold(String::new(), |mut out, f| {
+            let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
+            out
+        }),
         bounds = js_string(runtime.bounds),
         faults = faults.join(", "),
         sites = sites.join(", "),

@@ -35,6 +35,63 @@ fn map_filter_reduce_find_some_and_every_run_without_a_leak() {
     }
 }
 
+#[test]
+fn text_methods_give_what_the_runtime_gives() {
+    let parsed = perasc_syntax::parse(TEXT);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, TEXT);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The same value as the WebAssembly runtime gives, checked by hand.
+    for (n, expected) in [(3, 3_271_180), (0, 3_271_174)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const TEXT: &str = r#"export fn run(n: i32): i32 {
+  const s = "  Hello, wörld!  ";
+  const t = s.trim();
+  const words = t.split(", ");
+  const chars = "hé!".split("");
+  const joined = words.join(" | ");
+  const up = t.toUpperCase();
+  const low = t.toLowerCase();
+  const part = t.slice(0, 5);
+  const tail = t.slice(-6, 100);
+  const cut = "aé".slice(0, 2);
+  const rep = "ab".repeat(n);
+  const one = "a-b-c".replace("-", "+");
+  const all = "a-b-c".replaceAll("-", "");
+  let score = 0;
+  if (t.startsWith("Hello")) {
+    score += 1;
+  }
+  if (t.endsWith("!")) {
+    score += 10;
+  }
+  if (t.includes("wör")) {
+    score += 100;
+  }
+  if (!t.includes("xyz")) {
+    score += 1000;
+  }
+  return score + t.indexOf("w") * 10000 + words.length * 100000 + chars.length * 1000000
+    + joined.length + up.length + low.length + part.length + tail.length + cut.length + rep.length + one.length + all.length;
+}
+
+export fn shout(s: String): String {
+  return s.trim().toUpperCase().replaceAll(" ", "_");
+}
+
+export fn csv(line: String): Array<String> {
+  return line.split(",").map((x) => x.trim());
+}
+"#;
+
 const SOURCE: &str = r#"export fn run(n: i32): f64 {
   const xs: Array<i32> = [n, 2, 7, -3, 4];
   const doubled = xs.map((x) => x * 2);

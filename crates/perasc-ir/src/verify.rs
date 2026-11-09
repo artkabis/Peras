@@ -86,6 +86,9 @@ impl<'a> Verifier<'a> {
             | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _) => {
                 self.expr(value);
             }
+            ExprKind::Buf(BufOp::Runtime(f), _) if f.result() == Ty::Owned => {
+                self.expr(value);
+            }
             _ => self.problem(&format!(
                 "an owned value must be allocated, moved or returned by a call, not {:?}",
                 value.kind
@@ -177,6 +180,26 @@ impl<'a> Verifier<'a> {
                 self.buffer(args.first());
                 self.operands("buf.get", rest, &[Ty::I32]);
                 elem.ty()
+            }
+            BufOp::Runtime(f) => {
+                self.buffer(args.first());
+                // The other buffers are lent too.
+                let given: Vec<Ty> = rest.iter().map(|a| a.ty).collect();
+                if given != f.operands() {
+                    self.problem(&format!(
+                        "{} on {given:?}, expected {:?}",
+                        f.name(),
+                        f.operands()
+                    ));
+                }
+                for arg in rest {
+                    if arg.ty == Ty::Borrowed {
+                        self.buffer(Some(arg));
+                    } else {
+                        self.expr(arg);
+                    }
+                }
+                f.result()
             }
         };
         if ty != expected {

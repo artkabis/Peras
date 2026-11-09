@@ -678,6 +678,9 @@ impl Lowering<'_> {
         {
             return values;
         }
+        if let Some(values) = self.text_method(state, &first, method, args, mode) {
+            return values;
+        }
         match method {
             "push" => {
                 let Some(&arg) = args.first() else {

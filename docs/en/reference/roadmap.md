@@ -39,14 +39,14 @@ The everyday tools, with the same rules: explicit types, no hidden allocation, e
 
 | Area        | What                                                                                                                                                                 |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| text        | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, formatting and template strings                                           |
+| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`~~ (done), formatting and template strings                        |
 | arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), `sort`, `slice`, `concat`, `join`, `reverse`, iterators and ranges |
 | collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                    |
 | numbers     | ~~`min`, `max`, `clamp`~~ (done), `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                                                            |
 | time        | durations and instants                                                                                                                                               |
 | data        | JSON, text encoding, bytes                                                                                                                                           |
 
-```peras planned
+```peras build
 export fn words(text: String): i32 {
   return text.split(" ").filter((w) => w.length > 0).length;
 }

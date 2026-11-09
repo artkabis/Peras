@@ -17,6 +17,8 @@ mod licm;
 mod lower;
 mod opt;
 mod own;
+#[cfg(test)]
+mod text;
 mod verify;
 
 pub use lower::lower;
@@ -466,6 +468,113 @@ pub enum BufOp {
     /// code then shortens the buffer below it ([`BufStmt::Truncate`]), so
     /// that the buffer no longer owns it. This is `pop` on an array of strings.
     Take,
+    /// A function of the runtime on strings, its operands lent; see
+    /// [`RuntimeFn`].
+    Runtime(RuntimeFn),
+}
+
+/// A function of the runtime on strings and arrays of strings, written once
+/// in `perasc-runtime/runtime/buffers.wat` and imported by every module that
+/// uses the heap. Indices and lengths count bytes, as `length` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RuntimeFn {
+    /// `(s, needle, from) -> i32`: the first byte index at or after `from`
+    /// where `needle` occurs, or -1.
+    IndexOf,
+    /// `(s, prefix) -> bool`
+    StartsWith,
+    /// `(s, suffix) -> bool`
+    EndsWith,
+    /// `(s, start, end) -> owned`: the bytes between, negative counting from
+    /// the end, clamped, and moved back to the start of a character.
+    Slice,
+    /// `(s) -> owned`: without the spaces, tabs and line breaks at both ends.
+    Trim,
+    /// `(s) -> owned`: ASCII letters in upper case.
+    Upper,
+    /// `(s) -> owned`: ASCII letters in lower case.
+    Lower,
+    /// `(s, n) -> owned`: `s` repeated `n` times.
+    Repeat,
+    /// `(s, from, to) -> owned`: the first `from` replaced by `to`.
+    Replace,
+    /// `(s, from, to) -> owned`: every `from` replaced by `to`.
+    ReplaceAll,
+    /// `(s, separator) -> owned`: an array of the parts, which it owns; an
+    /// empty separator splits into characters.
+    Split,
+    /// `(strings, separator) -> owned`: the strings of an array, joined.
+    Join,
+}
+
+impl RuntimeFn {
+    /// Every function, in the order a module imports them.
+    pub const ALL: [Self; 12] = [
+        Self::IndexOf,
+        Self::StartsWith,
+        Self::EndsWith,
+        Self::Slice,
+        Self::Trim,
+        Self::Upper,
+        Self::Lower,
+        Self::Repeat,
+        Self::Replace,
+        Self::ReplaceAll,
+        Self::Split,
+        Self::Join,
+    ];
+
+    /// Its name, in the runtime's exports and in the text form.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::IndexOf => "str_index_of",
+            Self::StartsWith => "str_starts_with",
+            Self::EndsWith => "str_ends_with",
+            Self::Slice => "str_slice",
+            Self::Trim => "str_trim",
+            Self::Upper => "str_upper",
+            Self::Lower => "str_lower",
+            Self::Repeat => "str_repeat",
+            Self::Replace => "str_replace",
+            Self::ReplaceAll => "str_replace_all",
+            Self::Split => "str_split",
+            Self::Join => "arr_join",
+        }
+    }
+
+    /// The types of its operands after the first, which is a lent buffer.
+    #[must_use]
+    pub const fn operands(self) -> &'static [Ty] {
+        match self {
+            Self::IndexOf => &[Ty::Borrowed, Ty::I32],
+            Self::StartsWith | Self::EndsWith | Self::Split | Self::Join => &[Ty::Borrowed],
+            Self::Slice => &[Ty::I32, Ty::I32],
+            Self::Trim | Self::Upper | Self::Lower => &[],
+            Self::Repeat => &[Ty::I32],
+            Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
+        }
+    }
+
+    /// The type of its result.
+    #[must_use]
+    pub const fn result(self) -> Ty {
+        match self {
+            Self::IndexOf => Ty::I32,
+            Self::StartsWith | Self::EndsWith => Ty::Bool,
+            _ => Ty::Owned,
+        }
+    }
+
+    /// Its position among the runtime's imports, after the allocator's.
+    #[must_use]
+    pub fn position(self) -> u32 {
+        Self::ALL
+            .iter()
+            .position(|&f| f == self)
+            .and_then(|i| u32::try_from(i).ok())
+            .unwrap_or(0)
+    }
 }
 
 /// A statement on a buffer.
@@ -497,6 +606,7 @@ impl BufOp {
             Self::Literal(index) => format!("buf.literal #{index}"),
             Self::Clone => "buf.clone".to_owned(),
             Self::Take => "buf.take".to_owned(),
+            Self::Runtime(f) => f.name().to_owned(),
         }
     }
 }
