@@ -104,7 +104,7 @@ Les **notes d’ingénierie** disent ce que la plateforme web permet réellement
 
 **Valeur ajoutée.** Allocation et libération en temps borné, et une fragmentation maîtrisée.
 
-**Statut.** <span class="status checked">en cours</span>. La décision 0001 prévoit un allocateur compact, lié seulement aux modules qui allouent. Aujourd’hui, l’allocateur de débogage sert seul : mémoire empoisonnée, zones rouges, quarantaine, fuites comptées, et chaque erreur nomme son site d’allocation et de libération.
+**Statut.** TLSF <span class="status compiled">fait</span> ([décision 0002](decisions/0002-tlsf-allocator.md)) : temps borné, blocs fusionnés aussitôt, lié par `vite build` et `--allocator tlsf`. L’allocateur de débogage reste pour le développement : mémoire empoisonnée, zones rouges, quarantaine, fuites comptées, et chaque erreur nomme son site d’allocation et de libération.
 
 **Note d’ingénierie.**
 
@@ -202,16 +202,16 @@ Les **notes d’ingénierie** disent ce que la plateforme web permet réellement
 
 ## Tableau récapitulatif
 
-| Choix technique         | Mécanisme clé                                    | Impact matériel                    | Valeur économique              | Statut                                       |
-| ----------------------- | ------------------------------------------------ | ---------------------------------- | ------------------------------ | -------------------------------------------- |
-| Possession vérifiée     | Types affines, libérations insérées et vérifiées | Pas de ramasse-miettes             | Pas de pause, pas de fuite     | <span class="status compiled">fait</span>    |
-| Tableaux en colonnes    | Un tampon par champ                              | Caches pleins de données utiles    | Calculs plus rapides           | <span class="status compiled">fait</span>    |
-| SIMD                    | Instructions `v128`                              | 2 à 16 valeurs par instruction     | Calculs plus rapides           | <span class="status planned">prévu</span>    |
-| Allocateur déterministe | Slabs ou TLSF, `i32.clz`                         | Temps borné, fragmentation bornée  | Applications lourdes stables   | <span class="status checked">en cours</span> |
-| Compactage              | Déplacement des éléments derrière leur en-tête   | Mémoire reprise à chaud            | Pas de saturation sur la durée | **à décider**                                |
-| Transfert entre fils    | `sink` : déplacement sans copie                  | O(1) au lieu de O(n)               | Traitement en arrière-plan     | **à décider**                                |
-| Alignement WebGPU       | Tampons alignés sur 256 octets                   | Une copie, sans conversion         | 3D et IA locales               | <span class="status planned">prévu</span>    |
-| `@frame`                | Preuve d’absence d’allocation                    | Pas de croissance mémoire au rendu | Images régulières              | <span class="status planned">prévu</span>    |
-| Profilage énergétique   | RAPL sur banc natif                              | Mesure reproductible               | Rapports GreenTech             | **à décider**                                |
+| Choix technique         | Mécanisme clé                                    | Impact matériel                    | Valeur économique              | Statut                                    |
+| ----------------------- | ------------------------------------------------ | ---------------------------------- | ------------------------------ | ----------------------------------------- |
+| Possession vérifiée     | Types affines, libérations insérées et vérifiées | Pas de ramasse-miettes             | Pas de pause, pas de fuite     | <span class="status compiled">fait</span> |
+| Tableaux en colonnes    | Un tampon par champ                              | Caches pleins de données utiles    | Calculs plus rapides           | <span class="status compiled">fait</span> |
+| SIMD                    | Instructions `v128`                              | 2 à 16 valeurs par instruction     | Calculs plus rapides           | <span class="status planned">prévu</span> |
+| Allocateur déterministe | TLSF, `i32.clz`                                  | Temps borné, fragmentation bornée  | Applications lourdes stables   | <span class="status compiled">fait</span> |
+| Compactage              | Déplacement des éléments derrière leur en-tête   | Mémoire reprise à chaud            | Pas de saturation sur la durée | **à décider**                             |
+| Transfert entre fils    | `sink` : déplacement sans copie                  | O(1) au lieu de O(n)               | Traitement en arrière-plan     | **à décider**                             |
+| Alignement WebGPU       | Tampons alignés sur 256 octets                   | Une copie, sans conversion         | 3D et IA locales               | <span class="status planned">prévu</span> |
+| `@frame`                | Preuve d’absence d’allocation                    | Pas de croissance mémoire au rendu | Images régulières              | <span class="status planned">prévu</span> |
+| Profilage énergétique   | RAPL sur banc natif                              | Mesure reproductible               | Rapports GreenTech             | **à décider**                             |
 
 Ce que coûtent ces choix, et dans quel ordre ils arrivent : la [feuille de route](reference/roadmap.md). Chaque choix **à décider** passera par une décision écrite, avec mesures, comme [0001](decisions/0001-webassembly-backend.md).

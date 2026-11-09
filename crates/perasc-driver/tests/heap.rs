@@ -22,7 +22,12 @@ struct Linked {
 }
 
 fn link(module: &Module) -> Result<Linked, wasmi::Error> {
-    let output = perasc_driver::emit_direct(module, "m.wasm", &Localizer::new(Language::English));
+    let output = perasc_driver::emit_direct(
+        module,
+        "m.wasm",
+        perasc_runtime::Allocator::Debug,
+        &Localizer::new(Language::English),
+    );
     let validated = wasmparser::Validator::new().validate_all(&output.wasm);
     assert!(validated.is_ok(), "{:?}", validated.err());
     let engine = Engine::default();
@@ -159,8 +164,12 @@ fn the_loader_speaks_the_language_asked() {
         (Language::English, "is released a second time, at {release}"),
         (Language::French, "est libéré une seconde fois, à {release}"),
     ] {
-        let output =
-            perasc_driver::emit_direct(&heap_ir::twice(), "m.wasm", &Localizer::new(language));
+        let output = perasc_driver::emit_direct(
+            &heap_ir::twice(),
+            "m.wasm",
+            perasc_runtime::Allocator::Debug,
+            &Localizer::new(language),
+        );
         assert!(output.js.contains(double), "{language:?}:\n{}", output.js);
         assert!(output.js.contains("\"twice (release 2)\""), "{}", output.js);
         assert!(output.dts.contains("__perasHeap"), "{}", output.dts);
@@ -169,7 +178,7 @@ fn the_loader_speaks_the_language_asked() {
     let plain = perasc_driver::build_direct(
         "export fn f(n: i32): i32 { return n; }",
         "f.wasm",
-        true,
+        perasc_driver::DirectOptions::default(),
         &Localizer::new(Language::English),
     );
     let js = plain.map(|o| o.js).unwrap_or_default();

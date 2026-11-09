@@ -16,14 +16,15 @@ perasc <command> [options]
 
 ## Options
 
-| Option                        | Applies to       | Meaning                                                                                                        |
-| ----------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| `--lang en\|fr`               | all              | the language of messages; default: the `PERAS_LANG` variable, then the system's language                       |
-| `--json`                      | `check`, `build` | diagnostics as JSON on standard output                                                                         |
-| `--color auto\|always\|never` | `check`, `build` | colours in diagnostics; `auto` (the default) colours a terminal, and the `NO_COLOR` variable turns colours off |
-| `--out <dir>`                 | `build`          | where to write the files; default: `dist`                                                                      |
-| `--backend direct\|rust`      | `build`          | the code generator; `rust` needs a Rust toolchain and is used by the project's tests                           |
-| `--no-optimize`               | `build`          | skips the IR optimizations                                                                                     |
+| Option                        | Applies to       | Meaning                                                                                                                                                                                      |
+| ----------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--lang en\|fr`               | all              | the language of messages; default: the `PERAS_LANG` variable, then the system's language                                                                                                     |
+| `--json`                      | `check`, `build` | diagnostics as JSON on standard output                                                                                                                                                       |
+| `--color auto\|always\|never` | `check`, `build` | colours in diagnostics; `auto` (the default) colours a terminal, and the `NO_COLOR` variable turns colours off                                                                               |
+| `--out <dir>`                 | `build`          | where to write the files; default: `dist`                                                                                                                                                    |
+| `--backend direct\|rust`      | `build`          | the code generator; `rust` needs a Rust toolchain and is used by the project's tests                                                                                                         |
+| `--no-optimize`               | `build`          | skips the IR optimizations                                                                                                                                                                   |
+| `--allocator debug\|tlsf`     | `build`          | the allocator of a module that uses the heap: `debug`, the default, catches every memory bug; `tlsf` allocates in bounded time, for production ([0002](../decisions/0002-tlsf-allocator.md)) |
 
 ## Exit codes
 

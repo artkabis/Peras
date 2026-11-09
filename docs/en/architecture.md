@@ -120,7 +120,7 @@ The **engineering notes** say what the web platform actually allows, so that eve
 
 **Value.** Allocation and release in bounded time, with controlled fragmentation.
 
-**Status.** <span class="status checked">in progress</span>. Decision 0001 plans a compact allocator, linked only into modules that allocate. Today the debug allocator is the only one: poisoned memory, red zones, a quarantine and leak counts, and every error names where the block was allocated and released.
+**Status.** TLSF <span class="status compiled">done</span> ([decision 0002](decisions/0002-tlsf-allocator.md)): bounded time, blocks merged at once, linked by `vite build` and `--allocator tlsf`. The debug allocator stays for development: poisoned memory, red zones, a quarantine and leak counts, and every error names where the block was allocated and released.
 
 **Engineering note.**
 
@@ -238,16 +238,16 @@ For heavy computation, Web Workers give real parallelism without fibers.
 
 ## Summary
 
-| Choice                   | Key mechanism                                | Hardware impact                  | Economic value            | Status                                          |
-| ------------------------ | -------------------------------------------- | -------------------------------- | ------------------------- | ----------------------------------------------- |
-| Checked ownership        | Affine types, releases inserted and verified | No garbage collector             | No pauses, no leaks       | <span class="status compiled">done</span>       |
-| Arrays as columns        | One buffer per field                         | Caches full of useful data       | Faster computation        | <span class="status compiled">done</span>       |
-| SIMD                     | `v128` instructions                          | 2 to 16 values per instruction   | Faster computation        | <span class="status planned">planned</span>     |
-| Deterministic allocator  | Slabs or TLSF, `i32.clz`                     | Bounded time and fragmentation   | Stable heavy applications | <span class="status checked">in progress</span> |
-| Compaction               | Elements moved behind their header           | Memory recovered while running   | No saturation over time   | **to decide**                                   |
-| Transfer between threads | `sink`: a move without a copy                | O(1) instead of O(n)             | Background processing     | **to decide**                                   |
-| WebGPU alignment         | Buffers aligned on 256 bytes                 | One copy, no conversion          | Local 3D and AI           | <span class="status planned">planned</span>     |
-| `@frame`                 | Proof of no allocation                       | No memory growth while rendering | Steady frames             | <span class="status planned">planned</span>     |
-| Energy profiling         | RAPL on a native bench                       | Reproducible measurement         | GreenTech reports         | **to decide**                                   |
+| Choice                   | Key mechanism                                | Hardware impact                  | Economic value            | Status                                      |
+| ------------------------ | -------------------------------------------- | -------------------------------- | ------------------------- | ------------------------------------------- |
+| Checked ownership        | Affine types, releases inserted and verified | No garbage collector             | No pauses, no leaks       | <span class="status compiled">done</span>   |
+| Arrays as columns        | One buffer per field                         | Caches full of useful data       | Faster computation        | <span class="status compiled">done</span>   |
+| SIMD                     | `v128` instructions                          | 2 to 16 values per instruction   | Faster computation        | <span class="status planned">planned</span> |
+| Deterministic allocator  | TLSF, `i32.clz`                              | Bounded time and fragmentation   | Stable heavy applications | <span class="status compiled">done</span>   |
+| Compaction               | Elements moved behind their header           | Memory recovered while running   | No saturation over time   | **to decide**                               |
+| Transfer between threads | `sink`: a move without a copy                | O(1) instead of O(n)             | Background processing     | **to decide**                               |
+| WebGPU alignment         | Buffers aligned on 256 bytes                 | One copy, no conversion          | Local 3D and AI           | <span class="status planned">planned</span> |
+| `@frame`                 | Proof of no allocation                       | No memory growth while rendering | Steady frames             | <span class="status planned">planned</span> |
+| Energy profiling         | RAPL on a native bench                       | Reproducible measurement         | GreenTech reports         | **to decide**                               |
 
 What these choices cost, and in which order they come: the [roadmap](reference/roadmap.md). Every choice still **to decide** will go through a written decision, with measurements, like [0001](decisions/0001-webassembly-backend.md).

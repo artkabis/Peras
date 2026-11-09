@@ -97,6 +97,8 @@ Libérer la mémoire à la main est là où les programmes C se trompent : libé
 
 3. **Des tests sur chaque chemin.** Les programmes de test s’exécutent dans un interpréteur du code intermédiaire du compilateur, et en WebAssembly sur l’allocateur de débogage : les deux doivent donner les résultats attendus et ne laisser aucun bloc vivant.
 
+En production, `vite build` et `perasc build --allocator tlsf` lient à la place un allocateur TLSF : chaque allocation et libération en temps borné, les blocs libérés fusionnés aussitôt, 2,7 fois plus rapide sur un programme qui alloue beaucoup ([décision 0002](../decisions/0002-tlsf-allocator.md)).
+
 Les détails, et les mesures, sont dans la [décision 0001](../decisions/0001-webassembly-backend.md).
 
 Ensuite : [lire les diagnostics](diagnostics.md).

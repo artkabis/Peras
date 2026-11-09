@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **A production allocator, TLSF** ([decision 0002](docs/en/decisions/0002-tlsf-allocator.md)): every allocation and release in bounded time, size classes found with `i32.clz` and `i32.ctz`, freed blocks merged at once with their neighbours, and the end of the heap given back. `vite build` links it, the dev server keeps the debug allocator, and `perasc build --allocator tlsf` chooses it. It is 2.7 times faster than the debug allocator on a program that allocates 6 million blocks. Both allocators share the buffer functions, written once.
 - **Methods and interfaces.** `impl Point { fn norm(self): f64 { … } }` gives a structure or an enumeration of the module its methods (`E0234` otherwise).
   - `self`, `inout self` or `sink self` comes first; `p.shift(1.0)` needs no `&`, and `p` must be a `let`. A method without `self` is called on its type, `Point.origin()`, and any method can be called that way with its `self` first. `Self` names the type; `impl<T> Stack<T>` gives a generic type its methods.
   - `interface Shape { fn area(self): f64; }` and `impl Shape for Circle { … }`: an implementation provides exactly the interface's methods (`E0235`), with exactly their signatures (`E0236`).

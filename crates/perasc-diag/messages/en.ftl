@@ -16,6 +16,7 @@ cli-usage =
       --backend <name>   code generator of `build`: direct (default, no other tool) or rust (cargo, wasm-bindgen)
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
+      --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help

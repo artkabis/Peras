@@ -19,7 +19,7 @@ use perasc_diag::json::{self, FileReport, Report};
 use perasc_diag::render::{RenderOptions, render};
 use perasc_diag::source::SourceFile;
 use perasc_driver::{
-    Checked, ReadError, ToolError, build_direct, build_rust, crate_name, read_source,
+    Checked, DirectOptions, ReadError, ToolError, build_direct, build_rust, crate_name, read_source,
 };
 
 use crate::{COMPILER_BUG, ERRORS_FOUND, SUCCESS, USAGE_OR_IO, error_line, to_i64};
@@ -47,7 +47,7 @@ pub enum Backend {
 pub fn build(
     path: &str,
     backend: Backend,
-    optimize: bool,
+    options: DirectOptions,
     out_dir: &Path,
     localizer: &Localizer,
     style: Style,
@@ -66,7 +66,7 @@ pub fn build(
         .to_owned();
     let started = Instant::now();
     let result = match backend {
-        Backend::Direct => direct(&text, &stem, out_dir, optimize, localizer),
+        Backend::Direct => direct(&text, &stem, out_dir, options, localizer),
         Backend::Rust => {
             let name = crate_name(&stem);
             let crate_dir = out_dir.join(".rust").join(&stem);
@@ -184,11 +184,11 @@ fn direct(
     text: &str,
     stem: &str,
     out_dir: &Path,
-    optimize: bool,
+    options: DirectOptions,
     localizer: &Localizer,
 ) -> Result<PathBuf, ToolError> {
     let wasm_file = format!("{stem}.wasm");
-    let output = build_direct(text, &wasm_file, optimize, localizer)?;
+    let output = build_direct(text, &wasm_file, options, localizer)?;
     fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
     let wasm = out_dir.join(&wasm_file);
     fs::write(&wasm, &output.wasm).map_err(ToolError::Io)?;

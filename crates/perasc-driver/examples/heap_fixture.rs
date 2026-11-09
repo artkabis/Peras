@@ -23,7 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("keep", heap_ir::keep()),
     ] {
         let wasm_file = format!("{name}.wasm");
-        let output = perasc_driver::emit_direct(&module, &wasm_file, &localizer);
+        let output = perasc_driver::emit_direct(
+            &module,
+            &wasm_file,
+            perasc_runtime::Allocator::Debug,
+            &localizer,
+        );
         fs::write(dir.join(&wasm_file), &output.wasm)?;
         fs::write(dir.join(format!("{name}.js")), &output.js)?;
     }

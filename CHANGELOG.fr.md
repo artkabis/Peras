@@ -8,6 +8,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- **Un allocateur de production, TLSF** ([décision 0002](docs/fr/decisions/0002-tlsf-allocator.md)) : chaque allocation et libération en temps borné, classes de taille trouvées avec `i32.clz` et `i32.ctz`, blocs libérés fusionnés aussitôt avec leurs voisins, et fin du tas rendue. `vite build` le lie, le serveur de développement garde l’allocateur de débogage, et `perasc build --allocator tlsf` le choisit. Il est 2,7 fois plus rapide que l’allocateur de débogage sur un programme qui alloue 6 millions de blocs. Les deux allocateurs partagent les fonctions de tampons, écrites une seule fois.
 - **Méthodes et interfaces.** `impl Point { fn norm(self): f64 { … } }` donne ses méthodes à une structure ou une énumération du module (`E0234` sinon).
   - `self`, `inout self` ou `sink self` vient en premier ; `p.shift(1.0)` n’a pas besoin de `&`, et `p` doit être un `let`. Une méthode sans `self` s’appelle sur son type, `Point.origin()`, et toute méthode peut s’appeler ainsi, son `self` en premier. `Self` nomme le type ; `impl<T> Stack<T>` donne ses méthodes à un type générique.
   - `interface Shape { fn area(self): f64; }` et `impl Shape for Circle { … }` : une implémentation fournit exactement les méthodes de l’interface (`E0235`), avec exactement leurs signatures (`E0236`).

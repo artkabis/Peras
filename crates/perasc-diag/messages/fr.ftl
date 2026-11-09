@@ -16,6 +16,7 @@ cli-usage =
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
+      --allocator <nom>  allocateur d’un module qui utilise le tas : debug (par défaut, chaque bug mémoire détecté) ou tlsf (production, temps borné)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide
