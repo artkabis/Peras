@@ -17,15 +17,16 @@ These words cannot name a variable, a function or a type.
 | `break`, `continue`  | leave a loop, go to its next turn                                                |
 | `true`, `false`      | the two `bool` values                                                            |
 | `inout`, `sink`      | parameter conventions ([functions](../guide/functions.md#parameter-conventions)) |
+| `impl`, `interface`  | methods, interfaces ([methods and interfaces](../guide/methods.md))              |
+| `type`               | type aliases ([types](types.md#type-aliases))                                    |
 
 ## Reserved
 
 Reserved for features that are designed but not built yet; using them as a name is an error today, so that code written now keeps working when they arrive.
 
-| Keyword                      | For                                                     |
-| ---------------------------- | ------------------------------------------------------- |
-| `trait`, `impl`, `interface` | shared behaviour, methods on types                      |
-| `type`                       | type aliases                                            |
-| `class`                      | refused on purpose: Peras uses structures and functions |
-| `import`                     | modules                                                 |
-| `async`, `await`             | asynchronous code, in managed mode                      |
+| Keyword          | For                                                     |
+| ---------------- | ------------------------------------------------------- |
+| `trait`          | kept free: Peras calls them interfaces                  |
+| `class`          | refused on purpose: Peras uses structures and functions |
+| `import`         | modules                                                 |
+| `async`, `await` | asynchronous code, in managed mode                      |

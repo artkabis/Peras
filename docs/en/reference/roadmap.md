@@ -19,9 +19,9 @@ What lets a program say precisely what its data can be.
 
 - ~~**Enumerations with data, and `match`**, checked for exhaustiveness~~: done, see [enumerations and match](../guide/enums.md).
 - ~~**`Result<T, E>` and `?`**, for errors that are values~~: done, see [results](../guide/enums.md#results-errors-as-values); parsing functions such as `parse` come with the standard library.
-- ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); the constraints are built in until interfaces come.
-- **Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time.
-- Tuples, type aliases, module-level constants compiled.
+- ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); with built-in constraints, and interfaces for your own.
+- ~~**Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time~~: done, see [methods and interfaces](../guide/methods.md).
+- ~~Tuples, type aliases, module-level constants compiled~~: done, see [types](types.md#tuples) and [module constants](../guide/basics.md#module-constants).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

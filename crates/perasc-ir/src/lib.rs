@@ -794,6 +794,8 @@ mod generic_tests;
 #[cfg(test)]
 mod match_tests;
 #[cfg(test)]
+mod method_tests;
+#[cfg(test)]
 mod opt_tests;
 #[cfg(test)]
 mod option_tests;

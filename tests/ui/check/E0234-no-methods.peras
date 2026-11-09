@@ -1,0 +1,12 @@
+// E0234: methods only belong to the structures and enumerations of the module.
+impl f64 {
+  fn double(self): f64 {
+    return self * 2.0;
+  }
+}
+
+impl Array<i32> {
+  fn sum(self): i32 {
+    return 0;
+  }
+}

@@ -35,6 +35,8 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         ast,
         analysis,
         fns: HashMap::new(),
+        by_index: HashMap::new(),
+        constants: HashMap::new(),
         generic: HashMap::new(),
         instances: HashMap::new(),
         args: Vec::new(),
@@ -45,23 +47,23 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
     };
     // The functions of the module, in order, then the instances of the
     // generic ones: what each is, and its type arguments.
-    let decls: Vec<&FnDecl> = ast
-        .items
-        .iter()
-        .filter_map(|item| match &item.kind {
-            ItemKind::Fn(decl) => Some(decl),
-            _ => None,
-        })
-        .collect();
+    let decls: Vec<&FnDecl> = ast.functions();
     let mut compiled: Vec<(&FnDecl, Vec<CheckTy>)> = Vec::new();
     for (index, decl) in decls.iter().enumerate() {
         let checked = perasc_check::ty::FnId(index);
+        // A method is reached through its type, never by its name alone.
+        let named = decl.impl_of.is_none();
         if analysis.is_generic(checked) {
-            lowering.generic.insert(decl.name.symbol, index);
+            if named {
+                lowering.generic.insert(decl.name.symbol, index);
+            }
             continue;
         }
         let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
-        lowering.fns.insert(decl.name.symbol, id);
+        if named {
+            lowering.fns.insert(decl.name.symbol, id);
+        }
+        lowering.by_index.insert(index, id);
         compiled.push((decl, Vec::new()));
     }
     for (checked, args) in &analysis.instances {
@@ -92,7 +94,13 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
     }
     for item in &ast.items {
         if let ItemKind::Global(local) = &item.kind {
-            lowering.unsupported(local.name.span, "global");
+            match local.init {
+                // A constant is written where it is used.
+                Some(init) if !local.mutable => {
+                    lowering.constants.insert(local.name.symbol, init);
+                }
+                _ => lowering.unsupported(local.name.span, "global"),
+            }
         }
     }
     let functions = compiled
@@ -119,6 +127,11 @@ struct Lowering<'a> {
     analysis: &'a Analysis,
     /// The functions that are not generic, by name.
     fns: HashMap<Symbol, FnId>,
+    /// The functions and methods that are not generic, by their index in
+    /// the checker's table.
+    by_index: HashMap<usize, FnId>,
+    /// The module constants: their value, lowered where they are used.
+    constants: HashMap<Symbol, ExprId>,
     /// The generic functions, by name: their index in the checker's table.
     generic: HashMap<Symbol, usize>,
     /// The instance compiled for each generic function and type arguments.
@@ -314,12 +327,17 @@ impl Lowering<'_> {
         }
     }
 
-    /// `E0900` for a name that is not a local: a function used as a value,
-    /// or a module-level constant.
-    fn not_a_local(&mut self, symbol: Symbol, span: Span) {
+    /// A name that is not a local: a module constant, or `E0900` for a
+    /// function used as a value or a module variable.
+    fn not_a_local(&mut self, state: &mut FnState, symbol: Symbol, span: Span, ty: Ty) -> Expr {
+        // A constant: its value, lowered here.
+        if let Some(&init) = self.constants.get(&symbol) {
+            return self.expr(state, init);
+        }
         let function = self.fns.contains_key(&symbol) || self.generic.contains_key(&symbol);
         let feature = if function { "function-value" } else { "global" };
         self.unsupported(span, feature);
+        zero(ty)
     }
 
     /// The function a call by name reaches: the function itself, or the
@@ -333,6 +351,45 @@ impl Lowering<'_> {
             return self.instances.get(&(checked.0, args)).copied();
         }
         self.fns.get(&symbol).copied()
+    }
+
+    /// For a method call, the function it reaches and whether the value
+    /// before the dot is its first argument.
+    pub(super) fn method_callee(&self, call: ExprId) -> Option<(FnId, bool)> {
+        match self.analysis.method_calls.get(&call)? {
+            perasc_check::MethodCall::Fn { id, receiver } => {
+                let target = match self.analysis.calls.get(&call) {
+                    Some((checked, args)) => {
+                        let args: Vec<CheckTy> = args
+                            .iter()
+                            .map(|t| self.analysis.subst(t, &self.args))
+                            .collect();
+                        self.instances.get(&(checked.0, args)).copied()
+                    }
+                    None => self.by_index.get(&id.0).copied(),
+                }?;
+                Some((target, *receiver))
+            }
+            perasc_check::MethodCall::Interface => {
+                let (id, args) = self.analysis.dyn_targets.get(&(call, self.args.clone()))?;
+                let target = if args.is_empty() {
+                    self.by_index.get(&id.0).copied()
+                } else {
+                    self.instances.get(&(id.0, args.clone())).copied()
+                }?;
+                Some((target, true))
+            }
+        }
+    }
+
+    /// The arguments of a method call: the receiver first when it has one.
+    pub(super) fn method_arguments(base: ExprId, receiver: bool, args: &[ExprId]) -> Vec<ExprId> {
+        let mut all = Vec::with_capacity(args.len() + 1);
+        if receiver {
+            all.push(base);
+        }
+        all.extend_from_slice(args);
+        all
     }
 
     /// A parameter: its locals, how JavaScript passes it, and whether its
@@ -478,9 +535,16 @@ impl Lowering<'_> {
     /// The name of the function being lowered: an instance of a generic
     /// function is named after its type arguments, `larger__i64`.
     fn function_name(&self, decl: &FnDecl) -> String {
-        let name = self.ast.name(decl.name.symbol);
+        let name = match decl.impl_of {
+            Some(owner) => format!(
+                "{}_{}",
+                self.ast.name(owner.symbol),
+                self.ast.name(decl.name.symbol)
+            ),
+            None => self.ast.name(decl.name.symbol).to_owned(),
+        };
         if self.args.is_empty() {
-            return name.to_owned();
+            return name;
         }
         let args: Vec<String> = self
             .args
@@ -846,13 +910,10 @@ impl Lowering<'_> {
             AstExpr::Int(value) => ExprKind::Const(int_const(*value, false)),
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
-            AstExpr::Name(symbol) => {
-                let Some(Binding::Scalar(local)) = state.lookup(*symbol) else {
-                    self.not_a_local(*symbol, span);
-                    return zero(ty);
-                };
-                ExprKind::Local(local)
-            }
+            AstExpr::Name(symbol) => match state.lookup(*symbol) {
+                Some(Binding::Scalar(local)) => ExprKind::Local(local),
+                _ => return self.not_a_local(state, *symbol, span, ty),
+            },
             AstExpr::Paren(inner) => return self.expr(state, *inner),
             AstExpr::Unary { op, operand } => {
                 if let (UnaryOp::Neg, AstExpr::Int(value)) = (op, &self.ast.expr(*operand).kind) {
@@ -895,6 +956,7 @@ impl Lowering<'_> {
             }
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
+            AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
             AstExpr::Field { base, .. } if self.is_buffer(*base) => {
                 return self.array_length(state, *base);
             }
@@ -1003,6 +1065,16 @@ impl Lowering<'_> {
                     .next()
                     .unwrap_or_else(|| zero(ty))
             }
+            AstExpr::Field { base, .. } if self.method_callee(call).is_some() => {
+                let (id, receiver) = self.method_callee(call).unwrap_or((FnId(0), false));
+                let all = Self::method_arguments(*base, receiver, args);
+                let back = self.writeback_places(state, id, &all);
+                let args = self.arguments(state, Some(id), &all);
+                self.call_results(state, id, args, &back)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| zero(ty))
+            }
             AstExpr::Field { base, name } if self.is_aggregate(*base) => {
                 let method = self.ast.name(name.symbol);
                 self.method_values(state, *base, method, args, heap::Mode::Borrow, span)
@@ -1078,7 +1150,7 @@ pub(crate) fn identifier(text: &str) -> String {
             out.push('_');
         }
     }
-    out.trim_end_matches('_').to_owned()
+    out.trim_matches('_').to_owned()
 }
 
 fn feature_of_check_type(ty: &CheckTy) -> &'static str {

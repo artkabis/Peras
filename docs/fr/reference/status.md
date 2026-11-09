@@ -19,8 +19,9 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | énumérations avec données, `match`, exhaustivité vérifiée | <span class="status compiled">compilé</span> |
 | `Result<T, E>`, `Ok`, `Err`, `?`                          | <span class="status compiled">compilé</span> |
 | génériques, contraintes `Eq`, `Ord`, `Numeric`, `Copy`…   | <span class="status compiled">compilé</span> |
-| interfaces et traits, méthodes sur les structures         | <span class="status planned">prévu</span>    |
-| `Map`, `Set`, tuples, fermetures                          | <span class="status planned">prévu</span>    |
+| méthodes (`impl`), interfaces comme contraintes           | <span class="status compiled">compilé</span> |
+| tuples, alias de types                                    | <span class="status compiled">compilé</span> |
+| `Map`, `Set`, fermetures                                  | <span class="status planned">prévu</span>    |
 | `Rc<T>`, `Framebuffer`, types de pixels, SIMD             | <span class="status planned">prévu</span>    |
 
 ## Instructions et expressions
@@ -35,7 +36,8 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | paramètres `sink`                                               | <span class="status compiled">compilé</span>                                                                         |
 | paramètres `inout`, `&` à l’appel                               | <span class="status compiled">compilé</span>                                                                         |
 | possession : déplacements, emprunts, alias refusés, libérations | <span class="status compiled">compilé</span>                                                                         |
-| `const` au niveau du module                                     | <span class="status checked">vérifié</span>                                                                          |
+| `const` au niveau du module                                     | <span class="status compiled">compilé</span>                                                                         |
+| `let` au niveau du module                                       | <span class="status checked">vérifié</span>                                                                          |
 | `import` entre modules                                          | <span class="status planned">prévu</span>                                                                            |
 
 ## Méthodes
@@ -50,7 +52,7 @@ Chaque méthode intégrée, avec son état, est dans la [référence des méthod
 | mode géré, `.apeiron`, vers JavaScript                            | <span class="status planned">prévu</span>                                        |
 | diagnostics en anglais et en français, `--json`, `perasc explain` | disponible                                                                       |
 | plugin Vite, déclarations TypeScript                              | disponible                                                                       |
-| allocateur de débogage, vérificateur de libérations               | construits et testés, en attente du premier type sur le tas                      |
+| allocateur de débogage, vérificateur de libérations               | en service dans chaque module qui alloue                                         |
 | `async`, le DOM, `fetch`, les événements                          | <span class="status planned">prévu</span>, en mode géré                          |
 | prise en charge des éditeurs (LSP), formateur, lanceur de tests   | <span class="status planned">prévu</span>                                        |
 

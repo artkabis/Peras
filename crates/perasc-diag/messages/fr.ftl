@@ -169,6 +169,8 @@ parse-expected-name = { $what ->
     [variant] nom de variante attendu
     [type-parameter] nom de paramètre de type attendu
     [constraint] nom de contrainte attendu
+    [type] nom de type attendu
+    [interface] nom d’interface attendu
    *[other] nom attendu
 }, trouvé { $eof ->
     [1] la fin du fichier
@@ -574,6 +576,50 @@ check-endless-instances-label = instancié avec des types toujours plus grands
 check-endless-instances-why = Chaque jeu d’arguments de type donne une copie du code générique. Ici, une copie en demande une autre avec un type plus grand, comme quand `f<T>` appelle `f<Array<T>>`, ou qu’une structure se contient avec un argument de type plus grand : cela ne finit pas.
 check-endless-instances-fix = utilise les mêmes paramètres de type dans l’appel ou le champ récursif
 
+# E0232
+check-alias-cycle = l’alias de type `{ $name }` se contient lui-même
+check-alias-cycle-label = renvoie à lui-même, directement ou par d’autres alias
+check-alias-cycle-why = Un alias est un autre nom pour un type : le remplacer par ce qu’il nomme doit finir. Un type qui se contient demande une structure ou une énumération, dont le compilateur sait calculer la taille.
+check-alias-cycle-fix = fais-en une structure ou une énumération
+
+# E0233
+check-not-constant = la valeur d’une constante de module doit être connue à la compilation
+check-not-constant-label = calculé quand le programme s’exécute
+check-not-constant-why = Une `const` de module est écrite dans le code partout où elle sert : sa valeur est faite de littéraux, d’autres constantes, d’opérateurs, de tableaux, de tuples, de structures, d’options et de variantes. Un appel ne s’exécute que quand le programme tourne.
+check-not-constant-fix = calcule-la dans une fonction, ou écris sa valeur
+
+# E0234
+check-no-methods = `{ $ty }` ne peut pas avoir de méthodes ici
+check-no-methods-label = pas une structure ni une énumération de ce module
+check-no-methods-why = Un `impl` donne des méthodes à une structure ou une énumération déclarée dans le module. Les autres types ont les méthodes prédéfinies de la référence des méthodes.
+check-no-methods-fix = enveloppe la valeur dans une structure du module, et donne-lui les méthodes
+
+# E0235
+check-impl-missing = l’implémentation de `{ $interface }` pour `{ $ty }` n’a pas { $missing }
+check-impl-missing-label = { $missing } manquant
+check-impl-extra = `{ $name }` n’est pas une méthode de `{ $interface }`
+check-impl-extra-label = `{ $interface }` ne déclare pas cette méthode
+check-impl-mismatch = une implémentation qui ne correspond pas à son interface
+check-impl-mismatch-why = Un `impl Interface for Type` fournit exactement les méthodes que l’interface déclare : le code qui s’appuie sur l’interface appelle chacune d’elles, et rien d’autre n’a sa place là.
+check-impl-missing-fix = ajoute les méthodes manquantes, avec les signatures que déclare `{ $interface }`
+check-impl-extra-fix = déplace `{ $name }` dans un `impl` du type lui-même
+
+# E0236
+check-signature = `{ $name }` ne correspond pas à `{ $interface }`
+check-signature-label = attendu `{ $expected }`
+check-signature-declared = déclarée dans `{ $interface }` ici
+check-interface-self = la méthode d’interface `{ $name }` ne prend pas `self`
+check-interface-self-label = `self` doit venir en premier
+check-signature-why = Une méthode d’interface est appelée sur une valeur de n’importe quel type qui l’implémente : elle prend `self` en premier, et chaque implémentation a exactement ses paramètres, leurs conventions et son type de retour.
+check-signature-fix = écris-la `{ $expected }`
+check-interface-self-fix = écris `fn { $name }(self, …)`
+
+# E0237
+check-interface-as-type = l’interface `{ $name }` utilisée comme un type
+check-interface-as-type-label = une interface, pas un type
+check-interface-as-type-why = Une interface est une contrainte : elle dit ce qu’un type sait faire, pas quel type a une valeur. Le code qui marche pour tout type qui l’implémente est générique, et compilé une fois par type, sans coût à l’exécution.
+check-interface-as-type-fix = utilise un paramètre de type : `fn f<T: { $name }>(x: T)`
+
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures
@@ -597,6 +643,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [option] les valeurs `Option`
     [method] cette méthode
     [integer-type] les types entiers autres que `i32` et `i64`
+    [recursive-type] les types qui se contiennent eux-mêmes
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé

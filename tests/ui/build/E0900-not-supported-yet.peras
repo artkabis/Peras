@@ -1,10 +1,10 @@
 // E0900: valid Peras that code generation cannot compile yet; every occurrence is reported.
-const LIMIT: i32 = 10;
+let limit: i32 = 10;
 
 export fn total(xs: Array<i32>, label: String): i32 {
   let sum = 0;
   for (const x of xs) sum += x;
-  return sum + label.length + LIMIT;
+  return sum + label.length + limit;
 }
 
 export fn small(xs: Array<u8>, names: Array<String>): i32 {

@@ -111,6 +111,7 @@ impl Checker<'_> {
             generics,
             params: fields,
             ret: &template,
+            receiver: None,
         };
         self.infer_generic(&use_, None, args, expected).1
     }

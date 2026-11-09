@@ -19,9 +19,9 @@ Ce qui permet à un programme de dire précisément ce que ses données peuvent 
 
 - ~~**Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité~~ : fait, voir [énumérations et match](../guide/enums.md).
 - ~~**`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs~~ : fait, voir [les résultats](../guide/enums.md#les-résultats--des-erreurs-qui-sont-des-valeurs) ; les fonctions d’analyse comme `parse` arrivent avec la bibliothèque standard.
-- ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; les contraintes sont prédéfinies jusqu’à l’arrivée des interfaces.
-- **Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation.
-- Tuples, alias de types, constantes de module compilées.
+- ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; avec des contraintes prédéfinies, et des interfaces pour les vôtres.
+- ~~**Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation~~ : fait, voir [méthodes et interfaces](../guide/methods.md).
+- ~~Tuples, alias de types, constantes de module compilées~~ : fait, voir [types](types.md#tuples) et [constantes de module](../guide/basics.md#constantes-de-module).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

@@ -56,10 +56,50 @@ Du texte en UTF-8, écrit `"…"` ; sa `length` compte des octets. Voir [les col
 
 `Some(valeur)` ou `None` : une valeur qui peut être absente. Peras n’a ni `null` ni `undefined` ; JavaScript voit une option vide comme `undefined`. <span class="status compiled">compilé</span>
 
+## Tuples
+
+`(i32, String)` : quelques valeurs de types fixes, sans noms de champs, écrites `(1, "a")` et lues avec `.0`, `.1`. Un tuple est une structure : gardé comme ses champs, il ne coûte rien. JavaScript voit un tableau, `[number, string]`. <span class="status compiled">compilé</span>
+
+```peras build
+fn minmax(xs: Array<i32>): (i32, i32) {
+  let lo = xs[0];
+  let hi = xs[0];
+  for (const x of xs) {
+    if (x < lo) {
+      lo = x;
+    }
+    if (x > hi) {
+      hi = x;
+    }
+  }
+  return (lo, hi);
+}
+
+export fn spread(xs: Array<i32>): i32 {
+  const range = minmax(xs);
+  return range.1 - range.0;
+}
+```
+
+## Alias de types
+
+`type Meters = f64;` donne un autre nom à un type, interchangeable avec lui ; `type Grid<T> = Array<Array<T>>;` prend des paramètres de type. Un alias ne peut pas se contenir lui-même ([E0232](../errors/E0232.md)). <span class="status compiled">compilé</span>
+
+```peras build
+type Meters = f64;
+type Grid<T> = Array<Array<T>>;
+
+export fn cells(g: Grid<i32>, width: Meters): f64 {
+  return g.length.toF64() * width;
+}
+```
+
+Deux alias de `f64` se mélangent librement : c’est le même type. Une valeur qui ne doit pas se mélanger avec sa représentation, comme un `UserId` qui n’est pas un `OrderId`, est une structure, `struct UserId { value: i64; }` : gardée comme son champ, elle ne coûte rien à l’exécution.
+
 ## Pas encore dans le langage
 
 Les énumérations ont leur page : [énumérations et match](../guide/enums.md). Les résultats y sont aussi : `Result<T, E>`, `Ok(valeur)` ou `Err(erreur)`. <span class="status compiled">compilé</span>
 
-Les fonctions, structures et énumérations génériques ont leur page : [génériques](../guide/generics.md). <span class="status compiled">compilé</span>
+Les fonctions, structures et énumérations génériques ont leur page : [génériques](../guide/generics.md) ; les méthodes et les interfaces aussi : [méthodes et interfaces](../guide/methods.md). <span class="status compiled">compilé</span>
 
-Unions, tuples, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).
+Unions, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).

@@ -1,0 +1,52 @@
+// Methods, interfaces, type aliases, tuples and module constants.
+type Meters = f64;
+type Grid<T> = Array<Array<T>>;
+
+const LIMIT: i32 = 10;
+
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+interface Shape {
+  fn area(self): f64;
+  fn scale(inout self, k: f64);
+}
+
+impl Point {
+  fn origin(): Point {
+    return Point(0.0, 0.0);
+  }
+
+  fn norm(self): f64 {
+    return self.x * self.x + self.y * self.y;
+  }
+
+  fn move(inout self, dx: f64) {
+    self.x += dx;
+  }
+}
+
+impl Shape for Point {
+  fn area(self): f64 {
+    return 0.0;
+  }
+
+  fn scale(inout self, k: f64) {
+    self.x *= k;
+  }
+}
+
+impl<T> Stack<T> {
+  fn size(self): i32 {
+    return self.items.length;
+  }
+}
+
+export fn run(): f64 {
+  const pair: (i32, (f64, bool)) = (1, (2.5, true));
+  let p = Point.origin();
+  p.move(1.0);
+  return pair.1.0 + p.norm() + (pair.0).toF64();
+}

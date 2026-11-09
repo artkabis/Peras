@@ -1092,7 +1092,7 @@ fn record_columns(
         Shape::Object(_, fields) => {
             let dot = if optional { "?." } else { "." };
             for (field, value) in fields {
-                record_columns(&format!("{path}{dot}{field}"), value, depth, optional, out);
+                record_columns(&member(path, dot, field), value, depth, optional, out);
             }
         }
         Shape::Option(inner) => {
@@ -1171,7 +1171,7 @@ fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mu
         }
         Shape::Object(_, fields) => {
             for (field, value) in fields {
-                write_back(&format!("{path}.{field}"), value, many, index, out);
+                write_back(&member(path, ".", field), value, many, index, out);
             }
         }
         // perasc refuses options passed `inout` from JavaScript.
@@ -1301,7 +1301,7 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
         Shape::Object(_, fields) => {
             let dot = if optional { "?." } else { "." };
             for (field, value) in fields {
-                flatten(&format!("{path}{dot}{field}"), value, optional, out);
+                flatten(&member(path, dot, field), value, optional, out);
             }
         }
         Shape::Option(inner) => {
@@ -1341,6 +1341,14 @@ fn rebuild_at(
             } else {
                 scalar
             }
+        }
+        // A tuple is an array.
+        Shape::Object(name, fields) if name.is_empty() => {
+            let items: Vec<String> = fields
+                .iter()
+                .map(|(_, value)| rebuild_at(value, index, at, owned))
+                .collect();
+            format!("[{}]", items.join(", "))
         }
         Shape::Object(_, fields) => {
             let fields: Vec<String> = fields
@@ -1663,6 +1671,10 @@ fn ts_shape(shape: &Shape) -> String {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
         // A result has no name of its own: its union is written in place.
         Shape::Enum(name, variants) if name.is_empty() => format!("({})", union(variants)),
+        Shape::Object(name, fields) if name.is_empty() => {
+            let items: Vec<String> = fields.iter().map(|(_, f)| ts_shape(f)).collect();
+            format!("[{}]", items.join(", "))
+        }
         Shape::Object(name, _) | Shape::Enum(name, _) => name.clone(),
         Shape::Option(inner) => format!("{} | undefined", ts_shape(inner)),
         Shape::String(_) => "string".to_owned(),
@@ -1689,6 +1701,16 @@ fn ts_shape(shape: &Shape) -> String {
                 format!("{item}[]")
             }
         }
+    }
+}
+
+/// `p.x`, or `t[0]` for a field of a tuple; `?.` when `p` may be absent.
+fn member(path: &str, dot: &str, field: &str) -> String {
+    if field.bytes().all(|b| b.is_ascii_digit()) {
+        let dot = if dot == "?." { "?." } else { "" };
+        format!("{path}{dot}[{field}]")
+    } else {
+        format!("{path}{dot}{field}")
     }
 }
 
@@ -1719,7 +1741,8 @@ fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
     for (_, field) in fields {
         interface(field, out);
     }
-    if out.iter().any(|(n, _)| n == name) {
+    // A tuple is written in place, `[number, string]`.
+    if name.is_empty() || out.iter().any(|(n, _)| n == name) {
         return;
     }
     let fields: Vec<String> = fields

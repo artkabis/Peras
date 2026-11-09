@@ -172,6 +172,7 @@ impl Checker<'_> {
             ExprKind::String(_) => Ty::String,
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Array(items) => self.array(items, expected),
+            ExprKind::Tuple(items) => self.tuple_expr(items, expected),
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
@@ -473,10 +474,22 @@ impl Checker<'_> {
                 self.call_name(*symbol, &call, args, expected)
             }
             ExprKind::Field { base, name } => {
+                let site = crate::methods::CallSite {
+                    call: id,
+                    args,
+                    span,
+                    expected,
+                };
+                if let Some(ty) = self.static_method(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.enum_variant(*base, name, Some(args), span, expected) {
                     return ty;
                 }
                 let receiver = self.infer(*base, None);
+                if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
+                    return ty;
+                }
                 // `push` and `pop` change the array: it must be one that can change.
                 if matches!(receiver, Ty::Array(_))
                     && matches!(self.name(name.symbol), "push" | "pop")
@@ -617,6 +630,7 @@ impl Checker<'_> {
             generics: &generics,
             params: &params,
             ret: &ret,
+            receiver: None,
         };
         let (types, ret) = self.infer_generic(&use_, call.types.as_deref(), args, expected);
         self.calls.insert(call.id, (id, types));
@@ -661,6 +675,7 @@ impl Checker<'_> {
             generics: &generics,
             params: &fields,
             ret: &ret,
+            receiver: None,
         };
         self.infer_generic(&use_, call.types.as_deref(), args, expected)
             .1
@@ -685,7 +700,7 @@ impl Checker<'_> {
     }
 
     /// `E0214` when the number of arguments is wrong.
-    fn arity(
+    pub(crate) fn arity(
         &mut self,
         span: Span,
         name: &str,
@@ -701,7 +716,7 @@ impl Checker<'_> {
     }
 
     /// Checks arguments against parameter types; extra arguments are still checked.
-    fn check_args(&mut self, args: &[ExprId], params: &[Ty]) {
+    pub(crate) fn check_args(&mut self, args: &[ExprId], params: &[Ty]) {
         for (i, &arg) in args.iter().enumerate() {
             match params.get(i) {
                 Some(ty) => self.expect(arg, ty),
@@ -772,7 +787,7 @@ impl Checker<'_> {
         }
     }
 
-    fn unknown_member(&mut self, ty: &Ty, member: &str, span: Span) {
+    pub(crate) fn unknown_member(&mut self, ty: &Ty, member: &str, span: Span) {
         let names = self.member_names(ty);
         let suggestion =
             scope::suggest(member, names.iter().map(String::as_str)).map(str::to_owned);

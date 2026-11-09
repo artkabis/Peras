@@ -17,15 +17,16 @@ Ces mots ne peuvent pas nommer une variable, une fonction ou un type.
 | `break`, `continue`  | quittent une boucle, passent à son tour suivant                                       |
 | `true`, `false`      | les deux valeurs `bool`                                                               |
 | `inout`, `sink`      | conventions de passage ([fonctions](../guide/functions.md#conventions-de-passage))    |
+| `impl`, `interface`  | méthodes, interfaces ([méthodes et interfaces](../guide/methods.md))                  |
+| `type`               | alias de types ([types](types.md#alias-de-types))                                     |
 
 ## Réservés
 
 Réservés à des fonctionnalités conçues mais pas encore construites ; les utiliser comme nom est une erreur dès aujourd’hui, pour que le code écrit maintenant continue de fonctionner quand elles arriveront.
 
-| Mot-clé                      | Pour                                                                  |
-| ---------------------------- | --------------------------------------------------------------------- |
-| `trait`, `impl`, `interface` | comportements partagés, méthodes sur les types                        |
-| `type`                       | alias de types                                                        |
-| `class`                      | refusé volontairement : Peras utilise des structures et des fonctions |
-| `import`                     | modules                                                               |
-| `async`, `await`             | code asynchrone, en mode géré                                         |
+| Mot-clé          | Pour                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `trait`          | gardé libre : Peras les appelle des interfaces                        |
+| `class`          | refusé volontairement : Peras utilise des structures et des fonctions |
+| `import`         | modules                                                               |
+| `async`, `await` | code asynchrone, en mode géré                                         |

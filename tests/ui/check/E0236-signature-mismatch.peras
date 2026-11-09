@@ -1,0 +1,24 @@
+// E0236: a method has exactly the signature its interface declares.
+interface Scale {
+  fn scale(inout self, k: f64);
+  fn ratio(self, other: Self): f64;
+  fn make(k: f64): f64;
+}
+
+struct Circle {
+  r: f64;
+}
+
+impl Scale for Circle {
+  fn scale(self, k: f32): f64 {
+    return self.r * k.toF64();
+  }
+
+  fn ratio(self, other: Circle): f64 {
+    return self.r / other.r;
+  }
+
+  fn make(k: f64): f64 {
+    return k;
+  }
+}

@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **Methods and interfaces.** `impl Point { fn norm(self): f64 { … } }` gives a structure or an enumeration of the module its methods (`E0234` otherwise).
+  - `self`, `inout self` or `sink self` comes first; `p.shift(1.0)` needs no `&`, and `p` must be a `let`. A method without `self` is called on its type, `Point.origin()`, and any method can be called that way with its `self` first. `Self` names the type; `impl<T> Stack<T>` gives a generic type its methods.
+  - `interface Shape { fn area(self): f64; }` and `impl Shape for Circle { … }`: an implementation provides exactly the interface's methods (`E0235`), with exactly their signatures (`E0236`).
+  - An interface is a constraint, `fn total<T: Shape>(…)`: each instance of the function calls the method of its type, resolved when compiling, with no table at run time. Used as a type, it is refused (`E0237`).
+- **Tuples**: `(i32, String)`, written `(1, "a")`, read with `.0`, `.1`, nested `t.1.0`. A tuple is a generic structure, kept as its fields; JavaScript sees an array, typed `[number, string]`.
+- **Type aliases**: `type Meters = f64;` and `type Grid<T> = Array<Array<T>>;`, interchangeable with what they name; one that contains itself is refused (`E0232`).
+- **Module constants compile**: `const AREA: i32 = SIDE * SIDE;` is written where it is used. Its value must be known when compiling (`E0233`). Module `let` stays checked only.
+- A structure that contains itself through an array, `struct Tree { children: Array<Tree> }`, no longer crashes the compiler with a stack overflow: it is reported as not compiled yet (`E0900`).
 - **Generics**, on functions, structures and enumerations: `fn larger<T: Ord>(a: T, b: T): T`, `struct Pair<A, B>`, `enum Tree<T>`.
   - Six built-in constraints: `Eq`, `Ord`, `Numeric`, `Integer`, `Float` and `Copy`. A generic body is checked once, for every type its parameters may stand for: an operation its constraints do not allow is refused, with a fix that adds the constraint (`E0228`); a use with a type that does not meet one is refused (`E0227`), as is an unknown constraint (`E0226`).
   - Type arguments are inferred from the arguments and from the type expected, or written at the call, `larger<i64>(a, b)`: since chained comparisons are refused, this is never a comparison. When nothing determines them, `E0229`.

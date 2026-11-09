@@ -8,6 +8,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- **Méthodes et interfaces.** `impl Point { fn norm(self): f64 { … } }` donne ses méthodes à une structure ou une énumération du module (`E0234` sinon).
+  - `self`, `inout self` ou `sink self` vient en premier ; `p.shift(1.0)` n’a pas besoin de `&`, et `p` doit être un `let`. Une méthode sans `self` s’appelle sur son type, `Point.origin()`, et toute méthode peut s’appeler ainsi, son `self` en premier. `Self` nomme le type ; `impl<T> Stack<T>` donne ses méthodes à un type générique.
+  - `interface Shape { fn area(self): f64; }` et `impl Shape for Circle { … }` : une implémentation fournit exactement les méthodes de l’interface (`E0235`), avec exactement leurs signatures (`E0236`).
+  - Une interface est une contrainte, `fn total<T: Shape>(…)` : chaque instance de la fonction appelle la méthode de son type, résolue à la compilation, sans table à l’exécution. Utilisée comme type, elle est refusée (`E0237`).
+- **Tuples** : `(i32, String)`, écrits `(1, "a")`, lus avec `.0`, `.1`, imbriqués `t.1.0`. Un tuple est une structure générique, gardée comme ses champs ; JavaScript voit un tableau, typé `[number, string]`.
+- **Alias de types** : `type Meters = f64;` et `type Grid<T> = Array<Array<T>>;`, interchangeables avec ce qu’ils nomment ; un alias qui se contient est refusé (`E0232`).
+- **Les constantes de module se compilent** : `const AREA: i32 = SIDE * SIDE;` est écrite là où elle sert. Sa valeur doit être connue à la compilation (`E0233`). Le `let` de module reste seulement vérifié.
+- Une structure qui se contient à travers un tableau, `struct Tree { children: Array<Tree> }`, ne fait plus planter le compilateur par débordement de pile : elle est signalée comme pas encore compilée (`E0900`).
 - Les **génériques**, sur les fonctions, les structures et les énumérations : `fn larger<T: Ord>(a: T, b: T): T`, `struct Pair<A, B>`, `enum Tree<T>`.
   - Six contraintes prédéfinies : `Eq`, `Ord`, `Numeric`, `Integer`, `Float` et `Copy`. Un corps générique est vérifié une fois, pour tous les types que ses paramètres peuvent représenter : une opération que ses contraintes ne permettent pas est refusée, avec une correction qui ajoute la contrainte (`E0228`) ; une utilisation avec un type qui n’en respecte pas une est refusée (`E0227`), de même qu’une contrainte inconnue (`E0226`).
   - Les arguments de type sont inférés des arguments et du type attendu, ou écrits à l’appel, `larger<i64>(a, b)` : les comparaisons enchaînées étant refusées, ce n’est jamais une comparaison. Quand rien ne les détermine, `E0229`.

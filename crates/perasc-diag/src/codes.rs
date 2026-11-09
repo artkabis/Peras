@@ -128,6 +128,18 @@ pub const CANNOT_INFER: ErrorCode = ErrorCode::new(229);
 pub const GENERIC_EXPORT: ErrorCode = ErrorCode::new(230);
 /// Generic code that instantiates itself with ever larger types.
 pub const ENDLESS_INSTANCES: ErrorCode = ErrorCode::new(231);
+/// A type alias that contains itself.
+pub const ALIAS_CYCLE: ErrorCode = ErrorCode::new(232);
+/// A module constant whose value is not known when compiling.
+pub const NOT_CONSTANT: ErrorCode = ErrorCode::new(233);
+/// Methods for a type that cannot have them.
+pub const NO_METHODS: ErrorCode = ErrorCode::new(234);
+/// An implementation that misses methods of its interface, or adds others.
+pub const IMPL_MISMATCH: ErrorCode = ErrorCode::new(235);
+/// A method whose signature is not the one its interface declares.
+pub const SIGNATURE_MISMATCH: ErrorCode = ErrorCode::new(236);
+/// An interface used as a type.
+pub const INTERFACE_AS_TYPE: ErrorCode = ErrorCode::new(237);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -244,6 +256,12 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(CANNOT_INFER, "check-cannot-infer", "E0229"),
     active!(GENERIC_EXPORT, "check-generic-export", "E0230"),
     active!(ENDLESS_INSTANCES, "check-endless-instances", "E0231"),
+    active!(ALIAS_CYCLE, "check-alias-cycle", "E0232"),
+    active!(NOT_CONSTANT, "check-not-constant", "E0233"),
+    active!(NO_METHODS, "check-no-methods", "E0234"),
+    active!(IMPL_MISMATCH, "check-impl-mismatch", "E0235"),
+    active!(SIGNATURE_MISMATCH, "check-signature", "E0236"),
+    active!(INTERFACE_AS_TYPE, "check-interface-as-type", "E0237"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

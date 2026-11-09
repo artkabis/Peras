@@ -1,0 +1,85 @@
+// Methods, interfaces, tuples, aliases and constants behind exported
+// functions.
+type Meters = f64;
+
+const UNIT: Meters = 1.0;
+const NAMES: Array<String> = ["circle", "square"];
+
+interface Shape {
+  fn area(self): f64;
+  fn scale(inout self, k: f64);
+}
+
+struct Circle {
+  r: Meters;
+}
+
+struct Square {
+  side: Meters;
+}
+
+impl Circle {
+  fn unit(): Circle {
+    return Circle(UNIT);
+  }
+}
+
+impl Shape for Circle {
+  fn area(self): f64 {
+    return 3.0 * self.r * self.r;
+  }
+
+  fn scale(inout self, k: f64) {
+    self.r *= k;
+  }
+}
+
+impl Shape for Square {
+  fn area(self): f64 {
+    return self.side * self.side;
+  }
+
+  fn scale(inout self, k: f64) {
+    self.side *= k;
+  }
+}
+
+fn total<T: Shape>(shapes: Array<T>): f64 {
+  let sum = 0.0;
+  for (const s of shapes) {
+    sum += s.area();
+  }
+  return sum;
+}
+
+fn grown<T: Shape>(s: sink T, k: f64): f64 {
+  let t = s;
+  t.scale(k);
+  return t.area();
+}
+
+export fn areas(circles: Array<Circle>, squares: Array<Square>): f64 {
+  return total(circles) + total(squares);
+}
+
+export fn scaled(r: f64, k: f64): f64 {
+  return grown(Circle(r), k) + Circle.unit().area();
+}
+
+export fn bounds(xs: Array<i32>): (i32, i32) {
+  let lo = xs[0];
+  let hi = xs[0];
+  for (const x of xs) {
+    if (x < lo) {
+      lo = x;
+    }
+    if (x > hi) {
+      hi = x;
+    }
+  }
+  return (lo, hi);
+}
+
+export fn label(pair: (i32, String)): String {
+  return pair.1 + ": " + NAMES[pair.0];
+}

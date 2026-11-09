@@ -104,6 +104,21 @@ impl Ast {
     pub fn interner_symbol(&self, name: &str) -> Option<Symbol> {
         self.interner.lookup(name)
     }
+
+    /// Every function of the module, the methods of each `impl` in place of
+    /// it: the order every pass numbers them in.
+    #[must_use]
+    pub fn functions(&self) -> Vec<&FnDecl> {
+        let mut out = Vec::new();
+        for item in &self.items {
+            match &item.kind {
+                ItemKind::Fn(decl) => out.push(decl),
+                ItemKind::Impl(decl) => out.extend(decl.methods.iter()),
+                _ => {}
+            }
+        }
+        out
+    }
 }
 
 /// A top-level declaration.
@@ -126,6 +141,63 @@ pub enum ItemKind {
     Struct(StructDecl),
     /// `enum Name { Variant, Variant(Type, …), … }`
     Enum(EnumDecl),
+    /// `type Name<T> = Type;`
+    Alias(AliasDecl),
+    /// `impl Type { fn … }` or `impl Interface for Type { fn … }`
+    Impl(ImplDecl),
+    /// `interface Name { fn method(self, …): Type; … }`
+    Interface(InterfaceDecl),
+}
+
+/// `type Meters = f64;`: another name for a type, interchangeable with it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AliasDecl {
+    /// Preceded by `export`.
+    pub exported: bool,
+    /// The new name.
+    pub name: Ident,
+    /// Its type parameters, `<T>`.
+    pub generics: Vec<TypeParam>,
+    /// The type it names.
+    pub ty: Type,
+}
+
+/// The methods of a type, or its implementation of an interface.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImplDecl {
+    /// `impl<T> Stack<T>`: the type parameters of the target.
+    pub generics: Vec<TypeParam>,
+    /// The interface implemented, after `impl` and before `for`.
+    pub interface: Option<Ident>,
+    /// The type the methods belong to.
+    pub target: Type,
+    /// Its methods: their `generics` start with those of the `impl`, their
+    /// first parameter is `self` when they take one.
+    pub methods: Vec<FnDecl>,
+}
+
+/// An interface: methods a type provides to meet it as a constraint.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceDecl {
+    /// Preceded by `export`.
+    pub exported: bool,
+    /// Its name.
+    pub name: Ident,
+    /// The methods required, without bodies; `self` has type `Self`.
+    pub methods: Vec<MethodSig>,
+}
+
+/// A method an interface requires: `fn area(self): f64;`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodSig {
+    /// Its name.
+    pub name: Ident,
+    /// Its parameters, `self` first.
+    pub params: Vec<Param>,
+    /// Its return type, if written.
+    pub ret: Option<Type>,
+    /// The whole declaration.
+    pub span: Span,
 }
 
 /// An enumeration: a value that is one of its variants, each with its data.
@@ -243,6 +315,16 @@ pub struct FnDecl {
     pub ret: Option<Type>,
     /// The body.
     pub body: Block,
+    /// For a method, the name of the type of its `impl`.
+    pub impl_of: Option<Ident>,
+}
+
+impl FnDecl {
+    /// Whether it is a method that takes `self`.
+    #[must_use]
+    pub fn has_self(&self) -> bool {
+        self.impl_of.is_some() && self.params.first().is_some_and(|p| p.is_self)
+    }
 }
 
 /// A type parameter: `T`, or `T: Ord + Copy` with its constraints.
@@ -274,6 +356,8 @@ pub struct Param {
     pub convention: Convention,
     /// Its type.
     pub ty: Type,
+    /// Whether it is the `self` of a method.
+    pub is_self: bool,
 }
 
 /// A type as written.
@@ -295,6 +379,8 @@ pub enum TypeKind {
         /// Generic arguments, empty without `<…>`.
         args: Vec<Type>,
     },
+    /// `(i32, String)`: two types or more.
+    Tuple(Vec<Type>),
     /// A type that failed to parse, already reported.
     Error,
 }
@@ -457,6 +543,8 @@ pub enum ExprKind {
     Bool(bool),
     /// `[a, b, c]`.
     Array(Vec<ExprId>),
+    /// `(a, b)`: two values or more.
+    Tuple(Vec<ExprId>),
     /// A variable or function name.
     Name(Symbol),
     /// `( inner )`, kept so that later passes and fixes see the parentheses.
@@ -668,9 +756,69 @@ impl Ast {
                     line.push(')');
                     let _ = writeln!(out, "{line}");
                 }
+                ItemKind::Alias(alias) => {
+                    let _ = writeln!(
+                        out,
+                        "(type {}{} {})",
+                        self.name(alias.name.symbol),
+                        self.generics(&alias.generics),
+                        self.ty(&alias.ty)
+                    );
+                }
+                ItemKind::Interface(interface) => {
+                    let _ = writeln!(out, "(interface {}", self.name(interface.name.symbol));
+                    for method in &interface.methods {
+                        let params: Vec<String> =
+                            method.params.iter().map(|p| self.param(p)).collect();
+                        let ret = method.ret.as_ref().map(|t| self.ty(t));
+                        let _ = writeln!(
+                            out,
+                            "  (fn {} ({}){})",
+                            self.name(method.name.symbol),
+                            params.join(" "),
+                            ret.map(|r| format!(" -> {r}")).unwrap_or_default()
+                        );
+                    }
+                    let _ = writeln!(out, ")");
+                }
+                ItemKind::Impl(decl) => {
+                    let interface = decl
+                        .interface
+                        .map(|i| format!("{} for ", self.name(i.symbol)))
+                        .unwrap_or_default();
+                    let _ = writeln!(
+                        out,
+                        "(impl{} {interface}{}",
+                        self.generics(&decl.generics),
+                        self.ty(&decl.target)
+                    );
+                    for method in &decl.methods {
+                        self.dump_fn(&mut out, method);
+                    }
+                    let _ = writeln!(out, ")");
+                }
             }
         }
         out
+    }
+
+    /// `<T: Ord, U>`, or nothing.
+    fn generics(&self, generics: &[TypeParam]) -> String {
+        if generics.is_empty() {
+            return String::new();
+        }
+        let params: Vec<String> = generics
+            .iter()
+            .map(|g| {
+                let mut text = self.name(g.name.symbol).to_owned();
+                let bounds: Vec<&str> = g.bounds.iter().map(|b| self.name(b.symbol)).collect();
+                if !bounds.is_empty() {
+                    let _ = write!(text, ": {}", bounds.join(" + "));
+                }
+                text
+            })
+            .collect();
+        format!("<{}>", params.join(", "))
     }
 
     /// A pattern as an S-expression.
@@ -711,19 +859,10 @@ impl Ast {
         if f.is_async {
             head.push_str(" async");
         }
+        head.push_str(&self.generics(&f.generics));
         head.push_str(" (params");
         for p in &f.params {
-            let convention = match p.convention {
-                Convention::Let => "",
-                Convention::Inout => "inout ",
-                Convention::Sink => "sink ",
-            };
-            let _ = write!(
-                head,
-                " ({} {convention}{})",
-                self.name(p.name.symbol),
-                self.ty(&p.ty)
-            );
+            let _ = write!(head, " {}", self.param(p));
         }
         head.push(')');
         if let Some(ret) = &f.ret {
@@ -736,12 +875,33 @@ impl Ast {
         let _ = writeln!(out, ")");
     }
 
+    /// `(name inout Type)`, or `self` for the receiver of a method.
+    fn param(&self, p: &Param) -> String {
+        let convention = match p.convention {
+            Convention::Let => "",
+            Convention::Inout => "inout ",
+            Convention::Sink => "sink ",
+        };
+        if p.is_self {
+            return format!("({convention}self)");
+        }
+        format!(
+            "({} {convention}{})",
+            self.name(p.name.symbol),
+            self.ty(&p.ty)
+        )
+    }
+
     fn ty(&self, ty: &Type) -> String {
         match &ty.kind {
             TypeKind::Named { name, args } if args.is_empty() => self.name(name.symbol).to_owned(),
             TypeKind::Named { name, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.ty(a)).collect();
                 format!("{}<{}>", self.name(name.symbol), args.join(", "))
+            }
+            TypeKind::Tuple(items) => {
+                let items: Vec<String> = items.iter().map(|a| self.ty(a)).collect();
+                format!("({})", items.join(", "))
             }
             TypeKind::Error => "<error>".to_owned(),
         }
@@ -881,6 +1041,10 @@ impl Ast {
             ExprKind::Array(items) => {
                 let items: Vec<String> = items.iter().map(|i| self.sexpr(*i)).collect();
                 format!("[{}]", items.join(" "))
+            }
+            ExprKind::Tuple(items) => {
+                let items: Vec<String> = items.iter().map(|i| self.sexpr(*i)).collect();
+                format!("(tuple {})", items.join(" "))
             }
             ExprKind::Name(s) => self.name(*s).to_owned(),
             ExprKind::Paren(inner) => format!("(paren {})", self.sexpr(*inner)),

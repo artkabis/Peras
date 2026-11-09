@@ -65,4 +65,10 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0229](E0229.md) | Argument de type que rien ne détermine                  | noms et types      |
 | [E0230](E0230.md) | Fonction générique exportée                             | noms et types      |
 | [E0231](E0231.md) | Code générique qui demande des copies sans fin          | noms et types      |
+| [E0232](E0232.md) | Alias de type qui se contient lui-même                  | noms et types      |
+| [E0233](E0233.md) | Constante de module calculée à l’exécution              | noms et types      |
+| [E0234](E0234.md) | Méthodes pour un type qui ne peut pas en avoir          | noms et types      |
+| [E0235](E0235.md) | Implémentation qui ne correspond pas à son interface    | noms et types      |
+| [E0236](E0236.md) | Méthode qui ne correspond pas à son interface           | noms et types      |
+| [E0237](E0237.md) | Interface utilisée comme un type                        | noms et types      |
 | [E0900](E0900.md) | Pas encore pris en charge par la génération de code     | génération de code |

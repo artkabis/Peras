@@ -1,0 +1,13 @@
+// E0237: an interface is a constraint, not a type.
+interface Shape {
+  fn area(self): f64;
+}
+
+fn double(s: Shape): f64 {
+  return s.area() * 2.0;
+}
+
+// Allowed: a type parameter constrained by the interface.
+fn triple<T: Shape>(s: T): f64 {
+  return s.area() * 3.0;
+}

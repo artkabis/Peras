@@ -1,0 +1,46 @@
+---
+source: crates/perasc-syntax/tests/ui.rs
+expression: render_parsed(&source)
+input_file: tests/ui/parser/impl-and-interfaces.peras
+---
+ast:
+  (type Meters f64)
+  (type Grid<T> Array<Array<T>>)
+  (const LIMIT: i32 10)
+  (struct Point (x f64) (y f64))
+  (interface Shape
+    (fn area ((self)) -> f64)
+    (fn scale ((inout self) (k f64)))
+  )
+  (impl Point
+  (fn origin (params) -> Point
+    (return (call Point 0.0 0.0))
+  )
+  (fn norm (params (self)) -> f64
+    (return (+ (* (. self x) (. self x)) (* (. self y) (. self y))))
+  )
+  (fn move (params (inout self) (dx f64))
+    (+= (. self x) dx)
+  )
+  )
+  (impl Shape for Point
+  (fn area (params (self)) -> f64
+    (return 0.0)
+  )
+  (fn scale (params (inout self) (k f64))
+    (*= (. self x) k)
+  )
+  )
+  (impl<T> Stack<T>
+  (fn size<T> (params (self)) -> i32
+    (return (. (. self items) length))
+  )
+  )
+  (fn run export (params) -> f64
+    (const pair: (i32, (f64, bool)) (tuple 1 (tuple 2.5 true)))
+    (let p (call (. Point origin)))
+    (call (. p move) 1.0)
+    (return (+ (+ (. (. pair 1) 0) (call (. p norm))) (call (. (paren (. pair 0)) toF64))))
+  )
+diagnostics:
+  none

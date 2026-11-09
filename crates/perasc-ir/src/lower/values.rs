@@ -29,12 +29,24 @@ impl Lowering<'_> {
     /// The scalars of a type with their path (`inner_x`), or the feature that is
     /// not compiled yet. A scalar has the empty path.
     pub(super) fn leaves(&self, ty: &CheckTy) -> Result<Vec<(String, Ty)>, &'static str> {
+        self.leaves_in(ty, 0)
+    }
+
+    /// [`Self::leaves`], `depth` types deep: a type that contains itself,
+    /// through an array as in `struct Tree { children: Array<Tree> }`, has no
+    /// end, and is not compiled yet.
+    fn leaves_in(&self, ty: &CheckTy, depth: usize) -> Result<Vec<(String, Ty)>, &'static str> {
+        const DEEPEST: usize = 64;
+        if depth > DEEPEST {
+            return Err("recursive-type");
+        }
+        let deeper = depth + 1;
         match ty {
             CheckTy::Struct(id, _) => {
                 let (_, fields) = self.analysis.structs.get(id.0).ok_or("struct")?;
                 let mut out = Vec::new();
                 for (name, field) in fields {
-                    for (path, leaf) in self.leaves(field)? {
+                    for (path, leaf) in self.leaves_in(field, deeper)? {
                         let path = if path.is_empty() {
                             name.clone()
                         } else {
@@ -47,7 +59,13 @@ impl Lowering<'_> {
             }
             // One buffer per scalar of an element: its columns.
             CheckTy::Array(inner) => {
-                let leaves = self.leaves(inner).map_err(|_| "array-element")?;
+                let leaves = self.leaves_in(inner, deeper).map_err(|e| {
+                    if e == "recursive-type" {
+                        e
+                    } else {
+                        "array-element"
+                    }
+                })?;
                 if leaves.iter().any(|(_, t)| Elem::of(*t).is_none()) {
                     return Err("array-element");
                 }
@@ -61,7 +79,7 @@ impl Lowering<'_> {
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
                 for (side, ty) in [("ok", ok), ("err", err)] {
-                    for (path, leaf) in self.leaves(ty)? {
+                    for (path, leaf) in self.leaves_in(ty, deeper)? {
                         let path = if path.is_empty() {
                             side.to_owned()
                         } else {
@@ -78,7 +96,7 @@ impl Lowering<'_> {
                 let (_, variants) = self.analysis.enums.get(id.0).ok_or("enum")?;
                 for (variant, fields) in variants {
                     for (k, field) in fields.iter().enumerate() {
-                        for (path, leaf) in self.leaves(field)? {
+                        for (path, leaf) in self.leaves_in(field, deeper)? {
                             let path = if path.is_empty() {
                                 format!("{variant}_{k}")
                             } else {
@@ -92,7 +110,7 @@ impl Lowering<'_> {
             }
             CheckTy::Option(inner) => {
                 let mut out = vec![("some".to_owned(), Ty::Bool)];
-                for (path, leaf) in self.leaves(inner)? {
+                for (path, leaf) in self.leaves_in(inner, deeper)? {
                     let path = if path.is_empty() {
                         "value".to_owned()
                     } else {
@@ -129,6 +147,16 @@ impl Lowering<'_> {
 
     /// How JavaScript sees a value of this type, passed this way.
     pub(super) fn shape_passed(&self, ty: &CheckTy, pass: Pass) -> Shape {
+        self.shape_in(ty, pass, 0)
+    }
+
+    /// [`Self::shape_passed`], `depth` types deep; a type that contains
+    /// itself stops, its leaves being reported as not compiled.
+    fn shape_in(&self, ty: &CheckTy, pass: Pass, depth: usize) -> Shape {
+        if depth > 64 {
+            return Shape::Value(Ty::Void);
+        }
+        let deeper = depth + 1;
         match ty {
             CheckTy::Struct(id, name) => {
                 let fields = self
@@ -138,18 +166,24 @@ impl Lowering<'_> {
                     .map(|(_, fields)| {
                         fields
                             .iter()
-                            .map(|(n, f)| (n.clone(), self.shape_passed(f, pass)))
+                            .map(|(n, f)| (n.clone(), self.shape_in(f, pass, deeper)))
                             .collect()
                     })
                     .unwrap_or_default();
-                Shape::Object(super::identifier(name), fields)
+                // A tuple has no name: JavaScript sees an array.
+                let name = if name.starts_with('(') {
+                    String::new()
+                } else {
+                    super::identifier(name)
+                };
+                Shape::Object(name, fields)
             }
-            CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_passed(inner, pass))),
+            CheckTy::Option(inner) => Shape::Option(Box::new(self.shape_in(inner, pass, deeper))),
             CheckTy::Result(ok, err) => Shape::Enum(
                 String::new(),
                 vec![
-                    ("Ok".to_owned(), vec![self.shape_passed(ok, pass)]),
-                    ("Err".to_owned(), vec![self.shape_passed(err, pass)]),
+                    ("Ok".to_owned(), vec![self.shape_in(ok, pass, deeper)]),
+                    ("Err".to_owned(), vec![self.shape_in(err, pass, deeper)]),
                 ],
             ),
             CheckTy::Enum(id, name) => Shape::Enum(
@@ -163,7 +197,10 @@ impl Lowering<'_> {
                             .map(|(v, fields)| {
                                 (
                                     v.clone(),
-                                    fields.iter().map(|f| self.shape_passed(f, pass)).collect(),
+                                    fields
+                                        .iter()
+                                        .map(|f| self.shape_in(f, pass, deeper))
+                                        .collect(),
                                 )
                             })
                             .collect()
@@ -173,7 +210,7 @@ impl Lowering<'_> {
             CheckTy::String => Shape::String(pass),
             CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
                 Some(elem) => Shape::Array(elem, pass),
-                None => Shape::Records(Box::new(self.shape_passed(inner, pass)), pass),
+                None => Shape::Records(Box::new(self.shape_in(inner, pass, deeper)), pass),
             },
             other => Shape::Value(Self::ir_type(other).unwrap_or(Ty::Void)),
         }
@@ -243,6 +280,9 @@ impl Lowering<'_> {
                         .collect()
                 } else if let Some(super::Binding::Lent(values)) = state.lookup(*symbol) {
                     values
+                } else if let Some(&init) = self.constants.get(symbol) {
+                    // A constant: its value, made here.
+                    self.value_as(state, init, mode)
                 } else if self.ast.name(*symbol) == "None" {
                     self.none(id)
                 } else {
@@ -261,6 +301,11 @@ impl Lowering<'_> {
             AstExpr::Array(items) => {
                 let built = self.array_literal(state, id, items);
                 Self::fresh(state, built, mode)
+            }
+            // A tuple is a structure: its scalars are its elements'.
+            AstExpr::Tuple(items) => {
+                let values = self.arguments(state, None, items);
+                Self::fresh(state, values, mode)
             }
             AstExpr::Index { base, index } => self.index_values(state, *base, *index, span),
             AstExpr::Field { base, name } if self.enum_value_named(state, *base) => {
@@ -335,6 +380,15 @@ impl Lowering<'_> {
                     // A constructor: its scalars are its arguments', in order.
                     args
                 };
+                Self::fresh(state, values, mode)
+            }
+            AstExpr::Field { base, .. } if self.method_callee(id).is_some() => {
+                let (function, receiver) =
+                    self.method_callee(id).unwrap_or((crate::FnId(0), false));
+                let all = Self::method_arguments(base, receiver, args);
+                let back = self.writeback_places(state, function, &all);
+                let args = self.arguments(state, Some(function), &all);
+                let values = self.call_results(state, function, args, &back);
                 Self::fresh(state, values, mode)
             }
             AstExpr::Field { base, name } => {

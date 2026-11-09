@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0234-no-methods.peras
+---
+diagnostics:
+  error[E0234] check-no-methods { ty: "f64" }
+    primary 2:6-2:9: check-no-methods-label
+    cause: check-no-methods-why
+    fix: check-no-methods-fix
+  error[E0234] check-no-methods { ty: "Array<i32>" }
+    primary 8:6-8:16: check-no-methods-label
+    cause: check-no-methods-why
+    fix: check-no-methods-fix

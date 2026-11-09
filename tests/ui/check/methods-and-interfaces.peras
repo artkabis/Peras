@@ -1,0 +1,46 @@
+// Methods, interfaces, aliases, tuples and constants that are all correct,
+// and the errors their uses can still make.
+interface Shape {
+  fn area(self): f64;
+}
+
+struct Circle {
+  r: f64;
+}
+
+impl Circle {
+  fn unit(): Circle {
+    return Circle(1.0);
+  }
+
+  fn grow(inout self, k: f64) {
+    self.r *= k;
+  }
+}
+
+impl Shape for Circle {
+  fn area(self): f64 {
+    return 3.0 * self.r * self.r;
+  }
+}
+
+fn total<T: Shape>(xs: Array<T>): f64 {
+  let sum = 0.0;
+  for (const x of xs) {
+    sum += x.area();
+  }
+  return sum;
+}
+
+export fn run(): f64 {
+  const c = Circle.unit();
+  // A method taking `inout self` needs a variable that can change.
+  c.grow(2.0);
+  // Unknown method, with the closest name suggested.
+  const a = c.aera();
+  // A type that does not implement the interface.
+  const n = total([1, 2]);
+  // A tuple has the fields it has.
+  const t = (1, 2.0);
+  return c.area() + a + n + t.2 + Circle.area(c);
+}

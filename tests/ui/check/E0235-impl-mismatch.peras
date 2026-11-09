@@ -1,0 +1,26 @@
+// E0235: an implementation provides exactly the methods of its interface.
+interface Shape {
+  fn area(self): f64;
+  fn perimeter(self): f64;
+}
+
+struct Square {
+  side: f64;
+}
+
+impl Shape for Square {
+  fn area(self): f64 {
+    return self.side * self.side;
+  }
+
+  fn diagonal(self): f64 {
+    return self.side * 1.4142;
+  }
+}
+
+// An interface that does not exist.
+impl Drawable for Square {
+  fn draw(self): i32 {
+    return 0;
+  }
+}

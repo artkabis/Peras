@@ -138,6 +138,19 @@ impl Parser<'_> {
             TokenKind::LParen => {
                 self.bump();
                 let inner = self.expr();
+                // `(a, b)`: a tuple.
+                if !self.recovering && self.at(TokenKind::Comma) {
+                    let mut items = vec![inner];
+                    while self.eat(TokenKind::Comma).is_some() && !self.at(TokenKind::RParen) {
+                        items.push(self.expr());
+                        if self.recovering {
+                            break;
+                        }
+                    }
+                    self.expect_close(token, TokenKind::RParen, ")");
+                    let span = self.since(token.span.start);
+                    return self.alloc(ExprKind::Tuple(items), span);
+                }
                 self.expect_close(token, TokenKind::RParen, ")");
                 let span = self.since(token.span.start);
                 self.alloc(ExprKind::Paren(inner), span)
@@ -380,6 +393,40 @@ impl Parser<'_> {
                     self.expect_close(token, TokenKind::RBracket, "]");
                     let span = self.since(start);
                     self.alloc(ExprKind::Index { base: expr, index }, span)
+                }
+                TokenKind::Dot if self.nth(1).kind == TokenKind::Int => {
+                    // `pair.0`: a field of a tuple.
+                    self.bump();
+                    let index = self.bump();
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(self.text(index)),
+                        span: index.span,
+                    };
+                    let span = self.since(start);
+                    self.alloc(ExprKind::Field { base: expr, name }, span)
+                }
+                TokenKind::Dot if self.nth(1).kind == TokenKind::Float => {
+                    // `nested.0.1` is read as `nested`, `.`, `0.1`: two fields.
+                    self.bump();
+                    let number = self.bump();
+                    let text = self.text(number);
+                    let Some((first, second)) = text.split_once('.') else {
+                        return expr;
+                    };
+                    let (first, second) = (first.to_owned(), second.to_owned());
+                    let split = number.span.start + u32::try_from(first.len()).unwrap_or(0);
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(&first),
+                        span: Span::new(number.span.start, split),
+                    };
+                    let outer = Span::new(start, split);
+                    let inner = self.alloc(ExprKind::Field { base: expr, name }, outer);
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(&second),
+                        span: Span::new(split + 1, number.span.end),
+                    };
+                    let span = self.since(start);
+                    self.alloc(ExprKind::Field { base: inner, name }, span)
                 }
                 TokenKind::Dot => {
                     self.bump();

@@ -6,7 +6,7 @@ input_file: tests/ui/parser/generics.peras
 ast:
   (struct Pair (first A) (second B))
   (enum Tree (Leaf T) (Node T T))
-  (fn larger (params (a T) (b T)) -> T
+  (fn larger<T: Ord + Copy> (params (a T) (b T)) -> T
     (if (> a b)
       (block
         (return a)

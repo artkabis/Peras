@@ -20,6 +20,7 @@ export const sections: Section[] = [
       "guide/structures",
       "guide/enums",
       "guide/generics",
+      "guide/methods",
       "guide/collections",
       "guide/memory",
       "guide/diagnostics",

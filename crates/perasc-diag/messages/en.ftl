@@ -169,6 +169,8 @@ parse-expected-name = expected { $what ->
     [variant] a variant name
     [type-parameter] a type parameter name
     [constraint] a constraint name
+    [type] a type name
+    [interface] an interface name
    *[other] a name
 }, found { $eof ->
     [1] the end of the file
@@ -574,6 +576,50 @@ check-endless-instances-label = instantiated with ever larger types
 check-endless-instances-why = Each set of type arguments gives a copy of the generic code. Here a copy needs another with a larger type, as when `f<T>` calls `f<Array<T>>`, or a structure contains itself with a larger type argument: there is no end.
 check-endless-instances-fix = use the same type parameters in the recursive call or field
 
+# E0232
+check-alias-cycle = type alias `{ $name }` contains itself
+check-alias-cycle-label = refers to itself, directly or through other aliases
+check-alias-cycle-why = An alias is another name for a type: replacing it by what it names must end. A type that contains itself needs a structure or an enumeration, whose size the compiler can compute.
+check-alias-cycle-fix = make it a structure or an enumeration
+
+# E0233
+check-not-constant = the value of a module constant must be known when compiling
+check-not-constant-label = computed when the program runs
+check-not-constant-why = A module `const` is written into the code wherever it is used: its value is made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
+check-not-constant-fix = compute it in a function, or write its value
+
+# E0234
+check-no-methods = `{ $ty }` cannot have methods here
+check-no-methods-label = not a structure or an enumeration of this module
+check-no-methods-why = An `impl` gives methods to a structure or an enumeration declared in the module. Other types have the built-in methods of the method reference.
+check-no-methods-fix = wrap the value in a structure of the module, and give it the methods
+
+# E0235
+check-impl-missing = the implementation of `{ $interface }` for `{ $ty }` lacks { $missing }
+check-impl-missing-label = missing { $missing }
+check-impl-extra = `{ $name }` is not a method of `{ $interface }`
+check-impl-extra-label = `{ $interface }` declares no such method
+check-impl-mismatch = an implementation that does not match its interface
+check-impl-mismatch-why = An `impl Interface for Type` provides exactly the methods the interface declares: code that relies on the interface calls each of them, and nothing else belongs there.
+check-impl-missing-fix = add the missing methods, with the signatures `{ $interface }` declares
+check-impl-extra-fix = move `{ $name }` into an `impl` of the type itself
+
+# E0236
+check-signature = `{ $name }` does not match `{ $interface }`
+check-signature-label = expected `{ $expected }`
+check-signature-declared = declared in `{ $interface }` here
+check-interface-self = interface method `{ $name }` does not take `self`
+check-interface-self-label = `self` must come first
+check-signature-why = A method of an interface is called on a value of any type that implements it: it takes `self` first, and each implementation has exactly its parameters, their conventions and its return type.
+check-signature-fix = write it `{ $expected }`
+check-interface-self-fix = write `fn { $name }(self, …)`
+
+# E0237
+check-interface-as-type = interface `{ $name }` used as a type
+check-interface-as-type-label = an interface, not a type
+check-interface-as-type-why = An interface is a constraint: it says what a type can do, not which type a value has. Code that works for every type implementing it is generic, and compiled once per type, with no cost at run time.
+check-interface-as-type-fix = use a type parameter: `fn f<T: { $name }>(x: T)`
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
@@ -597,6 +643,7 @@ gen-unsupported = code generation does not support { $feature ->
     [option] `Option` values
     [method] this method
     [integer-type] integer types other than `i32` and `i64`
+    [recursive-type] types that contain themselves
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet

@@ -56,10 +56,50 @@ UTF-8 text, written `"…"`; its `length` counts bytes. See [collections](../gui
 
 `Some(value)` or `None`: a value that may be absent. Peras has no `null` and no `undefined`; JavaScript sees an empty option as `undefined`. <span class="status compiled">compiled</span>
 
+## Tuples
+
+`(i32, String)`: a few values of fixed types, without field names, written `(1, "a")` and read with `.0`, `.1`. A tuple is a structure: kept as its fields, it costs nothing. JavaScript sees an array, `[number, string]`. <span class="status compiled">compiled</span>
+
+```peras build
+fn minmax(xs: Array<i32>): (i32, i32) {
+  let lo = xs[0];
+  let hi = xs[0];
+  for (const x of xs) {
+    if (x < lo) {
+      lo = x;
+    }
+    if (x > hi) {
+      hi = x;
+    }
+  }
+  return (lo, hi);
+}
+
+export fn spread(xs: Array<i32>): i32 {
+  const range = minmax(xs);
+  return range.1 - range.0;
+}
+```
+
+## Type aliases
+
+`type Meters = f64;` gives a type another name, interchangeable with it; `type Grid<T> = Array<Array<T>>;` takes type parameters. An alias cannot contain itself ([E0232](../errors/E0232.md)). <span class="status compiled">compiled</span>
+
+```peras build
+type Meters = f64;
+type Grid<T> = Array<Array<T>>;
+
+export fn cells(g: Grid<i32>, width: Meters): f64 {
+  return g.length.toF64() * width;
+}
+```
+
+Two aliases of `f64` mix freely, since they are the same type. A value that must not mix with its representation, such as a `UserId` that is not an `OrderId`, is a structure, `struct UserId { value: i64; }`: kept as its field, it costs nothing at run time.
+
 ## Not in the language yet
 
 Enumerations are on their own page: [enumerations and match](../guide/enums.md). Results are with them: `Result<T, E>`, `Ok(value)` or `Err(error)`. <span class="status compiled">compiled</span>
 
-Generic functions, structures and enumerations have their page: [generics](../guide/generics.md). <span class="status compiled">compiled</span>
+Generic functions, structures and enumerations have their page: [generics](../guide/generics.md); methods and interfaces too: [methods and interfaces](../guide/methods.md). <span class="status compiled">compiled</span>
 
-Unions, tuples, `Map`, `Set`, function types: see the [roadmap](roadmap.md).
+Unions, `Map`, `Set`, function types: see the [roadmap](roadmap.md).
