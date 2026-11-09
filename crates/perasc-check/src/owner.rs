@@ -441,6 +441,12 @@ impl<'c, 'a> Owner<'c, 'a> {
                     self.expr(*rhs, Use::Read, path);
                 }
             }
+            // An arrow function is the body of a loop: run twice, so that a
+            // value it moves is seen used again on the next turn.
+            ExprKind::Lambda { body, .. } => {
+                self.expr(*body, mode, path);
+                self.expr(*body, mode, path);
+            }
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 for &item in items {
                     self.expr(item, Use::Consume, path);
@@ -583,10 +589,22 @@ impl<'c, 'a> Owner<'c, 'a> {
                     let span = self.checker.ast.expr(*base).span;
                     self.not_iterated(root, span);
                 }
-                let consume = method == "push";
+                let consume = matches!(method, "push" | "map" | "reduce");
+                // The array cannot change while a function goes through it.
+                let lambdas = args
+                    .iter()
+                    .any(|&a| matches!(self.checker.ast.expr(a).kind, ExprKind::Lambda { .. }));
+                let root = self.root(*base).filter(|_| lambdas);
+                if let Some(root) = root {
+                    let span = self.checker.ast.expr(*base).span;
+                    self.iterated.push((root, span));
+                }
                 for &arg in args {
                     let mode = if consume { Use::Consume } else { Use::Read };
                     self.expr(arg, mode, path);
+                }
+                if root.is_some() {
+                    self.iterated.pop();
                 }
             }
             _ => {

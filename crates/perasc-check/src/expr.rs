@@ -173,6 +173,10 @@ impl Checker<'_> {
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Array(items) => self.array(items, expected),
             ExprKind::Tuple(items) => self.tuple_expr(items, expected),
+            ExprKind::Lambda { .. } => {
+                self.report(errors::arrow_outside(span));
+                Ty::Error
+            }
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
@@ -740,6 +744,14 @@ impl Checker<'_> {
             return Ty::Error;
         }
         let text = self.name(name);
+        if let Ty::Array(element) = receiver
+            && let Some(ty) = self.array_function_method(element, text, args, span)
+        {
+            return ty;
+        }
+        if let Some(ty) = self.ordering_method(receiver, text, args, span) {
+            return ty;
+        }
         // A `Numeric` parameter converts to any number, as numbers do.
         let as_number = if self.satisfies_param(receiver, Bound::Numeric) {
             &Ty::Float(crate::ty::FloatTy::F64)

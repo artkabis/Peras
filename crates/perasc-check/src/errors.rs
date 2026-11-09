@@ -84,6 +84,7 @@ const fn why(code: ErrorCode) -> &'static str {
         235 => "check-impl-mismatch-why",
         236 => "check-signature-why",
         237 => "check-interface-as-type-why",
+        238 => "check-arrow-why",
         _ => "check-operator-why",
     }
 }
@@ -1003,5 +1004,27 @@ pub fn interface_as_type(span: Span, name: &str) -> Diagnostic {
         span,
         Message::new("check-interface-as-type-label"),
         Message::new("check-interface-as-type-fix").text("name", name),
+    )
+}
+
+/// `E0238`: an arrow function where no method takes one.
+pub fn arrow_outside(span: Span) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow"),
+        span,
+        Message::new("check-arrow-label"),
+        Message::new("check-arrow-fix"),
+    )
+}
+
+/// `E0238`: a method that takes an arrow function was given something else.
+pub fn arrow_expected(span: Span) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow-expected"),
+        span,
+        Message::new("check-arrow-expected-label"),
+        Message::new("check-arrow-expected-fix"),
     )
 }

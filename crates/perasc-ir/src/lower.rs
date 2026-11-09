@@ -6,6 +6,7 @@
 //! `inout` and the other constructs listed in `E0900`) is reported, every
 //! occurrence at once, instead of being miscompiled.
 
+mod functional;
 mod heap;
 mod matching;
 mod values;
@@ -957,6 +958,7 @@ impl Lowering<'_> {
             AstExpr::String(_) => return self.not_yet(span, "string", ty),
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
+            AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),
             AstExpr::Field { base, .. } if self.is_buffer(*base) => {
                 return self.array_length(state, *base);
             }
@@ -1101,6 +1103,9 @@ impl Lowering<'_> {
         ty: Ty,
         span: Span,
     ) -> Expr {
+        if let Some(chosen) = self.ordering(state, receiver.clone(), method, args) {
+            return chosen;
+        }
         let math = match method {
             "abs" => Some(MathOp::Abs),
             "sqrt" => Some(MathOp::Sqrt),

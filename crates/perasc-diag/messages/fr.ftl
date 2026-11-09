@@ -384,7 +384,7 @@ check-alias-label = atteint de nouveau la même variable
 check-alias-other-label = atteinte une première fois ici
 check-alias-why = Un paramètre `inout` modifie sa variable sur place. Un autre argument qui atteindrait la même variable la verrait changer pendant l’appel : Peras le refuse.
 check-alias-fix = passe deux variables différentes
-check-alias-loop = `{ $name }` change pendant que `for…of` le parcourt
+check-alias-loop = `{ $name }` change pendant qu’une boucle le parcourt
 check-alias-loop-label = modifié ici
 check-alias-loop-iterated-label = la boucle le parcourt
 check-alias-loop-fix = parcours une copie, `{ $name }.copy()`, pour modifier l’original
@@ -394,7 +394,7 @@ check-move-out = impossible de déplacer { $what ->
     [parameter] le paramètre `{ $name }`, qui ne fait qu’emprunter sa valeur
     [field] un champ hors de sa structure
     [element] un élément hors de son tableau
-    [binding] une valeur hors du `match` qui ne fait que la prêter
+    [binding] une valeur hors du `match` ou de la fonction fléchée qui ne fait que la prêter
    *[other] une valeur du niveau du module
 }
 check-move-out-label = déplacé ici
@@ -621,6 +621,15 @@ check-interface-as-type-label = une interface, pas un type
 check-interface-as-type-why = Une interface est une contrainte : elle dit ce qu’un type sait faire, pas quel type a une valeur. Le code qui marche pour tout type qui l’implémente est générique, et compilé une fois par type, sans coût à l’exécution.
 check-interface-as-type-fix = utilise un paramètre de type : `fn f<T: { $name }>(x: T)`
 
+# E0238
+check-arrow = une fonction fléchée ne peut pas encore être une valeur
+check-arrow-label = pas l’argument d’une méthode qui prend une fonction
+check-arrow-expected = cette méthode prend une fonction fléchée
+check-arrow-expected-label = attendu `(x) => …`
+check-arrow-why = Une fonction fléchée est compilée sur place, comme le corps d’une boucle, par les méthodes de tableaux qui en prennent une : `map`, `filter`, `reduce`, `find`, `findIndex`, `some` et `every`. Les fonctions comme valeurs, stockées ou transmises, arriveront avec les fermetures.
+check-arrow-fix = passe-la à `map`, `filter`, `reduce`, `find`, `findIndex`, `some` ou `every`, ou écris une fonction avec `fn`
+check-arrow-expected-fix = écris la fonction sur place : `xs.map((x) => x * 2)`
+
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures
@@ -644,6 +653,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [option] les valeurs `Option`
     [method] cette méthode
     [integer-type] les types entiers autres que `i32` et `i64`
+    [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
    *[other] cette construction
 }

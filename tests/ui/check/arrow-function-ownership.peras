@@ -1,0 +1,18 @@
+// An arrow function is the body of a loop: what it moves is moved at each
+// turn, its parameters only lend the elements, and the array cannot change
+// while it goes through it.
+fn touch(xs: inout Array<i32>): i32 {
+  xs.push(1);
+  return 0;
+}
+
+export fn run(name: sink String): i32 {
+  let xs: Array<i32> = [1, 2];
+  const changed = xs.map((x) => touch(&xs));
+  const names: Array<String> = ["a"];
+  const moved = names.map((s) => name);
+  const lent = names.map((s) => s);
+  // Allowed: a new value made from the element.
+  const loud = names.map((s) => s + "!");
+  return changed.length + moved.length + lent.length + loud.length;
+}

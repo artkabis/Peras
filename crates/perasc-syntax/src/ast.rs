@@ -545,6 +545,13 @@ pub enum ExprKind {
     Array(Vec<ExprId>),
     /// `(a, b)`: two values or more.
     Tuple(Vec<ExprId>),
+    /// `(x) => body` or `x => body`: an arrow function, its body a value.
+    Lambda {
+        /// Its parameters, their types when written.
+        params: Vec<(Ident, Option<Type>)>,
+        /// Its value.
+        body: ExprId,
+    },
     /// A variable or function name.
     Name(Symbol),
     /// `( inner )`, kept so that later passes and fixes see the parentheses.
@@ -1045,6 +1052,16 @@ impl Ast {
             ExprKind::Tuple(items) => {
                 let items: Vec<String> = items.iter().map(|i| self.sexpr(*i)).collect();
                 format!("(tuple {})", items.join(" "))
+            }
+            ExprKind::Lambda { params, body } => {
+                let params: Vec<String> = params
+                    .iter()
+                    .map(|(p, t)| match t {
+                        Some(t) => format!("{}: {}", self.name(p.symbol), self.ty(t)),
+                        None => self.name(p.symbol).to_owned(),
+                    })
+                    .collect();
+                format!("(=> ({}) {})", params.join(" "), self.sexpr(*body))
             }
             ExprKind::Name(s) => self.name(*s).to_owned(),
             ExprKind::Paren(inner) => format!("(paren {})", self.sexpr(*inner)),

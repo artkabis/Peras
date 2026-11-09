@@ -1,0 +1,30 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0238-arrow-function.peras
+---
+diagnostics:
+  error[E0238] check-arrow
+    primary 4:17-4:29: check-arrow-label
+    cause: check-arrow-why
+    fix: check-arrow-fix
+  error[E0238] check-arrow-expected
+    primary 5:20-5:25: check-arrow-expected-label
+    cause: check-arrow-why
+    fix: check-arrow-expected-fix
+  error[E0238] check-arrow-expected
+    primary 6:20-6:21: check-arrow-expected-label
+    cause: check-arrow-why
+    fix: check-arrow-expected-fix
+  error[E0214] check-argument-count { name: "=>", expected: 1, found: 2 }
+    primary 8:20-8:31: check-argument-count-label { found: 2 }
+    cause: check-argument-count-why
+    fix: check-argument-count-fix { expected: 1 }
+  error[E0210] check-mismatch { expected: "i32", found: "f64" }
+    primary 9:27-9:30: check-mismatch-label { found: "f64" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "i32" }
+  error[E0210] check-mismatch { expected: "bool", found: "i32" }
+    primary 11:30-11:35: check-mismatch-label { found: "i32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "bool" }

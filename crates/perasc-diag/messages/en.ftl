@@ -384,7 +384,7 @@ check-alias-label = reaches the same variable again
 check-alias-other-label = first reached here
 check-alias-why = An `inout` parameter changes its variable in place. Another argument reaching the same variable would see it change during the call, so Peras refuses it.
 check-alias-fix = pass two different variables
-check-alias-loop = `{ $name }` changes while `for…of` goes through it
+check-alias-loop = `{ $name }` changes while a loop goes through it
 check-alias-loop-label = changed here
 check-alias-loop-iterated-label = the loop goes through it
 check-alias-loop-fix = go through a copy, `{ $name }.copy()`, to change the original
@@ -394,7 +394,7 @@ check-move-out = cannot move { $what ->
     [parameter] the parameter `{ $name }`, which only borrows its value
     [field] a field out of its structure
     [element] an element out of its array
-    [binding] a value out of the `match` that only lends it
+    [binding] a value out of the `match` or the arrow function that only lends it
    *[other] a module-level value
 }
 check-move-out-label = moved here
@@ -621,6 +621,15 @@ check-interface-as-type-label = an interface, not a type
 check-interface-as-type-why = An interface is a constraint: it says what a type can do, not which type a value has. Code that works for every type implementing it is generic, and compiled once per type, with no cost at run time.
 check-interface-as-type-fix = use a type parameter: `fn f<T: { $name }>(x: T)`
 
+# E0238
+check-arrow = an arrow function cannot be a value yet
+check-arrow-label = not the argument of a method that takes a function
+check-arrow-expected = this method takes an arrow function
+check-arrow-expected-label = expected `(x) => …`
+check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
+check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
+check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
@@ -644,6 +653,7 @@ gen-unsupported = code generation does not support { $feature ->
     [option] `Option` values
     [method] this method
     [integer-type] integer types other than `i32` and `i64`
+    [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
    *[other] this construct
 } yet

@@ -673,6 +673,11 @@ impl Lowering<'_> {
         let Some(first) = buffers.first().cloned() else {
             return Vec::new();
         };
+        if let Some(values) =
+            self.function_method(state, base, method, args, mode, (&columns, &buffers))
+        {
+            return values;
+        }
         match method {
             "push" => {
                 let Some(&arg) = args.first() else {
@@ -873,13 +878,29 @@ impl Lowering<'_> {
         step: Vec<Stmt>,
         turn: &mut Vec<Stmt>,
     ) -> Vec<Stmt> {
+        self.loop_lowered(state, cond, before, step, turn, |this, state| {
+            this.body(state, body)
+        })
+    }
+
+    /// [`Self::loop_body`], the body given by `lower`, which runs with the
+    /// loop open: a `break` it lowers leaves this loop.
+    pub(super) fn loop_lowered(
+        &mut self,
+        state: &mut FnState,
+        cond: Option<Expr>,
+        before: Vec<Stmt>,
+        step: Vec<Stmt>,
+        turn: &mut Vec<Stmt>,
+        lower: impl FnOnce(&mut Self, &mut FnState) -> Vec<Stmt>,
+    ) -> Vec<Stmt> {
         let head = state.live.clone();
         state.loops.push(LoopFrame {
             depth: state.owned.len(),
             head: head.clone(),
             breaks: Vec::new(),
         });
-        let lowered = self.body(state, body);
+        let lowered = lower(self, state);
         turn.extend(lowered);
         if state.gone {
             state.gone = false;

@@ -9,7 +9,7 @@ use perasc_diag::json;
 use perasc_diag::messages::Language;
 use perasc_diag::render::{RenderOptions, render};
 use perasc_diag::source::SourceFile;
-use perasc_driver::{ToolError, build_direct, check};
+use perasc_driver::{Allocator, DirectOptions, ToolError, build_direct, check};
 
 fuzz_target!(|data: &[u8]| {
     let Ok(source) = std::str::from_utf8(data) else {
@@ -29,11 +29,15 @@ fuzz_target!(|data: &[u8]| {
     if !checked.diagnostics.is_empty() {
         return;
     }
-    for optimize in [false, true] {
+    // Without optimizations on the debug allocator, with them on TLSF.
+    for (optimize, allocator) in [(false, Allocator::Debug), (true, Allocator::Tlsf)] {
         match build_direct(
             source,
             "fuzz.wasm",
-            optimize,
+            DirectOptions {
+                optimize,
+                allocator,
+            },
             &Localizer::new(Language::English),
         ) {
             Ok(output) => {

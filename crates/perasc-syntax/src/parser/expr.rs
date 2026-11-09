@@ -130,11 +130,14 @@ impl Parser<'_> {
                 self.bump();
                 self.alloc(ExprKind::Bool(token.kind == TokenKind::True), token.span)
             }
+            // `x => body`
+            TokenKind::Ident if self.nth(1).kind == TokenKind::FatArrow => self.lambda(token),
             TokenKind::Ident => {
                 self.bump();
                 let symbol = self.ast.interner.intern(self.text(token));
                 self.alloc(ExprKind::Name(symbol), token.span)
             }
+            TokenKind::LParen if self.lambda_ahead() => self.lambda(token),
             TokenKind::LParen => {
                 self.bump();
                 let inner = self.expr();
@@ -313,6 +316,78 @@ impl Parser<'_> {
             kind,
             span: self.since(start),
         })
+    }
+
+    /// An arrow function, from its first token: `x => body` or
+    /// `(a, b: T) => body`.
+    fn lambda(&mut self, token: Token) -> ExprId {
+        let params = if token.kind == TokenKind::Ident {
+            self.bump();
+            self.bump(); // `=>`
+            let name = Ident {
+                symbol: self.ast.interner.intern(self.text(token)),
+                span: token.span,
+            };
+            vec![(name, None)]
+        } else {
+            self.lambda_params()
+        };
+        let body = self.expr();
+        let span = self.since(token.span.start);
+        self.alloc(ExprKind::Lambda { params, body }, span)
+    }
+
+    /// Whether `(` starts an arrow function: `()`, or names with optional
+    /// types, then `)` and `=>`. Read ahead, nothing consumed.
+    fn lambda_ahead(&mut self) -> bool {
+        let pos = self.pos;
+        let reported = self.diagnostics.len();
+        let recovering = self.recovering;
+        let found = self.lambda_params_ahead();
+        self.pos = pos;
+        self.diagnostics.truncate(reported);
+        self.recovering = recovering;
+        found
+    }
+
+    fn lambda_params_ahead(&mut self) -> bool {
+        self.bump(); // `(`
+        while !self.at(TokenKind::RParen) {
+            if self.eat(TokenKind::Ident).is_none() {
+                return false;
+            }
+            if self.eat(TokenKind::Colon).is_some() {
+                let ty = self.ty();
+                if matches!(ty.kind, TypeKind::Error) {
+                    return false;
+                }
+            }
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        self.eat(TokenKind::RParen).is_some() && self.at(TokenKind::FatArrow)
+    }
+
+    /// `(a, b: T) =>`, known to be there.
+    fn lambda_params(&mut self) -> Vec<(Ident, Option<Type>)> {
+        self.bump(); // `(`
+        let mut params = Vec::new();
+        while !self.at(TokenKind::RParen) {
+            let token = self.bump();
+            let name = Ident {
+                symbol: self.ast.interner.intern(self.text(token)),
+                span: token.span,
+            };
+            let ty = self.eat(TokenKind::Colon).map(|_| self.ty());
+            params.push((name, ty));
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        self.bump(); // `)`
+        self.bump(); // `=>`
+        params
     }
 
     /// `<Type, …>` followed by `(`, read ahead: when what follows `<` is

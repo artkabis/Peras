@@ -1,0 +1,28 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/arrow-function-ownership.peras
+---
+diagnostics:
+  error[E0207] check-alias { name: "xs", callee: "touch" }
+    primary 11:19-11:21: check-alias-label
+    secondary 11:33-11:43: check-alias-other-label
+    cause: check-alias-why
+    fix: check-alias-fix
+  error[E0207] check-alias-loop { name: "xs" }
+    primary 11:40-11:42: check-alias-loop-label
+    secondary 11:19-11:21: check-alias-loop-iterated-label
+    cause: check-alias-why
+    fix: check-alias-loop-fix { name: "xs" }
+      11:21-11:21 -> ".copy()"
+  error[E0204] check-moved { name: "name" }
+    secondary 9:15-9:19: check-moved-given-label { name: "name" }
+    primary 13:34-13:38: check-moved-loop-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      13:38-13:38 -> ".copy()"
+  error[E0209] check-move-out { what: "binding", name: "" }
+    primary 14:33-14:34: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      14:34-14:34 -> ".copy()"

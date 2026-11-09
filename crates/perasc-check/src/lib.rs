@@ -13,6 +13,7 @@ mod matching;
 mod methods;
 mod owner;
 mod scope;
+mod stdlib;
 mod stmt;
 pub mod ty;
 
@@ -27,6 +28,12 @@ use perasc_syntax::ast::{
 use crate::generics::GenericParam;
 use crate::scope::{Binding, Declared, Kind, Scopes};
 use crate::ty::{EnumId, FloatTy, FnId, IntTy, StructId, Ty};
+
+/// The methods of arrays that take an arrow function, compiled in place.
+#[must_use]
+pub const fn stdlib_methods() -> &'static [&'static str] {
+    &stdlib::FUNCTION_METHODS
+}
 
 /// Checks names and types of a parsed module, returning every error sorted by position.
 #[must_use]

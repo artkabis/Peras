@@ -71,4 +71,5 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0235](E0235.md) | Implementation that does not match its interface | names and types |
 | [E0236](E0236.md) | Method that does not match its interface         | names and types |
 | [E0237](E0237.md) | Interface used as a type                         | names and types |
+| [E0238](E0238.md) | Arrow function where none can go                 | names and types |
 | [E0900](E0900.md) | Not supported by code generation yet             | code generation |
