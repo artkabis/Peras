@@ -83,6 +83,15 @@ Tests run the WebAssembly on the debug allocator, which poisons released bytes, 
 
 No more allocations; +671 bytes gzip; compile time +4.8 %, within the noise of a build compared with itself. No estimate decides a requirement of the platform any more: it is measured first.
 
+**The text crossing in, written once.** The loader encoded a string into a new `Uint8Array`, then copied it into the module's memory. Measured on the `words` text, a million characters: 3.0 to 3.7 ms in Chromium, against 0.7 ms for `TextEncoder.encodeInto`, which writes straight into the module's memory (0.84 against 0.45 ms in Node). The loader now gives the text room for one byte per character and an eighth more, which English, French or German fit in (1.00, 1.10 and 1.07 bytes per character), and, when that is not enough, makes room once for 3 bytes per character left, as for Russian (1.9) or Japanese (3). Measured with `scripts/bench-ab.mjs`, against the commit before, 4 rounds:
+
+| Kernel           | Change, in each round              |
+| ---------------- | ---------------------------------- |
+| words            | −37.8 %, −36.6 %, −36.2 %, −36.1 % |
+| the eight others | within noise                       |
+
+`words` takes 4.6 ms against 10.3 for JavaScript: 2.2 times faster. No more allocations: a first room of just one byte per character made one more on this text, which the eighth avoids; +217 bytes gzip. An end-to-end test sends texts that need more room at once, near the end and never, an emoji after 200,000 characters and a lone surrogate, and fails when the second write forgets the bytes of the first.
+
 ## Not chosen now
 
 - **Regions per statement.** The temporaries of a statement could be allocated by moving a pointer and released at once at its end; Peras knows them exactly, which Rust cannot. It changes the memory model, and the views take most of its gain on this workload: it will have its own decision, with the `@frame` rule of [decision 0003](0003-runtime-proved-at-compile-time.md).
@@ -90,6 +99,6 @@ No more allocations; +671 bytes gzip; compile time +4.8 %, within the noise of a
 
 ## Consequences
 
-- Once the pieces cost nothing, the text crossing into the module is more than half of what remains (4 ms of 7.5). The next step after this decision measures the two ways to shorten it: `TextEncoder.encodeInto` writing straight into the module's memory, one pass instead of two, and WebAssembly's JavaScript string builtins, which would let the module read the text without copying it.
+- Once the pieces cost nothing, the text crossing into the module was more than half of what remained (4 ms of 7.5). `TextEncoder.encodeInto` took 3 of them off ([Status](#status)); WebAssembly's JavaScript string builtins, which would let the module read the text without copying it, wait until every engine has them.
 - The search for a separator, a byte at a time, is the rest. Searching sixteen bytes at a time with WebAssembly SIMD, as [the vector loops](../guide/javascript.md#vector-loops) do, comes with it.
 - The roadmap of phase 3 points here; the benchmark's README says which step brought what, measured.

@@ -49,6 +49,34 @@ describe("strings in JavaScript", () => {
     expect(m.__perasHeap.live()).toBe(0);
   });
 
+  it("enter the module in UTF-8 whatever their characters, short or long", async () => {
+    const { m } = await load();
+    const encoder = new TextEncoder();
+    // Written one byte per character first, then with more room: texts that
+    // need it at once, near the end, never, and the lengths around INLINE.
+    const texts = [
+      "",
+      "é",
+      "ééé",
+      "😀",
+      "a😀b",
+      "x".repeat(255) + "é",
+      "é".repeat(300),
+      "données ".repeat(40_000),
+      "x".repeat(200_000) + "😀",
+      "\ud800 lone \udfff",
+    ];
+    for (const t of texts) {
+      // `doubled` gives `t + t`: every byte made it in, and out again.
+      const back = m.doubled(t);
+      const expected = new TextDecoder().decode(encoder.encode(t));
+      expect(back.length, t.slice(0, 20)).toBe(expected.length * 2);
+      expect(back === expected + expected, t.slice(0, 20)).toBe(true);
+    }
+    m.__perasHeap.checkLeaks();
+    expect(m.__perasHeap.live()).toBe(0);
+  });
+
   it("live in structures, as JavaScript strings", async () => {
     const { m, dts } = await load();
     expect(m.rename({ name: "a", age: 3 }, "Zoé")).toEqual({ name: "Zoé", age: 3 });

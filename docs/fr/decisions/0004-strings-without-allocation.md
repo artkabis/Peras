@@ -83,6 +83,15 @@ Les tests exécutent le WebAssembly sur l’allocateur de débogage, qui empoiso
 
 Aucune allocation de plus ; +671 octets gzip ; temps de compilation +4,8 %, dans le bruit d’une compilation comparée à elle-même. Aucune estimation ne décide plus d’une exigence de la plateforme : elle est d’abord mesurée.
 
+**L’entrée du texte, écrite une seule fois.** Le chargeur encodait une chaîne dans un nouveau `Uint8Array`, puis la copiait dans la mémoire du module. Mesuré sur le texte de `words`, un million de caractères : 3,0 à 3,7 ms dans Chromium, contre 0,7 ms pour `TextEncoder.encodeInto`, qui écrit directement dans la mémoire du module (0,84 contre 0,45 ms dans Node). Le chargeur donne maintenant au texte la place d’un octet par caractère et d’un huitième de plus, où tiennent l’anglais, le français ou l’allemand (1,00, 1,10 et 1,07 octet par caractère), et, quand cela ne suffit pas, fait une seule fois la place de 3 octets par caractère restant, comme pour le russe (1,9) ou le japonais (3). Mesuré avec `scripts/bench-ab.mjs`, face au commit d’avant, 4 tours :
+
+| Noyau           | Changement, à chaque tour          |
+| --------------- | ---------------------------------- |
+| words           | −37,8 %, −36,6 %, −36,2 %, −36,1 % |
+| les huit autres | dans le bruit                      |
+
+`words` prend 4,6 ms contre 10,3 pour JavaScript : 2,2 fois plus rapide. Aucune allocation de plus : une première place d’un seul octet par caractère en faisait une de plus sur ce texte, ce que le huitième évite ; +217 octets gzip. Un test de bout en bout envoie des textes qui ont besoin de plus de place tout de suite, vers la fin et jamais, un emoji après 200 000 caractères et une demi-paire de substitution isolée, et échoue quand la deuxième écriture oublie les octets de la première.
+
 ## Écarté pour l’instant
 
 - **Des régions par instruction.** Les temporaires d’une instruction pourraient être alloués en avançant un pointeur et libérés d’un coup à sa fin ; Peras les connaît exactement, ce que Rust ne peut pas. Cela change le modèle mémoire, et les vues prennent l’essentiel de son gain sur cette charge : elle aura sa propre décision, avec la règle `@frame` de la [décision 0003](0003-runtime-proved-at-compile-time.md).
@@ -90,6 +99,6 @@ Aucune allocation de plus ; +671 octets gzip ; temps de compilation +4,8 %, dans
 
 ## Conséquences
 
-- Une fois les morceaux gratuits, l’entrée du texte dans le module représente plus de la moitié de ce qui reste (4 ms sur 7,5). L’étape suivante mesure les deux façons de la raccourcir : `TextEncoder.encodeInto`, qui écrit directement dans la mémoire du module, une passe au lieu de deux, et les fonctions de chaînes JavaScript intégrées à WebAssembly, qui laisseraient le module lire le texte sans le copier.
+- Une fois les morceaux gratuits, l’entrée du texte dans le module représentait plus de la moitié de ce qui restait (4 ms sur 7,5). `TextEncoder.encodeInto` en a ôté 3 ([État](#état)) ; les fonctions de chaînes JavaScript intégrées à WebAssembly, qui laisseraient le module lire le texte sans le copier, attendent que tous les moteurs les aient.
 - Le reste est la recherche du séparateur, un octet à la fois. La chercher seize octets à la fois avec le SIMD de WebAssembly, comme le font [les boucles vectorielles](../guide/javascript.md#les-boucles-vectorielles), vient avec.
 - La feuille de route de la phase 3 renvoie ici ; le README du banc d’essai dit quelle étape a apporté quoi, mesures à l’appui.

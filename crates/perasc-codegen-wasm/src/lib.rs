@@ -1759,13 +1759,25 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          // Strings cross as UTF-8 bytes.\n\
          const $encoder = new TextEncoder();\n\
          const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
+         // Written straight into the module's memory: room for one byte per\n\
+         // character and an eighth more first, enough for English or French\n\
+         // in one block; then, if needed, for 3 bytes per character left.\n\
          const $toStr = (text) => {\n  \
-         const bytes = $encoder.encode(text);\n  \
-         const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
-         const view = new DataView($runtime.memory.buffer);\n  \
-         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
-         view.setUint32(h, bytes.length, true);\n  \
-         return h;\n\
+         let room = text.length + (text.length >>> 3);\n  \
+         const h = $runtime.buf_new(room, 1, 0);\n  \
+         let rest = text;\n  \
+         let done = 0;\n  \
+         for (;;) {\n    \
+         const view = new DataView($runtime.memory.buffer);\n    \
+         const into = new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true) + done, room);\n    \
+         const { read, written } = $encoder.encodeInto(rest, into);\n    \
+         done += written;\n    \
+         view.setUint32(h, done, true);\n    \
+         if (read === rest.length) return h;\n    \
+         rest = rest.slice(read);\n    \
+         room = rest.length * 3;\n    \
+         $runtime.buf_reserve(h, room, 1, 0);\n  \
+         }\n\
          };\n\
          const $readStr = (h) => {\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
