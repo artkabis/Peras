@@ -44,7 +44,7 @@ export const sections: Section[] = [
   },
   {
     title: { en: "Project", fr: "Projet" },
-    pages: ["spec", "kickoff-plan", "decisions/0001-webassembly-backend"],
+    pages: ["spec", "architecture", "kickoff-plan", "decisions/0001-webassembly-backend"],
   },
 ];
 
