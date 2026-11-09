@@ -181,7 +181,7 @@ function report(cases, start, browserVersion) {
     "",
     "## Run time (ms)",
     "",
-    "Median of the timed runs, after warm-up; _cold_ is the very first call, before V8 has optimized anything, which is what a page that runs a function once sees. Ratio: JavaScript's median divided by this variant's; above 1, Peras is faster.",
+    "Median of the timed runs, after warm-up; _cold_ is the very first call, before the engine has optimized anything, which is what a page that runs a function once sees. Ratio: JavaScript's median divided by this variant's; above 1, Peras is faster.",
     "",
     "| Kernel | Work | Variant | Cold | Median | Best | Ratio |",
     "| --- | --- | --- | --: | --: | --: | --: |",

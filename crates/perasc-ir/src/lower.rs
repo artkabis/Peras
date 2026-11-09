@@ -192,6 +192,11 @@ struct FnState {
     /// The text whose `split`, lowered next, may give views: set by the
     /// consumer that reads the array at once.
     views_for: Option<ExprId>,
+    /// The array whose `filter`, lowered next, only counts the elements it
+    /// keeps: set by `.length` read on it at once ([decision 0004], fusion).
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    counted: Option<ExprId>,
 }
 
 impl FnState {
@@ -209,6 +214,7 @@ impl FnState {
             loops: Vec::new(),
             views: HashMap::new(),
             views_for: None,
+            counted: None,
         }
     }
 
@@ -1014,8 +1020,23 @@ impl Lowering<'_> {
     /// `b` would: `t = a; if (t) { …; t = b }` for `&&`.
     fn short_circuit(&mut self, state: &mut FnState, op: BinaryOp, lhs: Expr, rhs: ExprId) -> Expr {
         let outer = std::mem::take(&mut state.pre);
+        let outer_drops = std::mem::take(&mut state.drops);
         let live = state.live.clone();
         let rhs = self.expr(state, rhs);
+        // The right side's temporaries, as `s.endsWith("1")` makes: its value
+        // first, then they are released in its branch, the only path that
+        // made them.
+        let rhs = if state.drops.is_empty() {
+            rhs
+        } else {
+            let value = state.temp(Ty::Bool);
+            state.pre.push(Stmt::Set(value, rhs));
+            let mut released = Vec::new();
+            state.end_statement(&mut released);
+            state.pre.extend(released);
+            local_expr(state, value)
+        };
+        state.drops = outer_drops;
         let inner = std::mem::replace(&mut state.pre, outer);
         let op = bin_op(op);
         // Buffers moved by the right side, which may not run: released when it

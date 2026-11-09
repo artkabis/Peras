@@ -33,6 +33,9 @@ enum Goal {
     /// `some` (true) and `every` (false): the answer, decided by the first
     /// element whose test is `some`.
     Any(LocalId, bool),
+    /// `filter` whose result only gives its length: the elements kept,
+    /// counted, with no array.
+    Count(LocalId),
 }
 
 impl Lowering<'_> {
@@ -67,7 +70,16 @@ impl Lowering<'_> {
         // A temporary array, released after the statement: no one else sees
         // it, so `filter` may change it and give it as its result.
         let temporaries = temporaries(state, buffers);
+        let counted = method == "filter" && state.counted == Some(base);
+        if counted {
+            state.counted = None;
+        }
         let goal = match &temporaries {
+            _ if counted => {
+                let count = state.temp(Ty::I32);
+                state.pre.push(Stmt::Set(count, int(0)));
+                Goal::Count(count)
+            }
             Some(_) if method == "filter" => {
                 Goal::Keep(state.owned_temp(new_buffer(n_expr.clone(), Elem::Bool)))
             }
@@ -122,7 +134,9 @@ impl Lowering<'_> {
                 })
                 .collect(),
             Goal::Reduce(acc) => acc.iter().map(|&a| super::local_expr(state, a)).collect(),
-            Goal::Any(answer, _) => vec![super::local_expr(state, answer)],
+            Goal::Any(answer, _) | Goal::Count(answer) => {
+                vec![super::local_expr(state, answer)]
+            }
             Goal::FindIndex(index) if method == "findIndex" => {
                 vec![super::local_expr(state, index)]
             }
@@ -256,21 +270,11 @@ impl Lowering<'_> {
                 }
             }
             Goal::Keep(flags) => {
-                let keep = this.expr(state, body);
-                let keep = state
-                    .settle(vec![keep])
-                    .pop()
-                    .unwrap_or_else(|| boolean(false));
-                state.flush(out);
+                let keep = this.test(state, body, out);
                 out.push(push(*flags, Elem::Bool, keep));
             }
             Goal::Filter(result) => {
-                let keep = this.expr(state, body);
-                let keep = state
-                    .settle(vec![keep])
-                    .pop()
-                    .unwrap_or_else(|| boolean(false));
-                state.flush(out);
+                let keep = this.test(state, body, out);
                 let then = result
                     .iter()
                     .zip(buffers)
@@ -282,6 +286,18 @@ impl Lowering<'_> {
                 out.push(Stmt::If {
                     cond: keep,
                     then,
+                    otherwise: Vec::new(),
+                });
+            }
+            Goal::Count(count) => {
+                let keep = this.test(state, body, out);
+                let count_expr = super::local_expr(state, *count);
+                out.push(Stmt::If {
+                    cond: keep,
+                    then: vec![Stmt::Set(
+                        *count,
+                        super::binary(BinOp::Add, count_expr, int(1)),
+                    )],
                     otherwise: Vec::new(),
                 });
             }
@@ -304,12 +320,7 @@ impl Lowering<'_> {
                 }
             }
             Goal::FindIndex(index) => {
-                let found = this.expr(state, body);
-                let found = state
-                    .settle(vec![found])
-                    .pop()
-                    .unwrap_or_else(|| boolean(false));
-                state.flush(out);
+                let found = this.test(state, body, out);
                 state.end_statement(out);
                 let mut then = vec![Stmt::Set(*index, i_expr.clone())];
                 Self::leave_loop(state, &mut then);
@@ -320,12 +331,7 @@ impl Lowering<'_> {
                 });
             }
             Goal::Any(answer, some) => {
-                let test = this.expr(state, body);
-                let test = state
-                    .settle(vec![test])
-                    .pop()
-                    .unwrap_or_else(|| boolean(false));
-                state.flush(out);
+                let test = this.test(state, body, out);
                 // `some` stops at the first true, `every` at the first false.
                 let decides = if *some {
                     test
@@ -345,6 +351,17 @@ impl Lowering<'_> {
                 });
             }
         }
+    }
+
+    /// The function's body as a test, its statements flushed into `out`.
+    fn test(&mut self, state: &mut FnState, body: ExprId, out: &mut Vec<Stmt>) -> Expr {
+        let value = self.expr(state, body);
+        let value = state
+            .settle(vec![value])
+            .pop()
+            .unwrap_or_else(|| boolean(false));
+        state.flush(out);
+        value
     }
 
     /// A method of strings, or `join` on an array of strings: a function of

@@ -70,8 +70,6 @@ Tests run the WebAssembly on the debug allocator, which poisons released bytes, 
 
 `words` went from 17 to 11.2 ms, against 10.3 for JavaScript; in the benchmark, from 0.51 to 0.87 times JavaScript's speed. Of the rest, 4.2 ms is the text crossing in, 4.8 the split and 2.3 the filter.
 
-**Next:** views for `slice` and `trim`, then fusion.
-
 **SIMD, an option of the build.** Searching for the separator sixteen bytes at a time was first estimated at 1.5 ms; measured, it took 4 ms off. Since the runtime is in every module that uses strings or arrays, SIMD is now a choice of the build, `--simd on|off` (`simd` for Vite), on by default: it governs the vector loops and the runtime's search together, so a module needs SIMD only when its build says so, never because the optimizer found a loop. A module that uses it checks, before loading, that the engine has it, and says so otherwise. Measured with `scripts/bench-ab.mjs`, `--simd off` against on, 4 rounds:
 
 | Kernel               | Change, in each round              |
@@ -91,6 +89,17 @@ No more allocations; +671 bytes gzip; compile time +4.8 %, within the noise of a
 | the eight others | within noise                       |
 
 `words` takes 4.6 ms against 10.3 for JavaScript: 2.2 times faster. No more allocations: a first room of just one byte per character made one more on this text, which the eighth avoids; +217 bytes gzip. An end-to-end test sends texts that need more room at once, near the end and never, an emoji after 200,000 characters and a lone surrogate, and fails when the second write forgets the bytes of the first.
+
+**Fusion, first case: `filter(…).length`.** Measured after the text crossing, in a fresh page: entering the text took 0.7 to 0.9 ms, `split` 0.2 to 0.3 more, and `filter` then `.length` 1.3 to 2.5 more, a flag per word then the array compacted, only for its length to be read. Where `.length` is read straight on `xs.filter((x) => …)`, the loop now counts the elements kept, with no flags and no array. One function runs, element by element, as written: the order of its calls cannot change, so this case needs no condition. Measured with `scripts/bench-ab.mjs`, against the commit before, 4 rounds:
+
+| Kernel           | Change, in each round              |
+| ---------------- | ---------------------------------- |
+| words            | −33.3 %, −28.9 %, −31.1 %, −31.0 % |
+| the eight others | within noise                       |
+
+`words` takes 3.1 ms against 10.2 for JavaScript, 3.3 times faster, with 5 blocks instead of 7. Tests check each count against Rust, and that counting allocates what making the array alone does; making the count ignore the test, or never fusing, fails them. They also found a bug of `&&` and `||`: a temporary of the right side, as `s.endsWith("1")` makes, was released after the statement, on a path that may not have made it, which the IR verifier refused; it is now released in the branch that made it.
+
+**Next:** chains of two functions (`map` then `reduce`, `filter` then `some`), under the condition of point 3, and views for `slice` and `trim`.
 
 ## Not chosen now
 

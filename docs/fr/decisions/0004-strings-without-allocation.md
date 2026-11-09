@@ -70,8 +70,6 @@ Les tests exécutent le WebAssembly sur l’allocateur de débogage, qui empoiso
 
 `words` est passé de 17 à 11,2 ms, contre 10,3 pour JavaScript ; dans le banc d’essai, de 0,51 à 0,87 fois la vitesse de JavaScript. Du reste, 4,2 ms sont l’entrée du texte, 4,8 le découpage et 2,3 le filtre.
 
-**Ensuite :** les vues pour `slice` et `trim`, puis la fusion.
-
 **Le SIMD, une option de la compilation.** Chercher le séparateur seize octets à la fois avait d’abord été estimé à 1,5 ms ; mesuré, cela en a ôté 4. Comme le runtime est dans chaque module qui utilise des chaînes ou des tableaux, le SIMD est maintenant un choix de la compilation, `--simd on|off` (`simd` pour Vite), activé par défaut : il commande ensemble les boucles vectorielles et la recherche du runtime, si bien qu’un module ne demande le SIMD que quand sa compilation le dit, jamais parce que l’optimiseur a trouvé une boucle. Un module qui s’en sert vérifie, avant de se charger, que le moteur l’a, et le dit sinon. Mesuré avec `scripts/bench-ab.mjs`, `--simd off` contre activé, 4 tours :
 
 | Noyau                 | Changement, à chaque tour          |
@@ -91,6 +89,17 @@ Aucune allocation de plus ; +671 octets gzip ; temps de compilation +4,8 %, dans
 | les huit autres | dans le bruit                      |
 
 `words` prend 4,6 ms contre 10,3 pour JavaScript : 2,2 fois plus rapide. Aucune allocation de plus : une première place d’un seul octet par caractère en faisait une de plus sur ce texte, ce que le huitième évite ; +217 octets gzip. Un test de bout en bout envoie des textes qui ont besoin de plus de place tout de suite, vers la fin et jamais, un emoji après 200 000 caractères et une demi-paire de substitution isolée, et échoue quand la deuxième écriture oublie les octets de la première.
+
+**La fusion, premier cas : `filter(…).length`.** Mesuré après l’entrée du texte, dans une page neuve : entrer le texte prenait 0,7 à 0,9 ms, `split` 0,2 à 0,3 de plus, et `filter` puis `.length` 1,3 à 2,5 de plus, un indicateur par mot puis le tableau compacté, seulement pour en lire la longueur. Là où `.length` est lu directement sur `xs.filter((x) => …)`, la boucle compte maintenant les éléments gardés, sans indicateurs ni tableau. Une seule fonction s’exécute, élément par élément, comme écrit : l’ordre de ses appels ne peut pas changer, ce cas n’a donc besoin d’aucune condition. Mesuré avec `scripts/bench-ab.mjs`, face au commit d’avant, 4 tours :
+
+| Noyau           | Changement, à chaque tour          |
+| --------------- | ---------------------------------- |
+| words           | −33,3 %, −28,9 %, −31,1 %, −31,0 % |
+| les huit autres | dans le bruit                      |
+
+`words` prend 3,1 ms contre 10,2 pour JavaScript, 3,3 fois plus rapide, avec 5 blocs au lieu de 7. Des tests vérifient chaque compte face à Rust, et que compter alloue ce qu’alloue la seule fabrication du tableau ; faire ignorer le test au compte, ou ne jamais fusionner, les fait échouer. Ils ont aussi trouvé un bogue de `&&` et `||` : un temporaire du côté droit, comme celui que crée `s.endsWith("1")`, était libéré après l’instruction, sur un chemin qui pouvait ne pas l’avoir créé, ce que le vérificateur de l’IR refusait ; il est maintenant libéré dans la branche qui l’a créé.
+
+**Ensuite :** les chaînes de deux fonctions (`map` puis `reduce`, `filter` puis `some`), sous la condition du point 3, et les vues pour `slice` et `trim`.
 
 ## Écarté pour l’instant
 

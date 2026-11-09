@@ -500,6 +500,16 @@ impl Lowering<'_> {
 
     /// `xs.length`: the length of the first column.
     pub(super) fn array_length(&mut self, state: &mut FnState, base: ExprId) -> Expr {
+        // `xs.filter((x) => …).length`: the elements kept are counted, with
+        // no array between. One function runs, as written, element by
+        // element: the order of its calls is that of the program.
+        if let Some((array, args)) = self.filter_call(base) {
+            state.counted = Some(array);
+            let span = self.ast.expr(base).span;
+            let values = self.array_method(state, array, "filter", &args, Mode::Borrow, span);
+            state.counted = None;
+            return values.into_iter().next().unwrap_or_else(|| int(0));
+        }
         // `text.split(" ").length`: read at once, views are enough.
         state.views_for = self.split_source(base);
         let buffer = self.buffer(state, base);
@@ -903,6 +913,27 @@ impl Lowering<'_> {
         if let Some(ExprKind::Borrow(t)) = values.first().map(|v| &v.kind) {
             let source = self.root(text);
             state.views.insert(*t, source);
+        }
+    }
+
+    /// The array `id` filters with an arrow function, and the arguments, when
+    /// it is `xs.filter((x) => …)`.
+    fn filter_call(&self, id: ExprId) -> Option<(ExprId, Vec<ExprId>)> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Paren(inner) => self.filter_call(*inner),
+            AstExpr::Call { callee, args, .. } => match &self.ast.expr(*callee).kind {
+                AstExpr::Field { base, name }
+                    if self.ast.name(name.symbol) == "filter"
+                        && self.is_buffer(*base)
+                        && args.first().is_some_and(|&a| {
+                            matches!(self.ast.expr(a).kind, AstExpr::Lambda { .. })
+                        }) =>
+                {
+                    Some((*base, args.clone()))
+                }
+                _ => None,
+            },
+            _ => None,
         }
     }
 

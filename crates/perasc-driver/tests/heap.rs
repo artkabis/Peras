@@ -197,3 +197,18 @@ fn floats_as_text_go_through_the_host_without_a_leak() {
     assert_eq!(m.runtime("live_count"), Ok(0));
     assert_eq!(m.check_leaks(), Ok(()));
 }
+
+/// `&&` and `||` whose right side makes a temporary, here the string `"1"`:
+/// it is released in the branch that made it, whether that side runs or not.
+#[test]
+fn temporaries_of_a_right_side_that_may_not_run_are_released_where_made() {
+    let source = "export fn check(n: i32): i32 {\n  const s = \"x\" + n.toString();\n  let k = 0;\n  if (n < 50 && s.endsWith(\"1\")) k += 1;\n  if (n > 50 || s.startsWith(\"y\" + \"z\")) k += 2;\n  return k;\n}\n";
+    let module = perasc_driver::compile_ir(source)
+        .unwrap_or_else(|e| unreachable!("does not compile: {e:?}"));
+    for (n, expected) in [(1, 1), (31, 1), (7, 0), (60, 2), (51, 2)] {
+        let mut m = linked(&module);
+        assert_eq!(m.call("check", n), Ok(Some(expected)), "check({n})");
+        assert_eq!(m.runtime("live_count"), Ok(0), "check({n})");
+        assert_eq!(m.check_leaks(), Ok(()));
+    }
+}
