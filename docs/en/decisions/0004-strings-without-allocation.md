@@ -70,7 +70,18 @@ Tests run the WebAssembly on the debug allocator, which poisons released bytes, 
 
 `words` went from 17 to 11.2 ms, against 10.3 for JavaScript; in the benchmark, from 0.51 to 0.87 times JavaScript's speed. Of the rest, 4.2 ms is the text crossing in, 4.8 the split and 2.3 the filter.
 
-**Next:** views for `slice` and `trim`, then fusion. Searching for the separator sixteen bytes at a time with SIMD would take about 1.5 ms more off, but the runtime is in every module that uses strings or arrays: every such module would need WebAssembly SIMD (Safari 16.4 and later), not only those with a vector loop. That choice is left open.
+**Next:** views for `slice` and `trim`, then fusion.
+
+**SIMD, an option of the build.** Searching for the separator sixteen bytes at a time was first estimated at 1.5 ms; measured, it took 4 ms off. Since the runtime is in every module that uses strings or arrays, SIMD is now a choice of the build, `--simd on|off` (`simd` for Vite), on by default: it governs the vector loops and the runtime's search together, so a module needs SIMD only when its build says so, never because the optimizer found a loop. A module that uses it checks, before loading, that the engine has it, and says so otherwise. Measured with `scripts/bench-ab.mjs`, `--simd off` against on, 4 rounds:
+
+| Kernel               | Change, in each round              |
+| -------------------- | ---------------------------------- |
+| words                | −37.3 %, −35.5 %, −35.8 %, −34.5 % |
+| grayscale            | −23.7 %, −28.4 %, −30.8 %, −30.0 % |
+| particles, zero copy | −19.7 %, −20.1 %, −19.7 %, −19.3 % |
+| the five others      | between −2.3 % and +1.8 %          |
+
+No more allocations; +671 bytes gzip; compile time +4.8 %, within the noise of a build compared with itself. No estimate decides a requirement of the platform any more: it is measured first.
 
 ## Not chosen now
 

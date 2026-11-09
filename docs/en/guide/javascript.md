@@ -82,7 +82,9 @@ export fn gain(samples: inout Array<f32>, g: f32): void {
 }
 ```
 
-A module that has such a loop needs WebAssembly vectors (SIMD): Chrome and Edge 91, Firefox 89, Safari 16.4, Node 16.4 and later.
+The runtime uses them too, to look for a byte sixteen at a time: `split` on a million characters takes 35 % less time.
+
+WebAssembly SIMD is on by default. A module that uses it, in its loops or its runtime, needs Chrome and Edge 91, Firefox 89, Safari 16.4, Node 16.4 or later; elsewhere, its loader throws an error that says so before loading anything. `perasc build --simd off`, or `simd: false` for Vite, builds without it, for engines that have none, such as Safari before 16.4 on iPhones that cannot update past iOS 15.
 
 ## With Vite
 
@@ -96,11 +98,13 @@ export default defineConfig({
 });
 ```
 
-| Option   | Default                               | Meaning                                           |
-| -------- | ------------------------------------- | ------------------------------------------------- |
-| `perasc` | `PERASC`, then `perasc` on the `PATH` | the compiler to run                               |
-| `lang`   | the system's                          | `"en"` or `"fr"` for diagnostics                  |
-| `dts`    | `true`                                | write `name.d.peras.ts` next to each `name.peras` |
+| Option      | Default                                             | Meaning                                                                   |
+| ----------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| `perasc`    | `PERASC`, then `perasc` on the `PATH`               | the compiler to run                                                       |
+| `lang`      | the system's                                        | `"en"` or `"fr"` for diagnostics                                          |
+| `dts`       | `true`                                              | write `name.d.peras.ts` next to each `name.peras`                         |
+| `allocator` | `debug` for the dev server, `tlsf` for `vite build` | the allocator of modules that use the heap                                |
+| `simd`      | `true`                                              | WebAssembly SIMD in loops and the runtime; `false` for engines without it |
 
 In development the WebAssembly is inlined in the module; `vite build` emits it as a separate file, compiled while it downloads. An error in a `.peras` file shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`.
 

@@ -80,6 +80,8 @@ impl Host<'_> {
 pub struct Compiled {
     /// The WebAssembly binary.
     pub wasm: Vec<u8>,
+    /// Whether it uses WebAssembly SIMD: a loop runs several turns at once.
+    pub vectors: bool,
     /// What each allocation or release site is, for messages: `sites[n - 1]` is
     /// site `n`, the number passed to the allocator; 0 means unknown.
     pub sites: Vec<String>,
@@ -89,6 +91,12 @@ pub struct Compiled {
 #[must_use]
 pub fn compile(module: &Module) -> Vec<u8> {
     compile_module(module).wasm
+}
+
+/// [`compile_for`] with WebAssembly SIMD, the default.
+#[must_use]
+pub fn compile_module(module: &Module) -> Compiled {
+    compile_for(module, true)
 }
 
 /// Declares the runtime's types and imports: the heap, buffers and memory.
@@ -160,13 +168,15 @@ fn math_imports_into(
     }
 }
 
-/// Encodes a module, and numbers its allocation sites.
+/// Encodes a module, and numbers its allocation sites. With `simd`, loops
+/// whose turns are independent also run several turns at once, with
+/// WebAssembly SIMD; without, the module uses none of it.
 ///
 /// A module that uses the heap imports `alloc(size, site) -> ptr` and
 /// `release(ptr, site)` from [`RUNTIME_MODULE`], the debug allocator of
 /// `perasc-runtime`; the imports come first, so its own functions follow them.
 #[must_use]
-pub fn compile_module(module: &Module) -> Compiled {
+pub fn compile_for(module: &Module, simd: bool) -> Compiled {
     let mut types = TypeSection::new();
     let mut imports = ImportSection::new();
     let mut functions = FunctionSection::new();
@@ -189,6 +199,7 @@ pub fn compile_module(module: &Module) -> Compiled {
         math: &math,
     };
     let mut sites = Vec::new();
+    let mut vectors = false;
     for (position, function) in module.functions.iter().enumerate() {
         let position = u32::try_from(position).unwrap_or(u32::MAX);
         let index = position + offset;
@@ -204,9 +215,10 @@ pub fn compile_module(module: &Module) -> Compiled {
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
+        vectors |= simd && simd::vectorizes(&function.body);
         code.function(&FnEncoder::encode(
             function,
-            offset,
+            (offset, simd),
             host,
             &mut sites,
             &module.data,
@@ -233,6 +245,7 @@ pub fn compile_module(module: &Module) -> Compiled {
     }
     Compiled {
         wasm: wasm.finish(),
+        vectors,
         sites,
     }
 }
@@ -276,6 +289,8 @@ struct FnEncoder<'a> {
     temp_buffer: u32,
     /// The first of the vector locals of the function's vector loops.
     temp_v128: u32,
+    /// Whether loops may run several turns at once.
+    simd: bool,
     /// The bytes of each literal, for their lengths.
     data: &'a [Vec<u8>],
 }
@@ -283,7 +298,7 @@ struct FnEncoder<'a> {
 impl<'a> FnEncoder<'a> {
     fn encode(
         function: &'a Function,
-        offset: u32,
+        (offset, simd): (u32, bool),
         host: Host<'a>,
         sites: &'a mut Vec<String>,
         data: &'a [Vec<u8>],
@@ -306,7 +321,11 @@ impl<'a> FnEncoder<'a> {
         ] {
             locals.push((1, ty));
         }
-        let vectors = simd::vectors_needed(&function.body);
+        let vectors = if simd {
+            simd::vectors_needed(&function.body)
+        } else {
+            0
+        };
         if vectors > 0 {
             locals.push((vectors, simd::V128));
         }
@@ -326,6 +345,7 @@ impl<'a> FnEncoder<'a> {
             temp_f64: count + 4,
             temp_buffer: count + 5,
             temp_v128: count + 6,
+            simd,
             data,
         };
         encoder.stmts(&function.body);
@@ -469,7 +489,7 @@ impl<'a> FnEncoder<'a> {
     /// br_if $top cond } }`; without a condition, the bottom is `br $top`.
     fn loop_(&mut self, cond: Option<&Expr>, body: &[Stmt], step: &[Stmt]) {
         // Several turns at once first, when they are independent.
-        if let (Some(plan), Some(cond)) = (simd::plan(cond, body, step), cond) {
+        if let (true, Some(plan), Some(cond)) = (self.simd, simd::plan(cond, body, step), cond) {
             self.vector_loop(&plan, cond, body);
         }
         self.emit(&I::Block(BlockType::Empty));
@@ -1075,7 +1095,14 @@ pub struct Runtime<'a> {
     pub faults: &'a [String],
     /// The message of an index out of bounds, with `{index}` and `{length}`.
     pub bounds: &'a str,
+    /// When the module uses WebAssembly SIMD, in its runtime or its loops:
+    /// the message thrown before loading it where the engine has none.
+    pub simd: Option<&'a str>,
 }
+
+/// The smallest module that uses WebAssembly SIMD, `v128.const` in a
+/// function: an engine that validates it has SIMD.
+const SIMD_PROBE: &str = "0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,22,1,20,0,253,12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,11";
 
 /// A JavaScript ES module that loads the `.wasm` file next to it and exports its
 /// functions; `bool` results become JavaScript booleans. A module that uses the
@@ -1087,6 +1114,13 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         "// Generated by perasc. Loads {wasm_file} and exports its functions.\n{IMPORTS_MARKER}\n"
     );
     let heap = module.uses_heap();
+    if let Some(message) = runtime.and_then(|r| r.simd) {
+        let _ = writeln!(
+            js,
+            "if (!WebAssembly.validate(new Uint8Array([{SIMD_PROBE}]))) throw new Error({});",
+            js_string(message)
+        );
+    }
     match runtime.filter(|_| heap) {
         Some(runtime) => js.push_str(&runtime_imports(runtime)),
         None if heap => js.push_str(

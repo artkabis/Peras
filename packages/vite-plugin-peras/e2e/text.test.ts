@@ -50,3 +50,22 @@ describe("strings in JavaScript", () => {
     expect(m.__perasHeap.live()).toBe(0);
   });
 });
+
+describe("text without SIMD", () => {
+  it("gives the same results, and its loader does not check for SIMD", async () => {
+    const compiled = await compile(source, { perasc, allocator: "tlsf", simd: false });
+    const withSimd = await compile(source, { perasc, allocator: "tlsf" });
+    expect(moduleCode(withSimd)).toContain("WebAssembly.validate");
+    expect(moduleCode(compiled)).not.toContain("WebAssembly.validate");
+    const code = moduleCode(compiled);
+    const url = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+    const scalar = (await import(url)) as Words;
+    const simd = await load("tlsf");
+    // Over sixteen bytes, where the runtime with SIMD compares them at once.
+    const line = " Été, naïve ,# skip , DONNÉES  ,x,  ".repeat(40);
+    expect(scalar.tidy(line)).toBe(simd.tidy(line));
+    expect(scalar.fields(line)).toEqual(simd.fields(line));
+    expect(scalar.characters(line)).toBe(simd.characters(line));
+    expect(scalar.__perasHeap.live()).toBe(0);
+  });
+});

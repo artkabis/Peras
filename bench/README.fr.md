@@ -48,3 +48,26 @@ Ce que disent les résultats, aujourd’hui :
 - **Texte** : 1,15 fois plus lent ; c’était 3,4. Les morceaux de `split` lus aussitôt sont des vues du texte, un bloc pour tous ([décision 0004](../docs/fr/decisions/0004-strings-without-allocation.md)). Mesuré étape par étape, l’entrée dans le module en UTF-8 coûte 4 ms sur 17 ; le reste est de l’allocation, un bloc par mot. `filter` sur un tableau temporaire garde maintenant ses éléments sur place au lieu de les copier, une chaîne courte tient en un bloc au lieu de deux, et `indexOf` cherche le premier octet de l’aiguille avant de comparer le reste. Un texte seulement découpé et compté a encore intérêt à rester côté JavaScript.
 - **Appels** : un appel vers le module coûte environ 1,4 fois un appel JavaScript, que V8 met en ligne. Le travail doit traverser la frontière par gros morceaux.
 - **Démarrage** : environ 11 Kio gzip de plus à télécharger, et l’import prend environ deux fois plus de temps (17 ms contre 9), surtout à cause de l’allocateur inclus dans le chargeur. Il se paie une fois par module.
+
+## Banc A/B (`scripts/bench-ab.mjs`)
+
+Deux compilations de Peras, comparées sur les noyaux de `bench/browser` dans une même page Chromium, pour décider d’un changement sur des mesures :
+
+```sh
+node scripts/bench-ab.mjs --a ref:HEAD --b current           # un commit face à l’arbre de travail
+node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current   # une option
+```
+
+A et B sont chacun `current` (l’arbre de travail), `ref:<référence git>` (compilé dans un worktree sous `target/bench-ab`) ou `bin:<chemin>`, avec leurs propres options de perasc. Chacun des 4 tours est une page neuve où A, B et JavaScript alternent, 30 appels mesurés après 3 de chauffe ; A passe en premier aux tours impairs et B aux tours pairs, pour qu’aucun ne prenne tous les premiers appels, les plus froids. Chaque variante doit donner le même résultat et ne rien laisser en vie. Le runtime de chaque compilation compte les allocations d’un appel de chaque variante. Puis la taille, le temps d’import dans un contexte neuf et le temps de compilation de chaque compilation. Le rapport va dans `target/bench-ab/REPORT.md` ; `--check` vérifie seulement que les deux compilations concordent, pour la CI.
+
+Le rapport applique ces seuils :
+
+| Indicateur                  | Seuil                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| La médiane d’un noyau       | un gain compte à 10 % ou plus à **chaque** tour, une régression à 3 % ou plus à chaque tour |
+| Allocations par appel       | ne doivent pas augmenter                                                                    |
+| Fuites, doubles libérations | aucune, vérifié par la page                                                                 |
+| Téléchargement              | au plus +1 Kio gzip pour un changement                                                      |
+| Temps de compilation        | au plus +10 %                                                                               |
+
+Ils ont été calibrés en comparant une compilation à elle-même : chaque noyau est resté entre −2,9 % et +1,8 %, le temps de compilation dans +4,8 %. Sur cette machine, deux exécutions séparées du banc dans le navigateur diffèrent jusqu’à 10 % ; la même page le garde sous 3 %.

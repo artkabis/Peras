@@ -18,6 +18,7 @@ fn build(source: &str, optimize: bool) -> Vec<u8> {
         DirectOptions {
             optimize,
             allocator: Allocator::Debug,
+            simd: true,
         },
         &Localizer::new(Language::English),
     )
@@ -41,7 +42,8 @@ fn has_vectors(wasm: &[u8]) -> bool {
 /// The result of `name(n)`, its bits for a float; `None` on a trap. Checks
 /// that the call leaves no block alive.
 fn call(wasm: &[u8], name: &str, n: i32) -> Option<u64> {
-    let mut linked = link::instantiate(wasm).unwrap_or_else(|e| unreachable!("{e}"));
+    let mut linked = link::instantiate_with(wasm, perasc_runtime::DEBUG_ALLOCATOR)
+        .unwrap_or_else(|e| unreachable!("{e}"));
     let func = linked.module.get_func(&linked.store, name)?;
     let mut results = [Val::I32(0)];
     func.call(&mut linked.store, &[Val::I32(n)], &mut results)
@@ -237,4 +239,56 @@ fn a_local_first_assigned_in_a_branch_keeps_the_loop_scalar() {
             "carried({n})"
         );
     }
+}
+
+/// Whether a module uses any SIMD instruction: by its name in wasmparser,
+/// `V128…` or a shape of lanes, `I8x16…` to `F64x2…`.
+fn any_simd(wasm: &[u8]) -> bool {
+    const SHAPES: [&str; 7] = ["V128", "I8x16", "I16x8", "I32x4", "I64x2", "F32x4", "F64x2"];
+    wasmparser::Parser::new(0).parse_all(wasm).any(|payload| {
+        let Ok(wasmparser::Payload::CodeSectionEntry(body)) = payload else {
+            return false;
+        };
+        body.get_operators_reader().is_ok_and(|ops| {
+            ops.into_iter().any(|op| {
+                op.is_ok_and(|op| {
+                    let name = format!("{op:?}");
+                    SHAPES.iter().any(|shape| name.starts_with(shape))
+                })
+            })
+        })
+    })
+}
+
+#[test]
+fn simd_off_gives_modules_and_runtimes_without_it_and_a_loader_without_the_check() {
+    let source = "export fn scale(xs: inout Array<f32>, k: f32): void {
+  for (let i = 0; i < xs.length; i++) {
+    xs[i] = xs[i] * k;
+  }
+}
+";
+    let build = |simd: bool| {
+        perasc_driver::build_direct(
+            source,
+            "m.wasm",
+            DirectOptions {
+                optimize: true,
+                allocator: Allocator::Tlsf,
+                simd,
+            },
+            &Localizer::new(Language::English),
+        )
+        .unwrap_or_else(|e| unreachable!("{e:?}"))
+    };
+    let (on, off) = (build(true), build(false));
+    assert!(any_simd(&on.wasm) && !any_simd(&off.wasm));
+    for allocator in [Allocator::Debug, Allocator::Tlsf] {
+        assert!(any_simd(allocator.runtime(true)), "{allocator:?} with SIMD");
+        assert!(!any_simd(allocator.runtime(false)), "{allocator:?} without");
+    }
+    // The loader checks for SIMD before loading, only when it is used.
+    assert!(on.js.contains("WebAssembly.validate"), "{}", on.js);
+    assert!(on.js.contains("--simd off"), "{}", on.js);
+    assert!(!off.js.contains("WebAssembly.validate"), "{}", off.js);
 }

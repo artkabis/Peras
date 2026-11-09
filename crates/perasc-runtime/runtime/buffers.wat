@@ -473,6 +473,84 @@
       (i32.add (local.get $data) (local.get $i)) (i32.sub (local.get $len) (local.get $i)))
     (local.get $parts))
 
+  ;; @simd
+  ;; `str_split_views` on the `len` bytes at `data`, by the byte `sep`, with
+  ;; WebAssembly SIMD: sixteen bytes compared at once, the separators found
+  ;; in the bit mask of each sixteen, then the bytes left one at a time.
+  (func $split_byte (param $data i32) (param $len i32) (param $sep i32) (result i32)
+    (local $parts i32) (local $block i32) (local $hdr i32) (local $handle i32)
+    (local $n i32) (local $i i32) (local $start i32) (local $end i32)
+    (local $splat v128) (local $m i32) (local $at i32)
+    (local.set $end (i32.add (local.get $data) (local.get $len)))
+    (local.set $splat (i8x16.splat (local.get $sep)))
+    (local.set $n (i32.const 1))
+    (local.set $i (local.get $data))
+    (block $wide
+      (loop $next
+        (br_if $wide (i32.gt_u (i32.add (local.get $i) (i32.const 16)) (local.get $end)))
+        (local.set $n (i32.add (local.get $n)
+          (i32.popcnt (i8x16.bitmask (i8x16.eq (v128.load align=1 (local.get $i)) (local.get $splat))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 16)))
+        (br $next)))
+    (block $counted
+      (loop $next
+        (br_if $counted (i32.ge_u (local.get $i) (local.get $end)))
+        (if (i32.eq (i32.load8_u (local.get $i)) (local.get $sep))
+          (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
+    (local.set $block
+      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    (i32.store (local.get $parts) (local.get $n))
+    (i32.store offset=4 (local.get $parts) (local.get $n))
+    (i32.store offset=8 (local.get $parts) (local.get $block))
+    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (local.set $handle (local.get $block))
+    (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
+    (local.set $start (local.get $data))
+    (local.set $i (local.get $data))
+    (block $wide
+      (loop $next
+        (br_if $wide (i32.gt_u (i32.add (local.get $i) (i32.const 16)) (local.get $end)))
+        (local.set $m (i8x16.bitmask (i8x16.eq (v128.load align=1 (local.get $i)) (local.get $splat))))
+        ;; Each separator of the sixteen, lowest first, ends a part.
+        (block $chunk
+          (loop $bit
+            (br_if $chunk (i32.eqz (local.get $m)))
+            (local.set $at (i32.add (local.get $i) (i32.ctz (local.get $m))))
+            (i32.store (local.get $hdr) (i32.sub (local.get $at) (local.get $start)))
+            (i32.store offset=4 (local.get $hdr) (i32.sub (local.get $at) (local.get $start)))
+            (i32.store offset=8 (local.get $hdr) (local.get $start))
+            (i32.store offset=12 (local.get $hdr) (i32.or (i32.const 1) (global.get $INLINE)))
+            (i32.store (local.get $handle) (local.get $hdr))
+            (local.set $handle (i32.add (local.get $handle) (i32.const 4)))
+            (local.set $hdr (i32.add (local.get $hdr) (i32.const 16)))
+            (local.set $start (i32.add (local.get $at) (i32.const 1)))
+            (local.set $m (i32.and (local.get $m) (i32.sub (local.get $m) (i32.const 1))))
+            (br $bit)))
+        (local.set $i (i32.add (local.get $i) (i32.const 16)))
+        (br $next)))
+    ;; The bytes left, and the last part, which ends at the end.
+    (block $done
+      (loop $next
+        (if (i32.or (i32.ge_u (local.get $i) (local.get $end))
+              (i32.eq (i32.load8_u (local.get $i)) (local.get $sep)))
+          (then
+            (i32.store (local.get $hdr) (i32.sub (local.get $i) (local.get $start)))
+            (i32.store offset=4 (local.get $hdr) (i32.sub (local.get $i) (local.get $start)))
+            (i32.store offset=8 (local.get $hdr) (local.get $start))
+            (i32.store offset=12 (local.get $hdr) (i32.or (i32.const 1) (global.get $INLINE)))
+            (i32.store (local.get $handle) (local.get $hdr))
+            (local.set $handle (i32.add (local.get $handle) (i32.const 4)))
+            (local.set $hdr (i32.add (local.get $hdr) (i32.const 16)))
+            (br_if $done (i32.ge_u (local.get $i) (local.get $end)))
+            (local.set $start (i32.add (local.get $i) (i32.const 1)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.get $parts))
+
+  ;; @scalar
   ;; `str_split_views` on the `len` bytes at `data`, by the byte `sep`: the
   ;; separators counted in one loop, then the parts filled in another.
   (func $split_byte (param $data i32) (param $len i32) (param $sep i32) (result i32)
@@ -517,6 +595,8 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
     (local.get $parts))
+
+  ;; @end
 
   ;; Part `c` of an array of views: a header for the `len` bytes at `at`,
   ;; and its handle.

@@ -48,3 +48,26 @@ What the results say, today:
 - **Text**: 1.15 times slower; it was 3.4. The parts of `split` read at once are views of the text, one block for them all ([decision 0004](../docs/en/decisions/0004-strings-without-allocation.md)). Measured step by step, crossing into the module in UTF-8 costs 4 ms of the 17; the rest is allocation, a block per word. `filter` on a temporary array now keeps its elements in place instead of copying them, a short string is one block instead of two, and `indexOf` looks for the first byte of the needle before comparing the rest. Text that is only split and counted should still stay on the JavaScript side.
 - **Calls**: a call into the module costs about 1.4 times a JavaScript call, which V8 inlines. Work should cross the boundary in large pieces.
 - **Start**: about 11 KiB gzip more to download, and the import takes about twice as long (17 ms against 9), mostly the allocator inlined in the loader. It is paid once per module.
+
+## A/B benchmark (`scripts/bench-ab.mjs`)
+
+Two builds of Peras, compared on the kernels of `bench/browser` in one Chromium page, so that a change is decided on measures:
+
+```sh
+node scripts/bench-ab.mjs --a ref:HEAD --b current           # a commit against the working tree
+node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current   # an option
+```
+
+A and B are each `current` (the working tree), `ref:<git ref>` (built in a worktree under `target/bench-ab`) or `bin:<path>`, with their own perasc options. Each of 4 rounds is a fresh page where A, B and JavaScript alternate, 30 timed calls after 3 of warm-up; A runs first in odd rounds and B in even ones, so that neither takes every coldest first call. Every variant must give the same result and leave nothing alive. Each build's runtime counts the allocations of one call of each variant. Then the size, the import time in a fresh context and the compile time of each build. The report goes to `target/bench-ab/REPORT.md`; `--check` only checks that both builds agree, for CI.
+
+The report applies these thresholds:
+
+| Indicator              | Threshold                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| A kernel's median      | a gain counts at 10 % or more in **every** round, a regression at 3 % or more in every round |
+| Allocations per call   | must not grow                                                                                |
+| Leaks, double releases | none, checked by the page                                                                    |
+| Download               | at most +1 KiB gzip for one change                                                           |
+| Compile time           | at most +10 %                                                                                |
+
+They were calibrated by comparing a build with itself: every kernel stayed between −2.9 % and +1.8 %, the compile time within +4.8 %. On this machine, separate runs of the browser benchmark differ by up to 10 %; the same page keeps it under 3 %.

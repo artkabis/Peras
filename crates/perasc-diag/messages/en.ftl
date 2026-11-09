@@ -17,6 +17,7 @@ cli-usage =
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
       --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
+      --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help
@@ -680,3 +681,4 @@ runtime-double-release = the block allocated at { $alloc } is released a second 
 runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
 runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }
 runtime-index = index { $index } is out of bounds: the length is { $length }
+runtime-simd = this module uses WebAssembly SIMD, which this browser does not have: Chrome or Edge 91, Firefox 89 and Safari 16.4 do. Build it with `--simd off` to load it everywhere.

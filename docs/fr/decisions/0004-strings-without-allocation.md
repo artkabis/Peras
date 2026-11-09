@@ -70,7 +70,18 @@ Les tests exécutent le WebAssembly sur l’allocateur de débogage, qui empoiso
 
 `words` est passé de 17 à 11,2 ms, contre 10,3 pour JavaScript ; dans le banc d’essai, de 0,51 à 0,87 fois la vitesse de JavaScript. Du reste, 4,2 ms sont l’entrée du texte, 4,8 le découpage et 2,3 le filtre.
 
-**Ensuite :** les vues pour `slice` et `trim`, puis la fusion. Chercher le séparateur seize octets à la fois avec le SIMD ôterait environ 1,5 ms de plus, mais le runtime est dans chaque module qui utilise des chaînes ou des tableaux : chacun demanderait alors le SIMD de WebAssembly (Safari 16.4 et suivants), pas seulement ceux qui ont une boucle vectorielle. Ce choix reste ouvert.
+**Ensuite :** les vues pour `slice` et `trim`, puis la fusion.
+
+**Le SIMD, une option de la compilation.** Chercher le séparateur seize octets à la fois avait d’abord été estimé à 1,5 ms ; mesuré, cela en a ôté 4. Comme le runtime est dans chaque module qui utilise des chaînes ou des tableaux, le SIMD est maintenant un choix de la compilation, `--simd on|off` (`simd` pour Vite), activé par défaut : il commande ensemble les boucles vectorielles et la recherche du runtime, si bien qu’un module ne demande le SIMD que quand sa compilation le dit, jamais parce que l’optimiseur a trouvé une boucle. Un module qui s’en sert vérifie, avant de se charger, que le moteur l’a, et le dit sinon. Mesuré avec `scripts/bench-ab.mjs`, `--simd off` contre activé, 4 tours :
+
+| Noyau                 | Changement, à chaque tour          |
+| --------------------- | ---------------------------------- |
+| words                 | −37,3 %, −35,5 %, −35,8 %, −34,5 % |
+| grayscale             | −23,7 %, −28,4 %, −30,8 %, −30,0 % |
+| particles, zéro copie | −19,7 %, −20,1 %, −19,7 %, −19,3 % |
+| les cinq autres       | entre −2,3 % et +1,8 %             |
+
+Aucune allocation de plus ; +671 octets gzip ; temps de compilation +4,8 %, dans le bruit d’une compilation comparée à elle-même. Aucune estimation ne décide plus d’une exigence de la plateforme : elle est d’abord mesurée.
 
 ## Écarté pour l’instant
 

@@ -16,15 +16,16 @@ perasc <commande> [options]
 
 ## Options
 
-| Option                        | S’applique à     | Sens                                                                                                                                                                                           |
-| ----------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--lang en\|fr`               | toutes           | la langue des messages ; par défaut : la variable `PERAS_LANG`, puis la langue du système                                                                                                      |
-| `--json`                      | `check`, `build` | les diagnostics en JSON sur la sortie standard                                                                                                                                                 |
-| `--color auto\|always\|never` | `check`, `build` | les couleurs des diagnostics ; `auto` (par défaut) colore un terminal, et la variable `NO_COLOR` les désactive                                                                                 |
-| `--out <dossier>`             | `build`          | où écrire les fichiers ; par défaut : `dist`                                                                                                                                                   |
-| `--backend direct\|rust`      | `build`          | le générateur de code ; `rust` demande une toolchain Rust et sert aux tests du projet                                                                                                          |
-| `--no-optimize`               | `build`          | saute les optimisations de l’IR                                                                                                                                                                |
-| `--allocator debug\|tlsf`     | `build`          | l’allocateur d’un module qui utilise le tas : `debug`, par défaut, détecte chaque bug mémoire ; `tlsf` alloue en temps borné, pour la production ([0002](../decisions/0002-tlsf-allocator.md)) |
+| Option                        | S’applique à     | Sens                                                                                                                                                                                                        |
+| ----------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--lang en\|fr`               | toutes           | la langue des messages ; par défaut : la variable `PERAS_LANG`, puis la langue du système                                                                                                                   |
+| `--json`                      | `check`, `build` | les diagnostics en JSON sur la sortie standard                                                                                                                                                              |
+| `--color auto\|always\|never` | `check`, `build` | les couleurs des diagnostics ; `auto` (par défaut) colore un terminal, et la variable `NO_COLOR` les désactive                                                                                              |
+| `--out <dossier>`             | `build`          | où écrire les fichiers ; par défaut : `dist`                                                                                                                                                                |
+| `--backend direct\|rust`      | `build`          | le générateur de code ; `rust` demande une toolchain Rust et sert aux tests du projet                                                                                                                       |
+| `--no-optimize`               | `build`          | saute les optimisations de l’IR                                                                                                                                                                             |
+| `--allocator debug\|tlsf`     | `build`          | l’allocateur d’un module qui utilise le tas : `debug`, par défaut, détecte chaque bug mémoire ; `tlsf` alloue en temps borné, pour la production ([0002](../decisions/0002-tlsf-allocator.md))              |
+| `--simd on\|off`              | `build`          | le SIMD de WebAssembly dans les boucles et le runtime : `on`, par défaut, est plus rapide ; `off` se charge sans lui, comme sur Safari avant 16.4 ([0004](../decisions/0004-strings-without-allocation.md)) |
 
 ## Codes de sortie
 

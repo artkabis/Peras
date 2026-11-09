@@ -82,7 +82,9 @@ export fn gain(samples: inout Array<f32>, g: f32): void {
 }
 ```
 
-Un module qui contient une telle boucle demande les vecteurs de WebAssembly (SIMD) : Chrome et Edge 91, Firefox 89, Safari 16.4, Node 16.4 et suivants.
+Le runtime s’en sert aussi, pour chercher un octet seize à la fois : `split` sur un million de caractères prend 35 % de temps en moins.
+
+Le SIMD de WebAssembly est activé par défaut. Un module qui s’en sert, dans ses boucles ou son runtime, demande Chrome et Edge 91, Firefox 89, Safari 16.4, Node 16.4 ou suivants ; ailleurs, son chargeur lève une erreur qui le dit avant de charger quoi que ce soit. `perasc build --simd off`, ou `simd: false` pour Vite, compile sans lui, pour les moteurs qui n’en ont pas, comme Safari avant 16.4 sur les iPhone bloqués à iOS 15.
 
 ## Avec Vite
 
@@ -96,11 +98,13 @@ export default defineConfig({
 });
 ```
 
-| Option   | Par défaut                             | Sens                                                 |
-| -------- | -------------------------------------- | ---------------------------------------------------- |
-| `perasc` | `PERASC`, puis `perasc` dans le `PATH` | le compilateur à lancer                              |
-| `lang`   | celle du système                       | `"en"` ou `"fr"` pour les diagnostics                |
-| `dts`    | `true`                                 | écrire `nom.d.peras.ts` à côté de chaque `nom.peras` |
+| Option      | Par défaut                                                         | Sens                                                                                              |
+| ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `perasc`    | `PERASC`, puis `perasc` dans le `PATH`                             | le compilateur à lancer                                                                           |
+| `lang`      | celle du système                                                   | `"en"` ou `"fr"` pour les diagnostics                                                             |
+| `dts`       | `true`                                                             | écrire `nom.d.peras.ts` à côté de chaque `nom.peras`                                              |
+| `allocator` | `debug` pour le serveur de développement, `tlsf` pour `vite build` | l’allocateur des modules qui utilisent le tas                                                     |
+| `simd`      | `true`                                                             | le SIMD de WebAssembly dans les boucles et le runtime ; `false` pour les moteurs qui n’en ont pas |
 
 En développement, le WebAssembly est intégré au module ; `vite build` l’émet comme un fichier séparé, compilé pendant son téléchargement. Une erreur dans un fichier `.peras` s’affiche dans l’overlay de Vite avec son extrait, sa cause et sa correction, et fait échouer `vite build`.
 

@@ -156,19 +156,29 @@ fn expected(name: &str, n: i32) -> i32 {
     }
 }
 
+/// Both runtimes: with SIMD, which compares sixteen bytes at once, and
+/// without.
 #[test]
 fn views_give_what_split_gives_and_copies_where_the_text_changes() {
+    for simd in [true, false] {
+        views_on(simd);
+    }
+}
+
+fn views_on(simd: bool) {
     let wasm = build_direct(
         SOURCE,
         "m.wasm",
         DirectOptions {
             optimize: true,
             allocator: Allocator::Debug,
+            simd,
         },
         &Localizer::new(Language::English),
     )
     .unwrap_or_else(|e| unreachable!("{e:?}"))
     .wasm;
+    let runtime = Allocator::Debug.runtime(simd);
     for name in [
         "words",
         "joined",
@@ -185,7 +195,8 @@ fn views_give_what_split_gives_and_copies_where_the_text_changes() {
         // Up to 7, the text fits in its header's block (256 bytes): when it
         // grows, its old bytes stay there. From 40 on, they are released.
         for n in [0, 1, 2, 7, 40, 300] {
-            let mut linked = link::instantiate(&wasm).unwrap_or_else(|e| unreachable!("{e}"));
+            let mut linked =
+                link::instantiate_with(&wasm, runtime).unwrap_or_else(|e| unreachable!("{e}"));
             let func = linked
                 .module
                 .get_func(&linked.store, name)
@@ -197,7 +208,11 @@ fn views_give_what_split_gives_and_copies_where_the_text_changes() {
                 "{name}({n}): {called:?} {:?}",
                 linked.store.data()
             );
-            assert_eq!(results[0].i32(), Some(expected(name, n)), "{name}({n})");
+            assert_eq!(
+                results[0].i32(),
+                Some(expected(name, n)),
+                "{name}({n}), simd {simd}"
+            );
             let live = linked
                 .allocator
                 .get_typed_func::<(), i32>(&linked.store, "live_count")

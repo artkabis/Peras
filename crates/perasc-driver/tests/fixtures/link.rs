@@ -1,7 +1,7 @@
 //! A module built by perasc, linked to the debug allocator in wasmi, the way
 //! the JavaScript loader links it in a browser. Shared by the driver's tests.
 
-use perasc_runtime::{DEBUG_ALLOCATOR, Fault};
+use perasc_runtime::Fault;
 use wasmi::{Caller, Engine, Extern, Instance, Linker, Store};
 
 /// The first fault reported: its kind and the sites it names, by number.
@@ -14,8 +14,9 @@ pub struct Linked {
     pub module: Instance,
 }
 
-/// Validates the module, then links it to the debug allocator.
-pub fn instantiate(wasm: &[u8]) -> Result<Linked, wasmi::Error> {
+/// Validates the module, then links it to `runtime`, a build of the debug
+/// allocator.
+pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, wasmi::Error> {
     let validated = wasmparser::Validator::new().validate_all(wasm);
     assert!(validated.is_ok(), "{:?}", validated.err());
     let engine = Engine::default();
@@ -32,7 +33,7 @@ pub fn instantiate(wasm: &[u8]) -> Result<Linked, wasmi::Error> {
         },
     )?;
     let allocator = runtime
-        .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, DEBUG_ALLOCATOR)?)?;
+        .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, allocator_module)?)?;
     let mut linker = Linker::new(&engine);
     let strings = perasc_ir::RuntimeFn::ALL.map(perasc_ir::RuntimeFn::name);
     let core = [

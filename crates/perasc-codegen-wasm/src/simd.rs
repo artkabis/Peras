@@ -453,6 +453,20 @@ fn vector_unary(op: UnOp, ty: Ty) -> Option<I<'static>> {
     })
 }
 
+/// Whether one of the loops of `stmts` runs several turns at once.
+pub(crate) fn vectorizes(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|stmt| match stmt {
+        Stmt::Loop { cond, body, step } => {
+            plan(cond.as_ref(), body, step).is_some() || vectorizes(body)
+        }
+        Stmt::If {
+            then, otherwise, ..
+        } => vectorizes(then) || vectorizes(otherwise),
+        Stmt::Block(body) => vectorizes(body),
+        _ => false,
+    })
+}
+
 /// The vector locals the function's loops need at most at once.
 pub(crate) fn vectors_needed(stmts: &[Stmt]) -> u32 {
     stmts

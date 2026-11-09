@@ -108,12 +108,7 @@ pub fn build_direct(
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
-    Ok(emit_direct(
-        &module,
-        wasm_file,
-        options.allocator,
-        localizer,
-    ))
+    Ok(emit_direct_for(&module, wasm_file, options, localizer))
 }
 
 pub use perasc_runtime::Allocator;
@@ -126,6 +121,10 @@ pub struct DirectOptions {
     /// The allocator a module that uses the heap is linked with: the debug
     /// one by default, TLSF for production.
     pub allocator: perasc_runtime::Allocator,
+    /// Uses WebAssembly SIMD, the default: in loops whose turns are
+    /// independent, and in the runtime's search for bytes. Without, the
+    /// module loads in engines that have no SIMD (Safari before 16.4).
+    pub simd: bool,
 }
 
 impl Default for DirectOptions {
@@ -133,6 +132,7 @@ impl Default for DirectOptions {
         Self {
             optimize: true,
             allocator: perasc_runtime::Allocator::Debug,
+            simd: true,
         }
     }
 }
@@ -147,7 +147,26 @@ pub fn emit_direct(
     allocator: perasc_runtime::Allocator,
     localizer: &Localizer,
 ) -> DirectOutput {
-    let compiled = perasc_codegen_wasm::compile_module(module);
+    let options = DirectOptions {
+        allocator,
+        ..DirectOptions::default()
+    };
+    emit_direct_for(module, wasm_file, options, localizer)
+}
+
+/// [`emit_direct`], with SIMD as `options` says.
+#[must_use]
+pub fn emit_direct_for(
+    module: &perasc_ir::Module,
+    wasm_file: &str,
+    options: DirectOptions,
+    localizer: &Localizer,
+) -> DirectOutput {
+    let compiled = perasc_codegen_wasm::compile_for(module, options.simd);
+    // SIMD is needed by the runtime of a module that uses the heap, and by
+    // the loops that run several turns at once.
+    let needs_simd = options.simd && (module.uses_heap() || compiled.vectors);
+    let simd = localizer.message(&perasc_diag::Message::new("runtime-simd"));
     let faults = fault_messages(localizer);
     let bounds = localizer.message(
         &perasc_diag::Message::new("runtime-index")
@@ -155,10 +174,11 @@ pub fn emit_direct(
             .text("length", "{length}"),
     );
     let runtime = perasc_codegen_wasm::Runtime {
-        allocator: allocator.module(),
+        allocator: options.allocator.runtime(options.simd),
         sites: &compiled.sites,
         faults: &faults,
         bounds: &bounds,
+        simd: needs_simd.then_some(simd.as_str()),
     };
     DirectOutput {
         js: perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime)),

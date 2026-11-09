@@ -22,7 +22,7 @@ fn link(module: &Module) -> Result<Linked, wasmi::Error> {
         perasc_runtime::Allocator::Debug,
         &Localizer::new(Language::English),
     );
-    link::instantiate(&output.wasm)
+    link::instantiate_with(&output.wasm, perasc_runtime::DEBUG_ALLOCATOR)
 }
 
 impl Linked {
