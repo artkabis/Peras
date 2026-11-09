@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0237-interface-as-type.peras
+---
+diagnostics:
+  error[E0237] check-interface-as-type { name: "Shape" }
+    primary 6:14-6:19: check-interface-as-type-label
+    cause: check-interface-as-type-why
+    fix: check-interface-as-type-fix { name: "Shape" }

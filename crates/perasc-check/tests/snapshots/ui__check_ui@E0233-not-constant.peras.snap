@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0233-not-constant.peras
+---
+diagnostics:
+  error[E0233] check-not-constant
+    primary 6:19-6:28: check-not-constant-label
+    cause: check-not-constant-why
+    fix: check-not-constant-fix
+  error[E0233] check-not-constant
+    primary 7:20-7:32: check-not-constant-label
+    cause: check-not-constant-why
+    fix: check-not-constant-fix

@@ -26,6 +26,22 @@ export fn twice(a: i32): i32 {
 }
 ```
 
+## Constantes de module
+
+Une `const` hors de toute fonction est une constante de module. Sa valeur est connue à la compilation : littéraux, autres constantes, opérateurs, tableaux, tuples, structures, options et variantes ([E0233](../errors/E0233.md)). Elle est écrite dans le code partout où elle sert : un tableau ou une chaîne constante est donc une nouvelle valeur à chaque usage. <span class="status compiled">compilé</span>
+
+```peras build
+const SIDE: i32 = 4;
+const AREA: i32 = SIDE * SIDE;
+const LABEL: String = "square";
+
+export fn describe(): i32 {
+  return AREA + LABEL.length;
+}
+```
+
+Un `let` de module, une variable partagée par toutes les fonctions, est vérifié mais pas encore compilé. <span class="status checked">vérifié</span>
+
 ## Nombres
 
 | Type                      | Valeurs                     |

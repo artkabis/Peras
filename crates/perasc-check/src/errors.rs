@@ -78,6 +78,13 @@ const fn why(code: ErrorCode) -> &'static str {
         229 => "check-cannot-infer-why",
         230 => "check-generic-export-why",
         231 => "check-endless-instances-why",
+        232 => "check-alias-cycle-why",
+        233 => "check-not-constant-why",
+        234 => "check-no-methods-why",
+        235 => "check-impl-mismatch-why",
+        236 => "check-signature-why",
+        237 => "check-interface-as-type-why",
+        238 => "check-arrow-why",
         _ => "check-operator-why",
     }
 }
@@ -871,5 +878,153 @@ pub fn endless_instances(span: Span, name: &str) -> Diagnostic {
             message: Message::new("check-endless-instances-fix"),
             edits: Vec::new(),
         },
+    )
+}
+
+/// A diagnostic with one label and a fix without an edit.
+fn simple(code: ErrorCode, title: Message, span: Span, label: Message, fix: Message) -> Diagnostic {
+    diagnostic(
+        code,
+        title,
+        vec![primary(span, label)],
+        Fix {
+            message: fix,
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0232`
+pub fn alias_cycle(span: Span, name: &str) -> Diagnostic {
+    simple(
+        codes::ALIAS_CYCLE,
+        Message::new("check-alias-cycle").text("name", name),
+        span,
+        Message::new("check-alias-cycle-label"),
+        Message::new("check-alias-cycle-fix"),
+    )
+}
+
+/// `E0233`
+pub fn not_constant(span: Span) -> Diagnostic {
+    simple(
+        codes::NOT_CONSTANT,
+        Message::new("check-not-constant"),
+        span,
+        Message::new("check-not-constant-label"),
+        Message::new("check-not-constant-fix"),
+    )
+}
+
+/// `E0234`
+pub fn no_methods(span: Span, ty: &Ty) -> Diagnostic {
+    simple(
+        codes::NO_METHODS,
+        Message::new("check-no-methods").text("ty", ty.to_string()),
+        span,
+        Message::new("check-no-methods-label"),
+        Message::new("check-no-methods-fix"),
+    )
+}
+
+/// `E0235`: methods of `interface` that the implementation for `ty` lacks.
+pub fn missing_methods(span: Span, interface: &str, ty: &Ty, missing: &[String]) -> Diagnostic {
+    let list: Vec<String> = missing.iter().map(|m| format!("`{m}`")).collect();
+    simple(
+        codes::IMPL_MISMATCH,
+        Message::new("check-impl-missing")
+            .text("interface", interface)
+            .text("ty", ty.to_string())
+            .text("missing", list.join(", ")),
+        span,
+        Message::new("check-impl-missing-label").text("missing", list.join(", ")),
+        Message::new("check-impl-missing-fix").text("interface", interface),
+    )
+}
+
+/// `E0235`: a method the interface does not have.
+pub fn extra_method(span: Span, name: &str, interface: &str) -> Diagnostic {
+    simple(
+        codes::IMPL_MISMATCH,
+        Message::new("check-impl-extra")
+            .text("name", name)
+            .text("interface", interface),
+        span,
+        Message::new("check-impl-extra-label").text("interface", interface),
+        Message::new("check-impl-extra-fix").text("name", name),
+    )
+}
+
+/// `E0236`
+pub fn signature_mismatch(
+    span: Span,
+    name: &str,
+    interface: &str,
+    expected: &str,
+    declared: Span,
+) -> Diagnostic {
+    diagnostic(
+        codes::SIGNATURE_MISMATCH,
+        Message::new("check-signature")
+            .text("name", name)
+            .text("interface", interface),
+        vec![
+            primary(
+                span,
+                Message::new("check-signature-label").text("expected", expected),
+            ),
+            secondary(
+                declared,
+                Message::new("check-signature-declared").text("interface", interface),
+            ),
+        ],
+        Fix {
+            message: Message::new("check-signature-fix").text("expected", expected),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0236`: an interface's method must take `self`.
+pub fn interface_without_self(span: Span, name: &str) -> Diagnostic {
+    simple(
+        codes::SIGNATURE_MISMATCH,
+        Message::new("check-interface-self").text("name", name),
+        span,
+        Message::new("check-interface-self-label"),
+        Message::new("check-interface-self-fix").text("name", name),
+    )
+}
+
+/// `E0237`
+pub fn interface_as_type(span: Span, name: &str) -> Diagnostic {
+    simple(
+        codes::INTERFACE_AS_TYPE,
+        Message::new("check-interface-as-type").text("name", name),
+        span,
+        Message::new("check-interface-as-type-label"),
+        Message::new("check-interface-as-type-fix").text("name", name),
+    )
+}
+
+/// `E0238`: an arrow function where no method takes one.
+pub fn arrow_outside(span: Span) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow"),
+        span,
+        Message::new("check-arrow-label"),
+        Message::new("check-arrow-fix"),
+    )
+}
+
+/// `E0238`: a method that takes an arrow function was given something else.
+pub fn arrow_expected(span: Span) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow-expected"),
+        span,
+        Message::new("check-arrow-expected-label"),
+        Message::new("check-arrow-expected-fix"),
     )
 }

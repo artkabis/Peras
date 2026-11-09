@@ -19,9 +19,9 @@ Ce qui permet à un programme de dire précisément ce que ses données peuvent 
 
 - ~~**Des énumérations avec données, et `match`**, vérifié pour l’exhaustivité~~ : fait, voir [énumérations et match](../guide/enums.md).
 - ~~**`Result<T, E>` et `?`**, pour des erreurs qui sont des valeurs~~ : fait, voir [les résultats](../guide/enums.md#les-résultats--des-erreurs-qui-sont-des-valeurs) ; les fonctions d’analyse comme `parse` arrivent avec la bibliothèque standard.
-- ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; les contraintes sont prédéfinies jusqu’à l’arrivée des interfaces.
-- **Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation.
-- Tuples, alias de types, constantes de module compilées.
+- ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; avec des contraintes prédéfinies, et des interfaces pour les vôtres.
+- ~~**Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation~~ : fait, voir [méthodes et interfaces](../guide/methods.md).
+- ~~Tuples, alias de types, constantes de module compilées~~ : fait, voir [types](types.md#tuples) et [constantes de module](../guide/basics.md#constantes-de-module).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {
@@ -35,16 +35,16 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 ## Phase 3 : une bibliothèque standard
 
-Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs.
+Les outils de tous les jours, avec les mêmes règles : types explicites, aucune allocation cachée, erreurs sous forme de valeurs. En cours : les méthodes de tableaux qui prennent une fonction fléchée, compilées sur place en boucles, et `min`, `max`, `clamp` sont [faites](methods.md) ; l’allocateur de production, TLSF, est venu d’abord ([décision 0002](../decisions/0002-tlsf-allocator.md)).
 
-| Domaine     | Quoi                                                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| texte       | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, mise en forme et chaînes gabarits |
-| tableaux    | `map`, `filter`, `reduce`, `find`, `some`, `every`, `sort`, `slice`, `concat`, `join`, `reverse`, itérateurs et intervalles      |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                |
-| nombres     | `min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`, constantes, nombres aléatoires avec graine                         |
-| temps       | durées et instants                                                                                                               |
-| données     | JSON, encodage de texte, octets                                                                                                  |
+| Domaine     | Quoi                                                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| texte       | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, changement de casse, mise en forme et chaînes gabarits                                                 |
+| tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), `sort`, `slice`, `concat`, `join`, `reverse`, itérateurs et intervalles |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                |
+| nombres     | ~~`min`, `max`, `clamp`~~ (fait), `pow`, `exp`, `log`, `atan2`, `hypot`, constantes, nombres aléatoires avec graine                                                              |
+| temps       | durées et instants                                                                                                                                                               |
+| données     | JSON, encodage de texte, octets                                                                                                                                                  |
 
 ```peras planned
 export fn words(text: String): i32 {

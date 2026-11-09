@@ -1,0 +1,15 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0236-signature-mismatch.peras
+---
+diagnostics:
+  error[E0236] check-interface-self { name: "make" }
+    primary 5:6-5:10: check-interface-self-label
+    cause: check-signature-why
+    fix: check-interface-self-fix { name: "make" }
+  error[E0236] check-signature { name: "scale", interface: "Scale" }
+    primary 13:6-13:11: check-signature-label { expected: "fn scale(inout self, p1: f64)" }
+    secondary 3:6-3:11: check-signature-declared { interface: "Scale" }
+    cause: check-signature-why
+    fix: check-signature-fix { expected: "fn scale(inout self, p1: f64)" }

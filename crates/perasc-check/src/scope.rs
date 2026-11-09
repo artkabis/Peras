@@ -80,6 +80,8 @@ impl Binding {
         matches!(self.kind, Kind::Local { .. } | Kind::Param { .. })
             && !inout
             && !self.name.starts_with('_')
+            // A method may not need its receiver, as an interface requires it.
+            && self.name != "self"
     }
 }
 

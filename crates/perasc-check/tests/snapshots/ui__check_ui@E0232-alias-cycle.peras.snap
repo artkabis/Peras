@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0232-alias-cycle.peras
+---
+diagnostics:
+  error[E0232] check-alias-cycle { name: "Tree" }
+    primary 2:6-2:10: check-alias-cycle-label
+    cause: check-alias-cycle-why
+    fix: check-alias-cycle-fix
+  error[E0232] check-alias-cycle { name: "Ping" }
+    primary 3:6-3:10: check-alias-cycle-label
+    cause: check-alias-cycle-why
+    fix: check-alias-cycle-fix

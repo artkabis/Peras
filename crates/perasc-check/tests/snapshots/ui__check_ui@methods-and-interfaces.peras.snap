@@ -1,0 +1,26 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/methods-and-interfaces.peras
+---
+diagnostics:
+  error[E0205] check-immutable { kind: "const", name: "c" }
+    primary 38:3-38:4: check-immutable-label
+    secondary 36:9-36:10: check-immutable-declared-label { kind: "const" }
+    cause: check-immutable-why
+    fix: check-immutable-fix-const { name: "c" }
+      36:3-36:8 -> "let"
+  error[E0215] check-unknown-member { type: "Circle", member: "aera" }
+    primary 40:15-40:19: check-unknown-member-label { type: "Circle" }
+    cause: check-unknown-member-why
+    fix: check-unknown-member-fix
+  error[E0227] check-constraint { ty: "i32", bound: "Shape" }
+    primary 42:19-42:25: check-constraint-label { ty: "i32", param: "T" }
+    secondary 27:10-27:11: check-constraint-declared { param: "T", bound: "Shape" }
+    cause: check-constraint-why
+    fix: check-constraint-fix { param: "T", bound: "Shape" }
+  error[E0215] check-unknown-member { type: "(i32, f64)", member: "2" }
+    primary 45:31-45:32: check-unknown-member-label { type: "(i32, f64)" }
+    cause: check-unknown-member-why
+    fix: check-did-you-mean { name: "0" }
+      45:31-45:32 -> "0"

@@ -100,24 +100,51 @@ pub struct DirectOutput {
 pub fn build_direct(
     source: &str,
     wasm_file: &str,
-    optimize: bool,
+    options: DirectOptions,
     localizer: &Localizer,
 ) -> Result<DirectOutput, ToolError> {
     let mut module = compile_ir(source)?;
-    if optimize {
+    if options.optimize {
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
-    Ok(emit_direct(&module, wasm_file, localizer))
+    Ok(emit_direct(
+        &module,
+        wasm_file,
+        options.allocator,
+        localizer,
+    ))
+}
+
+pub use perasc_runtime::Allocator;
+
+/// How the direct backend builds a module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectOptions {
+    /// Runs the IR optimizations.
+    pub optimize: bool,
+    /// The allocator a module that uses the heap is linked with: the debug
+    /// one by default, TLSF for production.
+    pub allocator: perasc_runtime::Allocator,
+}
+
+impl Default for DirectOptions {
+    fn default() -> Self {
+        Self {
+            optimize: true,
+            allocator: perasc_runtime::Allocator::Debug,
+        }
+    }
 }
 
 /// The direct backend's output for a verified module. A module that uses the
-/// heap is linked to the debug allocator, whose messages are in the language of
+/// heap is linked to `allocator`, whose messages are in the language of
 /// `localizer`.
 #[must_use]
 pub fn emit_direct(
     module: &perasc_ir::Module,
     wasm_file: &str,
+    allocator: perasc_runtime::Allocator,
     localizer: &Localizer,
 ) -> DirectOutput {
     let compiled = perasc_codegen_wasm::compile_module(module);
@@ -128,7 +155,7 @@ pub fn emit_direct(
             .text("length", "{length}"),
     );
     let runtime = perasc_codegen_wasm::Runtime {
-        allocator: perasc_runtime::DEBUG_ALLOCATOR,
+        allocator: allocator.module(),
         sites: &compiled.sites,
         faults: &faults,
         bounds: &bounds,

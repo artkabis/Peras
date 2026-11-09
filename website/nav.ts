@@ -20,6 +20,7 @@ export const sections: Section[] = [
       "guide/structures",
       "guide/enums",
       "guide/generics",
+      "guide/methods",
       "guide/collections",
       "guide/memory",
       "guide/diagnostics",
@@ -44,7 +45,13 @@ export const sections: Section[] = [
   },
   {
     title: { en: "Project", fr: "Projet" },
-    pages: ["spec", "kickoff-plan", "decisions/0001-webassembly-backend"],
+    pages: [
+      "spec",
+      "architecture",
+      "kickoff-plan",
+      "decisions/0001-webassembly-backend",
+      "decisions/0002-tlsf-allocator",
+    ],
   },
 ];
 

@@ -13,9 +13,17 @@ mod expr;
 use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
-    Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, Item, ItemKind, Local, Param,
-    Stmt, StmtKind, StructDecl, Type, TypeKind, TypeParam, Variant,
+    AliasDecl, Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, ImplDecl,
+    InterfaceDecl, Item, ItemKind, Local, MethodSig, Param, Stmt, StmtKind, StructDecl, Type,
+    TypeKind, TypeParam, Variant,
 };
+
+/// What comes before `fn`: attributes, `export`, `async`.
+struct FnHead {
+    attributes: Vec<Ident>,
+    exported: bool,
+    is_async: bool,
+}
 use crate::lexer::lex;
 use crate::token::{Token, TokenKind};
 
@@ -66,6 +74,8 @@ enum NameOf {
     Variant,
     TypeParameter,
     Constraint,
+    Type,
+    Interface,
 }
 
 impl NameOf {
@@ -81,6 +91,8 @@ impl NameOf {
             Self::Variant => "variant",
             Self::TypeParameter => "type-parameter",
             Self::Constraint => "constraint",
+            Self::Type => "type",
+            Self::Interface => "interface",
         }
     }
 }
@@ -410,7 +422,25 @@ impl<'src> Parser<'src> {
             };
         }
         let token = self.peek();
-        let kind = if token.kind == TokenKind::Ident {
+        let kind = if token.kind == TokenKind::LParen {
+            // `(A, B)`: a tuple type.
+            self.bump();
+            let mut items = vec![self.ty()];
+            while self.eat(TokenKind::Comma).is_some() && !self.at(TokenKind::RParen) {
+                items.push(self.ty());
+            }
+            self.expect_close(token, TokenKind::RParen, ")");
+            if items.len() == 1 {
+                // `(T)` is `T`.
+                let only = items.pop();
+                self.leave();
+                return only.unwrap_or(Type {
+                    kind: TypeKind::Error,
+                    span: token.span,
+                });
+            }
+            TypeKind::Tuple(items)
+        } else if token.kind == TokenKind::Ident {
             self.bump();
             let name = Ident {
                 symbol: self.ast.interner.intern(self.text(token)),
@@ -509,6 +539,27 @@ impl<'src> Parser<'src> {
                     span: self.since(start),
                 });
             }
+            TokenKind::Type => {
+                let decl = self.alias_decl(exported)?;
+                return Some(Item {
+                    kind: ItemKind::Alias(decl),
+                    span: self.since(start),
+                });
+            }
+            TokenKind::Interface => {
+                let decl = self.interface_decl(exported)?;
+                return Some(Item {
+                    kind: ItemKind::Interface(decl),
+                    span: self.since(start),
+                });
+            }
+            TokenKind::Impl => {
+                let decl = self.impl_decl()?;
+                return Some(Item {
+                    kind: ItemKind::Impl(decl),
+                    span: self.since(start),
+                });
+            }
             _ => {
                 let found = self.peek();
                 if found.kind != TokenKind::Error {
@@ -519,36 +570,181 @@ impl<'src> Parser<'src> {
                 return None;
             }
         }
+        let head = FnHead {
+            attributes,
+            exported,
+            is_async,
+        };
+        let decl = self.fn_decl(head, None)?;
+        Some(Item {
+            kind: ItemKind::Fn(decl),
+            span: self.since(start),
+        })
+    }
+
+    /// `fn name<T>(params): Type { body }`, from `fn`; in an `impl`, `owner`
+    /// is its type and its parameters, and the first parameter may be `self`.
+    fn fn_decl(&mut self, head: FnHead, owner: Option<(&Type, &[TypeParam])>) -> Option<FnDecl> {
         self.bump(); // `fn`, or `function` already reported.
         let name = self.ident(NameOf::Function)?;
-        let generics = self.generics();
+        let mut generics: Vec<TypeParam> = owner.map(|(_, g)| g.to_vec()).unwrap_or_default();
+        generics.extend(self.generics());
         let params_start = self.peek().span.start;
-        let params = self.params()?;
+        let params = self.params(owner.map(|(t, _)| t))?;
         let params_span = self.since(params_start);
         let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
         let outer_loops = std::mem::take(&mut self.loop_depth);
         let body = self.block();
         self.loop_depth = outer_loops;
         let body = body?;
-        Some(Item {
-            kind: ItemKind::Fn(FnDecl {
-                attributes,
-                exported,
-                is_async,
-                name,
-                generics,
-                params,
-                params_span,
-                ret,
-                body,
-            }),
-            span: self.since(start),
+        let impl_of = owner.and_then(|(t, _)| match &t.kind {
+            TypeKind::Named { name, .. } => Some(*name),
+            _ => None,
+        });
+        Some(FnDecl {
+            attributes: head.attributes,
+            exported: head.exported,
+            is_async: head.is_async,
+            name,
+            generics,
+            params,
+            params_span,
+            ret,
+            body,
+            impl_of,
         })
     }
 
-    fn params(&mut self) -> Option<Vec<Param>> {
+    /// `type Name<T> = Type;`
+    fn alias_decl(&mut self, exported: bool) -> Option<AliasDecl> {
+        self.bump(); // `type`
+        let name = self.ident(NameOf::Type)?;
+        let generics = self.generics();
+        self.expect(TokenKind::Eq, "=")?;
+        let ty = self.ty();
+        self.expect_semicolon();
+        Some(AliasDecl {
+            exported,
+            name,
+            generics,
+            ty,
+        })
+    }
+
+    /// `interface Name { fn method(self, …): Type; … }`
+    fn interface_decl(&mut self, exported: bool) -> Option<InterfaceDecl> {
+        self.bump(); // `interface`
+        let name = self.ident(NameOf::Interface)?;
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let receiver = Type {
+            kind: TypeKind::Named {
+                name: Ident {
+                    symbol: self.ast.interner.intern("Self"),
+                    span: name.span,
+                },
+                args: Vec::new(),
+            },
+            span: name.span,
+        };
+        let mut methods = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at_eof() {
+            self.recovering = false;
+            let start = self.peek().span.start;
+            if self.expect(TokenKind::Fn, "fn").is_none() {
+                self.recover_field();
+                continue;
+            }
+            let Some(method) = self.ident(NameOf::Function) else {
+                self.recover_field();
+                continue;
+            };
+            let Some(params) = self.params(Some(&receiver)) else {
+                self.recover_field();
+                continue;
+            };
+            let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
+            self.expect_semicolon();
+            methods.push(MethodSig {
+                name: method,
+                params,
+                ret,
+                span: self.since(start),
+            });
+        }
+        if self.at_eof() {
+            self.recovering = false;
+        }
+        self.expect_close(open, TokenKind::RBrace, "}");
+        Some(InterfaceDecl {
+            exported,
+            name,
+            methods,
+        })
+    }
+
+    /// `impl<T> Type { fn … }` or `impl Interface for Type { fn … }`.
+    fn impl_decl(&mut self) -> Option<ImplDecl> {
+        self.bump(); // `impl`
+        let generics = self.generics();
+        let first = self.ty();
+        let (interface, target) = if self.eat(TokenKind::For).is_some() {
+            let interface = match &first.kind {
+                TypeKind::Named { name, args } if args.is_empty() => Some(*name),
+                _ => None,
+            };
+            (interface, self.ty())
+        } else {
+            (None, first)
+        };
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let mut methods = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at_eof() {
+            self.recovering = false;
+            let mut attributes = Vec::new();
+            while self.eat(TokenKind::At).is_some() {
+                attributes.extend(self.ident(NameOf::Attribute));
+            }
+            if !self.at(TokenKind::Fn) {
+                let found = self.peek();
+                self.expect(TokenKind::Fn, "fn");
+                if self.pos < self.tokens.len() && self.peek() == found {
+                    self.bump();
+                }
+                continue;
+            }
+            let head = FnHead {
+                attributes,
+                exported: false,
+                is_async: false,
+            };
+            match self.fn_decl(head, Some((&target, &generics))) {
+                Some(method) => methods.push(method),
+                None => self.recover_item(false),
+            }
+        }
+        if self.at_eof() {
+            self.recovering = false;
+        }
+        self.expect_close(open, TokenKind::RBrace, "}");
+        Some(ImplDecl {
+            generics,
+            interface,
+            target,
+            methods,
+        })
+    }
+
+    fn params(&mut self, receiver: Option<&Type>) -> Option<Vec<Param>> {
         let open = self.expect(TokenKind::LParen, "(")?;
         let mut params = Vec::new();
+        if let Some(receiver) = receiver
+            && let Some(param) = self.self_param(receiver)
+        {
+            params.push(param);
+            if self.eat(TokenKind::Comma).is_none() && !self.at(TokenKind::RParen) {
+                self.expect(TokenKind::Comma, ",");
+            }
+        }
         while !self.at(TokenKind::RParen) && !self.at_eof() {
             match self.param() {
                 Some(param) => params.push(param),
@@ -565,6 +761,32 @@ impl<'src> Parser<'src> {
         }
         self.expect_close(open, TokenKind::RParen, ")")
             .then_some(params)
+    }
+
+    /// `self`, `inout self` or `sink self`, first in a method; its type is
+    /// the type of the `impl`.
+    fn self_param(&mut self, receiver: &Type) -> Option<Param> {
+        let (convention, at) = match self.peek().kind {
+            TokenKind::Inout => (Convention::Inout, 1),
+            TokenKind::Sink => (Convention::Sink, 1),
+            _ => (Convention::Let, 0),
+        };
+        let token = self.nth(at);
+        if token.kind != TokenKind::Ident || self.text(token) != "self" {
+            return None;
+        }
+        for _ in 0..=at {
+            self.bump();
+        }
+        Some(Param {
+            name: Ident {
+                symbol: self.ast.interner.intern("self"),
+                span: token.span,
+            },
+            convention,
+            ty: receiver.clone(),
+            is_self: true,
+        })
     }
 
     /// `name: [inout|sink] Type`
@@ -585,6 +807,7 @@ impl<'src> Parser<'src> {
             name,
             convention,
             ty,
+            is_self: false,
         })
     }
 

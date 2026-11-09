@@ -222,6 +222,43 @@ fn build_can_skip_the_ir_optimizations() {
 }
 
 #[test]
+fn build_links_the_allocator_asked_for() {
+    let source = "../../tests/ui/build/supported.peras";
+    let heap = std::env::temp_dir().join("perasc-heap-tlsf.peras");
+    let _ = std::fs::write(
+        &heap,
+        "export fn words(): i32 {\n  let names: Array<String> = [\"a\"];\n  names.push(\"b\");\n  return names.length;\n}\n",
+    );
+    let heap_path = heap.to_string_lossy().into_owned();
+    let mut loaders = Vec::new();
+    for allocator in ["debug", "tlsf"] {
+        let dir = out_dir(allocator);
+        let out_path = dir.to_string_lossy().into_owned();
+        let (code, _, err) = cli(&[
+            "build",
+            &heap_path,
+            "--allocator",
+            allocator,
+            "--out",
+            &out_path,
+        ]);
+        assert_eq!((code, err.as_str()), (SUCCESS, ""));
+        loaders.push(std::fs::read_to_string(dir.join("perasc-heap-tlsf.js")).unwrap_or_default());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    // The allocator is inlined in the loader: the two differ, TLSF is smaller.
+    assert!(
+        loaders.iter().all(|l| l.contains("const $allocator")),
+        "{loaders:?}"
+    );
+    assert_ne!(loaders.first(), loaders.get(1));
+    let (code, _, err) = cli(&["build", source, "--allocator", "malloc"]);
+    assert_eq!(code, USAGE_OR_IO);
+    assert!(err.contains("`--allocator`"), "{err}");
+    let _ = std::fs::remove_file(&heap);
+}
+
+#[test]
 fn build_reports_as_json_on_request() {
     let dir = out_dir("json");
     let out_path = dir.to_string_lossy().into_owned();

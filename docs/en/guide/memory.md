@@ -97,6 +97,8 @@ Releasing memory by hand is where C programs go wrong: releasing twice, using me
 
 3. **Tests on every path.** The test programs run in an interpreter of the compiler's intermediate code, and as WebAssembly on the debug allocator: both must give the expected results and leave no block alive.
 
+In production, `vite build` and `perasc build --allocator tlsf` link a TLSF allocator instead: every allocation and release in bounded time, freed blocks merged at once, 2.7 times faster on a program that allocates a lot ([decision 0002](../decisions/0002-tlsf-allocator.md)).
+
 The details, and the measurements, are in [decision 0001](../decisions/0001-webassembly-backend.md).
 
 Next: [reading diagnostics](diagnostics.md).

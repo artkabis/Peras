@@ -16,7 +16,7 @@
 use std::collections::{HashMap, HashSet};
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{ExprId, ItemKind, TypeParam};
+use perasc_syntax::ast::{ExprId, TypeParam};
 
 use crate::ty::{Bound, EnumId, FnId, StructId, Ty};
 use crate::{Analysis, Checker, errors, scope};
@@ -35,6 +35,8 @@ pub(crate) struct GenericParam {
     /// Its name, where it is declared.
     pub span: Span,
     pub bounds: Vec<Bound>,
+    /// The interfaces its types implement, by their index.
+    pub interfaces: Vec<usize>,
     /// Whether one of its constraints was unknown, already reported: it then
     /// meets every constraint, so one mistake gives one error.
     pub unknown: bool,
@@ -93,15 +95,23 @@ impl Checker<'_> {
                 continue;
             }
             let mut bounds = Vec::new();
+            let mut interfaces = Vec::new();
             let mut unknown = false;
             for bound in &param.bounds {
                 let text = self.name(bound.symbol);
                 if let Some(b) = Bound::named(text) {
                     bounds.push(b);
+                } else if let Some(i) = self.interface_named(text) {
+                    interfaces.push(i);
                 } else {
                     unknown = true;
-                    let suggestion = scope::suggest(text, Bound::ALL.iter().map(|b| b.name()))
-                        .map(str::to_owned);
+                    let names: Vec<String> = Bound::ALL
+                        .iter()
+                        .map(|b| b.name().to_owned())
+                        .chain(self.interfaces.iter().map(|i| i.name.clone()))
+                        .collect();
+                    let suggestion =
+                        scope::suggest(text, names.iter().map(String::as_str)).map(str::to_owned);
                     self.report(errors::unknown_constraint(
                         bound.span,
                         text,
@@ -117,6 +127,7 @@ impl Checker<'_> {
                 name,
                 span: param.name.span,
                 bounds,
+                interfaces,
                 unknown,
                 insert_at,
             });
@@ -380,7 +391,7 @@ impl Checker<'_> {
 
     /// Matches a type of a generic declaration against the type of a value,
     /// recording what each of its type parameters stands for.
-    fn bind(&self, pattern: &Ty, actual: &Ty, out: &mut [Option<Ty>]) {
+    pub(crate) fn bind(&self, pattern: &Ty, actual: &Ty, out: &mut [Option<Ty>]) {
         match (pattern, actual) {
             (_, Ty::Error) => {}
             (Ty::Param(i, _), _) => {
@@ -443,9 +454,18 @@ impl Checker<'_> {
             Some(types) => types.iter().cloned().map(Some).collect(),
             None => vec![None; use_.generics.len()],
         };
+        // A method's `self` is the value before the dot, already typed.
+        let params = if let Some((receiver, _)) = use_.receiver {
+            if let Some(own) = use_.params.first() {
+                self.bind(own, receiver, &mut bound);
+            }
+            use_.params.get(1..).unwrap_or_default()
+        } else {
+            use_.params
+        };
         let mut actual: Vec<Option<Ty>> = Vec::with_capacity(args.len());
         for (i, &arg) in args.iter().enumerate() {
-            match use_.params.get(i) {
+            match params.get(i) {
                 Some(param) if self.mentions_params(param) => {
                     // A parameter already known guides the argument, as in
                     // `push(xs, 1)` with `xs: Array<i64>`.
@@ -488,92 +508,120 @@ impl Checker<'_> {
                 Ty::Error
             };
             if let Some(param) = &param {
-                for &b in &param.bounds {
-                    if !self.satisfies(&ty, b) {
-                        let at = self.argument_of(use_, args, i);
-                        self.report(errors::constraint_not_met(
-                            at,
-                            &ty,
-                            &param.name,
-                            b.name(),
-                            param.span,
-                        ));
-                    }
-                }
+                let at = self.argument_of(use_.span, params, args, i);
+                self.check_param(&ty, param, at);
             }
             types.push(ty);
         }
         // Each argument against its parameter, now known: literals take
         // their type, `None` and `[]` what they hold.
-        for ((&arg, param), given) in args.iter().zip(use_.params).zip(actual) {
+        for ((&arg, param), given) in args.iter().zip(params).zip(actual) {
             if let Some(given) = given {
                 let want = self.subst(param, &types);
                 self.coerce(arg, &given, &want);
+            }
+        }
+        if let (Some((receiver, at)), Some(own)) = (use_.receiver, use_.params.first()) {
+            let want = self.subst(own, &types);
+            if want != *receiver && *receiver != Ty::Error && want != Ty::Error {
+                self.report(errors::mismatch(at, &want, receiver, None));
             }
         }
         let ret = self.subst(use_.ret, &types);
         (types, ret)
     }
 
+    /// `E0227` for each constraint of `param` that `ty` does not meet.
+    pub(crate) fn check_param(&mut self, ty: &Ty, param: &GenericParam, at: Span) {
+        for &b in &param.bounds {
+            if !self.satisfies(ty, b) {
+                self.report(errors::constraint_not_met(
+                    at,
+                    ty,
+                    &param.name,
+                    b.name(),
+                    param.span,
+                ));
+            }
+        }
+        for &i in &param.interfaces {
+            if !self.implements(ty, i) {
+                let name = self
+                    .interfaces
+                    .get(i)
+                    .map(|d| d.name.clone())
+                    .unwrap_or_default();
+                self.report(errors::constraint_not_met(
+                    at,
+                    ty,
+                    &param.name,
+                    &name,
+                    param.span,
+                ));
+            }
+        }
+    }
+
     /// Where to report a type argument that misses a constraint: the first
     /// argument whose parameter mentions it, or the whole use.
-    fn argument_of(&self, use_: &GenericUse<'_>, args: &[ExprId], index: usize) -> Span {
+    fn argument_of(&self, span: Span, params: &[Ty], args: &[ExprId], index: usize) -> Span {
         let index = u32::try_from(index).unwrap_or(u32::MAX);
         args.iter()
-            .zip(use_.params)
+            .zip(params)
             .find(|(_, p)| mentions(p, index))
-            .map_or(use_.span, |(&a, _)| self.ast.expr(a).span)
+            .map_or(span, |(&a, _)| self.ast.expr(a).span)
     }
 
     /// Every instance of a generic function the module needs, from the
-    /// functions that are not generic; and every structure and enumeration
-    /// those instances use.
-    pub(crate) fn monomorphize(&mut self) -> Vec<(FnId, Vec<Ty>)> {
+    /// functions that are not generic; every structure and enumeration
+    /// those instances use; and the method each interface call of an
+    /// instance reaches.
+    pub(crate) fn monomorphize(&mut self) -> (Vec<(FnId, Vec<Ty>)>, DynTargets) {
         // The function each expression and written type belongs to.
-        let mut spans: Vec<Span> = Vec::new();
-        for item in &self.ast.items {
-            if let ItemKind::Fn(_) = item.kind {
-                spans.push(item.span);
-            }
-        }
+        let ast = self.ast;
+        let spans: Vec<Span> = ast
+            .functions()
+            .iter()
+            .map(|f| Span::new(f.name.span.start, f.body.span.end))
+            .collect();
         let owner = |span: Span| -> Option<usize> {
             let i = spans.partition_point(|s| s.start <= span.start);
             let i = i.checked_sub(1)?;
             spans.get(i).filter(|s| span.end <= s.end).map(|_| i)
         };
-        let mut exprs: Vec<Vec<(ExprId, Ty)>> = vec![Vec::new(); spans.len()];
+        let mut exprs: Vec<Vec<Ty>> = vec![Vec::new(); spans.len()];
         for (id, ty) in &self.expr_types {
-            if let Some(f) = owner(self.ast.expr(*id).span) {
-                exprs
-                    .get_mut(f)
-                    .into_iter()
-                    .for_each(|v| v.push((*id, ty.clone())));
+            if let Some(list) = owner(ast.expr(*id).span).and_then(|f| exprs.get_mut(f)) {
+                list.push(ty.clone());
             }
         }
-        let mut written: Vec<Vec<Ty>> = vec![Vec::new(); spans.len()];
         for (&(start, end), ty) in &self.written {
-            if let Some(f) = owner(Span::new(start, end)) {
-                written
-                    .get_mut(f)
-                    .into_iter()
-                    .for_each(|v| v.push(ty.clone()));
+            if let Some(list) = owner(Span::new(start, end)).and_then(|f| exprs.get_mut(f)) {
+                list.push(ty.clone());
             }
         }
-        let mut calls: Vec<Vec<(ExprId, FnId, Vec<Ty>)>> = vec![Vec::new(); spans.len()];
+        let mut calls: Vec<Vec<(ExprId, Callee)>> = vec![Vec::new(); spans.len()];
         for (id, (callee, args)) in &self.calls {
-            if let Some(f) = owner(self.ast.expr(*id).span) {
-                calls
-                    .get_mut(f)
-                    .into_iter()
-                    .for_each(|v| v.push((*id, *callee, args.clone())));
+            if let Some(list) = owner(ast.expr(*id).span).and_then(|f| calls.get_mut(f)) {
+                list.push((*id, Callee::Fn(*callee, args.clone())));
+            }
+        }
+        for (id, target) in &self.method_calls {
+            if let crate::methods::Target::Interface {
+                method, receiver, ..
+            } = target
+                && let Some(list) = owner(ast.expr(*id).span).and_then(|f| calls.get_mut(f))
+            {
+                list.push((*id, Callee::Interface(method.clone(), receiver.clone())));
             }
         }
         // Sorted, so that instances come in the order of the source.
         for list in &mut calls {
-            list.sort_by_key(|(id, _, _)| self.ast.expr(*id).span.start);
+            list.sort_by_key(|(id, _)| ast.expr(*id).span.start);
         }
 
         let mut instances: Vec<(FnId, Vec<Ty>)> = Vec::new();
+        let mut targets: DynTargets = HashMap::new();
         let mut seen: HashSet<(FnId, Vec<Ty>)> = HashSet::new();
         let mut queue: Vec<(usize, Vec<Ty>)> = (0..spans.len())
             .filter(|&f| self.fns.get(f).is_some_and(|s| s.generics.is_empty()))
@@ -582,21 +630,38 @@ impl Checker<'_> {
         queue.reverse();
         while let Some((f, args)) = queue.pop() {
             if !args.is_empty() {
-                // Its expressions' types, so that every instance of a
-                // structure or an enumeration they need exists.
-                for (_, ty) in exprs.get(f).cloned().unwrap_or_default() {
-                    self.subst(&ty, &args);
+                // Its types, so that every instance of a structure or an
+                // enumeration they need exists.
+                let mut types = exprs.get(f).cloned().unwrap_or_default();
+                if let Some(sig) = self.fns.get(f) {
+                    types.extend(sig.params.iter().cloned());
+                    types.push(sig.ret.clone());
                 }
-                for ty in written.get(f).cloned().unwrap_or_default() {
+                for ty in types {
                     self.subst(&ty, &args);
                 }
             }
-            for (call, callee, cargs) in calls.get(f).cloned().unwrap_or_default() {
-                let cargs: Vec<Ty> = cargs.iter().map(|t| self.subst(t, &args)).collect();
+            for (call, callee) in calls.get(f).cloned().unwrap_or_default() {
+                let (callee, cargs) = match callee {
+                    Callee::Fn(callee, cargs) => {
+                        (callee, cargs.iter().map(|t| self.subst(t, &args)).collect())
+                    }
+                    Callee::Interface(method, receiver) => {
+                        let receiver = self.subst(&receiver, &args);
+                        let Some(target) = self.method_for(&receiver, &method) else {
+                            continue;
+                        };
+                        targets.insert((call, args.clone()), target.clone());
+                        target
+                    }
+                };
+                if cargs.is_empty() {
+                    continue;
+                }
                 if cargs.iter().any(|t| self.depth(t) > MAX_DEPTH)
                     || instances.len() >= MAX_INSTANCES
                 {
-                    let span = self.ast.expr(call).span;
+                    let span = ast.expr(call).span;
                     let name = self
                         .fns
                         .get(callee.0)
@@ -615,9 +680,35 @@ impl Checker<'_> {
                 }
             }
         }
-        instances
+        (instances, targets)
+    }
+
+    /// The method of a concrete type an interface's method reaches, with the
+    /// type arguments of its `impl`.
+    fn method_for(&mut self, receiver: &Ty, method: &str) -> Option<(FnId, Vec<Ty>)> {
+        let key = self.type_key(receiver)?;
+        let &id = self.methods.get(&(key, method.to_owned()))?;
+        let sig = self.fns.get(id.0)?;
+        let mut bound: Vec<Option<Ty>> = vec![None; sig.generics.len()];
+        if let Some(own) = sig.params.first() {
+            self.bind(own, receiver, &mut bound);
+        }
+        let args = bound.into_iter().map(|t| t.unwrap_or(Ty::Error)).collect();
+        Some((id, args))
     }
 }
+
+/// What a call inside a function reaches, to collect instances.
+#[derive(Clone)]
+enum Callee {
+    /// A generic function, with its type arguments.
+    Fn(FnId, Vec<Ty>),
+    /// A method of an interface, by name, on a value of this type.
+    Interface(String, Ty),
+}
+
+/// See [`Analysis::dyn_targets`].
+pub(crate) type DynTargets = HashMap<(ExprId, Vec<Ty>), (FnId, Vec<Ty>)>;
 
 /// A use of a generic declaration: a call, a constructor, a variant.
 pub(crate) struct GenericUse<'u> {
@@ -630,6 +721,9 @@ pub(crate) struct GenericUse<'u> {
     pub params: &'u [Ty],
     /// The type of the use, in its own terms.
     pub ret: &'u Ty,
+    /// For a method called on a value: its type, and where it is. It is the
+    /// first of `params`.
+    pub receiver: Option<(&'u Ty, Span)>,
 }
 
 /// Whether a type mentions the type parameter of this index, directly or in
@@ -648,6 +742,10 @@ fn mentions(ty: &Ty, index: u32) -> bool {
 /// `Pair<i32, String>`.
 fn instance_name(template: &str, args: &[Ty]) -> String {
     let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+    // A tuple: `(i32, String)`.
+    if template == "()" {
+        return format!("({})", args.join(", "));
+    }
     format!("{template}<{}>", args.join(", "))
 }
 

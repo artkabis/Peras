@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0235-impl-mismatch.peras
+---
+diagnostics:
+  error[E0235] check-impl-missing { interface: "Shape", ty: "Square", missing: "`perimeter`" }
+    primary 11:16-11:22: check-impl-missing-label { missing: "`perimeter`" }
+    cause: check-impl-mismatch-why
+    fix: check-impl-missing-fix { interface: "Shape" }
+  error[E0235] check-impl-extra { name: "diagonal", interface: "Shape" }
+    primary 16:6-16:14: check-impl-extra-label { interface: "Shape" }
+    cause: check-impl-mismatch-why
+    fix: check-impl-extra-fix { name: "diagonal" }
+  error[E0226] check-unknown-constraint { name: "Drawable" }
+    primary 22:6-22:14: check-unknown-constraint-label
+    cause: check-unknown-constraint-why
+    fix: check-unknown-constraint-fix

@@ -47,12 +47,31 @@ struct Options {
     json: bool,
     color: Color,
     backend: build::Backend,
-    optimize: bool,
+    direct: perasc_driver::DirectOptions,
     out: Option<String>,
 }
 
 /// A command-line mistake, as a message to show.
 type UsageError = Message;
+
+/// The values of `--backend`.
+const BACKENDS: [(&str, build::Backend); 2] = [
+    ("direct", build::Backend::Direct),
+    ("rust", build::Backend::Rust),
+];
+
+/// The values of `--allocator`.
+const ALLOCATORS: [(&str, perasc_driver::Allocator); 2] = [
+    ("debug", perasc_driver::Allocator::Debug),
+    ("tlsf", perasc_driver::Allocator::Tlsf),
+];
+
+/// The values of `--color`.
+const COLORS: [(&str, Color); 3] = [
+    ("auto", Color::Auto),
+    ("always", Color::Always),
+    ("never", Color::Never),
+];
 
 /// The value of an option among fixed choices.
 fn pick<T: Copy>(
@@ -78,7 +97,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         json: false,
         color: Color::Auto,
         backend: build::Backend::Direct,
-        optimize: true,
+        direct: perasc_driver::DirectOptions::default(),
         out: None,
     };
     let mut positional = Vec::new();
@@ -111,23 +130,13 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
                         .text("value", tag.clone())
                 })?);
             }
-            "--backend" => {
-                let choices = [
-                    ("direct", build::Backend::Direct),
-                    ("rust", build::Backend::Rust),
-                ];
-                options.backend = pick("--backend", value("--backend")?, &choices)?;
-            }
+            "--backend" => options.backend = pick("--backend", value("--backend")?, &BACKENDS)?,
             "--out" => options.out = Some(value("--out")?),
-            "--no-optimize" => options.optimize = false,
-            "--color" => {
-                let choices = [
-                    ("auto", Color::Auto),
-                    ("always", Color::Always),
-                    ("never", Color::Never),
-                ];
-                options.color = pick("--color", value("--color")?, &choices)?;
+            "--no-optimize" => options.direct.optimize = false,
+            "--allocator" => {
+                options.direct.allocator = pick("--allocator", value("--allocator")?, &ALLOCATORS)?;
             }
+            "--color" => options.color = pick("--color", value("--color")?, &COLORS)?,
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(Message::new("cli-unknown-argument").text("argument", other));
             }
@@ -222,7 +231,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
             build::build(
                 file,
                 options.backend,
-                options.optimize,
+                options.direct,
                 &out_dir,
                 &localizer,
                 build::Style {

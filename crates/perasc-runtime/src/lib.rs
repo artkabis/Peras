@@ -1,7 +1,9 @@
 //! The WebAssembly runtime of owned Peras modules.
 //!
-//! For now, the **debug allocator** that decision 0001 requires before the
-//! direct backend compiles anything that allocates. It is a standalone module,
+//! Two allocators, with the same exports: the **debug allocator** that
+//! decision 0001 requires before the direct backend compiles anything that
+//! allocates, and the **TLSF allocator** for production
+//! ([`TLSF_ALLOCATOR`]). The debug allocator is a standalone module,
 //! [`DEBUG_ALLOCATOR`], written in `runtime/alloc_debug.wat` and assembled when
 //! this crate builds. It exports its `memory` and:
 //!
@@ -21,6 +23,35 @@
 
 /// The debug allocator, as a WebAssembly module.
 pub const DEBUG_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug.wasm"));
+
+/// The production allocator, TLSF, as a WebAssembly module: the same exports
+/// as [`DEBUG_ALLOCATOR`], every operation in bounded time. It catches only
+/// what costs nothing, an invalid or double release; it keeps no site per
+/// block, so `next_live` returns 0, and `check_leaks` reports the number of
+/// blocks alive, without their site. It also exports `heap_end`, the first
+/// byte its blocks do not use.
+pub const TLSF_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf.wasm"));
+
+/// Which allocator a module is linked with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Allocator {
+    /// Every memory bug caught, for development.
+    #[default]
+    Debug,
+    /// TLSF: bounded time, for production.
+    Tlsf,
+}
+
+impl Allocator {
+    /// The allocator module.
+    #[must_use]
+    pub const fn module(self) -> &'static [u8] {
+        match self {
+            Self::Debug => DEBUG_ALLOCATOR,
+            Self::Tlsf => TLSF_ALLOCATOR,
+        }
+    }
+}
 
 /// Added to the element size of a buffer whose elements are buffers it owns:
 /// releasing or copying it releases or copies them too.

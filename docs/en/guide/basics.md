@@ -26,6 +26,22 @@ export fn twice(a: i32): i32 {
 }
 ```
 
+## Module constants
+
+A `const` outside any function is a module constant. Its value is known when compiling: literals, other constants, operators, arrays, tuples, structures, options and variants ([E0233](../errors/E0233.md)). It is written into the code wherever it is used, so a constant array or string is a new value at each use. <span class="status compiled">compiled</span>
+
+```peras build
+const SIDE: i32 = 4;
+const AREA: i32 = SIDE * SIDE;
+const LABEL: String = "square";
+
+export fn describe(): i32 {
+  return AREA + LABEL.length;
+}
+```
+
+A module `let`, a variable shared by all functions, is checked but not compiled yet. <span class="status checked">checked</span>
+
 ## Numbers
 
 | Type                      | Values                 |

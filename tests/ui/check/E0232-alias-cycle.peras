@@ -1,0 +1,13 @@
+// E0232: a type alias that contains itself, directly or through another.
+type Tree = Array<Tree>;
+type Ping = Option<Pong>;
+type Pong = Array<Ping>;
+
+// Allowed: aliases of aliases, and generic aliases.
+type Meters = f64;
+type Distance = Meters;
+type Grid<T> = Array<Array<T>>;
+
+export fn far(d: Distance, g: Grid<i32>): f64 {
+  return d + g.length.toF64();
+}

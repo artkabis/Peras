@@ -53,7 +53,12 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "fn f(a: Array<String>, b: Array<String>): bool { return a == b; }",
             "deep-equality",
         ),
-        ("const LIMIT = 3;", "global"),
+        // A module constant is compiled; a module variable is not yet.
+        ("let counter = 3;", "global"),
+        (
+            "struct Tree {\n  children: Array<Tree>;\n}\nexport fn f(t: Tree): i32 {\n  return t.children.length;\n}\n",
+            "recursive-type",
+        ),
         (
             "export fn f(x: inout i32): void { x = x + 1; }",
             "inout-export",

@@ -19,9 +19,9 @@ What lets a program say precisely what its data can be.
 
 - ~~**Enumerations with data, and `match`**, checked for exhaustiveness~~: done, see [enumerations and match](../guide/enums.md).
 - ~~**`Result<T, E>` and `?`**, for errors that are values~~: done, see [results](../guide/enums.md#results-errors-as-values); parsing functions such as `parse` come with the standard library.
-- ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); the constraints are built in until interfaces come.
-- **Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time.
-- Tuples, type aliases, module-level constants compiled.
+- ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); with built-in constraints, and interfaces for your own.
+- ~~**Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time~~: done, see [methods and interfaces](../guide/methods.md).
+- ~~Tuples, type aliases, module-level constants compiled~~: done, see [types](types.md#tuples) and [module constants](../guide/basics.md#module-constants).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {
@@ -35,16 +35,16 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 ## Phase 3: a standard library
 
-The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values.
+The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values. In progress: the array methods that take an arrow function, compiled in place as loops, and `min`, `max`, `clamp` are [done](methods.md); the production allocator, TLSF, came first ([decision 0002](../decisions/0002-tlsf-allocator.md)).
 
-| Area        | What                                                                                                                       |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
-| text        | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, formatting and template strings |
-| arrays      | `map`, `filter`, `reduce`, `find`, `some`, `every`, `sort`, `slice`, `concat`, `join`, `reverse`, iterators and ranges     |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                          |
-| numbers     | `min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                             |
-| time        | durations and instants                                                                                                     |
-| data        | JSON, text encoding, bytes                                                                                                 |
+| Area        | What                                                                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text        | `slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, formatting and template strings                                           |
+| arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), `sort`, `slice`, `concat`, `join`, `reverse`, iterators and ranges |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                    |
+| numbers     | ~~`min`, `max`, `clamp`~~ (done), `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                                                            |
+| time        | durations and instants                                                                                                                                               |
+| data        | JSON, text encoding, bytes                                                                                                                                           |
 
 ```peras planned
 export fn words(text: String): i32 {

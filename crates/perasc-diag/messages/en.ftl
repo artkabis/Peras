@@ -16,6 +16,7 @@ cli-usage =
       --backend <name>   code generator of `build`: direct (default, no other tool) or rust (cargo, wasm-bindgen)
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
+      --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help
@@ -169,6 +170,8 @@ parse-expected-name = expected { $what ->
     [variant] a variant name
     [type-parameter] a type parameter name
     [constraint] a constraint name
+    [type] a type name
+    [interface] an interface name
    *[other] a name
 }, found { $eof ->
     [1] the end of the file
@@ -381,7 +384,7 @@ check-alias-label = reaches the same variable again
 check-alias-other-label = first reached here
 check-alias-why = An `inout` parameter changes its variable in place. Another argument reaching the same variable would see it change during the call, so Peras refuses it.
 check-alias-fix = pass two different variables
-check-alias-loop = `{ $name }` changes while `for…of` goes through it
+check-alias-loop = `{ $name }` changes while a loop goes through it
 check-alias-loop-label = changed here
 check-alias-loop-iterated-label = the loop goes through it
 check-alias-loop-fix = go through a copy, `{ $name }.copy()`, to change the original
@@ -391,7 +394,7 @@ check-move-out = cannot move { $what ->
     [parameter] the parameter `{ $name }`, which only borrows its value
     [field] a field out of its structure
     [element] an element out of its array
-    [binding] a value out of the `match` that only lends it
+    [binding] a value out of the `match` or the arrow function that only lends it
    *[other] a module-level value
 }
 check-move-out-label = moved here
@@ -574,6 +577,59 @@ check-endless-instances-label = instantiated with ever larger types
 check-endless-instances-why = Each set of type arguments gives a copy of the generic code. Here a copy needs another with a larger type, as when `f<T>` calls `f<Array<T>>`, or a structure contains itself with a larger type argument: there is no end.
 check-endless-instances-fix = use the same type parameters in the recursive call or field
 
+# E0232
+check-alias-cycle = type alias `{ $name }` contains itself
+check-alias-cycle-label = refers to itself, directly or through other aliases
+check-alias-cycle-why = An alias is another name for a type: replacing it by what it names must end. A type that contains itself needs a structure or an enumeration, whose size the compiler can compute.
+check-alias-cycle-fix = make it a structure or an enumeration
+
+# E0233
+check-not-constant = the value of a module constant must be known when compiling
+check-not-constant-label = computed when the program runs
+check-not-constant-why = A module `const` is written into the code wherever it is used: its value is made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
+check-not-constant-fix = compute it in a function, or write its value
+
+# E0234
+check-no-methods = `{ $ty }` cannot have methods here
+check-no-methods-label = not a structure or an enumeration of this module
+check-no-methods-why = An `impl` gives methods to a structure or an enumeration declared in the module. Other types have the built-in methods of the method reference.
+check-no-methods-fix = wrap the value in a structure of the module, and give it the methods
+
+# E0235
+check-impl-missing = the implementation of `{ $interface }` for `{ $ty }` lacks { $missing }
+check-impl-missing-label = missing { $missing }
+check-impl-extra = `{ $name }` is not a method of `{ $interface }`
+check-impl-extra-label = `{ $interface }` declares no such method
+check-impl-mismatch = an implementation that does not match its interface
+check-impl-mismatch-why = An `impl Interface for Type` provides exactly the methods the interface declares: code that relies on the interface calls each of them, and nothing else belongs there.
+check-impl-missing-fix = add the missing methods, with the signatures `{ $interface }` declares
+check-impl-extra-fix = move `{ $name }` into an `impl` of the type itself
+
+# E0236
+check-signature = `{ $name }` does not match `{ $interface }`
+check-signature-label = expected `{ $expected }`
+check-signature-declared = declared in `{ $interface }` here
+check-interface-self = interface method `{ $name }` does not take `self`
+check-interface-self-label = `self` must come first
+check-signature-why = A method of an interface is called on a value of any type that implements it: it takes `self` first, and each implementation has exactly its parameters, their conventions and its return type.
+check-signature-fix = write it `{ $expected }`
+check-interface-self-fix = write `fn { $name }(self, …)`
+
+# E0237
+check-interface-as-type = interface `{ $name }` used as a type
+check-interface-as-type-label = an interface, not a type
+check-interface-as-type-why = An interface is a constraint: it says what a type can do, not which type a value has. Code that works for every type implementing it is generic, and compiled once per type, with no cost at run time.
+check-interface-as-type-fix = use a type parameter: `fn f<T: { $name }>(x: T)`
+
+# E0238
+check-arrow = an arrow function cannot be a value yet
+check-arrow-label = not the argument of a method that takes a function
+check-arrow-expected = this method takes an arrow function
+check-arrow-expected-label = expected `(x) => …`
+check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
+check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
+check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
@@ -597,6 +653,8 @@ gen-unsupported = code generation does not support { $feature ->
     [option] `Option` values
     [method] this method
     [integer-type] integer types other than `i32` and `i64`
+    [reduce-heap] `reduce` with an accumulator holding a string or an array
+    [recursive-type] types that contain themselves
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet

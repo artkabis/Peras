@@ -22,10 +22,10 @@ use std::collections::{BTreeMap, HashSet};
 
 use perasc_diag::Span;
 use perasc_syntax::ast::{
-    ArmBody, AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, ItemKind, Stmt, StmtKind,
-    UnaryOp,
+    ArmBody, AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, Stmt, StmtKind, UnaryOp,
 };
 
+use crate::methods::Target;
 use crate::scope::Kind;
 use crate::ty::Ty;
 use crate::{Checker, errors};
@@ -101,12 +101,9 @@ impl<'c, 'a> Owner<'c, 'a> {
     pub(crate) fn new(checker: &'c mut Checker<'a>) -> Self {
         let conventions = checker
             .ast
-            .items
+            .functions()
             .iter()
-            .filter_map(|item| match &item.kind {
-                ItemKind::Fn(decl) => Some(decl.params.iter().map(|p| p.convention).collect()),
-                _ => None,
-            })
+            .map(|decl| decl.params.iter().map(|p| p.convention).collect())
             .collect();
         Self {
             checker,
@@ -121,19 +118,15 @@ impl<'c, 'a> Owner<'c, 'a> {
 
     pub(crate) fn module(&mut self) {
         let ast = self.checker.ast;
-        let mut index = 0;
-        for item in &ast.items {
-            if let ItemKind::Fn(decl) = &item.kind {
-                // Its type parameters: a value of one moves unless it is `Copy`.
-                self.checker.generics = self
-                    .checker
-                    .fns
-                    .get(index)
-                    .map(|f| f.generics.clone())
-                    .unwrap_or_default();
-                self.function(decl);
-                index += 1;
-            }
+        for (index, decl) in ast.functions().into_iter().enumerate() {
+            // Its type parameters: a value of one moves unless it is `Copy`.
+            self.checker.generics = self
+                .checker
+                .fns
+                .get(index)
+                .map(|f| f.generics.clone())
+                .unwrap_or_default();
+            self.function(decl);
         }
         self.checker.generics.clear();
     }
@@ -448,12 +441,18 @@ impl<'c, 'a> Owner<'c, 'a> {
                     self.expr(*rhs, Use::Read, path);
                 }
             }
-            ExprKind::Array(items) => {
+            // An arrow function is the body of a loop: run twice, so that a
+            // value it moves is seen used again on the next turn.
+            ExprKind::Lambda { body, .. } => {
+                self.expr(*body, mode, path);
+                self.expr(*body, mode, path);
+            }
+            ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 for &item in items {
                     self.expr(item, Use::Consume, path);
                 }
             }
-            ExprKind::Call { callee, args, .. } => self.call(*callee, args, span, path),
+            ExprKind::Call { callee, args, .. } => self.call(id, *callee, args, span, path),
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::String(_)
@@ -504,6 +503,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 let sink_at = (convention == Convention::Let).then_some(type_start);
                 self.report(errors::move_borrowed_parameter(span, &name, sink_at));
             }
+            // A constant is written where it is used: each use is a new value.
+            Some(Kind::Global { mutable: false, .. }) => {}
             Some(Kind::Global { .. }) => self.cannot_move(id, span, "global"),
             // A name a pattern gives only lends a part of the value matched.
             Some(Kind::Pattern) => self.cannot_move(id, span, "binding"),
@@ -524,8 +525,39 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
-    fn call(&mut self, callee: ExprId, args: &[ExprId], span: Span, path: &mut Path) {
+    fn call(&mut self, id: ExprId, callee: ExprId, args: &[ExprId], span: Span, path: &mut Path) {
         let callee_expr = self.checker.ast.expr(callee);
+        if let ExprKind::Field { base, name } = &callee_expr.kind
+            && let Some(target) = self.checker.method_calls.get(&id).cloned()
+        {
+            // A method: `self` is an argument, written before the dot.
+            let (conventions, receiver) = match target {
+                Target::Fn { id, receiver } => (
+                    self.conventions.get(id.0).cloned().unwrap_or_default(),
+                    receiver,
+                ),
+                Target::Interface {
+                    interface, method, ..
+                } => {
+                    let conventions = self
+                        .checker
+                        .interfaces
+                        .get(interface)
+                        .and_then(|i| i.methods.iter().find(|m| m.name == method))
+                        .map(|m| m.conventions.clone())
+                        .unwrap_or_default();
+                    (conventions, true)
+                }
+            };
+            let mut all = Vec::with_capacity(args.len() + 1);
+            if receiver {
+                all.push(*base);
+            }
+            all.extend_from_slice(args);
+            let text = self.checker.name(name.symbol).to_owned();
+            self.arguments(&text, &all, &conventions, span, path, receiver);
+            return;
+        }
         match &callee_expr.kind {
             ExprKind::Name(symbol) => {
                 let kind = self
@@ -538,7 +570,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                     Some(Kind::Fn(id)) => {
                         let conventions = self.conventions.get(id.0).cloned().unwrap_or_default();
                         let name = self.checker.name(*symbol).to_owned();
-                        self.arguments(&name, args, &conventions, span, path);
+                        self.arguments(&name, args, &conventions, span, path, false);
                     }
                     // A constructor and `Some` take their arguments.
                     _ => {
@@ -557,10 +589,22 @@ impl<'c, 'a> Owner<'c, 'a> {
                     let span = self.checker.ast.expr(*base).span;
                     self.not_iterated(root, span);
                 }
-                let consume = method == "push";
+                let consume = matches!(method, "push" | "map" | "reduce");
+                // The array cannot change while a function goes through it.
+                let lambdas = args
+                    .iter()
+                    .any(|&a| matches!(self.checker.ast.expr(a).kind, ExprKind::Lambda { .. }));
+                let root = self.root(*base).filter(|_| lambdas);
+                if let Some(root) = root {
+                    let span = self.checker.ast.expr(*base).span;
+                    self.iterated.push((root, span));
+                }
                 for &arg in args {
                     let mode = if consume { Use::Consume } else { Use::Read };
                     self.expr(arg, mode, path);
+                }
+                if root.is_some() {
+                    self.iterated.pop();
                 }
             }
             _ => {
@@ -579,6 +623,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         conventions: &[Convention],
         call: Span,
         path: &mut Path,
+        receiver: bool,
     ) {
         // The variable each argument reaches, and whether it is passed `inout`.
         let mut roots: Vec<(usize, Vec<String>, Span, bool)> = Vec::new();
@@ -586,6 +631,12 @@ impl<'c, 'a> Owner<'c, 'a> {
             let convention = conventions.get(i).copied().unwrap_or(Convention::Let);
             let (inner, marked) = self.unmark(arg);
             let span = self.checker.ast.expr(arg).span;
+            // The receiver of a method is never marked: `p.move(1.0)`.
+            let marked = if receiver && i == 0 {
+                convention == Convention::Inout
+            } else {
+                marked
+            };
             match (convention, marked) {
                 (Convention::Inout, false) => self.report(errors::inout_marker(span, true)),
                 (Convention::Let | Convention::Sink, true) => {

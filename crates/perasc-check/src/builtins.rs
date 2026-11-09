@@ -118,7 +118,7 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
     match &me {
         Ty::Int(_) | Ty::Float(_) => {
             names.extend(CONVERSIONS.iter().map(|(n, _)| *n));
-            names.push("abs");
+            names.extend(["abs", "min", "max", "clamp"]);
             if me.is_float() {
                 names.extend(FLOAT_METHODS);
             } else {
@@ -126,7 +126,10 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
                 names.extend(CHECKED);
             }
         }
-        Ty::Array(_) => names.extend(["length", "push", "pop", "copy"]),
+        Ty::Array(_) => {
+            names.extend(["length", "push", "pop", "copy"]);
+            names.extend(crate::stdlib::FUNCTION_METHODS);
+        }
         Ty::String => names.extend(["length", "copy"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),

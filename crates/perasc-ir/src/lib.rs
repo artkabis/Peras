@@ -790,9 +790,13 @@ fn expr(e: &Expr) -> String {
 #[cfg(test)]
 mod array_tests;
 #[cfg(test)]
+mod functional_tests;
+#[cfg(test)]
 mod generic_tests;
 #[cfg(test)]
 mod match_tests;
+#[cfg(test)]
+mod method_tests;
 #[cfg(test)]
 mod opt_tests;
 #[cfg(test)]

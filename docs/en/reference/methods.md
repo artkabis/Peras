@@ -22,6 +22,8 @@ From a float, conversions round toward zero and saturate; between integers, they
 | `abs()`                                              | every number | the absolute value; wraps for the smallest integer | <span class="status compiled">compiled</span> |
 | `wrappingAdd(b)`, `wrappingSub(b)`, `wrappingMul(b)` | integers     | the result wrapped around, as `+`, `-`, `*`        | <span class="status compiled">compiled</span> |
 | `checkedAdd(b)`, `checkedSub(b)`, `checkedMul(b)`    | integers     | `Some(result)`, or `None` on overflow              | <span class="status compiled">compiled</span> |
+| `min(b)`, `max(b)`                                   | every number | the smaller, the larger                            | <span class="status compiled">compiled</span> |
+| `clamp(lo, hi)`                                      | every number | the value, raised to `lo`, lowered to `hi`         | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn wrapped(a: i32): i32 {
@@ -46,6 +48,32 @@ export fn wrapped(a: i32): i32 {
 | `push(x)` | adds `x` at the end                                   | <span class="status compiled">compiled</span> |
 | `pop()`   | removes and gives the last element, `None` when empty | <span class="status compiled">compiled</span> |
 | `copy()`  | a new array with the same elements                    | <span class="status compiled">compiled</span> |
+
+### With an arrow function
+
+Each of these methods takes an arrow function, written in place, `(x) => …`, and compiles it as the body of a loop: no function value and no call at run time. Its parameters lend the elements, as `for…of` does: they are read, never moved. <span class="status compiled">compiled</span>
+
+| Method                | Gives                                                                              | Status                                        |
+| --------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------- |
+| `map(f)`              | a new array of `f(x)` for each element                                             | <span class="status compiled">compiled</span> |
+| `filter(f)`           | a new array of copies of the elements for which `f(x)` is `true`                   | <span class="status compiled">compiled</span> |
+| `reduce(f, start)`    | `f(acc, x)` folded over the elements, from `start`; numbers and structures of them | <span class="status compiled">compiled</span> |
+| `find(f)`             | a copy of the first element for which `f(x)` is `true`, or `None`                  | <span class="status compiled">compiled</span> |
+| `findIndex(f)`        | the index of the first element for which `f(x)` is `true`, or `-1`                 | <span class="status compiled">compiled</span> |
+| `some(f)`, `every(f)` | whether `f(x)` is `true` for one element, for all; stops as soon as known          | <span class="status compiled">compiled</span> |
+
+```peras build
+export fn summary(xs: Array<i32>, words: Array<String>): i32 {
+  const evens = xs.filter((x) => x % 2 == 0);
+  const total = evens.map((x) => x * 10).reduce((acc, x) => acc + x, 0);
+  const long = words.find((w) => w.length > 3).unwrapOr("");
+  let n = total + long.length + xs.findIndex((x) => x > 100);
+  if (xs.some((x) => x < 0)) {
+    n += 1;
+  }
+  return n;
+}
+```
 
 ## `String`
 

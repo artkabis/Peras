@@ -130,14 +130,30 @@ impl Parser<'_> {
                 self.bump();
                 self.alloc(ExprKind::Bool(token.kind == TokenKind::True), token.span)
             }
+            // `x => body`
+            TokenKind::Ident if self.nth(1).kind == TokenKind::FatArrow => self.lambda(token),
             TokenKind::Ident => {
                 self.bump();
                 let symbol = self.ast.interner.intern(self.text(token));
                 self.alloc(ExprKind::Name(symbol), token.span)
             }
+            TokenKind::LParen if self.lambda_ahead() => self.lambda(token),
             TokenKind::LParen => {
                 self.bump();
                 let inner = self.expr();
+                // `(a, b)`: a tuple.
+                if !self.recovering && self.at(TokenKind::Comma) {
+                    let mut items = vec![inner];
+                    while self.eat(TokenKind::Comma).is_some() && !self.at(TokenKind::RParen) {
+                        items.push(self.expr());
+                        if self.recovering {
+                            break;
+                        }
+                    }
+                    self.expect_close(token, TokenKind::RParen, ")");
+                    let span = self.since(token.span.start);
+                    return self.alloc(ExprKind::Tuple(items), span);
+                }
                 self.expect_close(token, TokenKind::RParen, ")");
                 let span = self.since(token.span.start);
                 self.alloc(ExprKind::Paren(inner), span)
@@ -302,6 +318,78 @@ impl Parser<'_> {
         })
     }
 
+    /// An arrow function, from its first token: `x => body` or
+    /// `(a, b: T) => body`.
+    fn lambda(&mut self, token: Token) -> ExprId {
+        let params = if token.kind == TokenKind::Ident {
+            self.bump();
+            self.bump(); // `=>`
+            let name = Ident {
+                symbol: self.ast.interner.intern(self.text(token)),
+                span: token.span,
+            };
+            vec![(name, None)]
+        } else {
+            self.lambda_params()
+        };
+        let body = self.expr();
+        let span = self.since(token.span.start);
+        self.alloc(ExprKind::Lambda { params, body }, span)
+    }
+
+    /// Whether `(` starts an arrow function: `()`, or names with optional
+    /// types, then `)` and `=>`. Read ahead, nothing consumed.
+    fn lambda_ahead(&mut self) -> bool {
+        let pos = self.pos;
+        let reported = self.diagnostics.len();
+        let recovering = self.recovering;
+        let found = self.lambda_params_ahead();
+        self.pos = pos;
+        self.diagnostics.truncate(reported);
+        self.recovering = recovering;
+        found
+    }
+
+    fn lambda_params_ahead(&mut self) -> bool {
+        self.bump(); // `(`
+        while !self.at(TokenKind::RParen) {
+            if self.eat(TokenKind::Ident).is_none() {
+                return false;
+            }
+            if self.eat(TokenKind::Colon).is_some() {
+                let ty = self.ty();
+                if matches!(ty.kind, TypeKind::Error) {
+                    return false;
+                }
+            }
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        self.eat(TokenKind::RParen).is_some() && self.at(TokenKind::FatArrow)
+    }
+
+    /// `(a, b: T) =>`, known to be there.
+    fn lambda_params(&mut self) -> Vec<(Ident, Option<Type>)> {
+        self.bump(); // `(`
+        let mut params = Vec::new();
+        while !self.at(TokenKind::RParen) {
+            let token = self.bump();
+            let name = Ident {
+                symbol: self.ast.interner.intern(self.text(token)),
+                span: token.span,
+            };
+            let ty = self.eat(TokenKind::Colon).map(|_| self.ty());
+            params.push((name, ty));
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        self.bump(); // `)`
+        self.bump(); // `=>`
+        params
+    }
+
     /// `<Type, …>` followed by `(`, read ahead: when what follows `<` is
     /// not that, nothing is consumed and `<` is a comparison.
     fn type_arguments(&mut self) -> Option<Vec<Type>> {
@@ -380,6 +468,40 @@ impl Parser<'_> {
                     self.expect_close(token, TokenKind::RBracket, "]");
                     let span = self.since(start);
                     self.alloc(ExprKind::Index { base: expr, index }, span)
+                }
+                TokenKind::Dot if self.nth(1).kind == TokenKind::Int => {
+                    // `pair.0`: a field of a tuple.
+                    self.bump();
+                    let index = self.bump();
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(self.text(index)),
+                        span: index.span,
+                    };
+                    let span = self.since(start);
+                    self.alloc(ExprKind::Field { base: expr, name }, span)
+                }
+                TokenKind::Dot if self.nth(1).kind == TokenKind::Float => {
+                    // `nested.0.1` is read as `nested`, `.`, `0.1`: two fields.
+                    self.bump();
+                    let number = self.bump();
+                    let text = self.text(number);
+                    let Some((first, second)) = text.split_once('.') else {
+                        return expr;
+                    };
+                    let (first, second) = (first.to_owned(), second.to_owned());
+                    let split = number.span.start + u32::try_from(first.len()).unwrap_or(0);
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(&first),
+                        span: Span::new(number.span.start, split),
+                    };
+                    let outer = Span::new(start, split);
+                    let inner = self.alloc(ExprKind::Field { base: expr, name }, outer);
+                    let name = Ident {
+                        symbol: self.ast.interner.intern(&second),
+                        span: Span::new(split + 1, number.span.end),
+                    };
+                    let span = self.since(start);
+                    self.alloc(ExprKind::Field { base: inner, name }, span)
                 }
                 TokenKind::Dot => {
                     self.bump();

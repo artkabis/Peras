@@ -45,6 +45,12 @@ export interface PerasOptions {
    * exports (with `allowArbitraryExtensions`). Default: `true`.
    */
   dts?: boolean;
+  /**
+   * The allocator of modules that use the heap: `debug` catches every memory
+   * bug, `tlsf` allocates in bounded time. Default: `debug` for the dev server,
+   * `tlsf` for `vite build`.
+   */
+  allocator?: "debug" | "tlsf";
 }
 
 /** A compiled `.peras` module. */
@@ -145,9 +151,10 @@ export function firstError(report: Report): { summary: string; loc: Location | u
 export async function compile(file: string, options: PerasOptions = {}): Promise<Compiled> {
   const perasc = options.perasc ?? process.env.PERASC ?? "perasc";
   const lang = options.lang === undefined ? [] : ["--lang", options.lang];
+  const allocator = options.allocator === undefined ? [] : ["--allocator", options.allocator];
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
-    const built = await run(perasc, ["build", file, "--out", out, "--json", ...lang]);
+    const built = await run(perasc, ["build", file, "--out", out, "--json", ...lang, ...allocator]);
     if (built.code === 1) {
       const { summary, loc } = firstError(JSON.parse(built.stdout) as Report);
       // The same errors, rendered as in a terminal, for the overlay.
@@ -224,7 +231,8 @@ async function writeDeclarations(file: string, dts: string): Promise<void> {
 /**
  * Compiles imported `.peras` modules to WebAssembly with the direct backend of
  * `perasc`; no Rust toolchain is needed. An error in the source is shown in the
- * overlay of the dev server and fails `vite build`.
+ * overlay of the dev server and fails `vite build`. The dev server links the
+ * debug allocator, `vite build` the TLSF one.
  */
 export default function peras(options: PerasOptions = {}): Plugin {
   let building = false;
@@ -243,7 +251,10 @@ export default function peras(options: PerasOptions = {}): Plugin {
       }
       let compiled: Compiled;
       try {
-        compiled = await compile(file, options);
+        compiled = await compile(file, {
+          ...options,
+          allocator: options.allocator ?? (building ? "tlsf" : "debug"),
+        });
       } catch (error) {
         if (!(error instanceof PerasError)) throw error;
         // Vite shows `frame` under the message in its overlay.

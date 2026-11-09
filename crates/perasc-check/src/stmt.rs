@@ -281,11 +281,16 @@ impl Checker<'_> {
     /// Member names of a type, for suggestions.
     pub(crate) fn member_names(&self, ty: &Ty) -> Vec<String> {
         match ty {
-            Ty::Struct(id, _) => self
-                .structs
-                .get(id.0)
-                .map(|s| s.fields.iter().map(|(n, _)| n.clone()).collect())
-                .unwrap_or_default(),
+            Ty::Struct(id, _) => {
+                let mut names: Vec<String> = self
+                    .structs
+                    .get(id.0)
+                    .map(|s| s.fields.iter().map(|(n, _)| n.clone()).collect())
+                    .unwrap_or_default();
+                names.extend(self.method_names(ty));
+                names
+            }
+            Ty::Enum(..) => self.method_names(ty),
             other => builtins::members(other)
                 .into_iter()
                 .map(str::to_owned)

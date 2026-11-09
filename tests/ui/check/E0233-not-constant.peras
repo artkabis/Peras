@@ -1,0 +1,25 @@
+// E0233: the value of a module constant must be known when compiling.
+fn square(n: i32): i32 {
+  return n * n;
+}
+
+const AREA: i32 = square(4);
+const CHARS: i32 = "abc".length;
+
+// Allowed: literals, other constants, operators, and values built from them.
+const SIDE: i32 = 4;
+const PERIMETER: i32 = SIDE * 4 + -1;
+const NAME: String = "box";
+const ORIGIN: Point = Point(0.0, 0.0);
+const SIZES: Array<i32> = [SIDE, PERIMETER];
+const PAIR: (i32, bool) = (SIDE, true);
+const NOTHING: Option<i32> = None;
+
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn total(): i32 {
+  return AREA + CHARS + PERIMETER + NAME.length + SIZES.length + PAIR.0 + NOTHING.unwrapOr(0) + ORIGIN.x.toI32();
+}
