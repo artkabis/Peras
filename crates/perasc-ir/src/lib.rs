@@ -10,6 +10,7 @@
 
 use std::fmt::{self, Write as _};
 
+mod bounds;
 mod inline;
 #[cfg(test)]
 mod interp;

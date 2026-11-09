@@ -10,24 +10,24 @@ Median of the timed runs, after warm-up; _cold_ is the very first call, before V
 
 | Kernel | Work | Variant | Cold | Median | Best | Ratio |
 | --- | --- | --- | --: | --: | --: | --: |
-| particles | 1,000,000 particles, 10 steps | JavaScript | 59.7 | 30.5 | 27.1 | 1.00 |
-|  |  | Peras, zero copy | 46.9 | 25.4 | 22.5 | 1.20 |
-|  |  | Peras, copied | 66.0 | 38.1 | 35.0 | 0.80 |
-| grayscale | 4,194,304 pixels | JavaScript | 16.1 | 11.2 | 9.70 | 1.00 |
-|  |  | Peras, zero copy | 20.1 | 9.40 | 8.30 | 1.19 |
-| nbody | 1000 bodies, 5 steps | JavaScript | 38.3 | 30.0 | 24.3 | 1.00 |
-|  |  | Peras | 49.5 | 16.9 | 16.3 | 1.78 |
-| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 52.7 | 44.9 | 41.2 | 1.00 |
-|  |  | Peras | 2.70 | 2.10 | 2.00 | 21.38 |
-| sort | 1,000,000 f64 | JavaScript, Float64Array | 130 | 131 | 106 | 1.00 |
-|  |  | JavaScript, number[] | 477 | 550 | 479 | 0.24 |
-|  |  | Peras, zero copy | 276 | 277 | 231 | 0.47 |
-| mandel | 600 × 600, 64 steps | JavaScript | 17.5 | 12.5 | 11.1 | 1.00 |
-|  |  | Peras | 24.0 | 12.8 | 10.3 | 0.98 |
-| words | 1,019,576 characters | JavaScript | 8.80 | 8.70 | 7.80 | 1.00 |
-|  |  | Peras | 39.9 | 31.8 | 30.3 | 0.27 |
-| calls | 1,000,000 calls of add(a, b) | JavaScript | 1.70 | 3.40 | 3.30 | 1.00 |
-|  |  | Peras | 6.80 | 4.80 | 4.70 | 0.71 |
+| particles | 1,000,000 particles, 10 steps | JavaScript | 42.5 | 30.8 | 25.8 | 1.00 |
+|  |  | Peras, zero copy | 56.8 | 22.2 | 19.1 | 1.39 |
+|  |  | Peras, copied | 71.6 | 36.6 | 30.9 | 0.84 |
+| grayscale | 4,194,304 pixels | JavaScript | 15.1 | 11.3 | 9.80 | 1.00 |
+|  |  | Peras, zero copy | 14.8 | 9.60 | 8.40 | 1.18 |
+| nbody | 1000 bodies, 5 steps | JavaScript | 27.9 | 23.5 | 20.4 | 1.00 |
+|  |  | Peras | 39.9 | 15.2 | 13.1 | 1.55 |
+| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 56.1 | 50.2 | 40.9 | 1.00 |
+|  |  | Peras | 3.60 | 2.20 | 1.90 | 22.82 |
+| sort | 1,000,000 f64 | JavaScript, Float64Array | 169 | 125 | 100 | 1.00 |
+|  |  | JavaScript, number[] | 594 | 532 | 454 | 0.23 |
+|  |  | Peras, zero copy | 268 | 274 | 223 | 0.45 |
+| mandel | 600 × 600, 64 steps | JavaScript | 17.2 | 14.2 | 13.8 | 1.00 |
+|  |  | Peras | 22.0 | 13.7 | 13.0 | 1.04 |
+| words | 1,019,576 characters | JavaScript | 10.6 | 10.2 | 9.20 | 1.00 |
+|  |  | Peras | 42.8 | 36.0 | 32.8 | 0.28 |
+| calls | 1,000,000 calls of add(a, b) | JavaScript | 2.00 | 3.90 | 3.80 | 1.00 |
+|  |  | Peras | 8.70 | 5.40 | 5.30 | 0.72 |
 
 Every variant gave exactly the same result, checked in the page before timing (`Object.is`, positions and pixels included), and no block was left alive.
 
@@ -37,7 +37,7 @@ Import time: median of 15 fresh browser contexts, nothing cached, served from 12
 
 | Module | Files | Raw (KiB) | gzip (KiB) | Import (ms) |
 | --- | --- | --: | --: | --: |
-| Peras | kernels.js + kernels.wasm | 23.9 | 9.9 | 15.5 |
-| JavaScript | reference.js | 3.3 | 1.2 | 7.50 |
+| Peras | kernels.js + kernels.wasm | 25.0 | 10.0 | 16.0 |
+| JavaScript | reference.js | 3.3 | 1.2 | 8.60 |
 
 The Peras loader carries the allocator inlined and the code that crosses the boundary; it is shared by every function of a module.

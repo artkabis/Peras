@@ -34,6 +34,8 @@
 //! **Loop-invariant code motion** and **doubling as an addition**: see
 //! [`crate::licm`].
 //!
+//! **Bounds check elimination**, on every function: see [`crate::bounds`].
+//!
 //! **Recursion unrolling** then copies the body into the remaining self calls; see
 //! [`crate::inline`] for why Peras does it rather than leave it to the engine.
 
@@ -43,7 +45,9 @@ use crate::{BinOp, Const, Expr, ExprKind, FnId, Function, Local, LocalId, Module
 pub fn optimize(module: &mut Module) {
     for (index, function) in module.functions.iter_mut().enumerate() {
         let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
-        // No pass is proven yet to keep releases exact, nor written for several
+        // It only removes checks, never a release: it applies to every function.
+        crate::bounds::eliminate_bounds_checks(function);
+        // No other pass is proven yet to keep releases exact, nor written for several
         // results: such code is left as written, and the verifiers check it.
         if function.uses_heap() || function.uses_many() {
             continue;

@@ -40,7 +40,7 @@ What it measures, and what it does not:
 
 What the results say, today:
 
-- **Numbers in arrays** (particles, pixels): Peras is 1.2 to 1.3 times faster when the array is a `PerasArray`. Passing a plain array copies it in and out, which costs more than the work: zero copy is what makes the gain.
+- **Numbers in arrays** (particles, pixels): Peras is 1.2 to 1.4 times faster when the array is a `PerasArray`; a counted loop drops the bounds checks it proves (`crates/perasc-ir/src/bounds.rs`), which took the particles from 1.2 to 1.4. Passing a plain array copies it in and out, which costs more than the work: zero copy is what makes the gain.
 - **Floating-point arithmetic alone** (Mandelbrot): the same speed (0.98 to 1.07 between runs). V8 already compiles such JavaScript very well, and Peras checks every index and every integer operation.
 - **Structures** (n-body): 1.5 to 1.8 times faster. An array of structures is stored by columns in linear memory, where JavaScript has an object per element.
 - **64-bit integers**: about 20 times faster. JavaScript has only `BigInt`, which allocates.
