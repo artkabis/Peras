@@ -147,3 +147,94 @@ export fn doubles(n: i32): f64 {
     same_both_ways(source, "floats");
     same_both_ways(source, "doubles");
 }
+
+#[test]
+fn branches_run_in_every_lane_and_keep_their_results_where_they_hold() {
+    // The particles of the browser benchmark: a bounce writes another array
+    // and recomputes a local, in the lanes that bounce only.
+    let source = "export fn bounce(n: i32): f64 {
+  let xs: Array<f64> = [];
+  let vs: Array<f64> = [];
+  for (let k = 0; k < n; k++) {
+    xs.push((k * 7 % 10).toF64() * 0.11);
+    vs.push((k % 3).toF64() - 1.0);
+  }
+  const dt = 0.3;
+  for (let i = 0; i < xs.length; i++) {
+    const v = vs[i];
+    let x = xs[i] + v * dt;
+    if (x < 0.0 || x > 1.0) {
+      vs[i] = -v;
+      x = xs[i] - v * dt;
+    }
+    xs[i] = x;
+  }
+  let s = 0.0;
+  for (let i = 0; i < xs.length; i++) {
+    s = s * 0.5 + xs[i] + vs[i] * 3.0;
+  }
+  return s;
+}
+export fn nested(n: i32): i32 {
+  let xs: Array<i32> = [];
+  for (let k = 0; k < n; k++) {
+    xs.push(k * 37 % 23 - 11);
+  }
+  let total = 0;
+  for (let i = 0; i < xs.length; i++) {
+    let y = xs[i] * 3;
+    if (y > 0 && !(y > 20)) {
+      y = y - 5;
+      if (y < 2) {
+        y = 1000;
+      }
+    } else {
+      xs[i] = -y;
+      y = y + 1;
+    }
+    xs[i] = xs[i] + y;
+    total = total ^ y;
+  }
+  let h = total;
+  for (const x of xs) {
+    h = h * 31 + x;
+  }
+  return h;
+}
+";
+    same_both_ways(source, "bounce");
+    same_both_ways(source, "nested");
+}
+
+#[test]
+fn a_local_first_assigned_in_a_branch_keeps_the_loop_scalar() {
+    // `last` keeps, in the turns that skip the branch, the value of an
+    // earlier turn: lanes would not see it.
+    let source = "export fn carried(n: i32): i32 {
+  let xs: Array<i32> = [];
+  for (let k = 0; k < n; k++) {
+    xs.push(k * 5 % 7);
+  }
+  let last = -1;
+  for (let i = 0; i < xs.length; i++) {
+    if (xs[i] > 3) {
+      last = xs[i];
+    }
+    xs[i] = xs[i] + last;
+  }
+  let h = 0;
+  for (const x of xs) {
+    h = h * 31 + x;
+  }
+  return h;
+}
+";
+    let (vector, scalar) = (build(source, true), build(source, false));
+    for n in 0..20 {
+        assert_eq!(
+            call(&vector, "carried", n),
+            call(&scalar, "carried", n),
+            "carried({n})"
+        );
+    }
+}

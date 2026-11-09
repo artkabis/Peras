@@ -72,7 +72,7 @@ Sur un million de `f32`, `sum` passe de 5,2 à 1,5 ms, et `scale`, qui modifie s
 
 ## Les boucles vectorielles
 
-Une boucle dont les tours sont indépendants calcule quatre `i32` ou `f32`, ou deux `f64`, à la fois, avec les vecteurs de 128 bits de WebAssembly ; la boucle telle qu’écrite termine les derniers tours. Le résultat est exactement celui de la boucle telle qu’écrite : Peras ne vectorise que ce que chaque voie calcule de la même façon. Dans `bench/browser`, un filtre de gris sur 4 millions de pixels passe d’environ 10 à 5 ms, deux fois plus vite que le même JavaScript.
+Une boucle dont les tours sont indépendants calcule quatre `i32` ou `f32`, ou deux `f64`, à la fois, avec les vecteurs de 128 bits de WebAssembly ; la boucle telle qu’écrite termine les derniers tours. Le résultat est exactement celui de la boucle telle qu’écrite : Peras ne vectorise que ce que chaque voie calcule de la même façon. Un `if` qui compare des nombres est vectorisé aussi : les deux branches s’exécutent dans chaque voie, et chaque voie garde le résultat de la branche qu’elle aurait prise. Dans `bench/browser`, un filtre de gris sur 4 millions de pixels passe d’environ 10 à 5 ms, deux fois plus vite que le même JavaScript.
 
 ```peras build
 export fn gain(samples: inout Array<f32>, g: f32): void {

@@ -72,7 +72,7 @@ On a million `f32`, `sum` goes from 5.2 to 1.5 ms, and `scale`, which changes it
 
 ## Vector loops
 
-A loop whose turns are independent runs four `i32` or `f32`, or two `f64`, at once, with WebAssembly's 128-bit vectors; the loop as written finishes the last turns. The result is exactly the one the loop as written gives: Peras vectorizes only what every lane computes the same way. In `bench/browser`, a grayscale filter on 4 million pixels goes from about 10 to 5 ms, twice as fast as the same JavaScript.
+A loop whose turns are independent runs four `i32` or `f32`, or two `f64`, at once, with WebAssembly's 128-bit vectors; the loop as written finishes the last turns. The result is exactly the one the loop as written gives: Peras vectorizes only what every lane computes the same way. An `if` that compares numbers is vectorized too: both branches run in every lane, and each lane keeps the result of the branch it would have taken. In `bench/browser`, a grayscale filter on 4 million pixels goes from about 10 to 5 ms, twice as fast as the same JavaScript.
 
 ```peras build
 export fn gain(samples: inout Array<f32>, g: f32): void {

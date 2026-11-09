@@ -40,7 +40,7 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 
 Ce que disent les résultats, aujourd’hui :
 
-- **Nombres dans des tableaux** (particules, pixels) : Peras est 1,4 à 2,2 fois plus rapide quand le tableau est un `PerasArray` ; une boucle comptée abandonne les contrôles d’indice qu’elle prouve (`crates/perasc-ir/src/bounds.rs`), ce qui a fait passer les particules de 1,2 à 1,4, et le filtre de gris traite quatre pixels à la fois avec le SIMD de WebAssembly, ce qui l’a fait passer de 1,2 à 2,2. Passer un tableau ordinaire le copie à l’aller et au retour, ce qui coûte plus que le travail : c’est le zéro copie qui fait le gain.
+- **Nombres dans des tableaux** (particules, pixels) : Peras est 1,8 à 2,2 fois plus rapide quand le tableau est un `PerasArray`. Une boucle comptée abandonne les contrôles d’indice qu’elle prouve (`crates/perasc-ir/src/bounds.rs`), ce qui a fait passer les particules de 1,2 à 1,4 ; ses tours s’exécutent ensuite plusieurs à la fois avec le SIMD de WebAssembly, branches comprises (`crates/perasc-codegen-wasm/src/simd.rs`), ce qui a porté les particules à 1,8 et le filtre de gris de 1,2 à 2,2. Passer un tableau ordinaire le copie à l’aller et au retour, ce qui coûte plus que le travail : c’est le zéro copie qui fait le gain.
 - **Arithmétique flottante seule** (Mandelbrot) : la même vitesse (0,98 à 1,07 selon l’exécution). V8 compile déjà très bien ce JavaScript, et Peras vérifie chaque indice et chaque opération entière.
 - **Structures** (n corps) : 1,5 à 1,8 fois plus rapide. Un tableau de structures est rangé par colonnes en mémoire linéaire, là où JavaScript a un objet par élément.
 - **Entiers 64 bits** : environ 20 fois plus rapide. JavaScript n’a que `BigInt`, qui alloue.
