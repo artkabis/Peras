@@ -423,6 +423,9 @@ impl Machine<'_> {
             let value = *operands.get(i).ok_or(Trap::Unreachable)?;
             this.bytes(value)
         };
+        if let Some(value) = self.array_runtime(f, operands)? {
+            return Ok(value);
+        }
         let s = text(self, 0)?;
         Ok(match f {
             F::IndexOf => Value::I32(crate::text::index_of(&s, &text(self, 1)?, int(2)?)),
@@ -458,6 +461,9 @@ impl Machine<'_> {
                 self.deep.insert(self.allocated);
                 Value::Handle(self.allocated)
             }
+            F::ArrSlice | F::ArrConcat | F::ArrReverse | F::ArrSort | F::ArrIndexOfStr => {
+                return Err(Trap::Unreachable);
+            }
             F::Join => {
                 let separator = text(self, 1)?;
                 let parts = self
@@ -473,6 +479,88 @@ impl Machine<'_> {
                 self.string(&out)
             }
         })
+    }
+
+    /// The functions of the runtime on columns of arrays; `None` for the
+    /// others.
+    fn array_runtime(
+        &mut self,
+        f: crate::RuntimeFn,
+        operands: &[Value],
+    ) -> Result<Option<Value>, Trap> {
+        use crate::RuntimeFn as F;
+        let first = *operands.first().ok_or(Trap::Unreachable)?;
+        let int = |i: usize| match operands.get(i) {
+            Some(Value::I32(n)) => Ok(*n),
+            _ => Err(Trap::Unreachable),
+        };
+        let deep = matches!(first, Value::Handle(b) if self.deep.contains(&b));
+        let column = |this: &mut Self, elements: Vec<Value>| -> Result<Value, Trap> {
+            let mut elements = elements;
+            if deep {
+                for element in &mut elements {
+                    *element = this.clone_buffer(*element)?;
+                }
+            }
+            this.allocated += 1;
+            this.heap.insert(this.allocated, elements);
+            if deep {
+                this.deep.insert(this.allocated);
+            }
+            Ok(Value::Handle(this.allocated))
+        };
+        let clamp = |len: usize, i: i32| -> usize {
+            let len = i64::try_from(len).unwrap_or(i64::MAX);
+            let i = if i < 0 {
+                i64::from(i) + len
+            } else {
+                i64::from(i)
+            };
+            usize::try_from(i.clamp(0, len)).unwrap_or(0)
+        };
+        Ok(Some(match f {
+            F::ArrSlice => {
+                let elements = self.elements(first)?.clone();
+                let a = clamp(elements.len(), int(1)?);
+                let b = clamp(elements.len(), int(2)?).max(a);
+                let part = elements.get(a..b).unwrap_or_default().to_vec();
+                column(self, part)?
+            }
+            F::ArrConcat => {
+                let mut elements = self.elements(first)?.clone();
+                let other = *operands.get(1).ok_or(Trap::Unreachable)?;
+                elements.extend(self.elements(other)?.clone());
+                column(self, elements)?
+            }
+            F::ArrReverse => {
+                self.elements(first)?.reverse();
+                Value::Void
+            }
+            F::ArrSort => {
+                let elements = self.elements(first)?;
+                elements.sort_by(|a, b| match (a, b) {
+                    (Value::I32(x), Value::I32(y)) => x.cmp(y),
+                    (Value::I64(x), Value::I64(y)) => x.cmp(y),
+                    (Value::F32(x), Value::F32(y)) => x.total_cmp(y),
+                    (Value::F64(x), Value::F64(y)) => x.total_cmp(y),
+                    _ => std::cmp::Ordering::Equal,
+                });
+                Value::Void
+            }
+            F::ArrIndexOfStr => {
+                let needle = self.bytes(*operands.get(1).ok_or(Trap::Unreachable)?)?;
+                let strings = self.elements(first)?.clone();
+                let mut found = -1;
+                for (i, s) in strings.into_iter().enumerate() {
+                    if self.bytes(s)? == needle {
+                        found = i32::try_from(i).unwrap_or(-1);
+                        break;
+                    }
+                }
+                Value::I32(found)
+            }
+            _ => return Ok(None),
+        }))
     }
 
     /// Releases a buffer, and the buffers it owns.

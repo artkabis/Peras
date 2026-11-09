@@ -49,6 +49,25 @@ export fn wrapped(a: i32): i32 {
 | `pop()`   | removes and gives the last element, `None` when empty | <span class="status compiled">compiled</span> |
 | `copy()`  | a new array with the same elements                    | <span class="status compiled">compiled</span> |
 
+### Order, parts and search
+
+| Method              | Gives                                                                                              | Status                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `slice(start, end)` | a new array of the elements from `start` to `end`; negative counts from the end, beyond is clamped | <span class="status compiled">compiled</span> |
+| `concat(other)`     | a new array of its elements, then those of `other`                                                 | <span class="status compiled">compiled</span> |
+| `reverse()`         | reverses the elements, in place: the array is a `let`                                              | <span class="status compiled">compiled</span> |
+| `sort()`            | sorts numbers in increasing order, in place, in time n log n, without allocating                   | <span class="status compiled">compiled</span> |
+| `includes(x)`       | whether an element equals `x`; numbers, booleans and strings                                       | <span class="status compiled">compiled</span> |
+| `indexOf(x)`        | the index of the first element equal to `x`, or `-1`                                               | <span class="status compiled">compiled</span> |
+
+```peras build
+export fn median(samples: Array<f64>): f64 {
+  let sorted = samples.copy();
+  sorted.sort();
+  return sorted[sorted.length / 2];
+}
+```
+
 ### With an arrow function
 
 Each of these methods takes an arrow function, written in place, `(x) => …`, and compiles it as the body of a loop: no function value and no call at run time. Its parameters lend the elements, as `for…of` does: they are read, never moved. <span class="status compiled">compiled</span>

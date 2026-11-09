@@ -678,6 +678,13 @@ impl Lowering<'_> {
         {
             return values;
         }
+        let is_string = matches!(self.check_type(base), Some(CheckTy::String));
+        if !is_string
+            && let Some(values) =
+                self.column_method(state, method, args, mode, (&columns, &buffers))
+        {
+            return values;
+        }
         if let Some(values) = self.text_method(state, &first, method, args, mode) {
             return values;
         }

@@ -51,7 +51,7 @@ const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
 /// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 5;
+const IMPORT_TYPES: u32 = 6;
 
 /// A compiled module, and what its allocation sites are.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +91,7 @@ pub fn compile_module(module: &Module) -> Compiled {
         types.ty().function([T, T, T], [T]);
         types.ty().function([T, T, T, T], []);
         types.ty().function([T], [T]);
+        types.ty().function([T], []);
         for (name, ty) in [
             ("alloc", 0),
             ("release", 1),
@@ -104,10 +105,12 @@ pub fn compile_module(module: &Module) -> Compiled {
         }
         for f in RuntimeFn::ALL {
             // Every operand and the result are `i32`: the type by count.
-            let ty = match f.operands().len() {
-                0 => 4,
-                1 => 0,
-                _ => 2,
+            let ty = match (f.operands().len(), f.result() == Ty::Void) {
+                (0, false) => 4,
+                (1, false) => 0,
+                (_, false) => 2,
+                (0, true) => 5,
+                (_, true) => 1,
             };
             imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
         }

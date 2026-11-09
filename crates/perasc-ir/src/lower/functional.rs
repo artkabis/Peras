@@ -328,6 +328,122 @@ impl Lowering<'_> {
         Some(Self::fresh(state, vec![value], mode))
     }
 
+    /// `slice`, `concat`, `reverse`, `sort`, `includes` and `indexOf` on an
+    /// array, column by column; `None` for another method.
+    pub(super) fn column_method(
+        &mut self,
+        state: &mut FnState,
+        method: &str,
+        args: &[ExprId],
+        mode: Mode,
+        array: (&[Elem], &[Expr]),
+    ) -> Option<Vec<Expr>> {
+        use crate::RuntimeFn as F;
+        let (columns, buffers) = array;
+        let runtime = |f: F, operands: Vec<Expr>| Expr {
+            kind: ExprKind::Buf(BufOp::Runtime(f), operands),
+            ty: f.result(),
+        };
+        match method {
+            "slice" => {
+                // Each bound once, for every column.
+                let bounds: Vec<Expr> = args
+                    .iter()
+                    .map(|&a| {
+                        let value = self.expr(state, a);
+                        let t = state.temp(Ty::I32);
+                        state.pre.push(Stmt::Set(t, value));
+                        super::local_expr(state, t)
+                    })
+                    .collect();
+                let values = buffers
+                    .iter()
+                    .map(|b| {
+                        let mut operands = vec![b.clone()];
+                        operands.extend(bounds.iter().cloned());
+                        runtime(F::ArrSlice, operands)
+                    })
+                    .collect();
+                Some(Self::fresh(state, values, mode))
+            }
+            "concat" => {
+                let other = self.value_as(state, *args.first()?, Mode::Borrow);
+                let values = buffers
+                    .iter()
+                    .zip(other)
+                    .map(|(a, b)| runtime(F::ArrConcat, vec![a.clone(), b]))
+                    .collect();
+                Some(Self::fresh(state, values, mode))
+            }
+            "reverse" => {
+                for b in buffers {
+                    state
+                        .pre
+                        .push(Stmt::Expr(runtime(F::ArrReverse, vec![b.clone()])));
+                }
+                Some(Vec::new())
+            }
+            "sort" => {
+                let kind = match columns.first()? {
+                    Elem::I32 => 0,
+                    Elem::I64 => 1,
+                    Elem::F32 => 2,
+                    _ => 3,
+                };
+                let buffer = buffers.first()?.clone();
+                state
+                    .pre
+                    .push(Stmt::Expr(runtime(F::ArrSort, vec![buffer, int(kind)])));
+                Some(Vec::new())
+            }
+            "includes" | "indexOf" => {
+                let buffer = buffers.first()?.clone();
+                let &arg = args.first()?;
+                let index = if columns.first() == Some(&Elem::Handle) {
+                    let needle = self.value_as(state, arg, Mode::Borrow).into_iter().next()?;
+                    runtime(F::ArrIndexOfStr, vec![buffer, needle])
+                } else {
+                    self.search(state, &buffer, *columns.first()?, arg)
+                };
+                let value = if method == "includes" {
+                    super::binary(BinOp::Ge, index, int(0))
+                } else {
+                    index
+                };
+                Some(vec![value])
+            }
+            _ => None,
+        }
+    }
+
+    /// The index of the first element of a column of numbers equal to the
+    /// value of `arg`, or -1: a loop that stops when it finds it.
+    fn search(&mut self, state: &mut FnState, buffer: &Expr, elem: Elem, arg: ExprId) -> Expr {
+        let value = self.expr(state, arg);
+        let wanted = state.temp(value.ty);
+        state.pre.push(Stmt::Set(wanted, value));
+        let index = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(index, int(-1)));
+        let i = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(i, int(0)));
+        let i_expr = super::local_expr(state, i);
+        let found = super::binary(
+            BinOp::Eq,
+            element_at(buffer, &i_expr, elem, false),
+            super::local_expr(state, wanted),
+        );
+        state.pre.push(Stmt::Loop {
+            cond: Some(super::binary(BinOp::Lt, i_expr.clone(), length(buffer))),
+            body: vec![Stmt::If {
+                cond: found,
+                then: vec![Stmt::Set(index, i_expr.clone()), Stmt::Break],
+                otherwise: Vec::new(),
+            }],
+            step: vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))],
+        });
+        super::local_expr(state, index)
+    }
+
     /// The option `find` gives, from the index of the element found, or -1:
     /// whether there is one, then a copy of it, or zeros and empty buffers.
     fn found(state: &mut FnState, index: LocalId, columns: &[Elem], buffers: &[Expr]) -> Vec<Expr> {

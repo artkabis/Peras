@@ -505,11 +505,23 @@ pub enum RuntimeFn {
     Split,
     /// `(strings, separator) -> owned`: the strings of an array, joined.
     Join,
+    /// `(column, start, end) -> owned`: a new column of the elements
+    /// between, negative counting from the end, clamped; buffers copied.
+    ArrSlice,
+    /// `(a, b) -> owned`: a new column of the elements of `a`, then `b`.
+    ArrConcat,
+    /// `(column)`: reverses its elements in place.
+    ArrReverse,
+    /// `(column, kind)`: sorts its numbers in increasing order, in place;
+    /// `kind` is 0 for `i32`, 1 `i64`, 2 `f32`, 3 `f64`.
+    ArrSort,
+    /// `(strings, s) -> i32`: the index of the first string equal to `s`, or -1.
+    ArrIndexOfStr,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 17] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -522,6 +534,11 @@ impl RuntimeFn {
         Self::ReplaceAll,
         Self::Split,
         Self::Join,
+        Self::ArrSlice,
+        Self::ArrConcat,
+        Self::ArrReverse,
+        Self::ArrSort,
+        Self::ArrIndexOfStr,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -540,6 +557,11 @@ impl RuntimeFn {
             Self::ReplaceAll => "str_replace_all",
             Self::Split => "str_split",
             Self::Join => "arr_join",
+            Self::ArrSlice => "arr_slice",
+            Self::ArrConcat => "arr_concat",
+            Self::ArrReverse => "arr_reverse",
+            Self::ArrSort => "arr_sort",
+            Self::ArrIndexOfStr => "arr_index_of_str",
         }
     }
 
@@ -548,10 +570,15 @@ impl RuntimeFn {
     pub const fn operands(self) -> &'static [Ty] {
         match self {
             Self::IndexOf => &[Ty::Borrowed, Ty::I32],
-            Self::StartsWith | Self::EndsWith | Self::Split | Self::Join => &[Ty::Borrowed],
-            Self::Slice => &[Ty::I32, Ty::I32],
-            Self::Trim | Self::Upper | Self::Lower => &[],
-            Self::Repeat => &[Ty::I32],
+            Self::StartsWith
+            | Self::EndsWith
+            | Self::Split
+            | Self::Join
+            | Self::ArrConcat
+            | Self::ArrIndexOfStr => &[Ty::Borrowed],
+            Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
+            Self::Trim | Self::Upper | Self::Lower | Self::ArrReverse => &[],
+            Self::Repeat | Self::ArrSort => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
         }
     }
@@ -560,8 +587,9 @@ impl RuntimeFn {
     #[must_use]
     pub const fn result(self) -> Ty {
         match self {
-            Self::IndexOf => Ty::I32,
+            Self::IndexOf | Self::ArrIndexOfStr => Ty::I32,
             Self::StartsWith | Self::EndsWith => Ty::Bool,
+            Self::ArrReverse | Self::ArrSort => Ty::Void,
             _ => Ty::Owned,
         }
     }

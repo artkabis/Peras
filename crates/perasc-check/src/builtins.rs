@@ -89,6 +89,24 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                 params: vec![Ty::String],
                 ret: Ty::String,
             }),
+            "slice" => Some(Method {
+                params: vec![Ty::Int(IntTy::I32), Ty::Int(IntTy::I32)],
+                ret: me.clone(),
+            }),
+            "concat" => Some(Method {
+                params: vec![me.clone()],
+                ret: me.clone(),
+            }),
+            "reverse" => simple(Ty::Void),
+            "sort" if sortable(element) => simple(Ty::Void),
+            "includes" if searchable(element) => Some(Method {
+                params: vec![(**element).clone()],
+                ret: Ty::Bool,
+            }),
+            "indexOf" if searchable(element) => Some(Method {
+                params: vec![(**element).clone()],
+                ret: Ty::Int(IntTy::I32),
+            }),
             _ => None,
         },
         Ty::String => string_method(name),
@@ -110,6 +128,20 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
         },
         _ => None,
     }
+}
+
+/// Whether `sort()` orders elements of this type: `i32`, `i64` and floats.
+fn sortable(element: &Ty) -> bool {
+    matches!(
+        element,
+        Ty::Int(IntTy::I32 | IntTy::I64) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit
+    )
+}
+
+/// Whether `includes` and `indexOf` find elements of this type: numbers,
+/// booleans and strings.
+fn searchable(element: &Ty) -> bool {
+    sortable(element) || matches!(element, Ty::Bool | Ty::String)
 }
 
 /// The methods of strings beyond `copy`.
@@ -161,9 +193,17 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             }
         }
         Ty::Array(element) => {
-            names.extend(["length", "push", "pop", "copy"]);
+            names.extend([
+                "length", "push", "pop", "copy", "slice", "concat", "reverse",
+            ]);
             if **element == Ty::String {
                 names.push("join");
+            }
+            if sortable(element) {
+                names.push("sort");
+            }
+            if searchable(element) {
+                names.extend(["includes", "indexOf"]);
             }
             names.extend(crate::stdlib::FUNCTION_METHODS);
         }

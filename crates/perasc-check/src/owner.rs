@@ -583,7 +583,7 @@ impl<'c, 'a> Owner<'c, 'a> {
             ExprKind::Field { base, name } => {
                 self.expr(*base, Use::Read, path);
                 let method = self.checker.name(name.symbol);
-                if matches!(method, "push" | "pop")
+                if matches!(method, "push" | "pop" | "reverse" | "sort")
                     && let Some(root) = self.root(*base)
                 {
                     let span = self.checker.ast.expr(*base).span;

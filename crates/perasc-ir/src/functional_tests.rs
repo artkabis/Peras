@@ -52,6 +52,56 @@ fn text_methods_give_what_the_runtime_gives() {
     }
 }
 
+#[test]
+fn slice_concat_reverse_sort_and_search_give_what_the_runtime_gives() {
+    let parsed = perasc_syntax::parse(ARRAYS);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, ARRAYS);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    // The values the WebAssembly runtime gives, checked by hand.
+    for (n, expected) in [(4, 2_493_165), (20, 2_503_165)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}\n{module}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}\n{module}");
+    }
+}
+
+const ARRAYS: &str = r#"struct Point {
+  x: f64;
+  name: String;
+}
+
+export fn run(n: i32): i32 {
+  let xs: Array<i32> = [5, n, 3, 9, 1, 7];
+  xs.sort();
+  let floats: Array<f64> = [2.5, -1.0, 0.5];
+  floats.sort();
+  let words: Array<String> = ["c", "a", "b"];
+  words.reverse();
+  const middle = xs.slice(1, -1);
+  const both = middle.concat(xs.slice(0, 1));
+  const tail = words.slice(-2, 10);
+  const points: Array<Point> = [Point(1.0, "p"), Point(2.0, "q")];
+  let more = points.concat(points.slice(1, 2));
+  more.reverse();
+  let score = 0;
+  if (xs.includes(9)) {
+    score += 1;
+  }
+  if (!xs.includes(100)) {
+    score += 10;
+  }
+  if (words.includes("a")) {
+    score += 100;
+  }
+  return score + xs[0] * 1000 + xs[5] * 10000 + xs.indexOf(7) * 100000 + words.indexOf("c") * 1000000
+    + both.length * 10 + tail.length * 1000 + more.length + more[0].name.length + floats[0].toI32() * 5 + (floats[2] * 2.0).toI32();
+}
+"#;
+
 const TEXT: &str = r#"export fn run(n: i32): i32 {
   const s = "  Hello, wörld!  ";
   const t = s.trim();

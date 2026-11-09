@@ -496,7 +496,7 @@ impl Checker<'_> {
                 }
                 // `push` and `pop` change the array: it must be one that can change.
                 if matches!(receiver, Ty::Array(_))
-                    && matches!(self.name(name.symbol), "push" | "pop")
+                    && matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
                     && let Some(root) = self.root(*base)
                 {
                     let base_span = self.ast.expr(*base).span;

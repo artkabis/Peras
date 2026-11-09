@@ -49,6 +49,25 @@ export fn wrapped(a: i32): i32 {
 | `pop()`   | retire et donne le dernier élément, `None` si vide | <span class="status compiled">compilé</span> |
 | `copy()`  | un nouveau tableau avec les mêmes éléments         | <span class="status compiled">compilé</span> |
 
+### Ordre, morceaux et recherche
+
+| Méthode             | Donne                                                                                                           | Statut                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `slice(start, end)` | un nouveau tableau des éléments de `start` à `end` ; un négatif compte depuis la fin, au-delà est ramené dedans | <span class="status compiled">compilé</span> |
+| `concat(other)`     | un nouveau tableau de ses éléments, puis de ceux de `other`                                                     | <span class="status compiled">compilé</span> |
+| `reverse()`         | renverse les éléments, sur place : le tableau est un `let`                                                      | <span class="status compiled">compilé</span> |
+| `sort()`            | trie des nombres par ordre croissant, sur place, en temps n log n, sans allouer                                 | <span class="status compiled">compilé</span> |
+| `includes(x)`       | si un élément vaut `x` ; nombres, booléens et chaînes                                                           | <span class="status compiled">compilé</span> |
+| `indexOf(x)`        | l’indice du premier élément égal à `x`, ou `-1`                                                                 | <span class="status compiled">compilé</span> |
+
+```peras build
+export fn median(samples: Array<f64>): f64 {
+  let sorted = samples.copy();
+  sorted.sort();
+  return sorted[sorted.length / 2];
+}
+```
+
 ### Avec une fonction fléchée
 
 Chacune de ces méthodes prend une fonction fléchée, écrite sur place, `(x) => …`, et la compile comme le corps d’une boucle : aucune valeur de fonction, aucun appel à l’exécution. Ses paramètres prêtent les éléments, comme `for…of` : ils sont lus, jamais déplacés. <span class="status compiled">compilé</span>

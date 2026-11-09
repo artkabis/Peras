@@ -358,3 +358,174 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
     (local.get $out))
+
+  ;; Arrays, by column: a buffer of elements of `size` bytes, each column of
+  ;; an array of structures on its own. A column of buffers (DEEP) owns them:
+  ;; a new column gets copies.
+
+  ;; The size of an element of `h`, in bytes.
+  (func $element_size (param $h i32) (result i32)
+    (i32.and (i32.load offset=12 (local.get $h)) (i32.const 0xFF)))
+
+  ;; Each buffer of a new DEEP column replaced by a copy of it.
+  (func $own_copies (param $h i32)
+    (local $i i32) (local $at i32)
+    (if (i32.eqz (i32.and (i32.load offset=12 (local.get $h)) (global.get $DEEP))) (then (return)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (i32.load (local.get $h))))
+        (local.set $at (i32.add (i32.load offset=8 (local.get $h)) (i32.shl (local.get $i) (i32.const 2))))
+        (i32.store (local.get $at) (call $buf_clone (i32.load (local.get $at)) (i32.const 0)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next))))
+
+  ;; An index of an array made valid: negative from the end, then clamped.
+  (func $clamp_index (param $len i32) (param $i i32) (result i32)
+    (if (i32.lt_s (local.get $i) (i32.const 0))
+      (then (local.set $i (i32.add (local.get $i) (local.get $len)))))
+    (if (i32.lt_s (local.get $i) (i32.const 0)) (then (local.set $i (i32.const 0))))
+    (if (i32.gt_s (local.get $i) (local.get $len)) (then (local.set $i (local.get $len))))
+    (local.get $i))
+
+  ;; A new column with the elements from `start` to `end`.
+  (func (export "arr_slice") (param $h i32) (param $start i32) (param $end i32) (result i32)
+    (local $len i32) (local $es i32) (local $n i32) (local $out i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $es (call $element_size (local.get $h)))
+    (local.set $start (call $clamp_index (local.get $len) (local.get $start)))
+    (local.set $end (call $clamp_index (local.get $len) (local.get $end)))
+    (if (i32.lt_s (local.get $end) (local.get $start)) (then (local.set $end (local.get $start))))
+    (local.set $n (i32.sub (local.get $end) (local.get $start)))
+    (local.set $out (call $buf_new (local.get $n) (i32.load offset=12 (local.get $h)) (i32.const 0)))
+    (if (local.get $n)
+      (then (memory.copy (i32.load offset=8 (local.get $out))
+        (i32.add (i32.load offset=8 (local.get $h)) (i32.mul (local.get $start) (local.get $es)))
+        (i32.mul (local.get $n) (local.get $es)))))
+    (i32.store (local.get $out) (local.get $n))
+    (call $own_copies (local.get $out))
+    (local.get $out))
+
+  ;; A new column with the elements of `a`, then those of `b`.
+  (func (export "arr_concat") (param $a i32) (param $b i32) (result i32)
+    (local $la i32) (local $lb i32) (local $es i32) (local $out i32)
+    (local.set $la (i32.load (local.get $a)))
+    (local.set $lb (i32.load (local.get $b)))
+    (local.set $es (call $element_size (local.get $a)))
+    (local.set $out (call $buf_new (i32.add (local.get $la) (local.get $lb))
+      (i32.load offset=12 (local.get $a)) (i32.const 0)))
+    (if (local.get $la)
+      (then (memory.copy (i32.load offset=8 (local.get $out)) (i32.load offset=8 (local.get $a))
+        (i32.mul (local.get $la) (local.get $es)))))
+    (if (local.get $lb)
+      (then (memory.copy
+        (i32.add (i32.load offset=8 (local.get $out)) (i32.mul (local.get $la) (local.get $es)))
+        (i32.load offset=8 (local.get $b)) (i32.mul (local.get $lb) (local.get $es)))))
+    (i32.store (local.get $out) (i32.add (local.get $la) (local.get $lb)))
+    (call $own_copies (local.get $out))
+    (local.get $out))
+
+  ;; Swaps the elements at `i` and `j` of `h`, of `es` bytes: 1, 4 or 8.
+  (func $swap (param $h i32) (param $i i32) (param $j i32) (param $es i32)
+    (local $a i32) (local $b i32) (local $t i64)
+    (local.set $a (i32.add (i32.load offset=8 (local.get $h)) (i32.mul (local.get $i) (local.get $es))))
+    (local.set $b (i32.add (i32.load offset=8 (local.get $h)) (i32.mul (local.get $j) (local.get $es))))
+    (if (i32.eq (local.get $es) (i32.const 8))
+      (then
+        (local.set $t (i64.load (local.get $a)))
+        (i64.store (local.get $a) (i64.load (local.get $b)))
+        (i64.store (local.get $b) (local.get $t))
+        (return)))
+    (if (i32.eq (local.get $es) (i32.const 4))
+      (then
+        (local.set $t (i64.extend_i32_u (i32.load (local.get $a))))
+        (i32.store (local.get $a) (i32.load (local.get $b)))
+        (i32.store (local.get $b) (i32.wrap_i64 (local.get $t)))
+        (return)))
+    (local.set $t (i64.extend_i32_u (i32.load8_u (local.get $a))))
+    (i32.store8 (local.get $a) (i32.load8_u (local.get $b)))
+    (i32.store8 (local.get $b) (i32.wrap_i64 (local.get $t))))
+
+  ;; Reverses the elements of `h` in place.
+  (func (export "arr_reverse") (param $h i32)
+    (local $i i32) (local $j i32) (local $es i32)
+    (local.set $es (call $element_size (local.get $h)))
+    (local.set $j (i32.sub (i32.load (local.get $h)) (i32.const 1)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_s (local.get $i) (local.get $j)))
+        (call $swap (local.get $h) (local.get $i) (local.get $j) (local.get $es))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (local.set $j (i32.sub (local.get $j) (i32.const 1)))
+        (br $next))))
+
+  ;; Whether element `i` of `h` is below element `j`, as numbers of `kind`:
+  ;; 0 `i32`, 1 `i64`, 2 `f32`, 3 `f64`.
+  (func $below (param $h i32) (param $i i32) (param $j i32) (param $kind i32) (result i32)
+    (local $data i32)
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (if (i32.eqz (local.get $kind))
+      (then (return (i32.lt_s
+        (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+        (i32.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 2))))))))
+    (if (i32.eq (local.get $kind) (i32.const 1))
+      (then (return (i64.lt_s
+        (i64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+        (i64.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 3))))))))
+    (if (i32.eq (local.get $kind) (i32.const 2))
+      (then (return (f32.lt
+        (f32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+        (f32.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 2))))))))
+    (f64.lt
+      (f64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+      (f64.load (i32.add (local.get $data) (i32.shl (local.get $j) (i32.const 3))))))
+
+  ;; Moves the element at `root` down the heap of the first `end` elements.
+  (func $sift (param $h i32) (param $root i32) (param $end i32) (param $kind i32) (param $es i32)
+    (local $child i32)
+    (block $done
+      (loop $next
+        (local.set $child (i32.add (i32.shl (local.get $root) (i32.const 1)) (i32.const 1)))
+        (br_if $done (i32.ge_s (local.get $child) (local.get $end)))
+        (if (i32.lt_s (i32.add (local.get $child) (i32.const 1)) (local.get $end))
+          (then (if (call $below (local.get $h) (local.get $child) (i32.add (local.get $child) (i32.const 1)) (local.get $kind))
+            (then (local.set $child (i32.add (local.get $child) (i32.const 1)))))))
+        (br_if $done (i32.eqz (call $below (local.get $h) (local.get $root) (local.get $child) (local.get $kind))))
+        (call $swap (local.get $h) (local.get $root) (local.get $child) (local.get $es))
+        (local.set $root (local.get $child))
+        (br $next))))
+
+  ;; Sorts the numbers of `h` in increasing order, in place: heapsort, in
+  ;; time n log n, without allocating.
+  (func (export "arr_sort") (param $h i32) (param $kind i32)
+    (local $n i32) (local $i i32) (local $es i32)
+    (local.set $n (i32.load (local.get $h)))
+    (local.set $es (call $element_size (local.get $h)))
+    (local.set $i (i32.sub (i32.shr_u (local.get $n) (i32.const 1)) (i32.const 1)))
+    (block $built
+      (loop $next
+        (br_if $built (i32.lt_s (local.get $i) (i32.const 0)))
+        (call $sift (local.get $h) (local.get $i) (local.get $n) (local.get $kind) (local.get $es))
+        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.set $i (i32.sub (local.get $n) (i32.const 1)))
+    (block $sorted
+      (loop $next
+        (br_if $sorted (i32.le_s (local.get $i) (i32.const 0)))
+        (call $swap (local.get $h) (i32.const 0) (local.get $i) (local.get $es))
+        (call $sift (local.get $h) (i32.const 0) (local.get $i) (local.get $kind) (local.get $es))
+        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (br $next))))
+
+  ;; The index of the first string of `h` equal to `s`, or -1.
+  (func (export "arr_index_of_str") (param $h i32) (param $s i32) (result i32)
+    (local $i i32) (local $e i32)
+    (block $none
+      (loop $next
+        (br_if $none (i32.ge_u (local.get $i) (i32.load (local.get $h))))
+        (local.set $e (i32.load (i32.add (i32.load offset=8 (local.get $h)) (i32.shl (local.get $i) (i32.const 2)))))
+        (if (i32.eq (i32.load (local.get $e)) (i32.load (local.get $s)))
+          (then (if (call $same (i32.load offset=8 (local.get $e)) (i32.load offset=8 (local.get $s)) (i32.load (local.get $s)))
+            (then (return (local.get $i))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const -1))

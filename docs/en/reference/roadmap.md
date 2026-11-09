@@ -37,14 +37,14 @@ fn parse_port(text: String): Result<u16, ParseError> {
 
 The everyday tools, with the same rules: explicit types, no hidden allocation, errors as values. In progress: the array methods that take an arrow function, compiled in place as loops, and `min`, `max`, `clamp` are [done](methods.md); the production allocator, TLSF, came first ([decision 0002](../decisions/0002-tlsf-allocator.md)).
 
-| Area        | What                                                                                                                                                                 |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`~~ (done), formatting and template strings                        |
-| arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), `sort`, `slice`, `concat`, `join`, `reverse`, iterators and ranges |
-| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                    |
-| numbers     | ~~`min`, `max`, `clamp`~~ (done), `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                                                            |
-| time        | durations and instants                                                                                                                                               |
-| data        | JSON, text encoding, bytes                                                                                                                                           |
+| Area        | What                                                                                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| text        | ~~`slice`, `split`, `indexOf`, `includes`, `startsWith`, `replace`, `trim`, case conversion, `join`~~ (done), formatting and template strings                                                          |
+| arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges |
+| collections | `Map<K, V>`, `Set<T>`, `Deque<T>`                                                                                                                                                                      |
+| numbers     | ~~`min`, `max`, `clamp`~~ (done), `pow`, `exp`, `log`, `atan2`, `hypot`, constants, seeded random numbers                                                                                              |
+| time        | durations and instants                                                                                                                                                                                 |
+| data        | JSON, text encoding, bytes                                                                                                                                                                             |
 
 ```peras build
 export fn words(text: String): i32 {
