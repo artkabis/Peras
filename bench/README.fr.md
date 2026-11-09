@@ -27,27 +27,46 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 
 ## Banc d’essai dans le navigateur (`bench/browser`)
 
-`bench/browser/kernels.peras` contient huit noyaux qu’exécute une application web : des particules déplacées sur place, un filtre d’image, la gravité entre des structures, un hachage sur 64 bits, un tri, de l’arithmétique flottante, le découpage d’un texte, et un appel depuis JavaScript. `bench/browser/reference.js` contient les mêmes fonctions en JavaScript, écrites comme les écrirait un développeur soucieux de vitesse : tableaux typés pour les nombres, objets simples pour les structures, `BigInt` pour les entiers 64 bits.
+`bench/browser/kernels.peras` contient huit noyaux qu’exécute une application web : des particules déplacées sur place, un filtre d’image, la gravité entre des structures, un hachage sur 64 bits, un tri, de l’arithmétique flottante, le découpage d’un texte, et un appel depuis JavaScript. `bench/browser/reference.js` contient les mêmes fonctions en JavaScript, deux fois là où cela compte : comme on écrit habituellement JavaScript (tableaux typés pour les nombres, objets pour les structures, `BigInt` pour les entiers 64 bits, `split` et `filter`), et comme un expert l’écrit pour la vitesse (une boucle sur les caractères, deux moitiés de 32 bits, des colonnes de `Float64Array`, un tri par base). Les particules, les pixels, Mandelbrot et les appels sont déjà écrits comme le ferait un expert.
 
-`node scripts/bench-browser.mjs` compile les noyaux avec l’allocateur TLSF, les sert, et les exécute dans Chromium à côté de leurs jumeaux JavaScript. Dans la page, il vérifie d’abord que chaque variante donne exactement le même résultat ; puis il chronomètre chacune, en alternant : un appel à froid, 3 appels de chauffe, 15 appels mesurés. Il mesure aussi le téléchargement et l’import de chaque module dans un contexte de navigateur neuf. `--check` ne fait que comparer les résultats, sur de petites entrées, pour la CI. Il écrit [`browser/RESULTS.md`](browser/RESULTS.md).
+`node scripts/bench-browser.mjs` compile les noyaux avec l’allocateur TLSF, les sert, et les exécute dans Chromium à côté de leurs jumeaux JavaScript. Dans la page, il vérifie d’abord que chaque variante donne exactement le même résultat ; puis il chronomètre chacune, en alternant : un appel à froid, 3 appels de chauffe, 15 appels mesurés. Il donne deux rapports : face à JavaScript tel qu’on l’écrit habituellement, et face au JavaScript le plus rapide. Il mesure aussi le téléchargement et l’import de chaque module dans un contexte de navigateur neuf. `--check` ne fait que comparer les résultats, sur de petites entrées, pour la CI. Il écrit [`browser/RESULTS.md`](browser/RESULTS.md).
 
 Ce qu’il mesure, et ce qu’il ne mesure pas :
 
-- Il mesure V8 exécutant du WebAssembly face à V8 exécutant du JavaScript, dans la même page, sur les mêmes entrées. Les temps varient beaucoup d’une machine à l’autre ; les rapports beaucoup moins (moins de 10 % entre deux exécutions).
-- Les noyaux ont été choisis pour couvrir les deux côtés : ceux où Peras devrait gagner et ceux où il devrait perdre (texte, appels très courts). Tous figurent dans les résultats.
-- Le JavaScript est honnête sans être héroïque : ni WebAssembly écrit à la main, ni SIMD, ni Web Workers, d’un côté comme de l’autre.
+- Il mesure un moteur exécutant du WebAssembly face au même moteur exécutant du JavaScript, dans la même page, sur les mêmes entrées. Les temps varient beaucoup d’une machine à l’autre ; les rapports beaucoup moins.
+- Les noyaux ont été choisis pour couvrir les deux côtés : ceux où Peras devrait gagner et ceux où il devrait perdre (appels très courts, arithmétique flottante seule). Tous figurent dans les résultats.
+- Le JavaScript a été écrit par les auteurs de Peras. Les versions expertes ont été ajoutées après la question d’un lecteur extérieur : les chiffres tiendraient-ils face à du JavaScript écrit pour la vitesse ? Certains n’ont pas tenu. Un meilleur JavaScript est bienvenu : un jumeau plus rapide qui donne le même résultat remplace le nôtre, et les chiffres avec lui.
 - Il ne mesure ni la mémoire, ni les pauses du ramasse-miettes sur une longue session, ni une application entière.
 
-Ce que disent les résultats, aujourd’hui :
+Ce que disent les résultats aujourd’hui, face au JavaScript **le plus rapide** (trois exécutions, Chromium 153, une machine cloud à 4 cœurs) ; face à JavaScript tel qu’on l’écrit habituellement entre parenthèses :
 
-- **Nombres dans des tableaux** (particules, pixels) : Peras est 1,5 à 2,5 fois plus rapide quand le tableau est un `PerasArray`. Une boucle comptée abandonne les contrôles d’indice qu’elle prouve (`crates/perasc-ir/src/bounds.rs`), ce qui a fait passer les particules de 1,2 à 1,4 ; ses tours s’exécutent ensuite plusieurs à la fois avec le SIMD de WebAssembly, branches comprises (`crates/perasc-codegen-wasm/src/simd.rs`), ce qui a porté les particules à 1,8 et le filtre de gris de 1,2 à 2,2. Passer un tableau ordinaire le copie à l’aller et au retour, ce qui coûte plus que le travail : c’est le zéro copie qui fait le gain.
-- **Arithmétique flottante seule** (Mandelbrot) : la même vitesse (0,98 à 1,07 selon l’exécution). V8 compile déjà très bien ce JavaScript, et Peras vérifie chaque indice et chaque opération entière.
-- **Structures** (n corps) : 1,5 à 1,8 fois plus rapide. Un tableau de structures est rangé par colonnes en mémoire linéaire, là où JavaScript a un objet par élément.
-- **Entiers 64 bits** : environ 20 fois plus rapide. JavaScript n’a que `BigInt`, qui alloue.
-- **Tri** : 4,2 fois plus rapide que `Float64Array.prototype.sort`, que V8 exécute en code natif, et 17 fois plus rapide que l’habituel `array.sort((a, b) => a - b)`. Le runtime trie les nombres par leurs bits, un tri par base en quelques passes, là où un tri par comparaison demande une vingtaine de comparaisons par nombre ; c’était un tri par tas, 2,3 fois plus lent que V8, auparavant.
-- **Texte** : 3,5 fois plus rapide ; c’était 3,4 fois plus lent. Étape par étape ([décision 0004](../docs/fr/decisions/0004-strings-without-allocation.md)) : `filter` sur un tableau temporaire garde ses éléments sur place, une chaîne courte tient en un bloc ; les morceaux de `split` lus aussitôt sont des vues du texte, un bloc pour tous ; le séparateur est cherché seize octets à la fois ; le texte entre dans le module en une passe, avec `encodeInto` ; et `filter(…).length` compte les mots qu’il garde, sans tableau. Des 2,9 ms qui restent, 0,7 à 0,9 sont l’entrée du texte.
-- **Appels** : un appel vers le module coûte environ 1,4 fois un appel JavaScript, que V8 met en ligne. Le travail doit traverser la frontière par gros morceaux.
-- **Démarrage** : environ 11 Kio gzip de plus à télécharger, et l’import prend environ deux fois plus de temps (17 ms contre 9), surtout à cause de l’allocateur inclus dans le chargeur. Il se paie une fois par module.
+- **Entiers 64 bits** : 5,4 fois plus rapide (20 fois face à `BigInt`). WebAssembly a des entiers 64 bits ; JavaScript doit les couper en deux.
+- **Nombres dans des tableaux** (particules, pixels) : 2,1 à 2,4 et 1,6 à 1,8 fois plus rapide, quand le tableau est un `PerasArray` ; 1,1 à 1,3 quand un tableau ordinaire est copié à l’aller et au retour. Les vérifications de bornes prouvées inutiles et les boucles SIMD font la différence ([bounds.rs](../crates/perasc-ir/src/bounds.rs), [simd.rs](../crates/perasc-codegen-wasm/src/simd.rs)).
+- **Tri** : 1,8 à 1,9 fois plus rapide qu’un tri par base écrit en JavaScript (3,8 à 4,2 fois plus que `Float64Array.prototype.sort` dans V8, 17 fois plus que `array.sort((a, b) => a - b)`). Dans WebKit, dont le tri natif est rapide, Peras était plus lent que lui (0,88).
+- **Texte** : 1,6 à 1,7 fois plus rapide qu’une boucle sur les caractères (3,2 à 3,3 fois plus que `split` et `filter`). Les étapes sont dans la [décision 0004](../docs/fr/decisions/0004-strings-without-allocation.md).
+- **Structures** (n-body) : **la même vitesse** (0,97 à 1,01) qu’un JavaScript qui range les champs en colonnes de `Float64Array`, ce que fait Peras ; 1,5 fois plus rapide qu’un objet par corps.
+- **Arithmétique flottante seule** (Mandelbrot) : la même vitesse (0,98 à 1,07).
+- **Appels** : un appel dans le module coûte 1,4 à 1,7 fois un appel JavaScript, que le moteur intègre. Le travail doit franchir la frontière par gros morceaux.
+- **Démarrage** : 13 Kio gzip de plus à télécharger, et l’import prend environ deux fois plus longtemps (19 ms contre 9,5), surtout l’allocateur intégré au chargeur. C’est payé une fois par module.
+
+Ce qu’apporte Peras, donc, c’est moins une vitesse que JavaScript ne peut pas atteindre que la vitesse de l’expert à partir du code habituel : `text.split(" ").filter(…).length` et un tableau de structures vont aussi vite, ou plus vite, que le JavaScript en lequel un expert les réécrit.
+
+### Ce qu’une revue indépendante demanderait encore
+
+Ces points sont connus et pas encore faits ; chacun est une raison de lire les chiffres ci-dessus avec prudence.
+
+- **D’autres concurrents** : les mêmes noyaux en Rust compilé en WebAssembly, et en AssemblyScript, les alternatives à un nouveau langage.
+- **Toutes les mesures dans le dépôt** : les prototypes et sondes derrière les décisions 0004 et 0005, et les mesures des flottants en texte et d’`encodeInto`, ont été exécutés depuis un dossier de travail ; ils doivent être versionnés sous `bench/`, avec une commande chacun.
+- **Statistiques** : des intervalles de confiance (bootstrap sur les exécutions) plutôt que des médianes seules ; plus d’exécutions ; les niveaux d’optimisation du moteur indiqués.
+- **Machines** : macOS avec le Safari d’Apple, Windows, un téléphone ARM ; le chronomètre de WebKit compte des millisecondes entières, trop grossier pour des noyaux de 2 ou 3 ms.
+- **Une application entière**, mesurée du chargement à la dernière image.
+
+Des idées qui vont à l’encontre de ce qui a été fait jusqu’ici, à mesurer avant de les garder :
+
+- **Compiler en JavaScript, exprès.** Une petite fonction appelée en boucle depuis JavaScript coûte plus à la frontière que son travail (les appels ci-dessus). Le compilateur pourrait l’émettre en JavaScript, comme le fera le mode géré, et garder WebAssembly pour le reste : le choix fait fonction par fonction, sur mesure.
+- **Laisser l’hôte trier là où il trie plus vite.** Le tri natif de WebKit bat celui de Peras ; un module pourrait chronométrer les deux une fois au chargement sur un petit tableau et garder le plus rapide, comme le chargeur sonde déjà le SIMD.
+- **Les flottants en texte par deux chemins.** Un flottant de valeur entière, le cas courant, peut être écrit par le chemin des entiers du runtime ; seuls les autres ont besoin du `String()` de l’hôte ([méthodes](../docs/fr/reference/methods.md)).
+- **Des tables de deux dispositions.** Les tables suisses pour celles dont l’ordre ne se voit pas, l’ordre d’insertion pour les autres ([décision 0005](../docs/fr/decisions/0005-maps-and-sets.md)).
 
 ## Banc A/B (`scripts/bench-ab.mjs`)
 

@@ -97,7 +97,7 @@ No more allocations; +671 bytes gzip; compile time +4.8 %, within the noise of a
 | words            | −33.3 %, −28.9 %, −31.1 %, −31.0 % |
 | the eight others | within noise                       |
 
-`words` takes 3.1 ms against 10.2 for JavaScript, 3.3 times faster, with 5 blocks instead of 7. Tests check each count against Rust, and that counting allocates what making the array alone does; making the count ignore the test, or never fusing, fails them. They also found a bug of `&&` and `||`: a temporary of the right side, as `s.endsWith("1")` makes, was released after the statement, on a path that may not have made it, which the IR verifier refused; it is now released in the branch that made it.
+`words` takes 3.1 ms against 10.2 for JavaScript, 3.3 times faster, with 5 blocks instead of 7. That JavaScript is `split` and `filter`, as usually written; against a loop over the characters, the fastest JavaScript, `words` is 1.6 to 1.7 times faster ([bench README](../../../bench/README.md#browser-benchmark-benchbrowser)). Tests check each count against Rust, and that counting allocates what making the array alone does; making the count ignore the test, or never fusing, fails them. They also found a bug of `&&` and `||`: a temporary of the right side, as `s.endsWith("1")` makes, was released after the statement, on a path that may not have made it, which the IR verifier refused; it is now released in the branch that made it.
 
 **Next:** chains of two functions (`map` then `reduce`, `filter` then `some`), under the condition of point 3, and views for `slice` and `trim`.
 

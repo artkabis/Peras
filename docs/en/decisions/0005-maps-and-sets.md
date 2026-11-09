@@ -47,7 +47,7 @@ Four facts come out of these measurements:
 1. **A hash without a key collapses on real data.** FxHash with linear probing took 18 seconds on identifiers in steps of 4096, a hundred times longer, because its low bits did not vary. An earlier run of these measurements, with keys that a faulty generator had made repetitive, had shown the same collapse.
 2. **Insertion order costs 1.4 to 1.5 times on a million integers**, and 10 to 20 % on words, which fit in the cache. That cost is the index: a found key is read in two places. Keeping the hash in the index, so that a slot that does not match is never followed, was measured too: no gain (263 against 266 ms).
 3. **SipHash-1-3 costs about 40 % more than a multiplicative hash.**
-4. **Every variant is faster than JavaScript's `Map`**: the slowest, ordered with SipHash-1-3, is 2.2 to 3.2 times faster on integers and 2.4 to 2.6 times on words.
+4. **Every variant is faster than JavaScript's `Map`**: the slowest, ordered with SipHash-1-3, is 2.2 to 3.2 times faster on integers and 2.4 to 2.6 times on words. That is JavaScript's `Map`, as usually used, not a table written by hand over typed arrays, as an expert would for integers: the [browser benchmark](../../../bench/README.md#browser-benchmark-benchbrowser) showed such twins narrowing every gap, so these ratios are a ceiling, to measure again against an expert's table before they are quoted.
 
 ## Decision
 

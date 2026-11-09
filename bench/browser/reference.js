@@ -1,7 +1,13 @@
-// Browser benchmark: the JavaScript side, written as a developer who cares
-// about speed would write it: typed arrays for numbers, plain objects for
-// structures, BigInt for 64-bit integers. Each function is the twin of the one
-// with the same name in kernels.peras.
+// Browser benchmark: the JavaScript side. Each function is the twin of the
+// one with the same name in kernels.peras, written as JavaScript is usually
+// written: typed arrays for numbers, plain objects for structures, BigInt for
+// 64-bit integers, the methods of strings and arrays.
+//
+// Where an expert writes it otherwise, for speed, the `…Expert` function does:
+// a loop over the characters instead of `split`, two 32-bit halves instead of
+// BigInt, columns of Float64Array instead of objects, a radix sort instead of
+// the engine's. Each gives exactly the same result. The particles, the pixels,
+// Mandelbrot and the calls are already written as an expert would.
 
 /**
  * @param {Float64Array} xs
@@ -135,4 +141,146 @@ export function words(text) {
  */
 export function add(a, b) {
   return a + b;
+}
+
+/**
+ * `words` without `split`: one pass over the characters, no array.
+ * @param {string} text
+ */
+export function wordsExpert(text) {
+  let n = 0;
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 32) inWord = false;
+    else if (!inWord) {
+      inWord = true;
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * `hash64` in two 32-bit halves, no BigInt until the end. The FNV prime is
+ * 2^40 + 0x1b3: the low half times 0x1b3 fits a double exactly, and the
+ * 2^40 part shifts the low half into the high one.
+ * @param {number} n
+ */
+export function hash64Expert(n) {
+  let lo = 0x84222325;
+  let hi = 0xcbf29ce4;
+  for (let i = 0; i < n; i++) {
+    lo = (lo ^ i) >>> 0;
+    const product = lo * 0x1b3;
+    const carry = Math.floor(product / 4294967296);
+    hi = (Math.imul(hi, 0x1b3) + carry + (lo << 8)) >>> 0;
+    lo = product >>> 0;
+  }
+  return BigInt.asIntN(64, (BigInt(hi) << 32n) | BigInt(lo));
+}
+
+/**
+ * `nbody` with each field in a column, as Peras stores an array of
+ * structures: the same operations in the same order, so the same result.
+ * @param {number} n
+ * @param {number} steps
+ */
+export function nbodyExpert(n, steps) {
+  const x = new Float64Array(n);
+  const y = new Float64Array(n);
+  const vx = new Float64Array(n);
+  const vy = new Float64Array(n);
+  const m = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    x[i] = (i * 7) % 100;
+    y[i] = (i * 13) % 100;
+    m[i] = 1 + (i % 3);
+  }
+  for (let s = 0; s < steps; s++) {
+    for (let i = 0; i < n; i++) {
+      let ax = 0;
+      let ay = 0;
+      const xi = x[i];
+      const yi = y[i];
+      for (let j = 0; j < n; j++) {
+        if (i !== j) {
+          const dx = x[j] - xi;
+          const dy = y[j] - yi;
+          const d2 = dx * dx + dy * dy + 0.01;
+          const inv = m[j] / (d2 * Math.sqrt(d2));
+          ax += dx * inv;
+          ay += dy * inv;
+        }
+      }
+      vx[i] += ax * 0.001;
+      vy[i] += ay * 0.001;
+    }
+    for (let i = 0; i < n; i++) {
+      x[i] += vx[i] * 0.001;
+      y[i] += vy[i] * 0.001;
+    }
+  }
+  let energy = 0;
+  for (let i = 0; i < n; i++) energy += m[i] * (vx[i] * vx[i] + vy[i] * vy[i]);
+  return energy;
+}
+
+/**
+ * `sorted` with a radix sort, as Peras sorts: each number becomes an
+ * unsigned 64-bit key in the same order, in two 32-bit halves, sorted 16
+ * bits at a time, a pass skipped when every key has the same digit, then
+ * turned back. Typed arrays are little-endian on every platform browsers run
+ * on: the low half comes first.
+ * @param {Float64Array} xs
+ */
+export function sortedExpert(xs) {
+  const n = xs.length;
+  const words = new Uint32Array(xs.buffer, xs.byteOffset, n * 2);
+  let lo = new Uint32Array(n);
+  let hi = new Uint32Array(n);
+  for (let i = 0; i < n; i++) {
+    const l = words[2 * i];
+    const h = words[2 * i + 1];
+    if (h & 0x80000000) {
+      lo[i] = ~l >>> 0;
+      hi[i] = ~h >>> 0;
+    } else {
+      lo[i] = l;
+      hi[i] = (h | 0x80000000) >>> 0;
+    }
+  }
+  let lo2 = new Uint32Array(n);
+  let hi2 = new Uint32Array(n);
+  const count = new Uint32Array(65536);
+  for (let pass = 0; pass < 4; pass++) {
+    const half = pass < 2 ? lo : hi;
+    const shift = pass % 2 === 0 ? 0 : 16;
+    count.fill(0);
+    for (let i = 0; i < n; i++) count[(half[i] >>> shift) & 0xffff]++;
+    if (count[(half[0] >>> shift) & 0xffff] === n) continue;
+    let sum = 0;
+    for (let d = 0; d < 65536; d++) {
+      const c = count[d];
+      count[d] = sum;
+      sum += c;
+    }
+    for (let i = 0; i < n; i++) {
+      const at = count[(half[i] >>> shift) & 0xffff]++;
+      lo2[at] = lo[i];
+      hi2[at] = hi[i];
+    }
+    [lo, lo2] = [lo2, lo];
+    [hi, hi2] = [hi2, hi];
+  }
+  for (let i = 0; i < n; i++) {
+    const h = hi[i];
+    if (h & 0x80000000) {
+      words[2 * i] = lo[i];
+      words[2 * i + 1] = h & 0x7fffffff;
+    } else {
+      words[2 * i] = ~lo[i] >>> 0;
+      words[2 * i + 1] = ~h >>> 0;
+    }
+  }
+  return xs[0] + xs[Math.floor(n / 2)] + xs[n - 1];
 }

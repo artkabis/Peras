@@ -181,18 +181,22 @@ function report(cases, start, browserVersion) {
     "",
     "## Run time (ms)",
     "",
-    "Median of the timed runs, after warm-up; _cold_ is the very first call, before the engine has optimized anything, which is what a page that runs a function once sees. Ratio: JavaScript's median divided by this variant's; above 1, Peras is faster.",
+    "Median of the timed runs, after warm-up; _cold_ is the very first call, before the engine has optimized anything, which is what a page that runs a function once sees.",
     "",
-    "| Kernel | Work | Variant | Cold | Median | Best | Ratio |",
-    "| --- | --- | --- | --: | --: | --: | --: |",
+    "Two ratios, a median divided by this variant's; above 1, this variant is faster. _Usual_: against JavaScript as it is usually written, the first JavaScript variant. _Fastest_: against the fastest JavaScript variant, an expert's where there is one ([reference.js](reference.js)); the claim to keep is this one.",
+    "",
+    "| Kernel | Work | Variant | Cold | Median | Best | Against usual JS | Against fastest JS |",
+    "| --- | --- | --- | --: | --: | --: | --: | --: |",
   ];
   for (const c of cases) {
-    const reference = c.result[0]?.median ?? 0;
+    const usual = c.result[0]?.median ?? 0;
+    const fastest = Math.min(
+      ...c.result.filter((r) => r.label.startsWith("JavaScript")).map((r) => r.median),
+    );
     c.result.forEach((r, k) => {
-      const ratio = k === 0 ? "1.00" : (reference / r.median).toFixed(2);
       const [name, what] = k === 0 ? [c.name, c.what] : ["", ""];
       lines.push(
-        `| ${name} | ${what} | ${r.label} | ${ms(r.cold)} | ${ms(r.median)} | ${ms(r.min)} | ${ratio} |`,
+        `| ${name} | ${what} | ${r.label} | ${ms(r.cold)} | ${ms(r.median)} | ${ms(r.min)} | ${(usual / r.median).toFixed(2)} | ${(fastest / r.median).toFixed(2)} |`,
       );
     });
   }

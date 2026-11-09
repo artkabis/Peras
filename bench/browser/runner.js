@@ -1,6 +1,7 @@
 // Browser benchmark: runs in the page. Makes the inputs, checks that Peras and
 // JavaScript give the same result, then times them, alternating, in the same
-// page. `run` compares one build of Peras with JavaScript, for
+// page. JavaScript's first variant is the usual one; a variant labelled
+// "expert" is written for speed (reference.js). `run` compares one build of Peras with JavaScript, for
 // scripts/bench-browser.mjs; `ab` compares two builds, for
 // scripts/bench-ab.mjs.
 import * as js from "./reference.js";
@@ -267,6 +268,7 @@ export function kernels(builds, scale) {
     /** @type {Variant[]} */
     const variants = [
       { label: "JavaScript", call: () => js.nbody(count, steps) },
+      { label: "JavaScript, expert", call: () => js.nbodyExpert(count, steps) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.nbody(count, steps) })),
     ];
     out.push({
@@ -286,6 +288,7 @@ export function kernels(builds, scale) {
     /** @type {Variant[]} */
     const variants = [
       { label: "JavaScript", call: () => js.hash64(count) },
+      { label: "JavaScript, expert", call: () => js.hash64Expert(count) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.hash64(count) })),
     ];
     out.push({
@@ -305,6 +308,7 @@ export function kernels(builds, scale) {
     const next = random(3);
     const data = Float64Array.from({ length: count }, () => next() * 1e6);
     const jt = new Float64Array(count);
+    const jr = new Float64Array(count);
     /** @type {number[]} */
     let ja = [];
     const arrays = builds.map((b) => b.peras.__perasHeap.array("f64", count));
@@ -323,6 +327,13 @@ export function kernels(builds, scale) {
           ja = Array.from(data);
         },
         call: () => js.sortedArray(ja),
+      },
+      {
+        label: "JavaScript, expert",
+        prepare: () => {
+          jr.set(data);
+        },
+        call: () => js.sortedExpert(jr),
       },
     ];
     builds.forEach((b, k) => {
@@ -343,6 +354,11 @@ export function kernels(builds, scale) {
       variants,
       check: () => {
         same("sorted", results(variants));
+        // The expert's sort is written here: every element, not only three.
+        for (let i = 0; i < count; i++) {
+          if (!Object.is(jt[i], jr[i]))
+            throw new Error(`sorted: the expert sort differs at ${String(i)}`);
+        }
       },
       release: () => {
         for (const pp of arrays) pp.release();
@@ -375,6 +391,7 @@ export function kernels(builds, scale) {
     /** @type {Variant[]} */
     const variants = [
       { label: "JavaScript", call: () => js.words(input) },
+      { label: "JavaScript, expert", call: () => js.wordsExpert(input) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.words(input) })),
     ];
     out.push({

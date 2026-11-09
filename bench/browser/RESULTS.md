@@ -6,28 +6,34 @@ Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores. chromium 153.0.8010.12, 
 
 ## Run time (ms)
 
-Median of the timed runs, after warm-up; _cold_ is the very first call, before the engine has optimized anything, which is what a page that runs a function once sees. Ratio: JavaScript's median divided by this variant's; above 1, Peras is faster.
+Median of the timed runs, after warm-up; _cold_ is the very first call, before the engine has optimized anything, which is what a page that runs a function once sees.
 
-| Kernel | Work | Variant | Cold | Median | Best | Ratio |
-| --- | --- | --- | --: | --: | --: | --: |
-| particles | 1,000,000 particles, 10 steps | JavaScript | 52.9 | 42.3 | 40.9 | 1.00 |
-|  |  | Peras, zero copy | 33.8 | 17.0 | 16.4 | 2.49 |
-|  |  | Peras, copied | 60.2 | 32.3 | 30.5 | 1.31 |
-| grayscale | 4,194,304 pixels | JavaScript | 14.8 | 12.2 | 10.9 | 1.00 |
-|  |  | Peras, zero copy | 9.00 | 8.00 | 7.00 | 1.53 |
-| nbody | 1000 bodies, 5 steps | JavaScript | 28.1 | 24.2 | 19.5 | 1.00 |
-|  |  | Peras | 39.0 | 16.5 | 12.9 | 1.47 |
-| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 54.5 | 52.0 | 49.1 | 1.00 |
-|  |  | Peras | 2.80 | 2.50 | 2.40 | 20.80 |
-| sort | 1,000,000 f64 | JavaScript, Float64Array | 132 | 126 | 101 | 1.00 |
-|  |  | JavaScript, number[] | 618 | 547 | 495 | 0.23 |
-|  |  | Peras, zero copy | 62.0 | 30.0 | 28.7 | 4.19 |
-| mandel | 600 × 600, 64 steps | JavaScript | 19.7 | 14.3 | 14.0 | 1.00 |
-|  |  | Peras | 26.0 | 13.6 | 13.2 | 1.05 |
-| words | 1,019,576 characters | JavaScript | 10.2 | 10.2 | 9.20 | 1.00 |
-|  |  | Peras | 5.20 | 2.90 | 2.80 | 3.52 |
-| calls | 1,000,000 calls of add(a, b) | JavaScript | 1.80 | 4.30 | 4.10 | 1.00 |
-|  |  | Peras | 8.20 | 6.10 | 5.90 | 0.70 |
+Two ratios, a median divided by this variant's; above 1, this variant is faster. _Usual_: against JavaScript as it is usually written, the first JavaScript variant. _Fastest_: against the fastest JavaScript variant, an expert's where there is one ([reference.js](reference.js)); the claim to keep is this one.
+
+| Kernel | Work | Variant | Cold | Median | Best | Against usual JS | Against fastest JS |
+| --- | --- | --- | --: | --: | --: | --: | --: |
+| particles | 1,000,000 particles, 10 steps | JavaScript | 60.4 | 43.2 | 31.8 | 1.00 | 1.00 |
+|  |  | Peras, zero copy | 43.2 | 21.0 | 19.0 | 2.06 | 2.06 |
+|  |  | Peras, copied | 70.6 | 38.5 | 35.9 | 1.12 | 1.12 |
+| grayscale | 4,194,304 pixels | JavaScript | 15.9 | 14.6 | 13.6 | 1.00 | 1.00 |
+|  |  | Peras, zero copy | 9.40 | 9.00 | 8.10 | 1.62 | 1.62 |
+| nbody | 1000 bodies, 5 steps | JavaScript | 35.7 | 25.4 | 24.1 | 1.00 | 0.66 |
+|  |  | JavaScript, expert | 24.9 | 16.7 | 16.0 | 1.52 | 1.00 |
+|  |  | Peras | 50.8 | 16.6 | 16.3 | 1.53 | 1.01 |
+| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 52.6 | 50.4 | 49.4 | 1.00 | 0.27 |
+|  |  | JavaScript, expert | 14.9 | 13.6 | 13.5 | 3.71 | 1.00 |
+|  |  | Peras | 7.10 | 2.50 | 2.50 | 20.16 | 5.44 |
+| sort | 1,000,000 f64 | JavaScript, Float64Array | 129 | 130 | 116 | 1.00 | 0.48 |
+|  |  | JavaScript, number[] | 619 | 577 | 537 | 0.23 | 0.11 |
+|  |  | JavaScript, expert | 83.4 | 62.5 | 56.1 | 2.08 | 1.00 |
+|  |  | Peras, zero copy | 75.1 | 34.2 | 30.8 | 3.80 | 1.83 |
+| mandel | 600 × 600, 64 steps | JavaScript | 17.0 | 13.0 | 12.3 | 1.00 | 1.00 |
+|  |  | Peras | 24.8 | 13.3 | 12.5 | 0.98 | 0.98 |
+| words | 1,019,576 characters | JavaScript | 10.2 | 10.2 | 9.40 | 1.00 | 0.51 |
+|  |  | JavaScript, expert | 4.80 | 5.20 | 5.20 | 1.96 | 1.00 |
+|  |  | Peras | 4.90 | 3.20 | 3.10 | 3.19 | 1.62 |
+| calls | 1,000,000 calls of add(a, b) | JavaScript | 2.50 | 4.50 | 4.30 | 1.00 | 1.00 |
+|  |  | Peras | 14.2 | 6.30 | 5.90 | 0.71 | 0.71 |
 
 Every variant gave exactly the same result, checked in the page before timing (`Object.is`, positions and pixels included), and no block was left alive.
 
@@ -37,7 +43,7 @@ Import time: median of 15 fresh browser contexts, nothing cached, served from 12
 
 | Module | Files | Raw (KiB) | gzip (KiB) | Import (ms) |
 | --- | --- | --: | --: | --: |
-| Peras | kernels.js + kernels.wasm | 31.9 | 13.1 | 17.0 |
-| JavaScript | reference.js | 3.3 | 1.2 | 7.80 |
+| Peras | kernels.js + kernels.wasm | 31.9 | 13.1 | 19.3 |
+| JavaScript | reference.js | 7.6 | 2.4 | 9.30 |
 
 The Peras loader carries the allocator inlined and the code that crosses the boundary; it is shared by every function of a module.

@@ -47,7 +47,7 @@ Quatre faits ressortent de ces mesures :
 1. **Un hachage sans clé s’effondre sur des données réelles.** FxHash avec sondage linéaire a mis 18 secondes sur des identifiants de 4096 en 4096, cent fois plus longtemps, car ses bits de poids faible ne variaient pas. Une première série de ces mesures, avec des clés qu’un générateur défectueux avait rendues répétitives, avait montré le même effondrement.
 2. **L’ordre d’insertion coûte 1,4 à 1,5 fois sur un million d’entiers**, et 10 à 20 % sur les mots, qui tiennent dans le cache. Ce coût est celui de l’index : une clé trouvée se lit à deux endroits. Garder le hachage dans l’index, pour ne jamais suivre une case qui ne correspond pas, a été mesuré aussi : aucun gain (263 contre 266 ms).
 3. **SipHash-1-3 coûte environ 40 % de plus qu’un hachage multiplicatif.**
-4. **Chaque variante est plus rapide que la `Map` de JavaScript** : la plus lente, ordonnée avec SipHash-1-3, est 2,2 à 3,2 fois plus rapide sur les entiers et 2,4 à 2,6 fois sur les mots.
+4. **Chaque variante est plus rapide que la `Map` de JavaScript** : la plus lente, ordonnée avec SipHash-1-3, est 2,2 à 3,2 fois plus rapide sur les entiers et 2,4 à 2,6 fois sur les mots. C’est la `Map` de JavaScript, telle qu’on l’utilise habituellement, pas une table écrite à la main sur des tableaux typés, comme le ferait un expert pour des entiers : le [banc d’essai dans le navigateur](../../../bench/README.fr.md#banc-dessai-dans-le-navigateur-benchbrowser) a montré que de tels jumeaux réduisent chaque écart ; ces rapports sont donc un plafond, à mesurer de nouveau face à la table d’un expert avant d’être cités.
 
 ## Décision
 
