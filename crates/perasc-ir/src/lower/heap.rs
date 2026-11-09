@@ -797,6 +797,13 @@ impl Lowering<'_> {
         state.flush(out);
         let i_expr = super::local_expr(state, i);
         state.open();
+        // A temporary array, `for (const w of text.split(" "))`, belongs to
+        // the loop's scope: it lives through every turn, which releases only
+        // its own temporaries, and goes after the loop or on a `return`.
+        let temporaries = std::mem::take(&mut state.drops);
+        if let Some(scope) = state.owned.last_mut() {
+            scope.extend(temporaries);
+        }
         let text = self.ast.name(name.symbol);
         let mut turn: Vec<Stmt> = Vec::new();
         if columns.contains(&Elem::Handle) {
