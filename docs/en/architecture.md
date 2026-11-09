@@ -13,6 +13,8 @@ Every choice has a **status**:
 
 The **engineering notes** say what the web platform actually allows, so that every promise made to a customer or a funder can be kept. Figures are goals, to be measured with `bench/backends` before they are announced as results.
 
+Decision [0003](decisions/0003-runtime-proved-at-compile-time.md) settles how this document is used: Peras is a runtime proved at compile time, not a micro-OS. It lists what stays, what stays in another form, and what does not.
+
 ## I. Compilation and static analysis (`perasc`)
 
 ### 1. A compiler in safe Rust

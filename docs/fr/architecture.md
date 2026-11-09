@@ -13,6 +13,8 @@ Chaque choix porte un **statut** :
 
 Les **notes d’ingénierie** disent ce que la plateforme web permet réellement, pour que chaque promesse faite à un client ou un financeur soit tenable. Les gains chiffrés sont des objectifs, à mesurer avec `bench/backends` avant d’être annoncés comme des résultats.
 
+La décision [0003](decisions/0003-runtime-proved-at-compile-time.md) tranche l’usage de ce document : Peras est un runtime prouvé à la compilation, pas un micro-OS. Elle liste ce qui est retenu, ce qui l’est sous une autre forme, et ce qui ne l’est pas.
+
 ## I. Compilation et analyse statique (`perasc`)
 
 ### 1. Un compilateur en Rust sûr

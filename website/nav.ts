@@ -51,6 +51,7 @@ export const sections: Section[] = [
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
       "decisions/0002-tlsf-allocator",
+      "decisions/0003-runtime-proved-at-compile-time",
     ],
   },
 ];
