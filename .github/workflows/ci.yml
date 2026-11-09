@@ -120,3 +120,5 @@ jobs:
       - name: Install the Chromium of the pinned Playwright
         run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run e2e
+      - name: Peras and JavaScript agree in the browser benchmark
+        run: node scripts/bench-browser.mjs --check

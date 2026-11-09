@@ -17,10 +17,34 @@ What it measures, and what it does not:
 - It measures whether well-known pitfalls of JavaScript and TypeScript are rejected before the code runs.
 - The corpus was written by the Peras authors, around rules Peras enforces: it shows coverage of these pitfalls, not general superiority. Cases where TypeScript already does as well are kept on purpose.
 - TypeScript has no `u8` or integer types, so case 08 uses a `Uint8ClampedArray`, and case 19 has no TypeScript equivalent at all.
-- Performance is not measured yet: Peras does not generate code before day 7 of the kickoff plan.
+- It does not measure speed: the browser benchmark below does.
 
 `bench/bugs` holds deliberately wrong code: the repository's ESLint and Prettier ignore it.
 
 ## Backend benchmark (`bench/backends`)
 
 `bench/backends/kernels.peras` holds four kernels: recursion, integer loops, float loops and 64-bit arithmetic. `node scripts/bench-backends.mjs` builds them with both code generators (direct WebAssembly, and Rust through `cargo` and `wasm-bindgen`), checks that every build returns the same results as a JavaScript reference, then measures build time, module size (raw, gzip, after `wasm-opt -O3`) and run time in Node. A direct build with `--no-optimize` shows what the IR optimizations bring; `--check` only compares results, for CI. It needs `rustup` and `wasm-bindgen` 0.2.130 for the Rust backend, and writes [`backends/RESULTS.md`](backends/RESULTS.md). Decision [0001](../docs/en/decisions/0001-webassembly-backend.md) discusses the results.
+
+## Browser benchmark (`bench/browser`)
+
+`bench/browser/kernels.peras` holds eight kernels that a web application runs: particles moving in place, an image filter, gravity between structures, 64-bit hashing, sorting, floating-point arithmetic, splitting text, and a call from JavaScript. `bench/browser/reference.js` holds the same functions in JavaScript, written as a developer who cares about speed would: typed arrays for numbers, plain objects for structures, `BigInt` for 64-bit integers.
+
+`node scripts/bench-browser.mjs` builds the kernels with the TLSF allocator, serves them, and runs them in Chromium next to their JavaScript twins. In the page, it first checks that every variant gives exactly the same result; then it times each one, alternating them: one cold call, 3 warm-up calls, 15 timed calls. It also measures the download and the import of each module in a fresh browser context. `--check` only compares results, on small inputs, for CI. It writes [`browser/RESULTS.md`](browser/RESULTS.md).
+
+What it measures, and what it does not:
+
+- It measures V8 running WebAssembly against V8 running JavaScript, in the same page, on the same inputs. Numbers move a lot between machines; the ratios move much less (under 10 % between two runs).
+- The kernels were chosen to cover both sides: those where Peras should win and those where it should lose (text, very short calls). Every one is in the results.
+- The JavaScript is fair but not heroic: no hand-written WebAssembly, no SIMD, no Web Workers, on either side.
+- It does not measure memory use, the garbage collector's pauses over a long session, or a whole application.
+
+What the results say, today:
+
+- **Numbers in arrays** (particles, pixels): Peras is 1.2 to 1.3 times faster when the array is a `PerasArray`. Passing a plain array copies it in and out, which costs more than the work: zero copy is what makes the gain.
+- **Floating-point arithmetic alone** (Mandelbrot): the same speed (0.98 to 1.07 between runs). V8 already compiles such JavaScript very well, and Peras checks every index and every integer operation.
+- **Structures** (n-body): 1.5 to 1.8 times faster. An array of structures is stored by columns in linear memory, where JavaScript has an object per element.
+- **64-bit integers**: about 20 times faster. JavaScript has only `BigInt`, which allocates.
+- **Sorting**: 2.3 times slower than `Float64Array.prototype.sort`, which V8 runs as native code, but 2 times faster than the usual `array.sort((a, b) => a - b)`. The runtime's heapsort is the next thing to improve.
+- **Text**: 3.4 times slower. The string is encoded in UTF-8 to cross into the module at every call, and each part of `split` is a new block. Text should stay on the side where it is used.
+- **Calls**: a call into the module costs about 1.4 times a JavaScript call, which V8 inlines. Work should cross the boundary in large pieces.
+- **Start**: about 10 KiB gzip more to download, and the import takes about twice as long (17 ms against 9), mostly the allocator inlined in the loader. It is paid once per module.

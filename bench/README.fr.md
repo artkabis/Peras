@@ -17,10 +17,34 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 - Il mesure si des pièges bien connus de JavaScript et TypeScript sont refusés avant l’exécution du code.
 - Le corpus a été écrit par les auteurs de Peras, autour de règles que Peras impose : il montre la couverture de ces pièges, pas une supériorité générale. Les cas où TypeScript fait déjà aussi bien sont gardés volontairement.
 - TypeScript n’a ni `u8` ni types entiers : le cas 08 utilise un `Uint8ClampedArray`, et le cas 19 n’a aucun équivalent TypeScript.
-- Les performances ne sont pas encore mesurées : Peras ne génère pas de code avant le jour 7 du plan de démarrage.
+- Il ne mesure pas la vitesse : le banc d’essai dans le navigateur, plus bas, s’en charge.
 
 `bench/bugs` contient du code volontairement faux : l’ESLint et le Prettier du dépôt l’ignorent.
 
 ## Comparaison des backends (`bench/backends`)
 
 `bench/backends/kernels.peras` contient quatre noyaux : récursion, boucles entières, boucles flottantes et arithmétique 64 bits. `node scripts/bench-backends.mjs` les compile avec les deux générateurs (WebAssembly direct, et Rust via `cargo` et `wasm-bindgen`), vérifie que chaque build renvoie les mêmes résultats qu’une référence JavaScript, puis mesure le temps de build, la taille du module (brute, gzip, après `wasm-opt -O3`) et le temps d’exécution dans Node. Un build direct avec `--no-optimize` montre ce qu’apportent les optimisations de l’IR ; `--check` ne fait que comparer les résultats, pour la CI. Il demande `rustup` et `wasm-bindgen` 0.2.130 pour le backend Rust, et écrit [`backends/RESULTS.md`](backends/RESULTS.md). La décision [0001](../docs/fr/decisions/0001-webassembly-backend.md) discute les résultats.
+
+## Banc d’essai dans le navigateur (`bench/browser`)
+
+`bench/browser/kernels.peras` contient huit noyaux qu’exécute une application web : des particules déplacées sur place, un filtre d’image, la gravité entre des structures, un hachage sur 64 bits, un tri, de l’arithmétique flottante, le découpage d’un texte, et un appel depuis JavaScript. `bench/browser/reference.js` contient les mêmes fonctions en JavaScript, écrites comme les écrirait un développeur soucieux de vitesse : tableaux typés pour les nombres, objets simples pour les structures, `BigInt` pour les entiers 64 bits.
+
+`node scripts/bench-browser.mjs` compile les noyaux avec l’allocateur TLSF, les sert, et les exécute dans Chromium à côté de leurs jumeaux JavaScript. Dans la page, il vérifie d’abord que chaque variante donne exactement le même résultat ; puis il chronomètre chacune, en alternant : un appel à froid, 3 appels de chauffe, 15 appels mesurés. Il mesure aussi le téléchargement et l’import de chaque module dans un contexte de navigateur neuf. `--check` ne fait que comparer les résultats, sur de petites entrées, pour la CI. Il écrit [`browser/RESULTS.md`](browser/RESULTS.md).
+
+Ce qu’il mesure, et ce qu’il ne mesure pas :
+
+- Il mesure V8 exécutant du WebAssembly face à V8 exécutant du JavaScript, dans la même page, sur les mêmes entrées. Les temps varient beaucoup d’une machine à l’autre ; les rapports beaucoup moins (moins de 10 % entre deux exécutions).
+- Les noyaux ont été choisis pour couvrir les deux côtés : ceux où Peras devrait gagner et ceux où il devrait perdre (texte, appels très courts). Tous figurent dans les résultats.
+- Le JavaScript est honnête sans être héroïque : ni WebAssembly écrit à la main, ni SIMD, ni Web Workers, d’un côté comme de l’autre.
+- Il ne mesure ni la mémoire, ni les pauses du ramasse-miettes sur une longue session, ni une application entière.
+
+Ce que disent les résultats, aujourd’hui :
+
+- **Nombres dans des tableaux** (particules, pixels) : Peras est 1,2 à 1,3 fois plus rapide quand le tableau est un `PerasArray`. Passer un tableau ordinaire le copie à l’aller et au retour, ce qui coûte plus que le travail : c’est le zéro copie qui fait le gain.
+- **Arithmétique flottante seule** (Mandelbrot) : la même vitesse (0,98 à 1,07 selon l’exécution). V8 compile déjà très bien ce JavaScript, et Peras vérifie chaque indice et chaque opération entière.
+- **Structures** (n corps) : 1,5 à 1,8 fois plus rapide. Un tableau de structures est rangé par colonnes en mémoire linéaire, là où JavaScript a un objet par élément.
+- **Entiers 64 bits** : environ 20 fois plus rapide. JavaScript n’a que `BigInt`, qui alloue.
+- **Tri** : 2,3 fois plus lent que `Float64Array.prototype.sort`, que V8 exécute en code natif, mais 2 fois plus rapide que l’habituel `array.sort((a, b) => a - b)`. Le tri par tas du runtime est la prochaine chose à améliorer.
+- **Texte** : 3,4 fois plus lent. La chaîne est encodée en UTF-8 pour entrer dans le module à chaque appel, et chaque morceau de `split` est un nouveau bloc. Le texte doit rester du côté où il est utilisé.
+- **Appels** : un appel vers le module coûte environ 1,4 fois un appel JavaScript, que V8 met en ligne. Le travail doit traverser la frontière par gros morceaux.
+- **Démarrage** : environ 10 Kio gzip de plus à télécharger, et l’import prend environ deux fois plus de temps (17 ms contre 9), surtout à cause de l’allocateur inclus dans le chargeur. Il se paie une fois par module.

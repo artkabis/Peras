@@ -14,6 +14,7 @@ export default defineConfig(
       "bench/bugs/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
+      "bench/browser/kernels.d.ts",
     ],
   },
   js.configs.recommended,
@@ -38,7 +39,12 @@ export default defineConfig(
     // Plain JS scripts run on Node: declare its globals (no extra dependency needed).
     files: ["**/*.js", "**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly" },
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+        performance: "readonly",
+      },
     },
   },
 );

@@ -1,0 +1,130 @@
+// Browser benchmark: the Peras side. scripts/bench-browser.mjs runs each kernel
+// next to its JavaScript twin in reference.js, in Chromium, checks they give
+// the same result, then times them.
+
+// Particles moving in a box, bouncing off its walls: positions and speeds in
+// place, as a simulation or an animation loop does each frame.
+export fn particles(xs: inout Array<f64>, vs: inout Array<f64>, steps: i32): f64 {
+  const dt = 0.01;
+  for (let s = 0; s < steps; s++) {
+    for (let i = 0; i < xs.length; i++) {
+      const v = vs[i];
+      let x = xs[i] + v * dt;
+      if (x < 0.0 || x > 1.0) {
+        vs[i] = -v;
+        x = xs[i] - v * dt;
+      }
+      xs[i] = x;
+    }
+  }
+  let total = 0.0;
+  for (const x of xs) total += x;
+  return total;
+}
+
+// Pixels packed as 0xAARRGGBB turned to grey in place, as an image filter does.
+export fn grayscale(pixels: inout Array<i32>): i32 {
+  let checksum = 0;
+  for (let i = 0; i < pixels.length; i++) {
+    const p = pixels[i];
+    const r = (p >> 16) & 255;
+    const g = (p >> 8) & 255;
+    const b = p & 255;
+    const y = (r * 77 + g * 150 + b * 29) >> 8;
+    const q = (p & -16777216) | (y << 16) | (y << 8) | y;
+    pixels[i] = q;
+    checksum = checksum ^ q;
+  }
+  return checksum;
+}
+
+struct Body {
+  x: f64;
+  y: f64;
+  vx: f64;
+  vy: f64;
+  m: f64;
+}
+
+// Gravity between n bodies, each pair at each step: structures in an array.
+export fn nbody(n: i32, steps: i32): f64 {
+  let bodies: Array<Body> = [];
+  for (let i = 0; i < n; i++) {
+    bodies.push(Body((i * 7 % 100).toF64(), (i * 13 % 100).toF64(), 0.0, 0.0, 1.0 + (i % 3).toF64()));
+  }
+  for (let s = 0; s < steps; s++) {
+    for (let i = 0; i < n; i++) {
+      let ax = 0.0;
+      let ay = 0.0;
+      const xi = bodies[i].x;
+      const yi = bodies[i].y;
+      for (let j = 0; j < n; j++) {
+        if (i != j) {
+          const dx = bodies[j].x - xi;
+          const dy = bodies[j].y - yi;
+          const d2 = dx * dx + dy * dy + 0.01;
+          const inv = bodies[j].m / (d2 * d2.sqrt());
+          ax += dx * inv;
+          ay += dy * inv;
+        }
+      }
+      bodies[i].vx += ax * 0.001;
+      bodies[i].vy += ay * 0.001;
+    }
+    for (let i = 0; i < n; i++) {
+      bodies[i].x += bodies[i].vx * 0.001;
+      bodies[i].y += bodies[i].vy * 0.001;
+    }
+  }
+  let energy = 0.0;
+  for (const b of bodies) energy += b.m * (b.vx * b.vx + b.vy * b.vy);
+  return energy;
+}
+
+// FNV-1a over n integers, on 64 bits: hashing, identifiers, checksums.
+export fn hash64(n: i32): i64 {
+  let h: i64 = -3750763034362895579;
+  for (let i = 0; i < n; i++) {
+    h = (h ^ i.toI64()).wrappingMul(1099511628211);
+  }
+  return h;
+}
+
+// Sorting numbers in place.
+export fn sorted(xs: inout Array<f64>): f64 {
+  xs.sort();
+  return xs[0] + xs[xs.length / 2] + xs[xs.length - 1];
+}
+
+// Points inside the Mandelbrot set: floating-point arithmetic only.
+export fn mandel(size: i32): i32 {
+  let inside = 0;
+  const scale = 3.0 / size.toF64();
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const cx = px.toF64() * scale - 2.0;
+      const cy = py.toF64() * scale - 1.5;
+      let x = 0.0;
+      let y = 0.0;
+      let step = 0;
+      while (step < 64 && x * x + y * y <= 4.0) {
+        const next = x * x - y * y + cx;
+        y = 2.0 * x * y + cy;
+        x = next;
+        step++;
+      }
+      if (step == 64) inside++;
+    }
+  }
+  return inside;
+}
+
+// Words of a text: split, filter, count.
+export fn words(text: String): i32 {
+  return text.split(" ").filter((w) => w.length > 0).length;
+}
+
+// The smallest function, to measure what a call from JavaScript costs.
+export fn add(a: i32, b: i32): i32 {
+  return a + b;
+}

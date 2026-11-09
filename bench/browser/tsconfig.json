@@ -1,0 +1,22 @@
+{
+  // The browser benchmark: plain JavaScript, checked through its JSDoc. Its
+  // indices stay in bounds, and the JavaScript is what is timed, so it is
+  // checked without noUncheckedIndexedAccess rather than given `?? 0`.
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": [],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["*.js", "*.d.ts"]
+}
