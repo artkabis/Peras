@@ -478,3 +478,25 @@ export function ab(builds, { scale, runs, warm }) {
   noLeak(builds);
   return { cases, counts };
 }
+
+/**
+ * Shows results in the page, for a page opened by hand (`--serve`): a table
+ * per kernel, and, when two builds are compared, B against A.
+ * @param {Case[]} cases
+ */
+export function show(cases) {
+  const rows = cases.flatMap((c) =>
+    c.result.map((r) => {
+      const label = r.label;
+      const other = label.startsWith("B: ")
+        ? c.result.find((x) => x.label === `A: ${label.slice(3)}`)
+        : undefined;
+      const change = other ? `${((r.median / other.median - 1) * 100).toFixed(1)} %` : "";
+      return `<tr><td>${c.name}</td><td>${label}</td><td>${r.median.toFixed(2)}</td><td>${r.cold.toFixed(2)}</td><td>${change}</td></tr>`;
+    }),
+  );
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<p>${navigator.userAgent}</p><table border="1" cellpadding="4"><tr><th>Kernel</th><th>Variant</th><th>Median (ms)</th><th>Cold (ms)</th><th>B against A</th></tr>${rows.join("")}</table>`,
+  );
+}

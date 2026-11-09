@@ -71,3 +71,16 @@ The report applies these thresholds:
 | Compile time           | at most +10 %                                                                                |
 
 They were calibrated by comparing a build with itself: every kernel stayed between −2.9 % and +1.8 %, the compile time within +4.8 %. On this machine, separate runs of the browser benchmark differ by up to 10 %; the same page keeps it under 3 %.
+
+## Other engines, and real devices
+
+Both browser scripts take `--browser chromium|firefox|webkit`, Chromium by default. WebKit is Safari's engine, JavaScriptCore, as Playwright builds it for Linux: close to Safari, not Apple's own build. Another engine's results go to `target/bench-browser/RESULTS-<engine>.md`; the committed `RESULTS.md` stays Chromium's. CI runs both benchmarks in WebKit and puts their reports in the run's summary.
+
+To measure a real Safari, on a Mac or an iPhone, `--serve` builds the page and serves it instead of driving a browser; the page shows its results itself:
+
+```sh
+node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --serve --host 0.0.0.0 --port 8080
+# then open http://<this machine>:8080/index.html?first=A, and ?first=B, on the device
+```
+
+`--host 0.0.0.0` serves the folder to the local network, for a phone; stop the script when done. Until the measures of an engine are in, nothing is claimed about it: the figures in this README are Chromium's.

@@ -16,7 +16,12 @@
 //        options: --rounds 4 (even: each build first as often) --runs 30
 //        --warm 3; --check: small inputs, one
 //        run, checks only that both builds agree and the script works.
-// PERAS_CHROMIUM names the Chromium to use, as for the end-to-end tests.
+// --browser chromium|firefox|webkit picks the engine (Chromium by default;
+// WebKit is Safari's, JavaScriptCore); PERAS_CHROMIUM names the Chromium to
+// use, as for the end-to-end tests. --serve builds the page and serves it
+// for any browser, a real Safari on a Mac or an iPhone included, which shows
+// the results itself: --host 0.0.0.0 to reach it from another device on the
+// network, --port to choose the port.
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -25,7 +30,7 @@ import { extname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { URLSearchParams } from "node:url";
 import { gzipSync } from "node:zlib";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 
 /** @typedef {import("playwright").Browser} Browser */
 /** @typedef {import("../bench/browser/runner.js").Case} Case */
@@ -159,10 +164,12 @@ function size(name) {
 const types = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm" };
 
 /**
- * Serves the page folder on a free port of 127.0.0.1.
+ * Serves the page folder, on a free port of 127.0.0.1 unless asked.
+ * @param {string} [host]
+ * @param {number} [port]
  * @returns {Promise<{ server: import("node:http").Server, base: string }>}
  */
-function serve() {
+function serve(host = "127.0.0.1", port = 0) {
   const folder = join(work, "page");
   const server = createServer((request, response) => {
     const path = join(folder, new URL(request.url ?? "/", "http://x").pathname);
@@ -181,10 +188,10 @@ function serve() {
     }
   });
   return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, host, () => {
       const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      resolve({ server, base: `http://127.0.0.1:${String(port)}` });
+      const actual = typeof address === "object" && address !== null ? address.port : 0;
+      resolve({ server, base: `http://${host}:${String(actual)}` });
     });
   });
 }
@@ -273,9 +280,9 @@ const pct = (x) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
  * @param {Side[]} sides
  * @param {Round[]} results
  * @param {{ size: { raw: number, gzip: number }, imports: number, compile: number }[]} builds
- * @param {string} chromiumVersion
+ * @param {string} engineVersion
  */
-function report(sides, results, builds, chromiumVersion) {
+function report(sides, results, builds, engineVersion) {
   const [a, b] = sides;
   const [ba, bb] = builds;
   if (a === undefined || b === undefined || ba === undefined || bb === undefined) return "";
@@ -284,7 +291,7 @@ function report(sides, results, builds, chromiumVersion) {
     "",
     `A: \`${a.spec}${a.flags.length > 0 ? ` ${a.flags.join(" ")}` : ""}\` — B: \`${b.spec}${b.flags.length > 0 ? ` ${b.flags.join(" ")}` : ""}\``,
     "",
-    `${cpus()[0]?.model ?? "?"}, ${String(cpus().length)} cores, Chromium ${chromiumVersion}. ${String(results.length)} rounds, each a fresh page; in each, ${String(config.runs)} timed calls after ${String(config.warm)} of warm-up, A, B and JavaScript alternating, A first in odd rounds and B in even ones. Cold: the first call, median of the rounds. Every variant gave the same result and left nothing alive.`,
+    `${cpus()[0]?.model ?? "?"}, ${String(cpus().length)} cores, ${engineVersion}. ${String(results.length)} rounds, each a fresh page; in each, ${String(config.runs)} timed calls after ${String(config.warm)} of warm-up, A, B and JavaScript alternating, A first in odd rounds and B in even ones. Cold: the first call, median of the rounds. Every variant gave the same result and left nothing alive.`,
     "",
     "## Kernels",
     "",
@@ -380,24 +387,44 @@ writeFileSync(
 import { ab } from "./runner.js";
 import * as a from "./A/kernels.js";
 import * as b from "./B/kernels.js";
+import { show } from "./runner.js";
 const q = new URLSearchParams(location.search);
+const setting = (name, fallback) => Number(q.get(name) ?? fallback);
+// Opened by hand (--serve): the page shows its results itself.
+const manual = typeof report !== "function";
 try {
   const builds = [
     { name: "A", peras: a, runtime: a.__perasRuntime },
     { name: "B", peras: b, runtime: b.__perasRuntime },
   ];
   if (q.get("first") === "B") builds.reverse();
-  await report(ab(builds, { scale: Number(q.get("scale")), runs: Number(q.get("runs")), warm: Number(q.get("warm")) }));
+  const result = ab(builds, { scale: setting("scale", 1), runs: setting("runs", 30), warm: setting("warm", 3) });
+  if (manual) show(result.cases);
+  else await report(result);
 } catch (e) {
-  await fail(e instanceof Error ? e.stack ?? e.message : String(e));
+  const message = e instanceof Error ? e.stack ?? e.message : String(e);
+  if (manual) document.body.insertAdjacentText("beforeend", message);
+  else await fail(message);
 }
 </script>
 `,
 );
 
+if (process.argv.includes("--serve")) {
+  const { base } = await serve(option("host", "127.0.0.1"), Number(option("port", "0")));
+  console.log(
+    `Open ${base}/index.html?first=A, then ${base}/index.html?first=B, in the browser to measure; each shows its results.`,
+  );
+  await new Promise(() => undefined);
+}
 const { server, base } = await serve();
-const executablePath = process.env.PERAS_CHROMIUM;
-const browser = await chromium.launch(executablePath === undefined ? {} : { executablePath });
+const engines = { chromium, firefox, webkit };
+const engineName = option("browser", "chromium");
+if (!(engineName in engines))
+  throw new Error(`--browser takes chromium, firefox or webkit, not ${engineName}`);
+const engine = engines[/** @type {keyof typeof engines} */ (engineName)];
+const executablePath = engineName === "chromium" ? process.env.PERAS_CHROMIUM : undefined;
+const browser = await engine.launch(executablePath === undefined ? {} : { executablePath });
 try {
   /** @type {Round[]} */
   const results = [];
@@ -413,9 +440,9 @@ try {
     });
   }
   if (check) {
-    console.log(`A and B agree on every kernel in Chromium ${browser.version()}.`);
+    console.log(`A and B agree on every kernel in ${engineName} ${browser.version()}.`);
   } else {
-    const markdown = report(sides, results, builds, browser.version());
+    const markdown = report(sides, results, builds, `${engineName} ${browser.version()}`);
     writeFileSync(join(work, "REPORT.md"), markdown);
     console.log(markdown);
   }

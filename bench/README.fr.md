@@ -71,3 +71,16 @@ Le rapport applique ces seuils :
 | Temps de compilation        | au plus +10 %                                                                               |
 
 Ils ont été calibrés en comparant une compilation à elle-même : chaque noyau est resté entre −2,9 % et +1,8 %, le temps de compilation dans +4,8 %. Sur cette machine, deux exécutions séparées du banc dans le navigateur diffèrent jusqu’à 10 % ; la même page le garde sous 3 %.
+
+## D’autres moteurs, et de vrais appareils
+
+Les deux scripts du navigateur prennent `--browser chromium|firefox|webkit`, Chromium par défaut. WebKit est le moteur de Safari, JavaScriptCore, tel que Playwright le compile pour Linux : proche de Safari, pas la compilation d’Apple. Les résultats d’un autre moteur vont dans `target/bench-browser/RESULTS-<moteur>.md` ; le `RESULTS.md` commité reste celui de Chromium. La CI lance les deux bancs dans WebKit et met leurs rapports dans le résumé de l’exécution.
+
+Pour mesurer un vrai Safari, sur un Mac ou un iPhone, `--serve` compile la page et la sert au lieu de piloter un navigateur ; la page affiche elle-même ses résultats :
+
+```sh
+node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --serve --host 0.0.0.0 --port 8080
+# puis ouvrir http://<cette machine>:8080/index.html?first=A, et ?first=B, sur l’appareil
+```
+
+`--host 0.0.0.0` sert le dossier au réseau local, pour un téléphone ; arrêter le script ensuite. Tant que les mesures d’un moteur ne sont pas là, rien n’est affirmé à son sujet : les chiffres de ce README sont ceux de Chromium.

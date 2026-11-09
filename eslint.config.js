@@ -49,4 +49,11 @@ export default defineConfig(
       },
     },
   },
+  {
+    // The browser benchmark's page code runs in a browser.
+    files: ["bench/browser/*.js"],
+    languageOptions: {
+      globals: { document: "readonly", navigator: "readonly" },
+    },
+  },
 );
