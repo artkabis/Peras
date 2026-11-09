@@ -1,0 +1,24 @@
+// Arrays of numbers passed with no copy, as PerasArray.
+export fn sum(xs: Array<f32>): f64 {
+  let total = 0.0;
+  for (const x of xs) {
+    total += x.toF64();
+  }
+  return total;
+}
+
+export fn scale(xs: inout Array<f32>, k: f32): void {
+  for (let i = 0; i < xs.length; i++) {
+    xs[i] = xs[i] * k;
+  }
+}
+
+export fn grow(xs: inout Array<f32>, n: i32): void {
+  for (let i = 0; i < n; i++) {
+    xs.push(i.toF32());
+  }
+}
+
+export fn consume(xs: sink Array<f32>): i32 {
+  return xs.length;
+}

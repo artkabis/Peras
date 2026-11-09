@@ -68,8 +68,12 @@ describe("arrays in JavaScript", () => {
   it("are declared to TypeScript, read-only when only read", async () => {
     const { dts } = await load();
     expect(dts).toContain("export declare function evens(n: number): number[];");
-    expect(dts).toContain("export declare function sum(xs: readonly number[]): number;");
-    expect(dts).toContain("export declare function scale(xs: number[], k: number): void;");
+    expect(dts).toContain(
+      'export declare function sum(xs: readonly number[] | PerasArray<"f64">): number;',
+    );
+    expect(dts).toContain(
+      'export declare function scale(xs: number[] | PerasArray<"f64">, k: number): void;',
+    );
     expect(dts).toContain("export interface Stats { values: number[]; count: number; }");
   });
 });

@@ -1002,7 +1002,9 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         js.push_str(
             "export const __perasHeap = {\n  \
              live: () => $runtime.live_count(),\n  \
-             checkLeaks: () => $runtime.check_leaks(),\n};\n",
+             checkLeaks: () => $runtime.check_leaks(),\n  \
+             array: $array,\n};\n\
+             export { PerasArray };\n",
         );
     }
     js
@@ -1228,31 +1230,42 @@ const fn elem_kind(elem: Elem) -> &'static str {
     }
 }
 
+/// An array of scalars passed as a parameter: copied into a new buffer, or
+/// a `PerasArray` passed as it is.
+fn flatten_array(path: &str, elem: Elem, pass: Pass, optional: bool, out: &mut Marshal) {
+    let buffer = format!("$a{}", out.pre.len());
+    let kind = elem_kind(elem);
+    let values = if optional {
+        format!("({path} ?? [])")
+    } else {
+        path.to_owned()
+    };
+    // A `PerasArray` already lives in the module's memory: it is lent,
+    // or given to a `sink` parameter, with no copy.
+    let take = if pass == Pass::Sink { "$give" } else { "$lend" };
+    out.pre.push(format!(
+        "const {buffer} = {values} instanceof PerasArray ? {values}.{take}(\"{kind}\") : $toBuf({values}, \"{kind}\");"
+    ));
+    let copied = format!("!({values} instanceof PerasArray)");
+    if pass == Pass::Inout {
+        out.post.push(format!(
+            "if ({copied}) $copyBack({path}, {buffer}, \"{kind}\");"
+        ));
+    }
+    // A `sink` parameter is released by the function itself.
+    if pass != Pass::Sink {
+        out.post
+            .push(format!("if ({copied}) $runtime.buf_release({buffer}, 0);"));
+    }
+    out.args.push(buffer);
+}
+
 /// The scalars of a parameter, as JavaScript expressions: `p.x`, `p.inner.y`.
 /// Inside an option, which JavaScript passes as `undefined` when it is empty,
 /// fields are read with `?.` and an absent scalar is zero.
 fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
     match shape {
-        Shape::Array(elem, pass) => {
-            let buffer = format!("$a{}", out.pre.len());
-            let kind = elem_kind(*elem);
-            let values = if optional {
-                format!("({path} ?? [])")
-            } else {
-                path.to_owned()
-            };
-            out.pre
-                .push(format!("const {buffer} = $toBuf({values}, \"{kind}\");"));
-            if *pass == Pass::Inout {
-                out.post
-                    .push(format!("$copyBack({path}, {buffer}, \"{kind}\");"));
-            }
-            // A `sink` parameter is released by the function itself.
-            if *pass != Pass::Sink {
-                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
-            }
-            out.args.push(buffer);
-        }
+        Shape::Array(elem, pass) => flatten_array(path, *elem, *pass, optional, out),
         Shape::Records(element, pass) => {
             // One column per scalar of an element: `(v) => v.x`, or a new
             // buffer for a string or an array inside it.
@@ -1516,6 +1529,45 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          $runtime.buf_release(h, 0);\n  \
          return out;\n\
          };\n\
+         // An array of numbers can also stay in the module's memory, and be\n\
+         // passed and read with no copy: a `PerasArray`, made by `__perasHeap.array`.\n\
+         const $typed = { i32: Int32Array, i64: BigInt64Array, f32: Float32Array, f64: Float64Array, bool: Int32Array, u8: Uint8Array };\n\
+         const $collected = new FinalizationRegistry((h) => $runtime.buf_release(h, 0));\n\
+         class PerasArray {\n  \
+         #h; #kind;\n  \
+         constructor(h, kind) { this.#h = h; this.#kind = kind; $collected.register(this, h, this); }\n  \
+         get kind() { return this.#kind; }\n  \
+         get length() { return new DataView($runtime.memory.buffer).getUint32(this.#check(), true); }\n  \
+         // A typed array over the elements, no copy: valid until the next call\n  \
+         // into the module, which may grow its memory or move the elements.\n  \
+         view() {\n    \
+         const h = this.#check();\n    \
+         const v = new DataView($runtime.memory.buffer);\n    \
+         return new $typed[this.#kind]($runtime.memory.buffer, v.getUint32(h + 8, true), v.getUint32(h, true));\n  \
+         }\n  \
+         toArray() { return $fromBuf(this.#check(), this.#kind); }\n  \
+         release() { const h = this.#check(); $collected.unregister(this); this.#h = 0; $runtime.buf_release(h, 0); }\n  \
+         $lend(kind) {\n    \
+         const h = this.#check();\n    \
+         if (kind !== this.#kind) throw new TypeError(`a PerasArray of ${this.#kind} where ${kind} is expected`);\n    \
+         return h;\n  \
+         }\n  \
+         $give(kind) { const h = this.$lend(kind); $collected.unregister(this); this.#h = 0; return h; }\n  \
+         #check() {\n    \
+         if (this.#h === 0) throw new Error(\"this PerasArray was released, or given to a sink parameter\");\n    \
+         return this.#h;\n  \
+         }\n\
+         }\n\
+         const $array = (kind, init) => {\n  \
+         if (!(kind in $typed)) throw new TypeError(`no PerasArray of ${kind}`);\n  \
+         if (typeof init !== \"number\") return new PerasArray($toBuf(init, kind), kind);\n  \
+         const [size] = $kinds[kind];\n  \
+         const h = $runtime.buf_new(init, size, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), init * size).fill(0);\n  \
+         view.setUint32(h, init, true);\n  \
+         return new PerasArray(h, kind);\n\
+         };\n\
          // Strings cross as UTF-8 bytes.\n\
          const $encoder = new TextEncoder();\n\
          const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
@@ -1632,8 +1684,24 @@ pub fn dts(module: &Module) -> String {
     }
     if module.uses_heap() {
         out.push_str(
-            "/** Blocks still alive in the debug allocator, and a check that throws on a leak. */\n\
-             export declare const __perasHeap: { live(): number; checkLeaks(): void };\n",
+            "/** The kinds of number a `PerasArray` holds, and the typed array that views each. */\n\
+             export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array }\n\
+             /** An array of numbers in the module's memory, passed to its functions with no copy. */\n\
+             export declare class PerasArray<K extends keyof PerasKinds> {\n  \
+             readonly kind: K;\n  \
+             readonly length: number;\n  \
+             /** A view of the elements, with no copy; valid until the next call into the module. */\n  \
+             view(): PerasKinds[K];\n  \
+             toArray(): (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[];\n  \
+             /** Gives its memory back; released when collected otherwise. */\n  \
+             release(): void;\n\
+             }\n\
+             /** Blocks still alive, a check that throws on a leak, and arrays made in the module's memory. */\n\
+             export declare const __perasHeap: {\n  \
+             live(): number;\n  \
+             checkLeaks(): void;\n  \
+             array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[]): PerasArray<K>;\n\
+             };\n",
         );
     }
     for f in module.functions.iter().filter(|f| f.exported) {
@@ -1641,7 +1709,7 @@ pub fn dts(module: &Module) -> String {
             let params: Vec<String> = shape
                 .params
                 .iter()
-                .map(|(name, value)| format!("{name}: {}", ts_shape(value)))
+                .map(|(name, value)| format!("{name}: {}", ts_param(value)))
                 .collect();
             let result = shape
                 .result
@@ -1728,6 +1796,17 @@ fn ts_shape(shape: &Shape) -> String {
                 format!("{item}[]")
             }
         }
+    }
+}
+
+/// The TypeScript type of a parameter: an array of numbers can also be a
+/// `PerasArray`, passed with no copy.
+fn ts_param(shape: &Shape) -> String {
+    match shape {
+        Shape::Array(elem, _) => {
+            format!("{} | PerasArray<\"{}\">", ts_shape(shape), elem_kind(*elem))
+        }
+        other => ts_shape(other),
     }
 }
 

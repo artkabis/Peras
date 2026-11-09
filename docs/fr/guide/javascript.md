@@ -48,6 +48,28 @@ big({ width: 30, height: 4 }); // true
 
 Le chargeur convertit à la frontière : un objet passé en argument est copié champ par champ, si bien que Peras n’en garde jamais de référence, et que les modifications faites par Peras ne l’atteignent jamais. Un tableau est copié de la même façon, élément par élément ; seul un paramètre `inout` est recopié dans le tableau passé ([collections](collections.md#en-javascript)).
 
+## Des tableaux sans copie
+
+Un tableau de nombres passé à une fonction exportée est copié dans la mémoire du module, et recopié en retour pour un `inout` : O(n) à chaque appel. Pour les grands tableaux, un `PerasArray` reste dans la mémoire du module et se passe sans copie. <span class="status compiled">compilé</span>
+
+```js
+import { scale, sum, __perasHeap } from "./points.peras";
+
+const xs = __perasHeap.array("f32", 1_000_000); // des zéros ; ou depuis un tableau de nombres
+xs.view().set(samples); // un Float32Array sur la mémoire du module
+scale(xs, 2); // inout : modifié sur place, rien n'est recopié
+const total = sum(xs); // prêté : rien n'est copié
+xs.release(); // rend sa mémoire
+```
+
+- `__perasHeap.array(kind, init)` en crée un : `kind` vaut `"i32"`, `"i64"`, `"f32"`, `"f64"`, `"bool"` ou `"u8"`, et `init` est une longueur (des zéros) ou un tableau de valeurs.
+- Toute fonction exportée qui prend un tableau de nombres l'accepte : prêté à un paramètre simple, modifié sur place par un `inout`, donné à un `sink`, après quoi on ne peut plus s'en servir.
+- `view()` est un tableau typé sur ses éléments, sans copie. Il reste valable jusqu'au prochain appel au module, qui peut agrandir sa mémoire ou déplacer les éléments : prenez une nouvelle vue après chaque appel.
+- `toArray()` le copie dans un tableau JavaScript ; `length` et `kind` le décrivent.
+- `release()` rend aussitôt sa mémoire. Un tableau jamais libéré est rendu quand le ramasse-miettes le collecte.
+
+Sur un million de `f32`, `sum` passe de 5,2 à 1,5 ms, et `scale`, qui modifie son tableau, de 11,5 à 0,8 ms : les copies faisaient l'essentiel du temps.
+
 ## Avec Vite
 
 ```ts

@@ -48,6 +48,28 @@ big({ width: 30, height: 4 }); // true
 
 The loader converts at the boundary: an object passed in is copied field by field, so Peras never keeps a reference to it, and changes made by Peras never reach it. An array is copied the same way, element by element; only an `inout` parameter is copied back into the array passed ([collections](collections.md#in-javascript)).
 
+## Arrays without a copy
+
+An array of numbers passed to an exported function is copied into the module's memory, and back for an `inout` one: O(n) each call. For large arrays, a `PerasArray` stays in the module's memory and is passed with no copy. <span class="status compiled">compiled</span>
+
+```js
+import { scale, sum, __perasHeap } from "./points.peras";
+
+const xs = __perasHeap.array("f32", 1_000_000); // zeros; or from an array of numbers
+xs.view().set(samples); // a Float32Array over the module's memory
+scale(xs, 2); // inout: changed in place, nothing copied back
+const total = sum(xs); // lent: nothing copied in
+xs.release(); // gives its memory back
+```
+
+- `__perasHeap.array(kind, init)` makes one: `kind` is `"i32"`, `"i64"`, `"f32"`, `"f64"`, `"bool"` or `"u8"`, and `init` a length (zeros) or an array of values.
+- Every exported function that takes an array of numbers accepts one: lent to a plain parameter, changed in place by an `inout` one, given to a `sink` one, after which it can no longer be used.
+- `view()` is a typed array over its elements, with no copy. It is valid until the next call into the module, which may grow its memory or move the elements: take a new view after each call.
+- `toArray()` copies it into a JavaScript array; `length` and `kind` describe it.
+- `release()` gives its memory back at once. One never released is given back when the garbage collector collects it.
+
+On a million `f32`, `sum` goes from 5.2 to 1.5 ms, and `scale`, which changes its array, from 11.5 to 0.8 ms: the copies were most of the time.
+
 ## With Vite
 
 ```ts
