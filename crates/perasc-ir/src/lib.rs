@@ -531,11 +531,18 @@ pub enum RuntimeFn {
     /// (an array of `bool`) is set, and releases the buffers among the others.
     /// `filter` on a temporary array, which it then gives as its result.
     ArrKeep,
+    /// `(s, separator) -> owned`: the parts `Split` gives, as views of the
+    /// bytes of `s` in one block. Given only where `s` outlives the array and
+    /// does not change meanwhile ([decision 0004]); a copy of it, or of a
+    /// part, is an ordinary string.
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    SplitViews,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -558,6 +565,7 @@ impl RuntimeFn {
         Self::IsInt,
         Self::ParseInt,
         Self::ArrKeep,
+        Self::SplitViews,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -586,6 +594,7 @@ impl RuntimeFn {
             Self::IsInt => "str_is_int",
             Self::ParseInt => "str_parse_int",
             Self::ArrKeep => "arr_keep",
+            Self::SplitViews => "str_split_views",
         }
     }
 
@@ -608,6 +617,7 @@ impl RuntimeFn {
             Self::StartsWith
             | Self::EndsWith
             | Self::Split
+            | Self::SplitViews
             | Self::Join
             | Self::ArrConcat
             | Self::ArrIndexOfStr

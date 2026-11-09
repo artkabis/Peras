@@ -184,6 +184,14 @@ struct FnState {
     drops: Vec<LocalId>,
     /// The loops around the code being lowered, innermost last.
     loops: Vec<heap::LoopFrame>,
+    /// The temporaries that hold an array of views ([decision 0004]), with
+    /// the local their text comes from, if it comes from one.
+    ///
+    /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
+    views: HashMap<LocalId, Option<Symbol>>,
+    /// The text whose `split`, lowered next, may give views: set by the
+    /// consumer that reads the array at once.
+    views_for: Option<ExprId>,
 }
 
 impl FnState {
@@ -199,6 +207,8 @@ impl FnState {
             gone: false,
             drops: Vec::new(),
             loops: Vec::new(),
+            views: HashMap::new(),
+            views_for: None,
         }
     }
 

@@ -125,17 +125,17 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
 
 Indices and lengths count bytes of UTF-8, as `length` does. An index inside a character moves back to its start, so a slice is always valid text. Every method that gives a string gives a new one; the string it is called on does not change.
 
-| Method                                        | Gives                                                                                     | Status                                        |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `indexOf(s)`                                  | the byte index of the first `s`, or `-1`                                                  | <span class="status compiled">compiled</span> |
-| `includes(s)`, `startsWith(s)`, `endsWith(s)` | whether `s` is in it, at its start, at its end                                            | <span class="status compiled">compiled</span> |
-| `slice(start, end)`                           | the bytes from `start` to `end`; negative counts from the end, beyond the ends is clamped | <span class="status compiled">compiled</span> |
-| `trim()`                                      | without the spaces, tabs and line breaks at both ends                                     | <span class="status compiled">compiled</span> |
-| `toUpperCase()`, `toLowerCase()`              | ASCII letters in upper or lower case; other characters unchanged                          | <span class="status compiled">compiled</span> |
-| `repeat(n)`                                   | the text `n` times                                                                        | <span class="status compiled">compiled</span> |
-| `replace(from, to)`, `replaceAll(from, to)`   | the first `from`, or every one, replaced by `to`                                          | <span class="status compiled">compiled</span> |
-| `split(separator)`                            | the parts between each separator, an `Array<String>`; with `""`, the characters           | <span class="status compiled">compiled</span> |
-| `parseI32()`, `parseI64()`                    | `Some(n)` when the text is an integer in range, else `None`; see below                    | <span class="status compiled">compiled</span> |
+| Method                                        | Gives                                                                                                                                                                      | Status                                        |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `indexOf(s)`                                  | the byte index of the first `s`, or `-1`                                                                                                                                   | <span class="status compiled">compiled</span> |
+| `includes(s)`, `startsWith(s)`, `endsWith(s)` | whether `s` is in it, at its start, at its end                                                                                                                             | <span class="status compiled">compiled</span> |
+| `slice(start, end)`                           | the bytes from `start` to `end`; negative counts from the end, beyond the ends is clamped                                                                                  | <span class="status compiled">compiled</span> |
+| `trim()`                                      | without the spaces, tabs and line breaks at both ends                                                                                                                      | <span class="status compiled">compiled</span> |
+| `toUpperCase()`, `toLowerCase()`              | ASCII letters in upper or lower case; other characters unchanged                                                                                                           | <span class="status compiled">compiled</span> |
+| `repeat(n)`                                   | the text `n` times                                                                                                                                                         | <span class="status compiled">compiled</span> |
+| `replace(from, to)`, `replaceAll(from, to)`   | the first `from`, or every one, replaced by `to`                                                                                                                           | <span class="status compiled">compiled</span> |
+| `split(separator)`                            | the parts between each separator, an `Array<String>`; with `""`, the characters; read at once, as `text.split(" ").filter(…)`, the parts are views of the text, not copies | <span class="status compiled">compiled</span> |
+| `parseI32()`, `parseI64()`                    | `Some(n)` when the text is an integer in range, else `None`; see below                                                                                                     | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn tidy(line: String): String {

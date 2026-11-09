@@ -19,6 +19,10 @@
   ;; `buf_new` ignores; only its low byte is a size.
 
   (global $INLINE i32 (i32.const 0x200))
+  ;; An array of views (`str_split_views`): its elements are headers in its
+  ;; own block, whose bytes belong to the string it was split from. Releasing
+  ;; it releases that block only; a copy of it is an ordinary DEEP array.
+  (global $VIEWS i32 (i32.const 0x400))
   ;; The most bytes of elements kept in the header's block.
   (global $INLINE_MAX i32 (i32.const 256))
 
@@ -26,6 +30,11 @@
   (func $buf_new (export "buf_new") (param $cap i32) (param $size i32) (param $site i32) (result i32)
     (local $h i32) (local $bytes i32)
     (local.set $size (i32.and (local.get $size) (i32.xor (global.get $INLINE) (i32.const -1))))
+    ;; A new array made from an array of views owns its strings.
+    (if (i32.and (local.get $size) (global.get $VIEWS))
+      (then (local.set $size (i32.or
+        (i32.and (local.get $size) (i32.xor (global.get $VIEWS) (i32.const -1)))
+        (global.get $DEEP)))))
     (local.set $bytes (call $bytes (local.get $cap) (local.get $size) (local.get $site)))
     (if (i32.and
           (i32.and (i32.ne (local.get $cap) (i32.const 0))
@@ -126,7 +135,7 @@
         (memory.copy (i32.load offset=8 (local.get $copy)) (i32.load offset=8 (local.get $h))
           (call $bytes (local.get $len) (local.get $size) (local.get $site)))))
     (i32.store (local.get $copy) (local.get $len))
-    (if (i32.and (local.get $size) (global.get $DEEP))
+    (if (i32.and (local.get $size) (i32.or (global.get $DEEP) (global.get $VIEWS)))
       (then
         (block $done
           (loop $next
@@ -386,6 +395,139 @@
     (call $push_part (local.get $parts)
       (call $str_from (i32.add (local.get $data) (local.get $i)) (i32.sub (local.get $len) (local.get $i))))
     (local.get $parts))
+
+  ;; The parts of `h` between each `separator`, as `str_split` gives them, but
+  ;; as views: one block holds a handle per part, then a 16-byte header per
+  ;; part whose bytes are `h`'s own, flagged INLINE so that nothing releases
+  ;; them. The array is VIEWS. The compiler gives it only where it proves `h`
+  ;; outlives it and does not change meanwhile; a copy of a part, or of the
+  ;; array, is an ordinary string. With an empty separator, its characters.
+  (func (export "str_split_views") (param $h i32) (param $separator i32) (result i32)
+    (local $parts i32) (local $block i32) (local $headers i32) (local $n i32) (local $c i32)
+    (local $i i32) (local $j i32) (local $at i32) (local $k i32) (local $len i32) (local $data i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $k (i32.load (local.get $separator)))
+    ;; A separator of one byte, the usual case: plain loops over the bytes.
+    (if (i32.eq (local.get $k) (i32.const 1))
+      (then (return (call $split_byte (local.get $data) (local.get $len)
+        (i32.load8_u (i32.load offset=8 (local.get $separator)))))))
+    ;; How many parts: the characters, or one more than the separators.
+    (if (i32.eqz (local.get $k))
+      (then
+        (block $counted
+          (loop $next
+            (br_if $counted (i32.ge_u (local.get $i) (local.get $len)))
+            (if (i32.eqz (call $continues (local.get $h) (local.get $i)))
+              (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next))))
+      (else
+        (local.set $n (i32.const 1))
+        (block $counted
+          (loop $next
+            (local.set $at (call $str_index_of (local.get $h) (local.get $separator) (local.get $i)))
+            (br_if $counted (i32.lt_s (local.get $at) (i32.const 0)))
+            (local.set $n (i32.add (local.get $n) (i32.const 1)))
+            (local.set $i (i32.add (local.get $at) (local.get $k)))
+            (br $next)))))
+    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
+    (if (local.get $n)
+      (then (local.set $block
+        (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))))
+    (i32.store (local.get $parts) (local.get $n))
+    (i32.store offset=4 (local.get $parts) (local.get $n))
+    (i32.store offset=8 (local.get $parts) (local.get $block))
+    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (local.set $headers (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
+    ;; The same walk again, each part a header.
+    (local.set $i (i32.const 0))
+    (if (i32.eqz (local.get $k))
+      (then
+        (block $done
+          (loop $next
+            (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+            (local.set $j (i32.add (local.get $i) (i32.const 1)))
+            (block $end
+              (loop $more
+                (br_if $end (i32.ge_u (local.get $j) (local.get $len)))
+                (br_if $end (i32.eqz (call $continues (local.get $h) (local.get $j))))
+                (local.set $j (i32.add (local.get $j) (i32.const 1)))
+                (br $more)))
+            (call $view (local.get $block) (local.get $headers) (local.get $c)
+              (i32.add (local.get $data) (local.get $i)) (i32.sub (local.get $j) (local.get $i)))
+            (local.set $c (i32.add (local.get $c) (i32.const 1)))
+            (local.set $i (local.get $j))
+            (br $next)))
+        (return (local.get $parts))))
+    (block $done
+      (loop $next
+        (local.set $at (call $str_index_of (local.get $h) (local.get $separator) (local.get $i)))
+        (br_if $done (i32.lt_s (local.get $at) (i32.const 0)))
+        (call $view (local.get $block) (local.get $headers) (local.get $c)
+          (i32.add (local.get $data) (local.get $i)) (i32.sub (local.get $at) (local.get $i)))
+        (local.set $c (i32.add (local.get $c) (i32.const 1)))
+        (local.set $i (i32.add (local.get $at) (local.get $k)))
+        (br $next)))
+    (call $view (local.get $block) (local.get $headers) (local.get $c)
+      (i32.add (local.get $data) (local.get $i)) (i32.sub (local.get $len) (local.get $i)))
+    (local.get $parts))
+
+  ;; `str_split_views` on the `len` bytes at `data`, by the byte `sep`: the
+  ;; separators counted in one loop, then the parts filled in another.
+  (func $split_byte (param $data i32) (param $len i32) (param $sep i32) (result i32)
+    (local $parts i32) (local $block i32) (local $hdr i32) (local $handle i32)
+    (local $n i32) (local $i i32) (local $start i32) (local $end i32)
+    (local.set $end (i32.add (local.get $data) (local.get $len)))
+    (local.set $n (i32.const 1))
+    (local.set $i (local.get $data))
+    (block $counted
+      (loop $next
+        (br_if $counted (i32.ge_u (local.get $i) (local.get $end)))
+        (if (i32.eq (i32.load8_u (local.get $i)) (local.get $sep))
+          (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
+    (local.set $block
+      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    (i32.store (local.get $parts) (local.get $n))
+    (i32.store offset=4 (local.get $parts) (local.get $n))
+    (i32.store offset=8 (local.get $parts) (local.get $block))
+    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    ;; Handles at the start of the block, headers after them.
+    (local.set $handle (local.get $block))
+    (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
+    (local.set $start (local.get $data))
+    (local.set $i (local.get $data))
+    (block $done
+      (loop $next
+        (if (i32.or (i32.ge_u (local.get $i) (local.get $end))
+              (i32.eq (i32.load8_u (local.get $i)) (local.get $sep)))
+          (then
+            (i32.store (local.get $hdr) (i32.sub (local.get $i) (local.get $start)))
+            (i32.store offset=4 (local.get $hdr) (i32.sub (local.get $i) (local.get $start)))
+            (i32.store offset=8 (local.get $hdr) (local.get $start))
+            (i32.store offset=12 (local.get $hdr) (i32.or (i32.const 1) (global.get $INLINE)))
+            (i32.store (local.get $handle) (local.get $hdr))
+            (local.set $handle (i32.add (local.get $handle) (i32.const 4)))
+            (local.set $hdr (i32.add (local.get $hdr) (i32.const 16)))
+            (br_if $done (i32.ge_u (local.get $i) (local.get $end)))
+            (local.set $start (i32.add (local.get $i) (i32.const 1)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.get $parts))
+
+  ;; Part `c` of an array of views: a header for the `len` bytes at `at`,
+  ;; and its handle.
+  (func $view (param $block i32) (param $headers i32) (param $c i32) (param $at i32) (param $len i32)
+    (local $hdr i32)
+    (local.set $hdr (i32.add (local.get $headers) (i32.shl (local.get $c) (i32.const 4))))
+    (i32.store (local.get $hdr) (local.get $len))
+    (i32.store offset=4 (local.get $hdr) (local.get $len))
+    (i32.store offset=8 (local.get $hdr) (local.get $at))
+    (i32.store offset=12 (local.get $hdr) (i32.or (i32.const 1) (global.get $INLINE)))
+    (i32.store (i32.add (local.get $block) (i32.shl (local.get $c) (i32.const 2))) (local.get $hdr)))
 
   ;; The strings of an array, with `separator` between each two.
   (func (export "arr_join") (param $parts i32) (param $separator i32) (result i32)

@@ -57,6 +57,21 @@ Every variant found the same 195,889 words, and left nothing alive.
 3. **Then fusion.** A chain whose producer is `split`, `map` or `filter` and whose consumer is `length`, `reduce`, `some`, `every`, `find`, `findIndex` or `for…of` becomes one loop with no array between. Fusion changes the order of the functions' calls (`f` then `g` on each element, instead of `f` on all then `g` on all), so it applies only when that cannot be seen: every function of the chain but the last cannot trap and calls nothing, the condition the optimizer already uses to move code ([`is_simple`](../../../crates/perasc-ir/src/opt.rs)). Otherwise the chain stays as written.
 4. **Results are always those of the program as written.** As for the other optimizations, tests compare both forms on every input, and are broken on purpose to show they catch a wrong one.
 
+## Status
+
+**Views of `split` are done.** Where the array that `text.split(sep)` makes is read at once, by a method (`filter`, `map`, `length`, `join`, `some`…) or a `for…of`, its parts are views:
+
+- One block holds a 16-byte header per part, whose bytes are those of the text, and the handles to them. A view is an ordinary string header: every operation on strings reads it unchanged, and a copy of it, of the array (`copy`, `slice`, `concat`) or of a part, is an ordinary string.
+- When an argument of that method, or the body of that loop, names the variable the text comes from, which could then change it, the array is copied first. A `filter` whose result leaves the statement gives a copy too.
+- A separator of one byte, the usual case, is split by two plain loops over the bytes.
+- `push` now calls the runtime only when the buffer is full, for every array.
+
+Tests run the WebAssembly on the debug allocator, which poisons released bytes, and check every result against Rust's `split`, the text changing while its parts are in use included. Taking away either copy, or the conversion of a copied array, makes them fail; they needed texts over 256 bytes to see it, since a shorter one keeps its old bytes in its header's block when it grows.
+
+`words` went from 17 to 11.2 ms, against 10.3 for JavaScript; in the benchmark, from 0.51 to 0.87 times JavaScript's speed. Of the rest, 4.2 ms is the text crossing in, 4.8 the split and 2.3 the filter.
+
+**Next:** views for `slice` and `trim`, then fusion. Searching for the separator sixteen bytes at a time with SIMD would take about 1.5 ms more off, but the runtime is in every module that uses strings or arrays: every such module would need WebAssembly SIMD (Safari 16.4 and later), not only those with a vector loop. That choice is left open.
+
 ## Not chosen now
 
 - **Regions per statement.** The temporaries of a statement could be allocated by moving a pointer and released at once at its end; Peras knows them exactly, which Rust cannot. It changes the memory model, and the views take most of its gain on this workload: it will have its own decision, with the `@frame` rule of [decision 0003](0003-runtime-proved-at-compile-time.md).

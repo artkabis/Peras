@@ -111,26 +111,8 @@ impl Lowering<'_> {
         state.pre.extend(lowered);
         let values = match goal {
             Goal::Keep(flags) => {
-                for buffer in buffers {
-                    state.pre.push(Stmt::Expr(Expr {
-                        kind: ExprKind::Buf(
-                            BufOp::Runtime(crate::RuntimeFn::ArrKeep),
-                            vec![buffer.clone(), super::heap::borrowed(flags)],
-                        ),
-                        ty: Ty::Void,
-                    }));
-                }
-                state.drops.push(flags);
-                // The temporaries are the result now, not released here.
                 let taken = temporaries.unwrap_or_default();
-                state.drops.retain(|d| !taken.contains(d));
-                taken
-                    .into_iter()
-                    .map(|local| Expr {
-                        kind: ExprKind::Local(local),
-                        ty: Ty::Owned,
-                    })
-                    .collect()
+                return Some(Self::kept(state, flags, buffers, taken, mode));
             }
             Goal::Map(result) | Goal::Filter(result) => result
                 .into_iter()
@@ -147,6 +129,50 @@ impl Lowering<'_> {
             Goal::FindIndex(index) => Self::found(state, index, columns, buffers),
         };
         Some(Self::fresh(state, values, mode))
+    }
+
+    /// `filter` on temporaries, after the loop gathered its flags: the
+    /// runtime keeps the elements in place, and the temporaries are the
+    /// result, or a copy of them when they are views leaving the statement.
+    fn kept(
+        state: &mut FnState,
+        flags: LocalId,
+        buffers: &[Expr],
+        taken: Vec<LocalId>,
+        mode: Mode,
+    ) -> Vec<Expr> {
+        for buffer in buffers {
+            state.pre.push(Stmt::Expr(Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(crate::RuntimeFn::ArrKeep),
+                    vec![buffer.clone(), super::heap::borrowed(flags)],
+                ),
+                ty: Ty::Void,
+            }));
+        }
+        state.drops.push(flags);
+        // Views that leave the statement: the result is a copy, an ordinary
+        // array; the views stay temporaries.
+        if mode == Mode::Consume && taken.iter().any(|t| state.views.contains_key(t)) {
+            let copies = taken
+                .into_iter()
+                .map(|t| Expr {
+                    kind: ExprKind::Buf(BufOp::Clone, vec![super::heap::borrowed(t)]),
+                    ty: Ty::Owned,
+                })
+                .collect();
+            return Self::fresh(state, copies, mode);
+        }
+        // The temporaries are the result now, not released here.
+        state.drops.retain(|d| !taken.contains(d));
+        let values = taken
+            .into_iter()
+            .map(|local| Expr {
+                kind: ExprKind::Local(local),
+                ty: Ty::Owned,
+            })
+            .collect();
+        Self::fresh(state, values, mode)
     }
 
     /// What the loop of `method` builds, set up before it.
@@ -330,9 +356,11 @@ impl Lowering<'_> {
         method: &str,
         args: &[ExprId],
         mode: Mode,
+        views: bool,
     ) -> Option<Vec<Expr>> {
         use crate::RuntimeFn as F;
         let f = match method {
+            "split" if views => F::SplitViews,
             "indexOf" | "includes" => F::IndexOf,
             "startsWith" => F::StartsWith,
             "endsWith" => F::EndsWith,

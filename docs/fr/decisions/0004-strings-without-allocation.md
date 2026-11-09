@@ -57,6 +57,21 @@ Chaque variante a trouvé les mêmes 195 889 mots, et n’a rien laissé en vie.
 3. **Puis la fusion.** Une chaîne dont le producteur est `split`, `map` ou `filter` et le consommateur `length`, `reduce`, `some`, `every`, `find`, `findIndex` ou `for…of` devient une seule boucle, sans tableau entre les deux. La fusion change l’ordre des appels des fonctions (`f` puis `g` sur chaque élément, au lieu de `f` sur tous puis `g` sur tous) : elle ne s’applique donc que lorsque cela ne peut pas se voir, c’est-à-dire quand chaque fonction de la chaîne sauf la dernière ne peut ni s’arrêter sur une erreur ni appeler quoi que ce soit, la condition que l’optimiseur utilise déjà pour déplacer du code ([`is_simple`](../../../crates/perasc-ir/src/opt.rs)). Sinon la chaîne reste telle qu’écrite.
 4. **Les résultats sont toujours ceux du programme tel qu’écrit.** Comme pour les autres optimisations, des tests comparent les deux formes sur chaque entrée, et sont cassés exprès pour montrer qu’ils détectent une forme fausse.
 
+## État
+
+**Les vues de `split` sont faites.** Là où le tableau que crée `text.split(sep)` est lu aussitôt, par une méthode (`filter`, `map`, `length`, `join`, `some`…) ou un `for…of`, ses morceaux sont des vues :
+
+- Un bloc contient un en-tête de 16 octets par morceau, dont les octets sont ceux du texte, et les poignées vers eux. Une vue est un en-tête de chaîne ordinaire : toute opération sur les chaînes le lit sans changement, et une copie de lui, du tableau (`copy`, `slice`, `concat`) ou d’un morceau, est une chaîne ordinaire.
+- Quand un argument de cette méthode, ou le corps de cette boucle, nomme la variable dont vient le texte, qui pourrait alors le changer, le tableau est d’abord copié. Un `filter` dont le résultat sort de l’instruction donne aussi une copie.
+- Un séparateur d’un octet, le cas courant, est découpé par deux boucles simples sur les octets.
+- `push` n’appelle plus le runtime que quand le tampon est plein, pour tous les tableaux.
+
+Les tests exécutent le WebAssembly sur l’allocateur de débogage, qui empoisonne les octets libérés, et comparent chaque résultat au `split` de Rust, y compris quand le texte change pendant que ses morceaux servent. Retirer l’une ou l’autre copie, ou la conversion d’un tableau copié, les fait échouer ; il leur a fallu des textes de plus de 256 octets pour le voir, car un texte plus court garde ses anciens octets dans le bloc de son en-tête quand il grandit.
+
+`words` est passé de 17 à 11,2 ms, contre 10,3 pour JavaScript ; dans le banc d’essai, de 0,51 à 0,87 fois la vitesse de JavaScript. Du reste, 4,2 ms sont l’entrée du texte, 4,8 le découpage et 2,3 le filtre.
+
+**Ensuite :** les vues pour `slice` et `trim`, puis la fusion. Chercher le séparateur seize octets à la fois avec le SIMD ôterait environ 1,5 ms de plus, mais le runtime est dans chaque module qui utilise des chaînes ou des tableaux : chacun demanderait alors le SIMD de WebAssembly (Safari 16.4 et suivants), pas seulement ceux qui ont une boucle vectorielle. Ce choix reste ouvert.
+
 ## Écarté pour l’instant
 
 - **Des régions par instruction.** Les temporaires d’une instruction pourraient être alloués en avançant un pointeur et libérés d’un coup à sa fin ; Peras les connaît exactement, ce que Rust ne peut pas. Cela change le modèle mémoire, et les vues prennent l’essentiel de son gain sur cette charge : elle aura sa propre décision, avec la règle `@frame` de la [décision 0003](0003-runtime-proved-at-compile-time.md).

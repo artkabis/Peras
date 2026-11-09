@@ -458,7 +458,9 @@ impl Machine<'_> {
                 let out = crate::text::replace(&s, &from, &to, f == F::ReplaceAll);
                 self.string(&out)
             }
-            F::Split => {
+            // Views are an encoding of the WebAssembly runtime: here, the same
+            // parts as `split`.
+            F::Split | F::SplitViews => {
                 let separator = text(self, 1)?;
                 let parts: Vec<Value> = crate::text::split(&s, &separator)
                     .iter()
