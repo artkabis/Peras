@@ -125,6 +125,11 @@ pub struct DirectOptions {
     /// independent, and in the runtime's search for bytes. Without, the
     /// module loads in engines that have no SIMD (Safari before 16.4).
     pub simd: bool,
+    /// Runs `parallel for` loops on threads where the page can share memory
+    /// ([decision 0007]); without, they run on one thread.
+    ///
+    /// [decision 0007]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0007-threads-over-shared-memory.md
+    pub threads: bool,
 }
 
 impl Default for DirectOptions {
@@ -133,6 +138,7 @@ impl Default for DirectOptions {
             optimize: true,
             allocator: perasc_runtime::Allocator::Debug,
             simd: true,
+            threads: false,
         }
     }
 }
@@ -162,7 +168,8 @@ pub fn emit_direct_for(
     options: DirectOptions,
     localizer: &Localizer,
 ) -> DirectOutput {
-    let compiled = perasc_codegen_wasm::compile_for(module, options.simd);
+    let threads = options.threads && module.uses_heap();
+    let compiled = perasc_codegen_wasm::compile_with(module, options.simd, threads);
     // SIMD is needed by the runtime of a module that uses the heap, and by
     // the loops that run several turns at once.
     let needs_simd = options.simd && (module.uses_heap() || compiled.vectors);
@@ -176,14 +183,27 @@ pub fn emit_direct_for(
     // The runtime this module needs: what its loader calls, and the
     // functions on strings and arrays the module calls.
     let full = options.allocator.runtime(options.simd);
+    // With threads, the runtime imports the memory the loader may share.
+    let imported = threads
+        .then(|| perasc_runtime::import_memory(full, perasc_codegen_wasm::THREAD_PAGES).ok())
+        .flatten();
+    let full: &[u8] = imported.as_deref().unwrap_or(full);
     let used = module.runtime_fns();
+    let module_flag = perasc_runtime::memory_flag(&compiled.wasm);
     let loader = |allocator: &[u8]| {
+        let flags = perasc_runtime::memory_flag(allocator).zip(module_flag);
         let runtime = perasc_codegen_wasm::Runtime {
             allocator,
             sites: &compiled.sites,
             faults: &faults,
             bounds: &bounds,
             simd: needs_simd.then_some(simd.as_str()),
+            threads: flags
+                .filter(|_| threads)
+                .map(|(runtime_flag, module_flag)| perasc_codegen_wasm::Threads {
+                    runtime_flag,
+                    module_flag,
+                }),
         };
         perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime))
     };

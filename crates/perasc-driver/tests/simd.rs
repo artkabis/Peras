@@ -19,6 +19,7 @@ fn build(source: &str, optimize: bool) -> Vec<u8> {
             optimize,
             allocator: Allocator::Debug,
             simd: true,
+            threads: false,
         },
         &Localizer::new(Language::English),
     )
@@ -276,6 +277,7 @@ fn simd_off_gives_modules_and_runtimes_without_it_and_a_loader_without_the_check
                 optimize: true,
                 allocator: Allocator::Tlsf,
                 simd,
+                threads: false,
             },
             &Localizer::new(Language::English),
         )

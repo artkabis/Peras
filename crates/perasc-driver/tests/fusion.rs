@@ -136,6 +136,7 @@ fn a_filter_whose_length_is_read_counts_and_allocates_no_array() {
             optimize: true,
             allocator: Allocator::Debug,
             simd: true,
+            threads: false,
         },
         &Localizer::new(Language::English),
     )

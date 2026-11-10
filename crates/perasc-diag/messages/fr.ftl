@@ -18,6 +18,7 @@ cli-usage =
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
       --allocator <nom>  allocateur d’un module qui utilise le tas : debug (par défaut, chaque bug mémoire détecté) ou tlsf (production, temps borné)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
+      --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide

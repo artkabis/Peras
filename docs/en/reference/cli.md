@@ -26,6 +26,7 @@ perasc <command> [options]
 | `--no-optimize`               | `build`          | skips the IR optimizations                                                                                                                                                                       |
 | `--allocator debug\|tlsf`     | `build`          | the allocator of a module that uses the heap: `debug`, the default, catches every memory bug; `tlsf` allocates in bounded time, for production ([0002](../decisions/0002-tlsf-allocator.md))     |
 | `--simd on\|off`              | `build`          | WebAssembly SIMD in loops and the runtime: `on`, the default, is faster; `off` loads in engines without it, such as Safari before 16.4 ([0004](../decisions/0004-strings-without-allocation.md)) |
+| `--threads on\|off`           | `build`          | `parallel for` loops on every core of a cross-origin isolated page, on one thread elsewhere; `off` by default ([0007](../decisions/0007-threads-over-shared-memory.md))                          |
 
 ## Exit codes
 

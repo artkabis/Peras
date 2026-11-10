@@ -26,6 +26,7 @@ perasc <commande> [options]
 | `--no-optimize`               | `build`          | saute les optimisations de l’IR                                                                                                                                                                             |
 | `--allocator debug\|tlsf`     | `build`          | l’allocateur d’un module qui utilise le tas : `debug`, par défaut, détecte chaque bug mémoire ; `tlsf` alloue en temps borné, pour la production ([0002](../decisions/0002-tlsf-allocator.md))              |
 | `--simd on\|off`              | `build`          | le SIMD de WebAssembly dans les boucles et le runtime : `on`, par défaut, est plus rapide ; `off` se charge sans lui, comme sur Safari avant 16.4 ([0004](../decisions/0004-strings-without-allocation.md)) |
+| `--threads on\|off`           | `build`          | les boucles `parallel for` sur tous les cœurs d’une page isolée entre origines, sur un fil ailleurs ; `off` par défaut ([0007](../decisions/0007-threads-over-shared-memory.md))                            |
 
 ## Codes de sortie
 

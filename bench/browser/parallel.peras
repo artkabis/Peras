@@ -1,0 +1,39 @@
+// The particles and grayscale kernels of kernels.peras, their loop over the
+// elements written `parallel for` (decision 0007): built with `--threads on`,
+// its turns run on every core of a cross-origin isolated page. A sum or a
+// checksum is a reduction, which a parallel loop may not make: it is a
+// second pass, on one thread, counted in the time.
+
+// Particles moving at a constant speed, bouncing off the walls of [0, 1].
+export fn particles(xs: inout Array<f64>, vs: inout Array<f64>, steps: i32): f64 {
+  const dt = 0.01;
+  for (let s = 0; s < steps; s++) {
+    parallel for (let i = 0; i < xs.length; i++) {
+      const v = vs[i];
+      let x = xs[i] + v * dt;
+      if (x < 0.0 || x > 1.0) {
+        vs[i] = -v;
+        x = xs[i] - v * dt;
+      }
+      xs[i] = x;
+    }
+  }
+  let total = 0.0;
+  for (const x of xs) total += x;
+  return total;
+}
+
+// Pixels packed as 0xAARRGGBB turned to grey in place, as an image filter does.
+export fn grayscale(pixels: inout Array<i32>): i32 {
+  parallel for (let i = 0; i < pixels.length; i++) {
+    const p = pixels[i];
+    const r = (p >> 16) & 255;
+    const g = (p >> 8) & 255;
+    const b = p & 255;
+    const y = (r * 77 + g * 150 + b * 29) >> 8;
+    pixels[i] = (p & -16777216) | (y << 16) | (y << 8) | y;
+  }
+  let checksum = 0;
+  for (const q of pixels) checksum = checksum ^ q;
+  return checksum;
+}

@@ -173,6 +173,7 @@ fn views_on(simd: bool) {
             optimize: true,
             allocator: Allocator::Debug,
             simd,
+            threads: false,
         },
         &Localizer::new(Language::English),
     )

@@ -51,7 +51,26 @@ Ce que cela dit :
 
 ## Statut
 
-Mesuré, pas construit. Le plafond est versionné avec sa commande ; le backend vient après le parcours des `Map`.
+**Construit.** `parallel for (let i = début; i < fin; i++)` est vérifié et compilé ; `--threads on`, ou `threads: true` pour Vite, le fait tourner sur des fils.
+
+- **La preuve.** L’abaissement sort le corps de la boucle dans un job, `f__par0(début, fin, captures…)`, les tampons de la fonction englobante prêtés, et l’appelle sur tous les tours. Un tour qui pourrait en voir un autre est refusé avec sa raison ([E0241](../errors/E0241.md)). Sans threads, le job est une fonction ordinaire, et reçoit toutes les optimisations d’une boucle : ses contrôles de bornes sont prouvés inutiles, avec `début >= 0` dans la garde, et sa boucle fait quatre voies à la fois.
+- **La mémoire.** Le runtime et le module importent leur mémoire, déclarée non partagée avec un maximum de 2 Gio. Une page qui peut partager sa mémoire (isolée entre origines, avec des workers) pose le bit de partage des deux imports, un octet chacun, avant de les compiler : la même compilation tourne sur un fil ailleurs, avec les mêmes résultats.
+- **Le pool.** Le chargeur démarre `hardwareConcurrency − 1` workers, 15 au plus, depuis un script qu’il porte. Chacun instancie le module sur la même mémoire sans runtime : un job n’alloue jamais, donc les arènes par fil du point 3 attendent des jobs qui le pourront. Les arguments d’un job passent par un second tampon partagé ; un worker attend avec `Atomics.wait`, fait sa tranche, décompte, et signale un indice hors bornes, que la page lève comme le sien.
+- **La page attend activement** que chaque worker ait fini, là où le point 4 disait `Atomics.waitAsync` : la boucle est un appel synchrone, et le fil principal ne peut pas bloquer. Une boucle de moins de 256 tours tourne sur la page seule.
+
+Mesuré avec `node scripts/bench-workers.mjs` (_parallel for_), sur 4 cœurs, Chromium 153, 2 exécutions, face à l’appel direct sur un fil :
+
+| Noyau              | Copies vers des workers | `parallel for`, 4 fils |     Plafond |
+| ------------------ | ----------------------: | ---------------------: | ----------: |
+| particles, 10 pas  |             0,82 – 0,91 |        **1,95 – 2,23** | 2,20 – 2,23 |
+| particles, 200 pas |             2,89 – 3,00 |        **2,68 – 2,81** | 3,32 – 3,45 |
+| grayscale          |             0,31 – 0,38 |        **1,70 – 1,87** | 1,91 – 2,14 |
+
+La somme de contrôle de grayscale est une réduction, qu’une boucle parallèle ne peut pas faire : une seconde boucle la calcule sur un fil, comptée. 200 pas appellent le pool 200 fois ; réveiller les workers à chaque fois fait l’essentiel de l’écart au plafond. Avant que la preuve des bornes n’apprenne `début >= 0`, les jobs gardaient leurs contrôles et n’étaient pas vectorisés : 1,75 à 1,83 pour 200 pas.
+
+Tests : les noyaux en `parallel for` et en `for` donnent les mêmes résultats dans l’interpréteur ; dans Chromium, servi avec les deux en-têtes, sur 4 fils, face aux mêmes noyaux en JavaScript, bit pour bit, un indice hors bornes dans un worker levé par la page ; dans Node, la même chose sur un fil. Une tranche raccourcie d’un tour les fait échouer.
+
+Pas fait : les réductions (`sum += xs[i]`), les appels dans un tour, les jobs qui allouent, et le vol de travail.
 
 ## Conséquences
 

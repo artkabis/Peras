@@ -45,6 +45,20 @@ export fn sum_to(n: i32): i64 {
 }
 ```
 
+## `parallel for`
+
+Une boucle comptée dont les tours ne se voient pas peut les faire tourner sur plusieurs fils à la fois ([décision 0007](../decisions/0007-threads-over-shared-memory.md)). Chaque tour peut lire tout ce que la boucle ne change pas, et n’écrire que les éléments à son propre indice :
+
+```peras build
+export fn brighten(pixels: Array<i32>, out: inout Array<i32>, gain: i32): void {
+  parallel for (let i = 0; i < pixels.length; i++) {
+    out[i] = pixels[i] * gain;
+  }
+}
+```
+
+Le compilateur le prouve : un tour qui affecte une variable déclarée hors de la boucle, lit à un autre indice un tableau que la boucle écrit, appelle une fonction, crée ou libère une chaîne ou un tableau, ou sort de la boucle par `break` ou `return` est refusé ([E0241](../errors/E0241.md)). Les résultats sont alors ceux de la boucle exécutée dans l’ordre, bit pour bit. Compilés avec `--threads on`, les tours tournent sur tous les cœurs d’une page qui peut partager sa mémoire, et sur un seul fil ailleurs : voir [Peras et JavaScript](javascript.md#threads). Sans, la boucle tourne comme une autre. <span class="status compiled">compilé</span>
+
 ## `for…of`
 
 Parcourt les éléments d’un tableau :

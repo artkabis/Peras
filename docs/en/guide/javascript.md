@@ -87,6 +87,21 @@ The runtime uses them too, to look for a byte sixteen at a time: `split` on a mi
 
 WebAssembly SIMD is on by default. A module that uses it, in its loops or its runtime, needs Chrome and Edge 91, Firefox 89, Safari 16.4, Node 16.4 or later; elsewhere, its loader throws an error that says so before loading anything. `perasc build --simd off`, or `simd: false` for Vite, builds without it, for engines that have none, such as Safari before 16.4 on iPhones that cannot update past iOS 15.
 
+## Threads
+
+`perasc build --threads on`, or `threads: true` for Vite, runs the turns of each [`parallel for`](control-flow.md#parallel-for) loop on every core ([decision 0007](../decisions/0007-threads-over-shared-memory.md)). The module, its runtime and a pool of workers share one memory: no data is copied. The page calls the loop, gives a part of its turns to each worker, runs its own part, and waits for them.
+
+Threads need a page that can share memory, served with two headers:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Vite's dev server sends them when `threads` is on; in production, the server must. Elsewhere, in Node or on a page without them, the module loads all the same and runs every loop on one thread, with the same results. `__perasHeap.threads()` says how many threads run them.
+
+In `bench/browser`, on 4 cores, 200 steps of a million particles run 2.7 to 2.8 times faster than on one thread, 10 steps 2 to 2.2 times, a grayscale filter over 16 MB 1.7 to 1.9 times, its checksum included, which a second loop computes on one thread.
+
 ## With Vite
 
 ```ts
@@ -106,6 +121,7 @@ export default defineConfig({
 | `dts`       | `true`                                              | write `name.d.peras.ts` next to each `name.peras`                         |
 | `allocator` | `debug` for the dev server, `tlsf` for `vite build` | the allocator of modules that use the heap                                |
 | `simd`      | `true`                                              | WebAssembly SIMD in loops and the runtime; `false` for engines without it |
+| `threads`   | `false`                                             | `parallel for` loops on every core; the dev server isolates the page      |
 
 In development the WebAssembly is inlined in the module; `vite build` emits it as a separate file, compiled while it downloads. An error in a `.peras` file shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`.
 
