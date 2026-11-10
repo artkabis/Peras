@@ -1,4 +1,6 @@
 /target/
+# The Rust contender of the browser benchmark, built outside the workspace.
+/bench/browser/rust/target/
 node_modules/
 dist/
 *.log

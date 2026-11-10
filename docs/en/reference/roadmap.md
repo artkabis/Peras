@@ -106,7 +106,7 @@ An outside review of the project, in November 2026, advised against using it in 
 - **No libraries of its own**: the plan is to use those of npm through their declarations (phase 5), not to rewrite them; until then, a Peras module does one job inside a TypeScript application.
 - **One thread, no GPU**: no Web Workers and no shared memory yet (decision [0003](../decisions/0003-runtime-proved-at-compile-time.md) plans moves between threads), no WebGPU (phase 6).
 - **Ownership is learned**: diagnostics explain every refusal, with the value's history and the fix, but there is no community knowledge to lean on yet.
-- **No comparison with Rust or AssemblyScript yet**: the benchmark compares Peras with JavaScript only ([what an independent review would still ask](../../../bench/README.md#what-an-independent-review-would-still-ask)).
+- **Compared with Rust and AssemblyScript as usually written, not yet with their experts**: Peras runs at the speed of idiomatic Rust, ahead where its compiler does more (SIMD loops with branches, radix sort, text crossing), and 2.4 to 7.3 times faster than AssemblyScript where it allocates or loops ([against Rust and AssemblyScript](../../../bench/README.md#against-rust-and-assemblyscript)).
 - **A licence was missing**: settled by [decision 0006](../decisions/0006-licensing.md).
 
 Today, Peras fits where its risk stays small: a few functions of computation, compiled to WebAssembly and called from a TypeScript application through the Vite plugin.

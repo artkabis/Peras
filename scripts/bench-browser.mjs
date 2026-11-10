@@ -11,7 +11,9 @@
 // use, as for the end-to-end tests. --serve builds the page and serves it
 // for any browser, a real Safari on a Mac or an iPhone included, which shows
 // the results itself: --host 0.0.0.0 to reach it from another device on the
-// network, --port to choose the port.
+// network, --port to choose the port. --contenders also builds the kernels in
+// Rust (bench/browser/rust, through cargo and wasm-bindgen 0.2.130) and in
+// AssemblyScript (bench/browser/assemblyscript), and runs them next to Peras.
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -36,10 +38,55 @@ function option(name, fallback) {
 }
 
 const check = process.argv.includes("--check");
+const withContenders = process.argv.includes("--contenders");
 const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "browser");
 const work = join(root, "target", "bench-browser");
 const perasc = join(root, "target", "release", "perasc");
+
+/**
+ * Runs a command, and throws with its output when it fails.
+ * @param {string} command
+ * @param {string[]} args
+ * @param {{ cwd?: string, env?: NodeJS.ProcessEnv }} [options]
+ */
+function sh(command, args, options = {}) {
+  const result = spawnSync(command, args, { encoding: "utf8", ...options });
+  if (result.status !== 0)
+    throw new Error(`${command} ${args.join(" ")}\n${result.stdout}${result.stderr}`);
+}
+
+/**
+ * The other compilers' kernels: Rust with SIMD, as Peras builds by default,
+ * then wasm-bindgen; AssemblyScript at -O3 with its SIMD, its bindings and
+ * its runtime's exports, which pin the arrays.
+ */
+function buildContenders() {
+  const crate = join(bench, "rust");
+  sh("cargo", ["build", "--release", "--locked", "--target", "wasm32-unknown-unknown", "-q"], {
+    cwd: crate,
+    env: { ...process.env, RUSTFLAGS: "-C target-feature=+simd128" },
+  });
+  sh("wasm-bindgen", [
+    join(crate, "target", "wasm32-unknown-unknown", "release", "bench_browser_rust.wasm"),
+    "--target",
+    "web",
+    "--out-dir",
+    join(work, "rust"),
+  ]);
+  sh(join(root, "node_modules", ".bin", "asc"), [
+    join(bench, "assemblyscript", "kernels.ts"),
+    "-O3",
+    "--enable",
+    "simd",
+    "--bindings",
+    "esm",
+    "--exportRuntime",
+    "-o",
+    join(work, "as", "kernels.wasm"),
+  ]);
+  copyFileSync(join(bench, "contenders.js"), join(work, "contenders.js"));
+}
 
 /** Builds the kernels and gathers the files the page loads. */
 function build() {
@@ -57,6 +104,7 @@ function build() {
     );
   for (const file of ["reference.js", "runner.js"])
     copyFileSync(join(bench, file), join(work, file));
+  if (withContenders) buildContenders();
   // An empty page for the start measures, and the page that runs the kernels
   // with the settings of its query, then reports to the functions this
   // script exposes.
@@ -70,10 +118,11 @@ import * as peras from "./kernels.js";
 import { show } from "./runner.js";
 const q = new URLSearchParams(location.search);
 const setting = (name, fallback) => Number(q.get(name) ?? fallback);
+const others = q.has("contenders") ? await (await import("./contenders.js")).contenders() : [];
 // Opened by hand (--serve): the page shows its results itself.
 const manual = typeof report !== "function";
 try {
-  const cases = run(peras, { scale: setting("scale", 1), runs: setting("runs", 15), warm: setting("warm", 3) });
+  const cases = run(peras, { scale: setting("scale", 1), runs: setting("runs", 15), warm: setting("warm", 3) }, others);
   if (manual) show(cases);
   else await report(cases);
 } catch (e) {
@@ -87,7 +136,12 @@ try {
 }
 
 /** @type {Record<string, string>} */
-const types = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm" };
+const types = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".wasm": "application/wasm",
+  ".ts": "text/plain",
+};
 
 /**
  * Serves the work folder, on a free port of 127.0.0.1 unless asked.
@@ -159,6 +213,12 @@ function size(file) {
   return { raw: bytes.length, gzip: gzipSync(bytes, { level: 9 }).length };
 }
 
+/**
+ * Two sizes added.
+ * @param {{ raw: number, gzip: number }} a
+ * @param {{ raw: number, gzip: number }} b
+ */
+const sum = (a, b) => ({ raw: a.raw + b.raw, gzip: a.gzip + b.gzip });
 /** @param {number} x */
 const ms = (x) => (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2));
 /** @param {number} x */
@@ -167,7 +227,7 @@ const kb = (x) => (x / 1024).toFixed(1);
 /**
  * The results as Markdown.
  * @param {Case[]} cases
- * @param {{ peras: { raw: number, gzip: number, time: number }, js: { raw: number, gzip: number, time: number } }} start
+ * @param {{ peras: { raw: number, gzip: number, time: number }, js: { raw: number, gzip: number, time: number }, rust: { raw: number, gzip: number }, as: { raw: number, gzip: number } }} start
  * @param {string} browserVersion
  */
 function report(cases, start, browserVersion) {
@@ -200,6 +260,27 @@ function report(cases, start, browserVersion) {
       );
     });
   }
+  const named = (/** @type {Case} */ c, /** @type {string} */ label) =>
+    c.result.find((r) => r.label === label)?.median;
+  if (cases.some((c) => named(c, "Rust") !== undefined)) {
+    lines.push(
+      "",
+      "## Against the other compilers to WebAssembly",
+      "",
+      "The same kernels in Rust ([rust/src/lib.rs](rust/src/lib.rs), wasm-bindgen) and in AssemblyScript ([assemblyscript/kernels.ts](assemblyscript/kernels.ts)), written as each language is usually written, built for speed with SIMD, their arrays in their module's memory as a `PerasArray`'s. Medians in ms; a ratio is the contender's time divided by Peras's: above 1, Peras is faster.",
+      "",
+      "| Kernel | Peras | Rust | AssemblyScript | Rust / Peras | AssemblyScript / Peras |",
+      "| --- | --: | --: | --: | --: | --: |",
+    );
+    for (const c of cases) {
+      const peras = named(c, "Peras") ?? named(c, "Peras, zero copy") ?? 0;
+      const rust = named(c, "Rust") ?? 0;
+      const as = named(c, "AssemblyScript") ?? 0;
+      lines.push(
+        `| ${c.name} | ${ms(peras)} | ${ms(rust)} | ${ms(as)} | ${(rust / peras).toFixed(2)} | ${(as / peras).toFixed(2)} |`,
+      );
+    }
+  }
   lines.push(
     "",
     "Every variant gave exactly the same result, checked in the page before timing (`Object.is`, positions and pixels included), and no block was left alive.",
@@ -212,6 +293,12 @@ function report(cases, start, browserVersion) {
     "| --- | --- | --: | --: | --: |",
     `| Peras | kernels.js + kernels.wasm | ${kb(start.peras.raw)} | ${kb(start.peras.gzip)} | ${ms(start.peras.time)} |`,
     `| JavaScript | reference.js | ${kb(start.js.raw)} | ${kb(start.js.gzip)} | ${ms(start.js.time)} |`,
+    ...(withContenders
+      ? [
+          `| Rust | bench_browser_rust.js + _bg.wasm | ${kb(start.rust.raw)} | ${kb(start.rust.gzip)} | not measured |`,
+          `| AssemblyScript | kernels.js + kernels.wasm | ${kb(start.as.raw)} | ${kb(start.as.gzip)} | not measured |`,
+        ]
+      : []),
     "",
     "The Peras loader carries the allocator inlined and the code that crosses the boundary; it is shared by every function of a module.",
     "",
@@ -265,12 +352,13 @@ try {
     scale: String(config.scale),
     runs: String(config.runs),
     warm: String(config.warm),
+    ...(withContenders ? { contenders: "1" } : {}),
   });
   await page.goto(`${base}/index.html?${query.toString()}`);
   const cases = await ran;
   if (check) {
     console.log(
-      `Peras and JavaScript agree on ${String(cases.length)} kernels in ${engineName} ${browser.version()}.`,
+      `${withContenders ? "Peras, JavaScript, Rust and AssemblyScript" : "Peras and JavaScript"} agree on ${String(cases.length)} kernels in ${engineName} ${browser.version()}.`,
     );
   } else {
     const wasm = size("kernels.wasm");
@@ -282,6 +370,12 @@ try {
         time: await startup(browser, base, "kernels.js", 15),
       },
       js: { ...size("reference.js"), time: await startup(browser, base, "reference.js", 15) },
+      rust: withContenders
+        ? sum(size("rust/bench_browser_rust.js"), size("rust/bench_browser_rust_bg.wasm"))
+        : { raw: 0, gzip: 0 },
+      as: withContenders
+        ? sum(size("as/kernels.js"), size("as/kernels.wasm"))
+        : { raw: 0, gzip: 0 },
     };
     const markdown = report(cases, start, `${engineName} ${browser.version()}`);
     // The committed results are Chromium's; another engine's go next to the

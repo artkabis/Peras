@@ -15,6 +15,8 @@ export default defineConfig(
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",
+      // AssemblyScript: TypeScript's syntax, its own types (usize, changetype), checked by asc.
+      "bench/browser/assemblyscript/**",
     ],
   },
   js.configs.recommended,

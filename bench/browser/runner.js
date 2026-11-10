@@ -7,6 +7,7 @@
 import * as js from "./reference.js";
 
 /** @typedef {typeof import("./kernels.js")} Peras */
+/** @typedef {import("./contenders.js").Contender} Contender */
 /**
  * @typedef {object} Build One build of the kernels, and the name its
  * variants carry: empty for the benchmark, "A" or "B" for a comparison.
@@ -138,9 +139,10 @@ const of = (build, variant) =>
  * inputs made once.
  * @param {Build[]} builds
  * @param {number} scale
+ * @param {Contender[]} [others] Other compilers to WebAssembly, after Peras.
  * @returns {Kernel[]}
  */
-export function kernels(builds, scale) {
+export function kernels(builds, scale, others = []) {
   /** @param {number} x */
   const n = (x) => Math.max(1, Math.round(x * scale));
   /** @param {number} x */
@@ -166,6 +168,7 @@ export function kernels(builds, scale) {
       cx: new Float64Array(count),
       cv: new Float64Array(count),
     }));
+    const theirs = others.map((c) => ({ c, xs: c.f64(count), vs: c.f64(count) }));
     /** @type {Variant[]} */
     const variants = [
       {
@@ -198,6 +201,16 @@ export function kernels(builds, scale) {
         }),
       );
     });
+    for (const { c, xs, vs } of theirs) {
+      variants.push({
+        label: c.name,
+        prepare: () => {
+          xs.view().set(x0);
+          vs.view().set(v0);
+        },
+        call: () => c.particles(xs.handle, vs.handle, steps),
+      });
+    }
     out.push({
       name: "particles",
       what: `${fmt(count)} particles, ${String(steps)} steps`,
@@ -207,12 +220,17 @@ export function kernels(builds, scale) {
         same("particles, positions", [
           jx[count - 1],
           ...arrays.flatMap((a) => [a.px.view()[count - 1], a.cx[count - 1]]),
+          ...theirs.map((t) => t.xs.view()[count - 1]),
         ]);
       },
       release: () => {
         for (const a of arrays) {
           a.px.release();
           a.pv.release();
+        }
+        for (const t of theirs) {
+          t.xs.release();
+          t.vs.release();
         }
       },
     });
@@ -225,6 +243,7 @@ export function kernels(builds, scale) {
     const image = Int32Array.from({ length: count }, () => Math.floor(next() * 4294967296) | 0);
     const jp = new Int32Array(count);
     const arrays = builds.map((b) => b.peras.__perasHeap.array("i32", count));
+    const theirs = others.map((c) => ({ c, pixels: c.i32(count) }));
     /** @type {Variant[]} */
     const variants = [
       {
@@ -235,6 +254,15 @@ export function kernels(builds, scale) {
         call: () => js.grayscale(jp),
       },
     ];
+    for (const { c, pixels } of theirs) {
+      variants.push({
+        label: c.name,
+        prepare: () => {
+          pixels.view().set(image);
+        },
+        call: () => c.grayscale(pixels.handle),
+      });
+    }
     builds.forEach((b, k) => {
       const pp = arrays[k];
       variants.push(
@@ -253,10 +281,15 @@ export function kernels(builds, scale) {
       variants,
       check: () => {
         same("grayscale", results(variants));
-        same("grayscale, pixels", [jp[count >> 1], ...arrays.map((pp) => pp.view()[count >> 1])]);
+        same("grayscale, pixels", [
+          jp[count >> 1],
+          ...arrays.map((pp) => pp.view()[count >> 1]),
+          ...theirs.map((t) => t.pixels.view()[count >> 1]),
+        ]);
       },
       release: () => {
         for (const pp of arrays) pp.release();
+        for (const t of theirs) t.pixels.release();
       },
     });
   }
@@ -270,6 +303,7 @@ export function kernels(builds, scale) {
       { label: "JavaScript", call: () => js.nbody(count, steps) },
       { label: "JavaScript, expert", call: () => js.nbodyExpert(count, steps) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.nbody(count, steps) })),
+      ...others.map((c) => ({ label: c.name, call: () => c.nbody(count, steps) })),
     ];
     out.push({
       name: "nbody",
@@ -290,6 +324,7 @@ export function kernels(builds, scale) {
       { label: "JavaScript", call: () => js.hash64(count) },
       { label: "JavaScript, expert", call: () => js.hash64Expert(count) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.hash64(count) })),
+      ...others.map((c) => ({ label: c.name, call: () => c.hash64(count) })),
     ];
     out.push({
       name: "hash64",
@@ -312,6 +347,7 @@ export function kernels(builds, scale) {
     /** @type {number[]} */
     let ja = [];
     const arrays = builds.map((b) => b.peras.__perasHeap.array("f64", count));
+    const theirs = others.map((c) => ({ c, xs: c.f64(count) }));
     /** @type {Variant[]} */
     const variants = [
       {
@@ -348,6 +384,15 @@ export function kernels(builds, scale) {
         }),
       );
     });
+    for (const { c, xs } of theirs) {
+      variants.push({
+        label: c.name,
+        prepare: () => {
+          xs.view().set(data);
+        },
+        call: () => c.sorted(xs.handle),
+      });
+    }
     out.push({
       name: "sort",
       what: `${fmt(count)} f64`,
@@ -362,6 +407,7 @@ export function kernels(builds, scale) {
       },
       release: () => {
         for (const pp of arrays) pp.release();
+        for (const t of theirs) t.xs.release();
       },
     });
   }
@@ -373,6 +419,7 @@ export function kernels(builds, scale) {
     const variants = [
       { label: "JavaScript", call: () => js.mandel(size) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.mandel(size) })),
+      ...others.map((c) => ({ label: c.name, call: () => c.mandel(size) })),
     ];
     out.push({
       name: "mandel",
@@ -393,6 +440,7 @@ export function kernels(builds, scale) {
       { label: "JavaScript", call: () => js.words(input) },
       { label: "JavaScript, expert", call: () => js.wordsExpert(input) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => b.peras.words(input) })),
+      ...others.map((c) => ({ label: c.name, call: () => c.words(input) })),
     ];
     out.push({
       name: "words",
@@ -418,6 +466,7 @@ export function kernels(builds, scale) {
     const variants = [
       { label: "JavaScript", call: () => loop(js.add) },
       ...builds.map((b) => of(b, { label: "Peras", call: () => loop(b.peras.add) })),
+      ...others.map((c) => ({ label: c.name, call: () => loop(c.add) })),
     ];
     out.push({
       name: "calls",
@@ -444,14 +493,15 @@ function noLeak(builds) {
 }
 
 /**
- * Runs every kernel, JavaScript and Peras.
+ * Runs every kernel, JavaScript and Peras, and the other compilers given.
  * @param {Peras} peras
  * @param {Config} config
+ * @param {Contender[]} [others]
  * @returns {Case[]}
  */
-export function run(peras, { scale, runs, warm }) {
+export function run(peras, { scale, runs, warm }, others = []) {
   const builds = [{ name: "", peras }];
-  const cases = kernels(builds, scale).map((k) => {
+  const cases = kernels(builds, scale, others).map((k) => {
     const result = time(k.variants, runs, warm);
     k.check();
     k.release();

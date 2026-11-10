@@ -51,11 +51,37 @@ What the results say, today, against the **fastest** JavaScript (three runs, Chr
 
 What Peras brings, then, is less a speed JavaScript cannot reach than the expert's speed from the usual code: `text.split(" ").filter(…).length` and an array of structures run as fast as, or faster than, the JavaScript an expert rewrites them into.
 
+### Against Rust and AssemblyScript
+
+`node scripts/bench-browser.mjs --contenders` also builds the kernels in Rust ([`browser/rust`](browser/rust/src/lib.rs), wasm-bindgen 0.2.130) and in AssemblyScript ([`browser/assemblyscript`](browser/assemblyscript/kernels.ts), 0.28.20), the two other ways to write WebAssembly for the web, and runs them in the same page. Each is written as that language is usually written: a structure or a class per body, `split` and `filter`, the standard library's sort. Each is built for speed: Rust in release with LTO and SIMD, AssemblyScript at `-O3` with SIMD allowed. Their arrays stay in their module's memory, as a `PerasArray` does. Every variant gives exactly the same result, checked in the page; CI checks it on every pull request.
+
+Three runs, Chromium 153; the contender's time divided by Peras's, above 1 when Peras is faster:
+
+| Kernel    | Rust / Peras | AssemblyScript / Peras |
+| --------- | -----------: | ---------------------: |
+| particles |  1.49 – 1.52 |              4.8 – 4.9 |
+| grayscale |  1.28 – 1.33 |              2.4 – 2.5 |
+| sort      |  1.30 – 1.43 |              5.1 – 5.5 |
+| words     |  1.44 – 1.48 |                    7.3 |
+| nbody     |         0.98 |                    3.3 |
+| hash64    |         1.00 |             1.0 – 1.04 |
+| mandel    |  0.94 – 0.98 |            0.98 – 1.01 |
+| calls     |  1.02 – 1.05 |             1.0 – 1.02 |
+
+Download, gzip: Peras 13.1 KiB, Rust 16.1 KiB, AssemblyScript 6.1 KiB.
+
+What it says:
+
+- **Where the code is the same, so is the speed.** n-body, hashing, Mandelbrot and the calls give Rust and Peras the same machine code, within 6 %: Peras's WebAssembly is as good as LLVM's on them.
+- **Where Peras is ahead of Rust, its compiler does more for the usual code**, not better code generation: the particles' loop with a branch runs four lanes under a mask, the sort is a radix sort where Rust's standard library compares, and Rust's time for `words` includes wasm-bindgen's crossing of the text, which copies ASCII characters one at a time before `encodeInto`. Why grayscale is 1.3 times faster in Peras, both being vectorized, is not analysed yet.
+- **This is idiomatic Rust, not an expert's.** An expert would use `std::arch` intrinsics, a radix sort crate such as `radsort`, and pass the text as bytes: that Rust has not been measured, and would likely close the gaps above. The fair reading is "as fast as Rust, from code written as TypeScript is", not "faster than Rust".
+- **AssemblyScript** is 2.4 to 7.3 times slower where it allocates or loops over arrays: its optimizer does not vectorize, its typed arrays check every index, its objects and strings go through its garbage collector. It is the smallest download. An expert would write `unchecked()` and `StaticArray`; not measured either.
+
 ### What an independent review would still ask
 
 These are known and not done yet; each is a reason to read the figures above with care.
 
-- **Other contenders**: the same kernels in Rust compiled to WebAssembly, and in AssemblyScript, the alternatives to a new language.
+- **Expert contenders**: Rust and AssemblyScript are measured as they are usually written (above); their experts' versions are not.
 - **Every measure in the repository**: the prototypes and probes behind decisions 0004 and 0005, and the measures of floats as text and of `encodeInto`, were run from a scratch folder; they should be committed under `bench/` with one command each.
 - **Statistics**: confidence intervals (bootstrap over the runs) rather than medians alone; more runs; the engine's tiers reported.
 - **Machines**: macOS with Apple's Safari, Windows, an ARM phone; WebKit's timer counts whole milliseconds, too coarse for kernels of 2 or 3 ms.
