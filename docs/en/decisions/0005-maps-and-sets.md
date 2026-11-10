@@ -87,6 +87,8 @@ export fn counts(text: String): Map<String, i32> {
 
 Tests run random operations three ways, against Rust's maps or vectors in insertion order: compiled to WebAssembly on the debug allocator, in the IR interpreter, and in Chromium against JavaScript's `Map` and `Set` on both allocators, with no block left alive. Each step was broken on purpose to show the tests catch it: a removed entry not marked, a `bool` key widened wrongly, a removed entry walked, a value not released on delete, the wrong slot read, a map copied as a plain buffer.
 
+**Speed, measured once compiled** ([bench/maps](../../../bench/README.md#maps-and-sets-benchmaps)), against JavaScript's `Map` and `Set` with number keys, in Node. The first compiled maps were slower than JavaScript's (0.68 to 0.93 times its speed), short of the prototypes above: SipHash's state lived in globals, and `m.set(word.copy(), …)` copied each word then released the copy when the key was there. With SipHash in locals and the key lent, counting words runs 1.13 to 1.31 times JavaScript's speed, integer keys 1.20 to 1.24, a set of integers 1.02 to 1.06. The prototypes' 2.2 to 3.2 came from a table inlined in the program; the compiled one is the runtime's, called across modules.
+
 Not done: keys that are structures, enumerations or floats, which need a rule for hashing and equality; a `get` that lends instead of copying, which needs lending a value out of an expression; and Swiss tables for maps whose order cannot be seen.
 
 ## Consequences

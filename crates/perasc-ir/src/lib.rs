@@ -564,6 +564,9 @@ pub enum RuntimeFn {
     /// `(map, key: owned) -> i32`: [`Self::MapPutI`] for a string key; the
     /// map takes the key, and releases it when the key was already there.
     MapPutS,
+    /// `(map, key) -> i32`: [`Self::MapPutS`] with the key lent: the map
+    /// keeps a copy of it only when the key is new.
+    MapPutSLent,
     /// `(map, entry, slot, value: i64)`: stores a scalar of an entry's value.
     MapStore,
     /// `(map, entry, slot, value: f64)`: [`Self::MapStore`] for a float.
@@ -615,7 +618,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 42] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -645,6 +648,7 @@ impl RuntimeFn {
         Self::MapFindS,
         Self::MapPutI,
         Self::MapPutS,
+        Self::MapPutSLent,
         Self::MapStore,
         Self::MapStoreF,
         Self::MapStoreH,
@@ -692,6 +696,7 @@ impl RuntimeFn {
             Self::MapFindS => "map_find_s",
             Self::MapPutI => "map_put_i",
             Self::MapPutS => "map_put_s",
+            Self::MapPutSLent => "map_put_s_lent",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -734,7 +739,8 @@ impl RuntimeFn {
             | Self::ArrIndexOfStr
             | Self::ArrKeep
             | Self::MapFindS
-            | Self::MapDeleteS => &[Ty::Borrowed],
+            | Self::MapDeleteS
+            | Self::MapPutSLent => &[Ty::Borrowed],
             Self::Slice | Self::ArrSlice | Self::MapValue | Self::MapValueF | Self::MapValueH => {
                 &[Ty::I32, Ty::I32]
             }
@@ -773,7 +779,8 @@ impl RuntimeFn {
             | Self::MapFindS
             | Self::MapNext
             | Self::MapPutI
-            | Self::MapPutS => Ty::I32,
+            | Self::MapPutS
+            | Self::MapPutSLent => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt

@@ -221,6 +221,20 @@ impl Lowering<'_> {
         }
     }
 
+    /// The string `x` of an argument written `x.copy()`.
+    fn copied_string(&self, arg: ExprId) -> Option<ExprId> {
+        let AstExpr::Call { callee, args, .. } = &self.ast.expr(arg).kind else {
+            return None;
+        };
+        let AstExpr::Field { base, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        (args.is_empty()
+            && self.ast.name(name.symbol) == "copy"
+            && self.check_type(*base) == Some(CheckTy::String))
+        .then_some(*base)
+    }
+
     /// A key, as the runtime takes it: an `i64`, or the string, lent or given.
     fn map_key(&mut self, state: &mut FnState, arg: ExprId, table: &Table, given: bool) -> Expr {
         if table.strings {
@@ -256,7 +270,13 @@ impl Lowering<'_> {
         let mark = state.pre.len();
         match (method, args) {
             ("set" | "add", [k, rest @ ..]) => {
-                let k = self.map_key(state, *k, &table, true);
+                // `m.set(word.copy(), …)`: the word lent, copied by the map
+                // only when it is a new key.
+                let copied = self.copied_string(*k).filter(|_| table.strings);
+                let k = match copied {
+                    Some(text) => self.map_key(state, text, &table, false),
+                    None => self.map_key(state, *k, &table, true),
+                };
                 // The table, then the key, then the value: each evaluated
                 // before what the next one needs to run.
                 let mut operands = [handle];
@@ -280,7 +300,12 @@ impl Lowering<'_> {
                     .into_iter()
                     .map(|v| if v.ty == Ty::Owned { v } else { state.spill(v) })
                     .collect();
-                let put = runtime(table.pick(F::MapPutI, F::MapPutS), vec![handle.clone(), k]);
+                let f = if copied.is_some() {
+                    F::MapPutSLent
+                } else {
+                    table.pick(F::MapPutI, F::MapPutS)
+                };
+                let put = runtime(f, vec![handle.clone(), k]);
                 if values.is_empty() {
                     state.pre.push(Stmt::Expr(put));
                     return Vec::new();

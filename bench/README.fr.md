@@ -114,6 +114,22 @@ Des idées qui vont à l’encontre de ce qui a été fait jusqu’ici, à mesur
 - **Les flottants en texte par deux chemins.** Un flottant de valeur entière, le cas courant, peut être écrit par le chemin des entiers du runtime ; seuls les autres ont besoin du `String()` de l’hôte ([méthodes](../docs/fr/reference/methods.md)).
 - **Des tables de deux dispositions.** Les tables suisses pour celles dont l’ordre ne se voit pas, l’ordre d’insertion pour les autres ([décision 0005](../docs/fr/decisions/0005-maps-and-sets.md)).
 
+## Tables et ensembles (`bench/maps`)
+
+`node scripts/bench-maps.mjs` fait tourner [bench/maps/maps.peras](maps/maps.peras), compilé avec l’allocateur TLSF, face au même travail sur `Map` et `Set` de JavaScript avec des clés nombres, dans Node ([résultats](maps/RESULTS.md)). Chaque cas est d’abord vérifié donner le même résultat ; la CI fait la vérification.
+
+| Cas                                      | JavaScript | Peras      |    Accélération |
+| ---------------------------------------- | ---------- | ---------- | --------------: |
+| compter 1 M de mots, `Map<String, i32>`  | 235–262 ms | 200–208 ms | **1,13 – 1,31** |
+| 2 M clés entières posées, lues, retirées | 203–212 ms | 165–174 ms | **1,20 – 1,24** |
+| 2 M entiers distincts, `Set<i32>`        | 109–112 ms | 104–110 ms |     1,02 – 1,06 |
+
+Les premières tables compilées étaient plus lentes que celles de JavaScript : 0,68, 0,93 et 0,69. Deux changements, chacun mesuré :
+
+- **SipHash dans des locales.** Le runtime gardait l’état de SipHash dans des globales, que le moteur ne garde pas en registres : chaque ronde passait par la mémoire. Ses rondes travaillent maintenant sur des locales, écrites en entier : les clés entières passent de 222 à 167 ms, l’ensemble de 150 à 112, les mots de 378 à 313.
+- **`m.set(word.copy(), …)` prête le mot**, que la table ne copie que si la clé est nouvelle : la copie faite puis libérée à chaque mot déjà présent disparaît. Les mots passent de 313 à 201 ms.
+- **Essayé puis écarté** : un cache de l’entrée trouvée par la dernière recherche, pour le `get` puis `set` de la même clé. Les mots n’ont pas bougé (313 à 308 ms), et la comparaison qu’il ajoute à chaque recherche a ralenti les clés entières à 191 ms et l’ensemble à 128.
+
 ## Banc A/B (`scripts/bench-ab.mjs`)
 
 Deux compilations de Peras, comparées sur les noyaux de `bench/browser` dans une même page Chromium, pour décider d’un changement sur des mesures :

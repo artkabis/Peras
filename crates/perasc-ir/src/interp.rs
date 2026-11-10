@@ -475,6 +475,27 @@ impl Machine<'_> {
         Ok(at)
     }
 
+    /// The entry of `wanted` in map `table`, its key lent as `given`: copied
+    /// when it is new, left alone otherwise, as the runtime does.
+    fn map_put_lent(&mut self, table: u32, wanted: MapKey, given: Value) -> Result<usize, Trap> {
+        let there = self
+            .maps
+            .get(&table)
+            .ok_or(Trap::UseAfterRelease)?
+            .entries
+            .iter()
+            .any(|e| e.as_ref().is_some_and(|e| e.key == wanted));
+        let handle = if there {
+            None
+        } else {
+            match self.clone_buffer(given)? {
+                Value::Handle(h) => Some(h),
+                _ => return Err(Trap::Unreachable),
+            }
+        };
+        self.map_put(table, wanted, handle)
+    }
+
     /// The live entry `e` of map `table`.
     fn map_entry(&mut self, table: u32, e: usize) -> Result<&mut Entry, Trap> {
         self.maps
@@ -580,6 +601,11 @@ impl Machine<'_> {
                         .iter()
                         .position(|e| e.as_ref().is_some_and(|e| e.key == wanted)),
                 )
+            }
+            F::MapPutSLent => {
+                let given = operand(1)?;
+                let wanted = key(self, given)?;
+                entry(Some(self.map_put_lent(block()?, wanted, given)?))
             }
             F::MapPutI | F::MapPutS => {
                 let given = operand(1)?;

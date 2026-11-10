@@ -1,0 +1,38 @@
+// Maps and sets at work, against JavaScript's: counting words, integer keys set,
+// read and deleted, and distinct integers. `node scripts/bench-maps.mjs`.
+export fn countWords(text: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    counts.set(w.copy(), counts.get(w).unwrapOr(0) + 1);
+  }
+  return counts.size;
+}
+
+export fn integers(n: i32): i64 {
+  let m: Map<i64, i64> = Map.new();
+  let s = 7;
+  let check: i64 = 0;
+  for (let i = 0; i < n; i++) {
+    s = s.wrappingMul(1103515245).wrappingAdd(12345);
+    const k = ((s / 65536) % 50000).toI64();
+    const op = ((s / 7) % 4).abs();
+    if (op <= 1) {
+      m.set(k, i.toI64());
+    } else if (op == 2) {
+      check = check + m.get(k).unwrapOr(-1);
+    } else {
+      m.delete(k);
+    }
+  }
+  return check + m.size.toI64();
+}
+
+export fn distinct(n: i32): i32 {
+  let seen: Set<i32> = Set.new();
+  let s = 3;
+  for (let i = 0; i < n; i++) {
+    s = s.wrappingMul(1103515245).wrappingAdd(12345);
+    seen.add((s / 65536) % 200000);
+  }
+  return seen.size;
+}
