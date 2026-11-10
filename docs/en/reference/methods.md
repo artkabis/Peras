@@ -162,12 +162,13 @@ On an `Array<String>`, `join(separator)` gives its strings with `separator` betw
 | ------------------------ | ------------------------- | --------------------------------------------- |
 | `Map.new()`, `Set.new()` | an empty map or set       | <span class="status compiled">compiled</span> |
 | `set(k, v)`, `add(k)`    | nothing; the key is taken | <span class="status compiled">compiled</span> |
-| `get(k)`                 | `Option<V>`               | <span class="status compiled">compiled</span> |
+| `get(k)`                 | `Option<V>`, a copy       | <span class="status compiled">compiled</span> |
 | `has(k)`, `delete(k)`    | `bool`                    | <span class="status compiled">compiled</span> |
 | `clear()`                | nothing                   | <span class="status compiled">compiled</span> |
+| `copy()`                 | a map of its own          | <span class="status compiled">compiled</span> |
 | `size`                   | `i32`                     | <span class="status compiled">compiled</span> |
 
-Keys are integers, booleans or strings ([E0240](../errors/E0240.md)); values, for now, numbers or booleans. See [the guide](../guide/collections.md#mapk-v-and-sett).
+Keys are integers, booleans or strings ([E0240](../errors/E0240.md)); values of any type. `for…of` gives a map's entries as `(key, value)` in insertion order. See [the guide](../guide/collections.md#mapk-v-and-sett).
 
 ## `Option<T>`
 

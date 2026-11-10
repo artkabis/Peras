@@ -171,6 +171,11 @@ impl Lowering<'_> {
         }
     }
 
+    /// The shape the runtime makes a map of type `ty` with.
+    pub(super) fn map_slots(&self, ty: &CheckTy) -> i64 {
+        self.table(ty).map_or(0, |t| t.shape())
+    }
+
     /// A new, empty map of type `ty`.
     pub(super) fn empty_map(&self, ty: &CheckTy) -> Option<Expr> {
         let table = self.table(ty).ok()?;

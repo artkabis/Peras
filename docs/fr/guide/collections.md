@@ -204,37 +204,56 @@ Ensuite : [la mémoire](memory.md).
 
 ## `Map<K, V>` et `Set<T>`
 
-Une table garde une valeur pour chaque clé ; un ensemble garde les clés seules. Elles sont hachées avec SipHash-1-3 sous une clé que le chargeur tire pour chaque instance du module, pour que des clés choisies pour se heurter ne coûtent pas plus que les autres ([décision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compilé</span>, en partie
+Une table garde une valeur pour chaque clé, dans l’ordre où les clés ont été posées la première fois ; un ensemble garde les clés seules. Elles sont hachées avec SipHash-1-3 sous une clé que le chargeur tire pour chaque instance du module, pour que des clés choisies pour se heurter ne coûtent pas plus que les autres ([décision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compilé</span>
 
 ```peras build
-export fn distinct_words(text: String): i32 {
-  let counts: Map<String, i32> = Map.new();
+struct Stock {
+  name: String;
+  price: f64;
+}
+
+export fn index(text: String): Map<String, Array<i32>> {
+  let at: Map<String, Array<i32>> = Map.new();
+  let i = 0;
   for (const word of text.split(" ")) {
-    counts.set(word.copy(), counts.get(word).unwrapOr(0) + 1);
+    let list = at.get(word).unwrapOr([]);
+    list.push(i);
+    at.set(word.copy(), list);
+    i += 1;
   }
-  let seen: Set<i64> = Set.new();
-  seen.add(42);
-  if (seen.has(42) && !counts.has("")) {
-    return counts.size;
+  return at;
+}
+
+export fn cheapest(stocks: Map<String, Stock>): String {
+  let best = "";
+  let low = 1000000.0;
+  for (const entry of stocks) {
+    if (entry.1.price < low) {
+      low = entry.1.price;
+      best = entry.0.copy();
+    }
   }
-  return -1;
+  return best;
 }
 ```
 
-Une table se crée avec `Map.new()`, ses types écrits sur sa variable. `m.set(k, v)` prend sa clé, comme `push` : une chaîne tenue ailleurs se donne en `word.copy()`. `m.get(k)` emprunte sa clé et donne une `Option<V>`.
+Une table se crée avec `Map.new()`, ses types écrits sur sa variable. `m.set(k, v)` prend sa clé et sa valeur, comme `push` : une chaîne tenue ailleurs se donne en `word.copy()`.
 
-| Méthode                   | Donne                                |
-| ------------------------- | ------------------------------------ |
-| `m.set(k, v)`, `s.add(k)` | rien ; remplace la valeur d’une clé  |
-| `m.get(k)`                | `Some(valeur)`, ou `None`            |
-| `m.has(k)`                | si la clé y est                      |
-| `m.delete(k)`             | si la clé y était, retirée désormais |
-| `m.clear()`               | rien ; retire toutes les clés        |
-| `m.size`                  | combien de clés, un `i32`            |
+| Méthode ou boucle         | Donne                                                          |
+| ------------------------- | -------------------------------------------------------------- |
+| `m.set(k, v)`, `s.add(k)` | rien ; une clé posée de nouveau garde sa place                 |
+| `m.get(k)`                | `Some(valeur)`, une copie, ou `None`                           |
+| `m.has(k)`                | si la clé y est                                                |
+| `m.delete(k)`             | si la clé y était, retirée désormais                           |
+| `m.clear()`               | rien ; retire toutes les clés                                  |
+| `m.copy()`                | une table à elle, clés et valeurs copiées                      |
+| `m.size`                  | combien de clés, un `i32`                                      |
+| `for (const e of m)`      | chaque entrée en `(clé, valeur)`, `e.0` et `e.1`, dans l’ordre |
+| `for (const k of s)`      | chaque clé d’un ensemble, dans l’ordre                         |
 
-Ce qui est compilé aujourd’hui, et ce qui ne l’est pas encore :
-
-- Les clés sont des entiers, des booléens ou des chaînes ; toute autre clé est refusée ([E0240](../errors/E0240.md)).
-- Les valeurs sont des nombres ou des booléens. Une table dont les valeurs sont des chaînes, des tableaux ou des structures est [vérifiée](../reference/status.md), pas encore compilée.
-- Une table vit dans une variable locale ou un paramètre d’une fonction non exportée : pas dans une structure, un tableau ou une option, et pas encore à travers la frontière avec JavaScript.
-- `for…of` sur une table ou un ensemble viendra avec son parcours dans l’ordre d’insertion.
+- **Les clés** sont des entiers, des booléens ou des chaînes ; toute autre clé est refusée ([E0240](../errors/E0240.md)).
+- **Les valeurs** sont de n’importe quel type : nombres, chaînes, tableaux, structures, options, énumérations, autres tables. La table les possède, et les libère quand une clé est posée de nouveau, retirée, vidée, ou la table libérée.
+- **Partout** : une table peut être un champ de structure, un élément de tableau, le contenu d’une option ou la valeur d’une autre table ; elle est libérée et copiée avec ce qui la tient.
+- **Dans une boucle**, les entrées sont prêtées : un corps qui change la table est refusé ([E0207](../errors/E0207.md)), comme pour un tableau.
+- **`get` copie** une valeur qui tient des chaînes ou des tableaux, pour que la table garde la sienne. Une boucle qui lit une grande valeur avec `get` à chaque tour la copie à chaque fois ; `for…of` la prête au contraire.
+- **En JavaScript**, une fonction exportée prend et rend une `Map` ou un `Set`, copiés dans l’ordre d’insertion : voir [Peras et JavaScript](javascript.md).

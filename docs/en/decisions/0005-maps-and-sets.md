@@ -78,13 +78,16 @@ export fn counts(text: String): Map<String, i32> {
 
 ## Status
 
-**The first part is done.** `Map<K, V>` and `Set<T>` are compiled for integer, boolean and string keys and for number and boolean values:
+**Done.** `Map<K, V>` and `Set<T>` are compiled for integer, boolean and string keys, with values of any type, in four steps:
 
-- The table is the runtime's, in WebAssembly, written once for both allocators: a 32-byte header, entries of 24 bytes in insertion order, and an index of slots that holds 0 for empty, −1 for a removed entry, `e + 1` otherwise. SipHash-1-3 is checked against the vector of its paper.
-- The loader draws the 128-bit key with `crypto.getRandomValues` for a module that has maps, and only then.
-- Tests run the same random operations three ways, against Rust's `HashMap` and `HashSet`: compiled to WebAssembly on the debug allocator, in the IR interpreter, and in Chromium against JavaScript's `Map` and `Set` on both allocators, with no block left alive. Taking away the store of a removed entry, or widening a `bool` key wrongly, makes them fail.
+1. **The table** is the runtime's, in WebAssembly, written once for both allocators: a 32-byte header, then entries of 16 bytes and 8 per value slot, in insertion order, and an index of slots that holds 0 for empty, −1 for a removed entry, `e + 1` otherwise. SipHash-1-3 is checked against the vector of its paper. The loader draws the 128-bit key with `crypto.getRandomValues` for a module that has maps, and only then.
+2. **`for…of`** gives the live entries in insertion order, each lent as `(key, value)`; a body that changes the map is refused.
+3. **Values of any type** are kept as their scalars, one 64-bit slot each, as an array of structures keeps one column per scalar. The map is made with its shape, the number of slots and a bit per slot that owns a buffer, and releases those buffers when a key is set again, deleted, cleared, or the map released. `get` copies a value that owns buffers; `for…of` lends it. A map can be held by a structure, an array, an option or another map; the runtime copies it deeply with what holds it, and `m.copy()` gives a map of its own.
+4. **Across the boundary**, an exported function takes and gives a JavaScript `Map` or `Set`, copied in insertion order; TypeScript sees `ReadonlyMap<string, number>` for a parameter the function only reads.
 
-Still to come, in this order: `for…of` in insertion order, values that own buffers, maps in structures, then the copy across the JavaScript boundary.
+Tests run random operations three ways, against Rust's maps or vectors in insertion order: compiled to WebAssembly on the debug allocator, in the IR interpreter, and in Chromium against JavaScript's `Map` and `Set` on both allocators, with no block left alive. Each step was broken on purpose to show the tests catch it: a removed entry not marked, a `bool` key widened wrongly, a removed entry walked, a value not released on delete, the wrong slot read, a map copied as a plain buffer.
+
+Not done: keys that are structures, enumerations or floats, which need a rule for hashing and equality; a `get` that lends instead of copying, which needs lending a value out of an expression; and Swiss tables for maps whose order cannot be seen.
 
 ## Consequences
 

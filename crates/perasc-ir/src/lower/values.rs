@@ -211,6 +211,24 @@ impl Lowering<'_> {
                     .unwrap_or_default(),
             ),
             CheckTy::String => Shape::String(pass),
+            CheckTy::Map(key, value) => {
+                let slots = self.map_slots(ty);
+                Shape::Map(Box::new(crate::MapShape {
+                    key: self.shape_in(key, pass, deeper),
+                    value: Some(self.shape_in(value, pass, deeper)),
+                    slots,
+                    pass,
+                }))
+            }
+            CheckTy::Set(key) => {
+                let slots = self.map_slots(ty);
+                Shape::Map(Box::new(crate::MapShape {
+                    key: self.shape_in(key, pass, deeper),
+                    value: None,
+                    slots,
+                    pass,
+                }))
+            }
             CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
                 Some(elem) => Shape::Array(elem, pass),
                 None => Shape::Records(Box::new(self.shape_in(inner, pass, deeper)), pass),

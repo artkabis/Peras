@@ -204,37 +204,56 @@ Next: [memory](memory.md).
 
 ## `Map<K, V>` and `Set<T>`
 
-A map keeps a value for each key; a set keeps keys alone. They are hashed with SipHash-1-3 under a key the loader draws for each instance of the module, so that keys chosen to collide cost no more than others ([decision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compiled</span>, in part
+A map keeps a value for each key, in the order the keys were first set; a set keeps keys alone. They are hashed with SipHash-1-3 under a key the loader draws for each instance of the module, so that keys chosen to collide cost no more than others ([decision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compiled</span>
 
 ```peras build
-export fn distinct_words(text: String): i32 {
-  let counts: Map<String, i32> = Map.new();
+struct Stock {
+  name: String;
+  price: f64;
+}
+
+export fn index(text: String): Map<String, Array<i32>> {
+  let at: Map<String, Array<i32>> = Map.new();
+  let i = 0;
   for (const word of text.split(" ")) {
-    counts.set(word.copy(), counts.get(word).unwrapOr(0) + 1);
+    let list = at.get(word).unwrapOr([]);
+    list.push(i);
+    at.set(word.copy(), list);
+    i += 1;
   }
-  let seen: Set<i64> = Set.new();
-  seen.add(42);
-  if (seen.has(42) && !counts.has("")) {
-    return counts.size;
+  return at;
+}
+
+export fn cheapest(stocks: Map<String, Stock>): String {
+  let best = "";
+  let low = 1000000.0;
+  for (const entry of stocks) {
+    if (entry.1.price < low) {
+      low = entry.1.price;
+      best = entry.0.copy();
+    }
   }
-  return -1;
+  return best;
 }
 ```
 
-A map is made with `Map.new()`, its types written on its variable. `m.set(k, v)` takes its key, as `push` does: a string held elsewhere is given as `word.copy()`. `m.get(k)` lends its key and gives an `Option<V>`.
+A map is made with `Map.new()`, its types written on its variable. `m.set(k, v)` takes its key and its value, as `push` does: a string held elsewhere is given as `word.copy()`.
 
-| Method                    | Gives                                  |
-| ------------------------- | -------------------------------------- |
-| `m.set(k, v)`, `s.add(k)` | nothing; replaces the value of a key   |
-| `m.get(k)`                | `Some(value)`, or `None`               |
-| `m.has(k)`                | whether the key is there               |
-| `m.delete(k)`             | whether the key was there, now removed |
-| `m.clear()`               | nothing; removes every key             |
-| `m.size`                  | how many keys, an `i32`                |
+| Method or loop            | Gives                                                   |
+| ------------------------- | ------------------------------------------------------- |
+| `m.set(k, v)`, `s.add(k)` | nothing; a key set again keeps its place                |
+| `m.get(k)`                | `Some(value)`, a copy of it, or `None`                  |
+| `m.has(k)`                | whether the key is there                                |
+| `m.delete(k)`             | whether the key was there, now removed                  |
+| `m.clear()`               | nothing; removes every key                              |
+| `m.copy()`                | a map of its own, keys and values copied                |
+| `m.size`                  | how many keys, an `i32`                                 |
+| `for (const e of m)`      | each entry as `(key, value)`, `e.0` and `e.1`, in order |
+| `for (const k of s)`      | each key of a set, in order                             |
 
-What is compiled today, and what is not yet:
-
-- Keys are integers, booleans or strings; any other key is refused ([E0240](../errors/E0240.md)).
-- Values are numbers or booleans. A map whose values are strings, arrays or structures is [checked](../reference/status.md), not compiled yet.
-- A map lives in a local or a parameter of a function that is not exported: not in a structure, an array or an option, and not across the boundary with JavaScript yet.
-- `for…of` over a map or a set comes with its iteration in insertion order.
+- **Keys** are integers, booleans or strings; any other key is refused ([E0240](../errors/E0240.md)).
+- **Values** are of any type: numbers, strings, arrays, structures, options, enumerations, other maps. The map owns them, and releases them when a key is set again, deleted, cleared, or the map released.
+- **Anywhere**: a map can be a field of a structure, an element of an array, the content of an option or the value of another map; it is released and copied with what holds it.
+- **In a loop**, the entries are lent: a body that changes the map is refused ([E0207](../errors/E0207.md)), as for an array.
+- **`get` copies** a value that holds strings or arrays, so that the map keeps its own. A loop that reads a large value with `get` at each turn copies it each time; `for…of` lends it instead.
+- **In JavaScript**, an exported function takes and gives a `Map` or a `Set`, copied in insertion order: see [Peras and JavaScript](javascript.md).

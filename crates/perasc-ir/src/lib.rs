@@ -157,6 +157,23 @@ pub enum Shape {
     /// An enumeration: its name, and each variant with its data. JavaScript
     /// sees `{ kind: "Variant", values: [...] }`.
     Enum(String, Vec<(String, Vec<Shape>)>),
+    /// A `Map<K, V>` or a `Set<K>`: one handle. JavaScript sees a `Map` or a
+    /// `Set`, copied in insertion order, in and out.
+    Map(Box<MapShape>),
+}
+
+/// A map as JavaScript sees it: what the loader needs to copy it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapShape {
+    /// Its key: an integer, a `bool`, or a string.
+    pub key: Shape,
+    /// Its value; `None` for a set.
+    pub value: Option<Shape>,
+    /// The shape the runtime makes it with: its value slots, and those that
+    /// own a buffer.
+    pub slots: i64,
+    /// How it is passed.
+    pub pass: Pass,
 }
 
 /// How a heap value is passed between JavaScript and WebAssembly.
@@ -191,6 +208,11 @@ impl Shape {
                 vec![Ty::Owned]
             }
             Self::Array(..) | Self::String(_) => vec![Ty::Borrowed],
+            Self::Map(map) => vec![if matches!(map.pass, Pass::Sink | Pass::Result) {
+                Ty::Owned
+            } else {
+                Ty::Borrowed
+            }],
             Self::Records(element, pass) => {
                 let handle = if matches!(pass, Pass::Sink | Pass::Result) {
                     Ty::Owned

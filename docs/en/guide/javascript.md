@@ -14,15 +14,16 @@ For `geometry.peras`:
 
 ## Types across the boundary
 
-| Peras               | JavaScript                                             |
-| ------------------- | ------------------------------------------------------ |
-| `i32`, `f32`, `f64` | `number`                                               |
-| `i64`               | `bigint`                                               |
-| `bool`              | `boolean`                                              |
-| a structure         | a plain object, declared as an `interface`             |
-| `Option<T>`         | the value, or `undefined`                              |
-| `Array<T>`          | an array, of objects for structures, copied in and out |
-| `String`            | a string, copied as UTF-8                              |
+| Peras                 | JavaScript                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `i32`, `f32`, `f64`   | `number`                                                                                                   |
+| `i64`                 | `bigint`                                                                                                   |
+| `bool`                | `boolean`                                                                                                  |
+| a structure           | a plain object, declared as an `interface`                                                                 |
+| `Option<T>`           | the value, or `undefined`                                                                                  |
+| `Array<T>`            | an array, of objects for structures, copied in and out                                                     |
+| `String`              | a string, copied as UTF-8                                                                                  |
+| `Map<K, V>`, `Set<K>` | a `Map` or a `Set`, copied in insertion order, in and out; an `inout` one gets the function's entries back |
 
 ```peras build
 export struct Rect {

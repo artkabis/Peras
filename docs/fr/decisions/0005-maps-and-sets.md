@@ -78,13 +78,16 @@ export fn counts(text: String): Map<String, i32> {
 
 ## Statut
 
-**La première partie est faite.** `Map<K, V>` et `Set<T>` sont compilés pour des clés entières, booléennes et chaînes, et des valeurs nombres et booléens :
+**Fait.** `Map<K, V>` et `Set<T>` sont compilés pour des clés entières, booléennes et chaînes, avec des valeurs de n’importe quel type, en quatre étapes :
 
-- La table est celle du runtime, en WebAssembly, écrite une fois pour les deux allocateurs : un en-tête de 32 octets, des entrées de 24 octets dans l’ordre d’insertion, et un index de cases qui vaut 0 pour vide, −1 pour une entrée retirée, `e + 1` sinon. SipHash-1-3 est vérifié sur le vecteur de son article.
-- Le chargeur tire la clé de 128 bits avec `crypto.getRandomValues` pour un module qui a des tables, et seulement alors.
-- Les tests font les mêmes opérations aléatoires de trois façons, contre `HashMap` et `HashSet` de Rust : compilées en WebAssembly sur l’allocateur de débogage, dans l’interpréteur de l’IR, et dans Chromium contre `Map` et `Set` de JavaScript sur les deux allocateurs, sans bloc laissé vivant. Retirer l’écriture d’une entrée retirée, ou mal élargir une clé `bool`, les fait échouer.
+1. **La table** est celle du runtime, en WebAssembly, écrite une fois pour les deux allocateurs : un en-tête de 32 octets, puis des entrées de 16 octets et 8 par case de valeur, dans l’ordre d’insertion, et un index de cases qui vaut 0 pour vide, −1 pour une entrée retirée, `e + 1` sinon. SipHash-1-3 est vérifié sur le vecteur de son article. Le chargeur tire la clé de 128 bits avec `crypto.getRandomValues` pour un module qui a des tables, et seulement alors.
+2. **`for…of`** donne les entrées vivantes dans l’ordre d’insertion, chacune prêtée en `(clé, valeur)` ; un corps qui change la table est refusé.
+3. **Les valeurs de tout type** sont gardées comme leurs scalaires, une case de 64 bits chacun, comme un tableau de structures garde une colonne par scalaire. La table est créée avec sa forme, le nombre de cases et un bit par case qui possède un tampon, et libère ces tampons quand une clé est posée de nouveau, retirée, vidée, ou la table libérée. `get` copie une valeur qui possède des tampons ; `for…of` la prête. Une table peut être tenue par une structure, un tableau, une option ou une autre table ; le runtime la copie en profondeur avec ce qui la tient, et `m.copy()` donne une table à elle.
+4. **À la frontière**, une fonction exportée prend et rend une `Map` ou un `Set` JavaScript, copiés dans l’ordre d’insertion ; TypeScript voit `ReadonlyMap<string, number>` pour un paramètre que la fonction ne fait que lire.
 
-Restent à venir, dans cet ordre : `for…of` dans l’ordre d’insertion, les valeurs qui possèdent des tampons, les tables dans les structures, puis la copie à la frontière JavaScript.
+Les tests font des opérations aléatoires de trois façons, contre des tables de Rust ou des vecteurs dans l’ordre d’insertion : compilées en WebAssembly sur l’allocateur de débogage, dans l’interpréteur de l’IR, et dans Chromium contre `Map` et `Set` de JavaScript sur les deux allocateurs, sans bloc laissé vivant. Chaque étape a été cassée exprès pour montrer que les tests le voient : une entrée retirée non marquée, une clé `bool` mal élargie, une entrée retirée parcourue, une valeur non libérée au retrait, la mauvaise case lue, une table copiée comme un simple tampon.
+
+Pas fait : les clés structures, énumérations ou flottants, qui demandent une règle de hachage et d’égalité ; un `get` qui prête au lieu de copier, qui demande de prêter une valeur sortie d’une expression ; et les tables suisses pour les tables dont l’ordre ne se voit pas.
 
 ## Conséquences
 

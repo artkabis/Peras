@@ -162,12 +162,13 @@ Sur un `Array<String>`, `join(separator)` donne ses chaînes avec `separator` en
 | ------------------------ | ----------------------------- | -------------------------------------------- |
 | `Map.new()`, `Set.new()` | une table ou un ensemble vide | <span class="status compiled">compilé</span> |
 | `set(k, v)`, `add(k)`    | rien ; la clé est prise       | <span class="status compiled">compilé</span> |
-| `get(k)`                 | `Option<V>`                   | <span class="status compiled">compilé</span> |
+| `get(k)`                 | `Option<V>`, une copie        | <span class="status compiled">compilé</span> |
 | `has(k)`, `delete(k)`    | `bool`                        | <span class="status compiled">compilé</span> |
 | `clear()`                | rien                          | <span class="status compiled">compilé</span> |
+| `copy()`                 | une table à elle              | <span class="status compiled">compilé</span> |
 | `size`                   | `i32`                         | <span class="status compiled">compilé</span> |
 
-Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E0240.md)) ; les valeurs, pour l’instant, des nombres ou des booléens. Voir [le guide](../guide/collections.md#mapk-v-et-sett).
+Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E0240.md)) ; les valeurs de n’importe quel type. `for…of` donne les entrées d’une table en `(clé, valeur)` dans l’ordre d’insertion. Voir [le guide](../guide/collections.md#mapk-v-et-sett).
 
 ## `Option<T>`
 
