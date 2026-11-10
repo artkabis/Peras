@@ -49,3 +49,16 @@ fn a_map_s_size_get_and_delete() {
     assert_eq!(value, Value::I32(303));
     assert_eq!(heap.live, Vec::<u32>::new());
 }
+
+/// The operands of `set` and `add` run in order: here the key reads the
+/// entry the loop is on, through a temporary, before the call.
+#[test]
+fn a_loop_adds_what_it_reads_in_insertion_order() {
+    let source = "export fn f(_n: i32): i64 {\n  let table: Map<String, i32> = Map.new();\n  table.set(\"a\", 11);\n  table.set(\"b\", 5);\n  table.set(\"c\", 21);\n  let rests: Set<i64> = Set.new();\n  for (const e of table) {\n    rests.add((e.1 % 7).toI64());\n  }\n  let out: i64 = 0;\n  for (const r of rests) {\n    out = out * 10 + r;\n  }\n  return out;\n}\n";
+    let module = compile(source);
+    let (value, heap) =
+        run_with_heap(&module, FnId(0), &[Value::I32(1)]).unwrap_or_else(|t| unreachable!("{t:?}"));
+    // 11 % 7, 5 % 7, 21 % 7, in that order.
+    assert_eq!(value, Value::I64(450));
+    assert_eq!(heap.live, Vec::<u32>::new());
+}

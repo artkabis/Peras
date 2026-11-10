@@ -82,7 +82,40 @@ fn members(n: i32, range: i32): i32 {
   return check.wrappingAdd(last.toI32());
 }
 
+fn walks(n: i32, range: i32): i32 {
+  let table: Map<String, i32> = Map.new();
+  let s = 5;
+  let check = 0;
+  for (let i = 0; i < n; i++) {
+    s = step(s);
+    const k = (s / 65536) % range;
+    const op = ((s / 7) % 4).abs();
+    if (op <= 1) {
+      table.set(`w${k}`, i);
+    } else if (op == 2) {
+      table.delete(`w${k}`);
+    } else if (i % 50 == 0) {
+      for (const e of table) {
+        check = check.wrappingMul(31).wrappingAdd(e.0.length * 1000 + e.1);
+      }
+    }
+  }
+  for (const e of table) {
+    check = check.wrappingMul(31).wrappingAdd(e.0.length * 1000 + e.1);
+  }
+  let rests: Set<i64> = Set.new();
+  for (const e of table) {
+    rests.add((e.1 % 7).toI64());
+  }
+  for (const r of rests) {
+    check = check.wrappingMul(7).wrappingAdd(r.toI32());
+  }
+  return check;
+}
+
 export fn intsFew(n: i32): i32 { return ints(n, 16); }
+export fn walksFew(n: i32): i32 { return walks(n, 30); }
+export fn walksMany(n: i32): i32 { return walks(n, 2000); }
 export fn intsMany(n: i32): i32 { return ints(n, 5000); }
 export fn textsFew(n: i32): i32 { return texts(n, 24); }
 export fn textsMany(n: i32): i32 { return texts(n, 3000); }
@@ -197,12 +230,66 @@ fn members(n: i32, range: i32) -> i32 {
     check.wrapping_add(last as i32)
 }
 
+/// [`PROGRAM`]'s `walks`, with vectors in insertion order: a key set again
+/// keeps its place, a key deleted then set again goes last.
+fn walks(n: i32, range: i32) -> i32 {
+    fn fold(check: i32, table: &[(String, i32)]) -> i32 {
+        table.iter().fold(check, |c, (k, v)| {
+            let len = i32::try_from(k.len()).unwrap_or(0);
+            c.wrapping_mul(31).wrapping_add(len * 1000 + v)
+        })
+    }
+    let mut table: Vec<(String, i32)> = Vec::new();
+    let (mut s, mut check) = (5_i32, 0_i32);
+    for i in 0..n {
+        s = step(s);
+        let key = format!("w{}", (s / 65536) % range);
+        let place = table.iter().position(|(k, _)| *k == key);
+        match ((s / 7) % 4).abs() {
+            0 | 1 => match place {
+                Some(p) => {
+                    if let Some(slot) = table.get_mut(p) {
+                        slot.1 = i;
+                    }
+                }
+                None => table.push((key, i)),
+            },
+            2 => {
+                if let Some(p) = place {
+                    table.remove(p);
+                }
+            }
+            _ => {
+                if i % 50 == 0 {
+                    check = fold(check, &table);
+                }
+            }
+        }
+    }
+    check = fold(check, &table);
+    let mut rests: Vec<i64> = Vec::new();
+    for (_, v) in &table {
+        let r = i64::from(v % 7);
+        if !rests.contains(&r) {
+            rests.push(r);
+        }
+    }
+    for r in rests {
+        check = check
+            .wrapping_mul(7)
+            .wrapping_add(i32::try_from(r).unwrap_or(0));
+    }
+    check
+}
+
 pub type Model = fn(i32) -> i32;
 
-pub const CASES: [(&str, Model); 5] = [
+pub const CASES: [(&str, Model); 7] = [
     ("intsFew", |n| ints(n, 16)),
     ("intsMany", |n| ints(n, 5000)),
     ("textsFew", |n| texts(n, 24)),
     ("textsMany", |n| texts(n, 3000)),
     ("membersFew", |n| members(n, 40)),
+    ("walksFew", |n| walks(n, 30)),
+    ("walksMany", |n| walks(n, 2000)),
 ];

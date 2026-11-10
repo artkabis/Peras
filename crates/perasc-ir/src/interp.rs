@@ -109,14 +109,22 @@ struct Machine<'a> {
     allocated: u32,
     /// The entries of each map, in insertion order, by its block: its block's
     /// elements, one per live entry, give its `size`.
-    maps: std::collections::BTreeMap<u32, Vec<Option<(MapKey, i64)>>>,
+    maps: std::collections::BTreeMap<u32, Vec<Option<Entry>>>,
 }
 
-/// A key of a map: an integer, or a string's bytes, the map's own copy.
+/// A key of a map: an integer, or a string's bytes.
 #[derive(Clone, PartialEq, Eq)]
 enum MapKey {
     Int(i64),
     Text(Vec<u8>),
+}
+
+/// A live entry of a map: its key, its value's 64 bits, and the string the
+/// map owns as its key, lent to `for…of`.
+struct Entry {
+    key: MapKey,
+    value: i64,
+    handle: Option<u32>,
 }
 
 enum Flow {
@@ -423,13 +431,27 @@ impl Machine<'_> {
 
     /// Gives `wanted` the value `stored` in map `table`, a new entry when the
     /// key is not there.
-    fn map_put(&mut self, table: u32, wanted: MapKey, stored: i64) -> Result<(), Trap> {
+    fn map_put(
+        &mut self,
+        table: u32,
+        wanted: MapKey,
+        handle: Option<u32>,
+        stored: i64,
+    ) -> Result<(), Trap> {
         let entries = self.maps.get_mut(&table).ok_or(Trap::UseAfterRelease)?;
-        let found = entries.iter_mut().flatten().find(|(key, _)| *key == wanted);
+        let found = entries.iter_mut().flatten().find(|e| e.key == wanted);
         if let Some(slot) = found {
-            slot.1 = stored;
+            slot.value = stored;
+            // The key there stays; the one given goes.
+            if let Some(h) = handle {
+                self.free(h)?;
+            }
         } else {
-            entries.push(Some((wanted, stored)));
+            entries.push(Some(Entry {
+                key: wanted,
+                value: stored,
+                handle,
+            }));
             self.heap
                 .get_mut(&table)
                 .ok_or(Trap::UseAfterRelease)?
@@ -438,9 +460,26 @@ impl Machine<'_> {
         Ok(())
     }
 
+    /// The value or the key of entry `e` of map `table`.
+    fn map_read(&self, f: crate::RuntimeFn, table: u32, e: usize) -> Result<Value, Trap> {
+        use crate::RuntimeFn as F;
+        let entries = self.maps.get(&table).ok_or(Trap::UseAfterRelease)?;
+        let live = entries
+            .get(e)
+            .and_then(Option::as_ref)
+            .ok_or(Trap::Unchecked)?;
+        Ok(match (f, &live.key) {
+            (F::MapValueF, _) => Value::F64(f64::from_bits(live.value.cast_unsigned())),
+            (F::MapValue, _) => Value::I64(live.value),
+            (F::MapKeyI, MapKey::Int(n)) => Value::I64(*n),
+            (F::MapKeyS, MapKey::Text(_)) => Value::Handle(live.handle.ok_or(Trap::Unreachable)?),
+            _ => return Err(Trap::Unreachable),
+        })
+    }
+
     /// The functions of the runtime on maps (decision 0005); `None` for
-    /// another function. A string key given to the map is copied as bytes,
-    /// and its handle released: the map owns its key, as the runtime's does.
+    /// another function. A string key given to the map is the map's: kept,
+    /// or released when the key was there already, as the runtime does.
     fn map_runtime(
         &mut self,
         f: crate::RuntimeFn,
@@ -462,10 +501,14 @@ impl Machine<'_> {
             Value::Handle(_) => Ok(MapKey::Text(this.bytes(v)?)),
             _ => Err(Trap::Unreachable),
         };
-        let find = |entries: &[Option<(MapKey, i64)>], wanted: &MapKey| {
+        let find = |entries: &[Option<Entry>], wanted: &MapKey| {
             entries
                 .iter()
-                .position(|e| e.as_ref().is_some_and(|(key, _)| key == wanted))
+                .position(|e| e.as_ref().is_some_and(|e| e.key == *wanted))
+        };
+        let at = |i: usize| match operands.get(i) {
+            Some(Value::I32(e)) => usize::try_from(*e).map_err(|_| Trap::Unchecked),
+            _ => Err(Trap::Unreachable),
         };
         let entry =
             |found: Option<usize>| Value::I32(found.map_or(-1, |e| i32::try_from(e).unwrap_or(-1)));
@@ -484,28 +527,26 @@ impl Machine<'_> {
             F::MapPutI | F::MapPutS | F::MapPutIF | F::MapPutSF => {
                 let given = operand(1)?;
                 let wanted = key(self, given)?;
-                if let Value::Handle(h) = given {
-                    self.free(h)?;
-                }
-                self.map_put(block()?, wanted, bits(operand(2)?)?)?;
+                let handle = match given {
+                    Value::Handle(h) => Some(h),
+                    _ => None,
+                };
+                self.map_put(block()?, wanted, handle, bits(operand(2)?)?)?;
                 Value::Void
             }
-            F::MapValue | F::MapValueF => {
-                let Value::I32(e) = operand(1)? else {
-                    return Err(Trap::Unreachable);
-                };
+            F::MapValue | F::MapValueF | F::MapKeyI | F::MapKeyS => {
+                self.map_read(f, block()?, at(1)?)?
+            }
+            F::MapNext => {
                 let entries = self.maps.get(&block()?).ok_or(Trap::UseAfterRelease)?;
-                let at = usize::try_from(e).map_err(|_| Trap::Unchecked)?;
-                let stored = entries
-                    .get(at)
-                    .and_then(Option::as_ref)
-                    .ok_or(Trap::Unchecked)?
-                    .1;
-                if f == F::MapValueF {
-                    Value::F64(f64::from_bits(stored.cast_unsigned()))
-                } else {
-                    Value::I64(stored)
-                }
+                let from = at(1)?;
+                let next = entries
+                    .iter()
+                    .enumerate()
+                    .skip(from)
+                    .find(|(_, e)| e.is_some())
+                    .map(|(i, _)| i);
+                entry(next)
             }
             F::MapDeleteI | F::MapDeleteS => {
                 let wanted = key(self, operand(1)?)?;
@@ -513,8 +554,9 @@ impl Machine<'_> {
                 let entries = self.maps.get_mut(&table).ok_or(Trap::UseAfterRelease)?;
                 let found = find(entries, &wanted);
                 if let Some(e) = found {
-                    if let Some(slot) = entries.get_mut(e) {
-                        *slot = None;
+                    let gone = entries.get_mut(e).and_then(Option::take);
+                    if let Some(h) = gone.and_then(|g| g.handle) {
+                        self.free(h)?;
                     }
                     self.heap
                         .get_mut(&table)
@@ -525,7 +567,8 @@ impl Machine<'_> {
             }
             F::MapClear => {
                 let table = block()?;
-                self.maps.insert(table, Vec::new());
+                let gone = self.maps.insert(table, Vec::new()).unwrap_or_default();
+                self.free_keys(gone)?;
                 self.heap.insert(table, Vec::new());
                 Value::Void
             }
@@ -747,13 +790,23 @@ impl Machine<'_> {
     /// Releases a buffer, and the buffers it owns.
     fn free(&mut self, block: u32) -> Result<(), Trap> {
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
-        self.maps.remove(&block);
+        if let Some(entries) = self.maps.remove(&block) {
+            self.free_keys(entries)?;
+        }
         if self.deep.remove(&block) {
             for element in elements {
                 if let Value::Handle(inner) = element {
                     self.free(inner)?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Releases the strings a map owned as its keys.
+    fn free_keys(&mut self, entries: Vec<Option<Entry>>) -> Result<(), Trap> {
+        for h in entries.into_iter().flatten().filter_map(|e| e.handle) {
+            self.free(h)?;
         }
         Ok(())
     }

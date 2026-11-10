@@ -10,7 +10,7 @@
 
 use perasc_check::ty::{FloatTy, IntTy, Ty as CheckTy};
 use perasc_diag::Span;
-use perasc_syntax::ast::{ExprId, ExprKind as AstExpr};
+use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Ident, Stmt as AstStmt};
 
 use super::heap::Mode;
 use super::{FnState, Lowering};
@@ -178,6 +178,12 @@ impl Lowering<'_> {
         match (method, args) {
             ("set" | "add", [k, rest @ ..]) => {
                 let k = self.map_key(state, *k, &key, true);
+                // The table first, then the key, then the value: each one
+                // evaluated before what the next one needs to run.
+                let mut operands = [table];
+                state.keep_before(mark, &mut operands);
+                let [table] = operands;
+                let mark = state.pre.len();
                 let v = match rest.first() {
                     Some(&v) => {
                         let e = self.expr(state, v);
@@ -258,5 +264,94 @@ impl Lowering<'_> {
             super::local_expr(state, some),
             super::local_expr(state, out),
         ]
+    }
+
+    /// `for (const entry of m)`: the entries in insertion order, from the
+    /// first live one, each lent to the body as `(key, value)`, or as its key
+    /// for a set. The checker refuses a body that changes the map, so the
+    /// entries stay where they are while it runs.
+    pub(super) fn map_for_of(
+        &mut self,
+        state: &mut FnState,
+        name: &Ident,
+        iterable: ExprId,
+        body: &AstStmt,
+        out: &mut Vec<Stmt>,
+    ) {
+        let span = self.ast.expr(iterable).span;
+        let Some((key, value)) = self.map_types(iterable) else {
+            return;
+        };
+        let set = matches!(self.check_type(iterable), Some(CheckTy::Set(_)));
+        let Some(keep) = kept(&value) else {
+            self.unsupported(span, "map-value");
+            return;
+        };
+        let Some(table) = self
+            .value_as(state, iterable, Mode::Borrow)
+            .into_iter()
+            .next()
+        else {
+            return;
+        };
+        let e = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(
+            e,
+            runtime(F::MapNext, vec![table.clone(), int(0, Ty::I32)]),
+        ));
+        state.flush(out);
+        let entry = super::local_expr(state, e);
+        state.open();
+        // A temporary map, `for (const k of make())`, lives through the loop.
+        let temporaries = std::mem::take(&mut state.drops);
+        if let Some(scope) = state.owned.last_mut() {
+            scope.extend(temporaries);
+        }
+        let operands = vec![table.clone(), entry.clone()];
+        let key_value = if key == CheckTy::String {
+            runtime(F::MapKeyS, operands.clone())
+        } else {
+            narrow(runtime(F::MapKeyI, operands.clone()), &key)
+        };
+        let mut values = vec![key_value];
+        if !set {
+            let f = match keep {
+                Kept::Int => F::MapValue,
+                Kept::Float => F::MapValueF,
+            };
+            values.push(narrow(runtime(f, operands), &value));
+        }
+        let mut turn = Vec::new();
+        if key == CheckTy::String {
+            // A string key is read where it is used: a lent buffer cannot sit
+            // in a local.
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.insert(name.symbol, super::Binding::Lent(values));
+            }
+        } else {
+            let text = self.ast.name(name.symbol);
+            let locals = if set {
+                vec![state.add(name.symbol, text, values.first().map_or(Ty::I64, |v| v.ty))]
+            } else {
+                let leaves: Vec<(String, Ty)> = values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (i.to_string(), v.ty))
+                    .collect();
+                state.add_struct(name.symbol, text, &leaves)
+            };
+            turn = locals
+                .into_iter()
+                .zip(values)
+                .map(|(x, v)| Stmt::Set(x, v))
+                .collect();
+        }
+        let cond = super::binary(BinOp::Ge, entry.clone(), int(0, Ty::I32));
+        let after = super::binary(BinOp::Add, entry, int(1, Ty::I32));
+        let step = vec![Stmt::Set(e, runtime(F::MapNext, vec![table, after]))];
+        let lowered = self.loop_body(state, Some(cond), Vec::new(), body, step, &mut turn);
+        out.extend(lowered);
+        state.close(out);
+        state.end_statement(out);
     }
 }

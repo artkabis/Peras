@@ -127,6 +127,17 @@ impl<'a> Verifier<'a> {
             Some((ExprKind::Buf(BufOp::Get(crate::Elem::Handle), args), Ty::Borrowed)) => {
                 self.buf_expr(BufOp::Get(crate::Elem::Handle), args, Ty::Borrowed);
             }
+            // A map's string key, lent while `for…of` walks the map.
+            Some((
+                ExprKind::Buf(BufOp::Runtime(crate::RuntimeFn::MapKeyS), args),
+                Ty::Borrowed,
+            )) => {
+                self.buf_expr(
+                    BufOp::Runtime(crate::RuntimeFn::MapKeyS),
+                    args,
+                    Ty::Borrowed,
+                );
+            }
             other => self.problem(&format!("a buffer operand must be borrowed, not {other:?}")),
         }
     }

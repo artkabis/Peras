@@ -35,3 +35,29 @@ export fn operations(ops: Array<i32>, keys: Array<i32>, values: Array<f64>): f64
   }
   return check;
 }
+
+// The entries in the order `for…of` gives them: 0 sets, 1 deletes, 2 clears.
+export fn order(ops: Array<i32>, keys: Array<i32>): String {
+  let m: Map<i64, i32> = Map.new();
+  let seen: Set<String> = Set.new();
+  for (let i = 0; i < ops.length; i++) {
+    const k = keys[i].toI64();
+    if (ops[i] == 0) {
+      m.set(k, i);
+      seen.add(`k${k}`);
+    } else if (ops[i] == 1) {
+      m.delete(k);
+    } else {
+      m.clear();
+    }
+  }
+  let out = "";
+  for (const entry of m) {
+    out += `${entry.0}=${entry.1},`;
+  }
+  out += "|";
+  for (const key of seen) {
+    out += `${key},`;
+  }
+  return out;
+}

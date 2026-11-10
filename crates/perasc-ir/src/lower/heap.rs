@@ -756,7 +756,7 @@ impl Lowering<'_> {
     ) {
         let span = self.ast.expr(iterable).span;
         if self.is_map(iterable) {
-            self.unsupported(span, "map-iteration");
+            self.map_for_of(state, name, iterable, body, out);
             return;
         }
         let Some(columns) = self.columns_of(iterable, span) else {

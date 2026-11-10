@@ -1457,6 +1457,28 @@
   (func (export "map_value_f") (param $m i32) (param $e i32) (result f64)
     (f64.reinterpret_i64 (i64.load offset=16 (call $map_entry (local.get $m) (local.get $e)))))
 
+  ;; The first live entry from `e` on, or -1 past the last: `for…of` walks
+  ;; the entries in insertion order, stepping over removed ones. The loop
+  ;; cannot change the map, so the entries stay where they are.
+  (func (export "map_next") (param $m i32) (param $e i32) (result i32)
+    (local $used i32)
+    (local.set $used (i32.load offset=4 (local.get $m)))
+    (block $done
+      (loop $scan
+        (br_if $done (i32.ge_u (local.get $e) (local.get $used)))
+        (if (i32.load offset=4 (call $map_entry (local.get $m) (local.get $e)))
+          (then (return (local.get $e))))
+        (local.set $e (i32.add (local.get $e) (i32.const 1)))
+        (br $scan)))
+    (i32.const -1))
+
+  ;; The key of entry `e`: an integer, or a string's handle, lent.
+  (func (export "map_key_i") (param $m i32) (param $e i32) (result i64)
+    (i64.load offset=8 (call $map_entry (local.get $m) (local.get $e))))
+
+  (func (export "map_key_s") (param $m i32) (param $e i32) (result i32)
+    (i32.wrap_i64 (i64.load offset=8 (call $map_entry (local.get $m) (local.get $e)))))
+
   ;; Removes `key`: 1 if it was there. Its slot becomes -1, its entry dead,
   ;; and a string key is released.
   (func $map_delete (param $m i32) (param $key i64) (result i32)

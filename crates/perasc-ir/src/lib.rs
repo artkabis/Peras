@@ -551,6 +551,12 @@ pub enum RuntimeFn {
     MapDeleteS,
     /// `(map)`: removes every entry.
     MapClear,
+    /// `(map, entry) -> i32`: the first live entry from `entry` on, or -1.
+    MapNext,
+    /// `(map, entry) -> i64`: the integer key of an entry.
+    MapKeyI,
+    /// `(map, entry) -> borrowed`: the string key of an entry, lent.
+    MapKeyS,
     /// `(x: f64, single) -> owned`: `x` as JavaScript's `String()` writes it;
     /// with `single` set, `x` is an `f32`, written with the fewest digits
     /// that read back as it ([`text::number_text`]).
@@ -575,7 +581,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 39] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -612,6 +618,9 @@ impl RuntimeFn {
         Self::MapDeleteI,
         Self::MapDeleteS,
         Self::MapClear,
+        Self::MapNext,
+        Self::MapKeyI,
+        Self::MapKeyS,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -654,6 +663,9 @@ impl RuntimeFn {
             Self::MapDeleteI => "map_delete_i",
             Self::MapDeleteS => "map_delete_s",
             Self::MapClear => "map_clear",
+            Self::MapNext => "map_next",
+            Self::MapKeyI => "map_key_i",
+            Self::MapKeyS => "map_key_s",
         }
     }
 
@@ -700,7 +712,10 @@ impl RuntimeFn {
             | Self::IsInt
             | Self::FmtFloat
             | Self::MapValue
-            | Self::MapValueF => &[Ty::I32],
+            | Self::MapValueF
+            | Self::MapNext
+            | Self::MapKeyI
+            | Self::MapKeyS => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
             Self::MapFindI | Self::MapDeleteI => &[Ty::I64],
             Self::MapPutI => &[Ty::I64, Ty::I64],
@@ -714,13 +729,18 @@ impl RuntimeFn {
     #[must_use]
     pub const fn result(self) -> Ty {
         match self {
-            Self::IndexOf | Self::ArrIndexOfStr | Self::MapFindI | Self::MapFindS => Ty::I32,
+            Self::IndexOf
+            | Self::ArrIndexOfStr
+            | Self::MapFindI
+            | Self::MapFindS
+            | Self::MapNext => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt
             | Self::MapDeleteI
             | Self::MapDeleteS => Ty::Bool,
-            Self::ParseInt | Self::MapValue => Ty::I64,
+            Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
+            Self::MapKeyS => Ty::Borrowed,
             Self::MapValueF => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
