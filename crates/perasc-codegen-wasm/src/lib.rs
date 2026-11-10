@@ -45,10 +45,9 @@ const BUF_RESERVE: u32 = 3;
 const BUF_RELEASE: u32 = 4;
 const BOUNDS: u32 = 5;
 const BUF_CLONE: u32 = 6;
-/// The first function of the runtime on strings, [`RuntimeFn::ALL`] in order.
+/// The first function of the runtime on strings: those the module calls,
+/// [`RuntimeFn::ALL`] in order.
 const RUNTIME_FIRST: u32 = 7;
-#[allow(clippy::cast_possible_truncation)]
-const IMPORTED: u32 = RUNTIME_FIRST + RuntimeFn::ALL.len() as u32;
 /// Added to an element size: the elements are buffers the buffer owns
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
@@ -59,19 +58,28 @@ pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
 const HOST_TYPES: u32 = 2;
 
-/// Where the functions imported from `Math` are.
+/// Where the imported functions are: the runtime's the module calls, and
+/// `Math`'s.
 #[derive(Clone, Copy)]
 struct Host<'m> {
-    /// The index of the first one.
+    /// The index of the first function imported from `Math`.
     first: u32,
-    /// Those the module imports, in order.
+    /// Those the module imports from `Math`, in order.
     math: &'m [HostMath],
+    /// The runtime's functions the module imports, in order.
+    runtime: &'m [RuntimeFn],
 }
 
 impl Host<'_> {
     fn index(self, h: HostMath) -> u32 {
         let position = self.math.iter().position(|&m| m == h).unwrap_or(0);
         self.first + u32::try_from(position).unwrap_or(0)
+    }
+
+    /// The index of a function of the runtime the module imports.
+    fn runtime_index(self, f: RuntimeFn) -> u32 {
+        let position = self.runtime.iter().position(|&r| r == f).unwrap_or(0);
+        RUNTIME_FIRST + u32::try_from(position).unwrap_or(0)
     }
 }
 
@@ -100,7 +108,7 @@ pub fn compile_module(module: &Module) -> Compiled {
 }
 
 /// Declares the runtime's types and imports: the heap, buffers and memory.
-fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
+fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection, runtime: &[RuntimeFn]) {
     use ValType::I32 as T;
     types.ty().function([T, T], [T]);
     types.ty().function([T, T], []);
@@ -122,7 +130,7 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection) {
     ] {
         imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
     }
-    for f in RuntimeFn::ALL {
+    for &f in runtime {
         // `fmt_int` takes an `i64`, `fmt_float` an `f64`, and `str_parse_int`
         // gives an `i64`; the others take and give `i32` only: their type by
         // count.
@@ -187,18 +195,24 @@ pub fn compile_for(module: &Module, simd: bool) -> Compiled {
     let mut code = CodeSection::new();
     let heap = module.uses_heap();
     let math = module.host_math();
-    let heap_imports = if heap { IMPORTED } else { 0 };
+    let runtime = module.runtime_fns();
+    let heap_imports = if heap {
+        RUNTIME_FIRST + u32::try_from(runtime.len()).unwrap_or(0)
+    } else {
+        0
+    };
     let offset = heap_imports + u32::try_from(math.len()).unwrap_or(0);
     let type_offset =
         if heap { IMPORT_TYPES } else { 0 } + if math.is_empty() { 0 } else { HOST_TYPES };
     if heap {
-        heap_imports_into(&mut types, &mut imports);
+        heap_imports_into(&mut types, &mut imports, &runtime);
     }
     if !math.is_empty() {
         math_imports_into(&mut types, &mut imports, &math, heap);
     }
     let host = Host {
         first: heap_imports,
+        runtime: &runtime,
         math: &math,
     };
     let mut sites = Vec::new();
@@ -654,7 +668,7 @@ impl<'a> FnEncoder<'a> {
                     // A new buffer: its site, for the allocator's messages.
                     let _ = self.alloc_site();
                 }
-                self.emit(&I::Call(RUNTIME_FIRST + f.position()));
+                self.emit(&I::Call(self.host.runtime_index(f)));
             }
             // The verifier refuses any other shape.
             _ => self.emit(&I::Unreachable),
@@ -1125,7 +1139,7 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         );
     }
     match runtime.filter(|_| heap) {
-        Some(runtime) => js.push_str(&runtime_imports(runtime)),
+        Some(runtime) => js.push_str(&runtime_imports(runtime, &module.runtime_fns())),
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
@@ -1135,10 +1149,17 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         js,
         "{LOAD_MARKER}\n\
          const $url = new URL(\"./{wasm_file}\", import.meta.url);\n\
-         const $bytes = $url.protocol === \"file:\"\n  \
-         ? await (await import(\"node:fs/promises\")).readFile($url)\n  \
-         : await (await fetch($url)).arrayBuffer();\n\
-         const {{ instance: $instance }} = await WebAssembly.instantiate($bytes, $imports);\n\
+         const $load = async () => {{\n  \
+         if ($url.protocol === \"file:\")\n    \
+         return WebAssembly.instantiate(await (await import(\"node:fs/promises\")).readFile($url), $imports);\n  \
+         const response = await fetch($url);\n  \
+         if (!response.ok) throw new Error(`Peras: cannot load ${{response.url}} (${{response.status}})`);\n  \
+         // Compiled while it downloads, when the server labels it as WebAssembly.\n  \
+         return response.headers.get(\"content-type\")?.startsWith(\"application/wasm\")\n    \
+         ? WebAssembly.instantiateStreaming(response, $imports)\n    \
+         : WebAssembly.instantiate(await response.arrayBuffer(), $imports);\n\
+         }};\n\
+         const {{ instance: $instance }} = await $load();\n\
          {EXPORTS_MARKER}\n\
          const $wasm = $instance.exports;\n"
     );
@@ -1171,7 +1192,75 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
              export { PerasArray };\n",
         );
     }
+    if js.contains(HELPERS_MARKER) {
+        let helpers = used_helpers(HEAP_HELPERS, &js);
+        js = js.replacen(HELPERS_MARKER, &helpers, 1);
+    }
     js
+}
+
+/// Where the heap's helpers go in a loader, once it is known which it uses.
+const HELPERS_MARKER: &str = "// perasc:helpers\n";
+
+/// The top-level definitions of `helpers` that `rest` names, directly or
+/// through another one kept, in their order: a loader carries only the
+/// helpers its functions use. A definition starts at a line with no
+/// indentation, `const $name =` or `class Name`; the comments just above it
+/// go with it.
+fn used_helpers(helpers: &str, rest: &str) -> String {
+    let mut chunks: Vec<(String, String)> = Vec::new();
+    let mut pending = String::new();
+    for line in helpers.split_inclusive('\n') {
+        let name = line
+            .strip_prefix("const ")
+            .or_else(|| line.strip_prefix("class "))
+            .and_then(|r| r.split([' ', '=']).next())
+            .filter(|n| !n.is_empty());
+        match name {
+            Some(n) => chunks.push((n.to_owned(), std::mem::take(&mut pending) + line)),
+            None if line.starts_with("//") => pending.push_str(line),
+            None => match chunks.last_mut() {
+                Some((_, code)) => code.push_str(line),
+                None => pending.push_str(line),
+            },
+        }
+    }
+    let names_in = |text: &str, name: &str| {
+        text.match_indices(name).any(|(at, _)| {
+            let before = text[..at].chars().next_back();
+            let after = text[at + name.len()..].chars().next();
+            let part =
+                |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
+            !part(before) && !part(after)
+        })
+    };
+    let mut kept = vec![false; chunks.len()];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..chunks.len() {
+            if kept[i] {
+                continue;
+            }
+            let name = &chunks[i].0;
+            let wanted = names_in(rest, name)
+                || chunks
+                    .iter()
+                    .zip(&kept)
+                    .any(|((other, code), &k)| k && other != name && names_in(code, name));
+            if wanted {
+                kept[i] = true;
+                changed = true;
+            }
+        }
+    }
+    pending
+        + &chunks
+            .into_iter()
+            .zip(kept)
+            .filter(|(_, k)| *k)
+            .map(|((_, code), _)| code)
+            .collect::<String>()
 }
 
 /// An exported function taking or returning structures, as JavaScript objects:
@@ -1615,7 +1704,7 @@ fn rebuild_at(
 }
 
 /// The allocator, instantiated first, and the imports it gives the module.
-fn runtime_imports(runtime: &Runtime<'_>) -> String {
+fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn]) -> String {
     let faults: Vec<String> = runtime.faults.iter().map(|m| js_string(m)).collect();
     let sites: Vec<String> = std::iter::once("?".to_owned())
         .chain(runtime.sites.iter().cloned())
@@ -1661,7 +1750,7 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
          }};\n\
          const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math }};\n\
 ",
-        strings = RuntimeFn::ALL.iter().fold(String::new(), |mut out, f| {
+        strings = used.iter().fold(String::new(), |mut out, f| {
             let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
             out
         }),
@@ -1671,7 +1760,7 @@ fn runtime_imports(runtime: &Runtime<'_>) -> String {
         allocator = base64(runtime.allocator),
         module = RUNTIME_MODULE,
     );
-    imports + HEAP_HELPERS
+    imports + HELPERS_MARKER
 }
 
 /// The loader's helpers for options and enumerations: every part is read,

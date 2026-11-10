@@ -12,44 +12,44 @@ Two ratios, a median divided by this variant's; above 1, this variant is faster.
 
 | Kernel | Work | Variant | Cold | Median | Best | Against usual JS | Against fastest JS |
 | --- | --- | --- | --: | --: | --: | --: | --: |
-| particles | 1,000,000 particles, 10 steps | JavaScript | 54.9 | 45.1 | 40.4 | 1.00 | 1.00 |
-|  |  | Peras, zero copy | 33.4 | 19.3 | 17.5 | 2.34 | 2.34 |
-|  |  | Peras, copied | 60.5 | 35.7 | 30.6 | 1.26 | 1.26 |
-|  |  | Rust | 34.4 | 29.3 | 26.1 | 1.54 | 1.54 |
-|  |  | AssemblyScript | 157 | 92.9 | 77.3 | 0.49 | 0.49 |
-| grayscale | 4,194,304 pixels | JavaScript | 15.0 | 14.2 | 13.1 | 1.00 | 1.00 |
-|  |  | Rust | 9.80 | 12.0 | 11.5 | 1.18 | 1.18 |
-|  |  | AssemblyScript | 48.4 | 21.6 | 20.2 | 0.66 | 0.66 |
-|  |  | Peras, zero copy | 9.10 | 9.00 | 8.20 | 1.58 | 1.58 |
-| nbody | 1000 bodies, 5 steps | JavaScript | 37.1 | 25.1 | 24.7 | 1.00 | 0.66 |
-|  |  | JavaScript, expert | 24.8 | 16.6 | 16.4 | 1.51 | 1.00 |
-|  |  | Peras | 49.5 | 16.5 | 16.4 | 1.52 | 1.01 |
-|  |  | Rust | 16.4 | 16.2 | 16.1 | 1.55 | 1.02 |
-|  |  | AssemblyScript | 64.6 | 54.6 | 53.7 | 0.46 | 0.30 |
-| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 50.6 | 54.1 | 51.4 | 1.00 | 0.27 |
-|  |  | JavaScript, expert | 14.8 | 14.4 | 13.5 | 3.76 | 1.00 |
-|  |  | Peras | 2.60 | 2.60 | 2.50 | 20.81 | 5.54 |
-|  |  | Rust | 2.60 | 2.60 | 2.40 | 20.81 | 5.54 |
-|  |  | AssemblyScript | 2.50 | 2.70 | 2.50 | 20.04 | 5.33 |
-| sort | 1,000,000 f64 | JavaScript, Float64Array | 129 | 129 | 106 | 1.00 | 0.46 |
-|  |  | JavaScript, number[] | 590 | 547 | 508 | 0.24 | 0.11 |
-|  |  | JavaScript, expert | 107 | 59.0 | 53.1 | 2.19 | 1.00 |
-|  |  | Peras, zero copy | 77.2 | 29.8 | 28.3 | 4.33 | 1.98 |
-|  |  | Rust | 72.1 | 42.5 | 36.9 | 3.04 | 1.39 |
-|  |  | AssemblyScript | 195 | 164 | 136 | 0.78 | 0.36 |
-| mandel | 600 × 600, 64 steps | JavaScript | 18.5 | 13.3 | 11.7 | 1.00 | 1.00 |
-|  |  | Peras | 23.8 | 12.9 | 11.5 | 1.03 | 1.03 |
-|  |  | Rust | 19.4 | 12.1 | 10.7 | 1.10 | 1.10 |
-|  |  | AssemblyScript | 25.9 | 12.6 | 11.1 | 1.06 | 1.06 |
-| words | 1,019,576 characters | JavaScript | 9.10 | 10.4 | 8.10 | 1.00 | 0.50 |
-|  |  | JavaScript, expert | 4.10 | 5.20 | 4.20 | 2.00 | 1.00 |
-|  |  | Peras | 4.50 | 3.10 | 2.70 | 3.35 | 1.68 |
-|  |  | Rust | 5.80 | 4.60 | 3.80 | 2.26 | 1.13 |
-|  |  | AssemblyScript | 21.7 | 22.8 | 18.8 | 0.46 | 0.23 |
-| calls | 1,000,000 calls of add(a, b) | JavaScript | 1.90 | 4.30 | 4.20 | 1.00 | 1.00 |
-|  |  | Peras | 8.50 | 6.10 | 5.90 | 0.70 | 0.70 |
-|  |  | Rust | 8.40 | 6.40 | 6.20 | 0.67 | 0.67 |
-|  |  | AssemblyScript | 7.00 | 6.10 | 5.90 | 0.70 | 0.70 |
+| particles | 1,000,000 particles, 10 steps | JavaScript | 49.8 | 40.6 | 38.2 | 1.00 | 1.00 |
+|  |  | Peras, zero copy | 29.1 | 14.7 | 14.1 | 2.76 | 2.76 |
+|  |  | Peras, copied | 53.1 | 29.3 | 27.7 | 1.39 | 1.39 |
+|  |  | Rust | 24.3 | 17.5 | 16.7 | 2.32 | 2.32 |
+|  |  | AssemblyScript | 224 | 109 | 93.3 | 0.37 | 0.37 |
+| grayscale | 4,194,304 pixels | JavaScript | 21.2 | 16.7 | 15.0 | 1.00 | 1.00 |
+|  |  | Rust | 6.90 | 5.60 | 5.40 | 2.98 | 2.98 |
+|  |  | AssemblyScript | 72.5 | 25.9 | 24.1 | 0.64 | 0.64 |
+|  |  | Peras, zero copy | 8.40 | 4.30 | 4.10 | 3.88 | 3.88 |
+| nbody | 1000 bodies, 5 steps | JavaScript | 41.2 | 30.6 | 30.0 | 1.00 | 0.62 |
+|  |  | JavaScript, expert | 27.2 | 18.9 | 18.7 | 1.62 | 1.00 |
+|  |  | Peras | 57.6 | 18.8 | 18.5 | 1.63 | 1.01 |
+|  |  | Rust | 18.8 | 18.4 | 18.3 | 1.66 | 1.03 |
+|  |  | AssemblyScript | 75.4 | 65.1 | 64.4 | 0.47 | 0.29 |
+| hash64 | FNV-1a over 2,000,000 integers | JavaScript | 61.0 | 55.7 | 54.4 | 1.00 | 0.28 |
+|  |  | JavaScript, expert | 17.0 | 15.7 | 15.1 | 3.55 | 1.00 |
+|  |  | Peras | 8.10 | 2.90 | 2.70 | 19.21 | 5.41 |
+|  |  | Rust | 3.10 | 2.90 | 2.70 | 19.21 | 5.41 |
+|  |  | AssemblyScript | 3.00 | 2.90 | 2.70 | 19.21 | 5.41 |
+| sort | 1,000,000 f64 | JavaScript, Float64Array | 177 | 152 | 149 | 1.00 | 0.33 |
+|  |  | JavaScript, number[] | 686 | 601 | 554 | 0.25 | 0.08 |
+|  |  | JavaScript, expert | 117 | 49.9 | 47.0 | 3.05 | 1.00 |
+|  |  | Peras, zero copy | 93.4 | 35.7 | 34.7 | 4.26 | 1.40 |
+|  |  | Rust | 71.5 | 46.4 | 44.4 | 3.28 | 1.08 |
+|  |  | AssemblyScript | 209 | 188 | 185 | 0.81 | 0.27 |
+| mandel | 600 × 600, 64 steps | JavaScript | 19.5 | 16.2 | 16.0 | 1.00 | 1.00 |
+|  |  | Peras | 31.0 | 16.4 | 16.4 | 0.99 | 0.99 |
+|  |  | Rust | 26.9 | 16.2 | 16.0 | 1.00 | 1.00 |
+|  |  | AssemblyScript | 34.0 | 16.7 | 16.4 | 0.97 | 0.97 |
+| words | 1,019,576 characters | JavaScript | 10.8 | 14.3 | 10.5 | 1.00 | 0.51 |
+|  |  | JavaScript, expert | 5.30 | 7.30 | 5.90 | 1.96 | 1.00 |
+|  |  | Peras | 5.20 | 4.20 | 3.20 | 3.40 | 1.74 |
+|  |  | Rust | 7.80 | 6.30 | 5.20 | 2.27 | 1.16 |
+|  |  | AssemblyScript | 33.9 | 30.7 | 23.6 | 0.47 | 0.24 |
+| calls | 1,000,000 calls of add(a, b) | JavaScript | 2.50 | 4.90 | 4.70 | 1.00 | 1.00 |
+|  |  | Peras | 17.9 | 7.30 | 7.10 | 0.67 | 0.67 |
+|  |  | Rust | 18.1 | 12.4 | 12.0 | 0.40 | 0.40 |
+|  |  | AssemblyScript | 23.5 | 11.3 | 10.7 | 0.43 | 0.43 |
 
 ## Against the other compilers to WebAssembly
 
@@ -57,14 +57,14 @@ The same kernels in Rust ([rust/src/lib.rs](rust/src/lib.rs), wasm-bindgen) and 
 
 | Kernel | Peras | Rust | AssemblyScript | Rust / Peras | AssemblyScript / Peras |
 | --- | --: | --: | --: | --: | --: |
-| particles | 19.3 | 29.3 | 92.9 | 1.52 | 4.81 |
-| grayscale | 9.00 | 12.0 | 21.6 | 1.33 | 2.40 |
-| nbody | 16.5 | 16.2 | 54.6 | 0.98 | 3.31 |
-| hash64 | 2.60 | 2.60 | 2.70 | 1.00 | 1.04 |
-| sort | 29.8 | 42.5 | 164 | 1.43 | 5.52 |
-| mandel | 12.9 | 12.1 | 12.6 | 0.94 | 0.98 |
-| words | 3.10 | 4.60 | 22.8 | 1.48 | 7.35 |
-| calls | 6.10 | 6.40 | 6.10 | 1.05 | 1.00 |
+| particles | 14.7 | 17.5 | 109 | 1.19 | 7.39 |
+| grayscale | 4.30 | 5.60 | 25.9 | 1.30 | 6.02 |
+| nbody | 18.8 | 18.4 | 65.1 | 0.98 | 3.46 |
+| hash64 | 2.90 | 2.90 | 2.90 | 1.00 | 1.00 |
+| sort | 35.7 | 46.4 | 188 | 1.30 | 5.27 |
+| mandel | 16.4 | 16.2 | 16.7 | 0.99 | 1.02 |
+| words | 4.20 | 6.30 | 30.7 | 1.50 | 7.31 |
+| calls | 7.30 | 12.4 | 11.3 | 1.70 | 1.55 |
 
 Every variant gave exactly the same result, checked in the page before timing (`Object.is`, positions and pixels included), and no block was left alive.
 
@@ -74,8 +74,8 @@ Import time: median of 15 fresh browser contexts, nothing cached, served from 12
 
 | Module | Files | Raw (KiB) | gzip (KiB) | Import (ms) |
 | --- | --- | --: | --: | --: |
-| Peras | kernels.js + kernels.wasm | 31.9 | 13.1 | 16.5 |
-| JavaScript | reference.js | 7.6 | 2.4 | 9.20 |
+| Peras | kernels.js + kernels.wasm | 22.2 | 8.8 | 18.4 |
+| JavaScript | reference.js | 7.6 | 2.4 | 10.9 |
 | Rust | bench_browser_rust.js + _bg.wasm | 43.6 | 16.1 | not measured |
 | AssemblyScript | kernels.js + kernels.wasm | 14.6 | 6.1 | not measured |
 

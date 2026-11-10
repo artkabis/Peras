@@ -47,7 +47,7 @@ Ce que disent les résultats aujourd’hui, face au JavaScript **le plus rapide*
 - **Structures** (n-body) : **la même vitesse** (0,97 à 1,01) qu’un JavaScript qui range les champs en colonnes de `Float64Array`, ce que fait Peras ; 1,5 fois plus rapide qu’un objet par corps.
 - **Arithmétique flottante seule** (Mandelbrot) : la même vitesse (0,98 à 1,07).
 - **Appels** : un appel dans le module coûte 1,4 à 1,7 fois un appel JavaScript, que le moteur intègre. Le travail doit franchir la frontière par gros morceaux.
-- **Démarrage** : 13 Kio gzip de plus à télécharger, et l’import prend environ deux fois plus longtemps (19 ms contre 9,5), surtout l’allocateur intégré au chargeur. C’est payé une fois par module.
+- **Démarrage** : 8,8 Kio gzip pour les huit noyaux, contre 2,4 pour leur JavaScript, et l’import prend environ 1,7 fois plus longtemps (18 ms contre 11 ici). Un module n’emporte que les fonctions du runtime qu’il appelle, son runtime intégré élagué à celles-ci, et que les aides du chargeur dont ses fonctions se servent : 13,3 Kio avant pour ces noyaux (−34 %), et pour un petit module, une fonction sur un tableau ou un texte, 4,5 à 5,7 Kio contre 11,3 à 11,5 (−49 à −59 %). Le temps d’import n’a pas suivi les octets : ce qui reste, c’est compiler et instancier deux modules, le runtime et le programme, et une seconde requête, le `.wasm` demandé une fois le chargeur exécuté. Un seul module au lieu de deux, et une indication qui télécharge le `.wasm` avec le chargeur, sont les étapes suivantes.
 
 Ce qu’apporte Peras, donc, c’est moins une vitesse que JavaScript ne peut pas atteindre que la vitesse de l’expert à partir du code habituel : `text.split(" ").filter(…).length` et un tableau de structures vont aussi vite, ou plus vite, que le JavaScript en lequel un expert les réécrit.
 
@@ -68,7 +68,7 @@ Trois exécutions, Chromium 153 ; le temps du concurrent divisé par celui de Pe
 | mandel    |  0,94 – 0,98 |            0,98 – 1,01 |
 | calls     |  1,02 – 1,05 |             1,0 – 1,02 |
 
-Téléchargement, gzip : Peras 13,1 Kio, Rust 16,1 Kio, AssemblyScript 6,1 Kio.
+Téléchargement, gzip : Peras 8,8 Kio (13,1 avant que son runtime soit élagué à ce qu’un module appelle), Rust 16,1 Kio, AssemblyScript 6,1 Kio.
 
 Ce que cela dit :
 

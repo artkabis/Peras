@@ -917,38 +917,72 @@ impl Module {
     pub fn host_math(&self) -> Vec<HostMath> {
         let mut found = std::collections::BTreeSet::new();
         for f in &self.functions {
-            host_in_stmts(&f.body, &mut found);
+            each_expr(&f.body, &mut |e| match &e.kind {
+                ExprKind::Math(op, _) => {
+                    if let Some(h) = op.host() {
+                        found.insert(h);
+                    }
+                }
+                ExprKind::Binary(BinOp::Pow, ..) => {
+                    found.insert(HostMath::Pow);
+                }
+                ExprKind::Binary(BinOp::Atan2, ..) => {
+                    found.insert(HostMath::Atan2);
+                }
+                _ => {}
+            });
         }
         found.into_iter().collect()
     }
+
+    /// The functions of the runtime the module calls, in the order of
+    /// [`RuntimeFn::ALL`]: a module imports these only.
+    #[must_use]
+    pub fn runtime_fns(&self) -> Vec<RuntimeFn> {
+        let mut found = Vec::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if let ExprKind::Buf(BufOp::Runtime(r), _) = &e.kind
+                    && !found.contains(r)
+                {
+                    found.push(*r);
+                }
+            });
+        }
+        RuntimeFn::ALL
+            .into_iter()
+            .filter(|f| found.contains(f))
+            .collect()
+    }
 }
 
-fn host_in_stmts(stmts: &[Stmt], found: &mut std::collections::BTreeSet<HostMath>) {
+/// Calls `visit` on every expression of `stmts`, nested ones included.
+fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
     for stmt in stmts {
         match stmt {
-            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => host_in_expr(e, found),
+            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => each_in(e, visit),
             Stmt::If {
                 cond,
                 then,
                 otherwise,
             } => {
-                host_in_expr(cond, found);
-                host_in_stmts(then, found);
-                host_in_stmts(otherwise, found);
+                each_in(cond, visit);
+                each_expr(then, visit);
+                each_expr(otherwise, visit);
             }
             Stmt::Loop { cond, body, step } => {
                 if let Some(cond) = cond {
-                    host_in_expr(cond, found);
+                    each_in(cond, visit);
                 }
-                host_in_stmts(body, found);
-                host_in_stmts(step, found);
+                each_expr(body, visit);
+                each_expr(step, visit);
             }
-            Stmt::Block(body) => host_in_stmts(body, found),
+            Stmt::Block(body) => each_expr(body, visit),
             Stmt::ReturnMany(values)
             | Stmt::Buf(_, values)
             | Stmt::CallMany { args: values, .. } => {
                 for e in values {
-                    host_in_expr(e, found);
+                    each_in(e, visit);
                 }
             }
             Stmt::Leave(_)
@@ -960,31 +994,23 @@ fn host_in_stmts(stmts: &[Stmt], found: &mut std::collections::BTreeSet<HostMath
     }
 }
 
-fn host_in_expr(e: &Expr, found: &mut std::collections::BTreeSet<HostMath>) {
+/// Calls `visit` on `e`, then on every expression inside it.
+fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
+    visit(e);
     match &e.kind {
-        ExprKind::Math(op, x) => {
-            if let Some(h) = op.host() {
-                found.insert(h);
-            }
-            host_in_expr(x, found);
+        ExprKind::Math(_, x)
+        | ExprKind::Unary(_, x)
+        | ExprKind::Convert(x)
+        | ExprKind::Alloc(x) => {
+            each_in(x, visit);
         }
-        ExprKind::Binary(op, a, b) => {
-            match op {
-                BinOp::Pow => {
-                    found.insert(HostMath::Pow);
-                }
-                BinOp::Atan2 => {
-                    found.insert(HostMath::Atan2);
-                }
-                _ => {}
-            }
-            host_in_expr(a, found);
-            host_in_expr(b, found);
+        ExprKind::Binary(_, a, b) => {
+            each_in(a, visit);
+            each_in(b, visit);
         }
-        ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Alloc(x) => host_in_expr(x, found),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
             for a in args {
-                host_in_expr(a, found);
+                each_in(a, visit);
             }
         }
         ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}

@@ -8,12 +8,16 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+wasm-encoder = { workspace = true, features = ["wasmparser"] }
+wasmparser.workspace = true
+
 [build-dependencies]
 wat.workspace = true
 
 [dev-dependencies]
 wasmi.workspace = true
-wasmparser.workspace = true
+wasmparser = { workspace = true, features = ["validate"] }
 
 [lints]
 workspace = true
