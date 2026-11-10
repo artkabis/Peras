@@ -57,6 +57,13 @@ export interface PerasOptions {
    * 16.4), where its loader says so. `false` builds without it. Default: `true`.
    */
   simd?: boolean;
+  /**
+   * Runs `parallel for` loops on several threads where the page is
+   * cross-origin isolated, and on one thread elsewhere, with the same
+   * results (decision 0007). The dev server then sends the two headers that
+   * isolate a page; in production, the server must send them. Default: `false`.
+   */
+  threads?: boolean;
 }
 
 /** A compiled `.peras` module. */
@@ -159,6 +166,7 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
   const lang = options.lang === undefined ? [] : ["--lang", options.lang];
   const allocator = options.allocator === undefined ? [] : ["--allocator", options.allocator];
   const simd = options.simd === false ? ["--simd", "off"] : [];
+  const threads = options.threads === true ? ["--threads", "on"] : [];
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
     const built = await run(perasc, [
@@ -170,6 +178,7 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
       ...lang,
       ...allocator,
       ...simd,
+      ...threads,
     ]);
     if (built.code === 1) {
       const { summary, loc } = firstError(JSON.parse(built.stdout) as Report);
@@ -220,16 +229,20 @@ export function splitLoader(loader: string): { imports: string; exports: string 
  * inlined, which the dev server uses.
  */
 export function moduleCode(compiled: Compiled, wasmUrl?: string): string {
+  // A module built with threads is patched before it is compiled, to share
+  // its memory where the page can: it is not compiled while it downloads.
+  const threads = compiled.imports.includes("const $patch =");
+  const patched = (bytes: string): string => (threads ? `$patch(${bytes})` : bytes);
   const load =
     wasmUrl === undefined
       ? `const $bytes = Uint8Array.from(atob(${JSON.stringify(Buffer.from(compiled.wasm).toString("base64"))}), (c) => c.charCodeAt(0));
-const { instance: $instance } = await WebAssembly.instantiate($bytes, $imports);`
+const { instance: $instance } = await WebAssembly.instantiate(${patched("$bytes")}, $imports);`
       : `const $response = await fetch(${wasmUrl});
 if (!$response.ok) throw new Error(\`Peras: cannot load \${$response.url} (\${$response.status})\`);
 // Compiled while it downloads, when the server labels it as WebAssembly.
-const { instance: $instance } = $response.headers.get("content-type")?.startsWith("application/wasm")
+const { instance: $instance } = ${threads ? "false" : '$response.headers.get("content-type")?.startsWith("application/wasm")'}
   ? await WebAssembly.instantiateStreaming($response, $imports)
-  : await WebAssembly.instantiate(await $response.arrayBuffer(), $imports);`;
+  : await WebAssembly.instantiate(${patched("await $response.arrayBuffer()")}, $imports);`;
   return `${compiled.imports}${load}\n${compiled.exports}`;
 }
 
@@ -257,6 +270,15 @@ export default function peras(options: PerasOptions = {}): Plugin {
     enforce: "pre",
     configResolved(config) {
       building = config.command === "build";
+    },
+    // Threads need a cross-origin isolated page: the dev server isolates it.
+    configureServer(server) {
+      if (options.threads !== true) return;
+      server.middlewares.use((_request, response, next) => {
+        response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+        next();
+      });
     },
     async load(id) {
       const mode = modeOf(id);

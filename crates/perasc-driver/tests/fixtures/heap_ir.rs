@@ -41,6 +41,7 @@ pub fn work() -> Module {
     let peek = Function {
         name: "peek".to_owned(),
         exported: false,
+        job: false,
         param_count: 1,
         locals: vec![local("x", Ty::Borrowed)],
         ret: Ty::I32,
@@ -51,6 +52,7 @@ pub fn work() -> Module {
     let work = Function {
         name: "work".to_owned(),
         exported: true,
+        job: false,
         param_count: 1,
         locals: vec![
             local("n", Ty::I32),
@@ -121,6 +123,7 @@ fn one(name: &str, body: Vec<Stmt>) -> Module {
         functions: vec![Function {
             name: name.to_owned(),
             exported: true,
+            job: false,
             param_count: 1,
             locals: vec![local("n", Ty::I32), local("block", Ty::Owned)],
             ret: Ty::Void,

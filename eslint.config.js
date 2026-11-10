@@ -15,6 +15,7 @@ export default defineConfig(
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",
+      "bench/browser/parallel.d.ts",
       // AssemblyScript: TypeScript's syntax, its own types (usize, changetype), checked by asc.
       "bench/browser/assemblyscript/**",
       // Prototypes run once to decide, then kept so the measure can be run again.

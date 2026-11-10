@@ -22,8 +22,10 @@
 //! allocates or releases; `0` means unknown.
 
 mod prune;
+mod threads;
 
 pub use prune::{PruneError, prune};
+pub use threads::{import_memory, memory_flag};
 
 /// The debug allocator, as a WebAssembly module.
 pub const DEBUG_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug.wasm"));

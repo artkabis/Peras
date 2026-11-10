@@ -38,6 +38,8 @@ fuzz_target!(|data: &[u8]| {
                 optimize,
                 allocator,
                 simd: optimize,
+                // The optimized build also exports jobs and their dispatchers.
+                threads: optimize,
             },
             &Localizer::new(Language::English),
         ) {

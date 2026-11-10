@@ -45,6 +45,20 @@ export fn sum_to(n: i32): i64 {
 }
 ```
 
+## `parallel for`
+
+A counted loop whose turns do not see each other can run them on several threads at once ([decision 0007](../decisions/0007-threads-over-shared-memory.md)). Each turn may read anything the loop does not change, and write only the elements at its own index:
+
+```peras build
+export fn brighten(pixels: Array<i32>, out: inout Array<i32>, gain: i32): void {
+  parallel for (let i = 0; i < pixels.length; i++) {
+    out[i] = pixels[i] * gain;
+  }
+}
+```
+
+The compiler proves it: a turn that assigns a variable declared outside the loop, reads at another index an array the loop writes, calls a function, makes or releases a string or an array, or leaves the loop with `break` or `return` is refused ([E0241](../errors/E0241.md)). The results are then those of the loop run in order, bit for bit. Built with `--threads on`, the turns run on every core of a page that can share memory, and on one thread elsewhere: see [Peras and JavaScript](javascript.md#threads). Built without, the loop runs as any other. <span class="status compiled">compiled</span>
+
 ## `for…of`
 
 Walks the elements of an array:

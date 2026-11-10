@@ -34,6 +34,7 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | opérateurs arithmétiques, de comparaison, bit à bit et logiques | <span class="status compiled">compilé</span>, sauf `%` sur les flottants <span class="status checked">vérifié</span> |
 | `if`, `while`, `for`, `break`, `continue`                       | <span class="status compiled">compilé</span>                                                                         |
 | `for…of`                                                        | <span class="status compiled">compilé</span>                                                                         |
+| `parallel for`, sur des fils avec `--threads on`                | <span class="status compiled">compilé</span>                                                                         |
 | fonctions, récursion, `export`                                  | <span class="status compiled">compilé</span>                                                                         |
 | paramètres `sink`                                               | <span class="status compiled">compilé</span>                                                                         |
 | paramètres `inout`, `&` à l’appel                               | <span class="status compiled">compilé</span>                                                                         |

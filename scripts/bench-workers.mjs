@@ -27,6 +27,27 @@ mkdirSync(work, { recursive: true });
 const args = ["build", join(bench, "kernels.peras"), "--allocator", "tlsf", "--out", work];
 const built = spawnSync(perasc, args, { encoding: "utf8" });
 if (built.status !== 0) throw new Error(`perasc ${args.join(" ")}\n${built.stdout}${built.stderr}`);
+// The same kernels as `parallel for`, built with threads (decision 0007).
+const threadArgs = [
+  "build",
+  join(bench, "parallel.peras"),
+  "--allocator",
+  "tlsf",
+  "--threads",
+  "on",
+  "--out",
+  work,
+];
+const threaded = spawnSync(perasc, threadArgs, { encoding: "utf8" });
+if (threaded.status !== 0)
+  throw new Error(`perasc ${threadArgs.join(" ")}\n${threaded.stdout}${threaded.stderr}`);
+if (
+  readFileSync(join(work, "parallel.d.ts"), "utf8") !==
+  readFileSync(join(bench, "parallel.d.ts"), "utf8")
+)
+  throw new Error(
+    "bench/browser/parallel.d.ts is stale: copy the one perasc wrote to target/bench-workers",
+  );
 for (const file of ["workers.js", "worker.js"]) copyFileSync(join(bench, file), join(work, file));
 writeFileSync(
   join(work, "index.html"),
@@ -43,8 +64,11 @@ const server = createServer((request, response) => {
   }
   try {
     const body = readFileSync(path);
+    // Cross-origin isolated, so that threads can share memory.
     response.writeHead(200, {
       "content-type": types[extname(path)] ?? "application/octet-stream",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-embedder-policy": "require-corp",
     });
     response.end(body);
   } catch {
@@ -66,7 +90,7 @@ try {
   const page = await browser.newPage();
   await page.goto(`${base}/index.html`);
   const config = check ? { scale: 0.01, runs: 1 } : { scale: 1, runs: 15 };
-  /** @type {{ cores: number, rows: Row[] }} */
+  /** @type {{ cores: number, threads: number, rows: Row[] }} */
   const measured = await page.evaluate(
     async ({ url, config }) => {
       /** @type {unknown} */
@@ -90,7 +114,7 @@ try {
       "",
       `Machine: ${cpus()[0]?.model ?? "?"}, ${String(cpus().length)} cores (the page sees ${String(measured.cores)}). Chromium ${browser.version()}, headless. Medians of ${String(config.runs)} runs after 2 of warm-up, every way alternating.`,
       "",
-      "_Direct_: the kernel called on the main thread, its arrays already in the module's memory: the work alone. _N workers_: the data split in N parts, transferred to N workers, each with its own instance of the module, copied into it and back, the parts gathered: everything counted. Speed-up: the direct time divided by this one. _Data resident_: the ceiling of memory shared by every worker. Each worker keeps its part in its module's memory, put back untimed before each run; only running the kernel on 4 workers and hearing back from each is timed. No copy is counted, as with WebAssembly threads over one `SharedArrayBuffer`.",
+      "_Direct_: the kernel called on the main thread, its arrays already in the module's memory: the work alone. _N workers_: the data split in N parts, transferred to N workers, each with its own instance of the module, copied into it and back, the parts gathered: everything counted. Speed-up: the direct time divided by this one. _Data resident_: the ceiling of memory shared by every worker. Each worker keeps its part in its module's memory, put back untimed before each run; only running the kernel on 4 workers and hearing back from each is timed. No copy is counted, as with WebAssembly threads over one `SharedArrayBuffer`. _parallel for_: the same kernel, its loop written `parallel for` and built with `--threads on`, run on every core over one shared memory, its arrays already in it; a sum or a checksum is a second pass on one thread, counted.",
       "",
       "| Kernel | Way | Median (ms) | Speed-up |",
       "| --- | --- | --: | --: |",
@@ -104,7 +128,9 @@ try {
             ? "direct"
             : r.way === "4 resident"
               ? "4 workers, data resident (ceiling)"
-              : `${r.way} worker${r.way === "1" ? "" : "s"}`;
+              : r.way === "threads"
+                ? `parallel for, ${String(measured.threads)} threads`
+                : `${r.way} worker${r.way === "1" ? "" : "s"}`;
         lines.push(
           `| ${i === 0 ? kernel : ""} | ${way} | ${ms(r.median)} | ${(directTime / r.median).toFixed(2)} |`,
         );

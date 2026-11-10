@@ -72,6 +72,7 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0236](E0236.md) | Méthode qui ne correspond pas à son interface                                     | noms et types      |
 | [E0237](E0237.md) | Interface utilisée comme un type                                                  | noms et types      |
 | [E0238](E0238.md) | Fonction fléchée là où aucune ne peut aller                                       | noms et types      |
+| [E0241](E0241.md) | Une boucle qui ne peut pas tourner en parallèle                                   | noms et types      |
 | [E0240](E0240.md) | Une clé de table ou un élément d’ensemble d’un type qui ne peut pas encore l’être | noms et types      |
 | [E0239](E0239.md) | Une valeur qu’un gabarit ne sait pas encore écrire                                | noms et types      |
 | [E0900](E0900.md) | Pas encore pris en charge par la génération de code                               | génération de code |

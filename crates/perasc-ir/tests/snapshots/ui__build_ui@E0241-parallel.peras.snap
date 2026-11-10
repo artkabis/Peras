@@ -1,0 +1,10 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/E0241-parallel.peras
+---
+diagnostics:
+  error[E0241] check-parallel { reason: "reads", name: "" }
+    primary 3:3-5:4: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix

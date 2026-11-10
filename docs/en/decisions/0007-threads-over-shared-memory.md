@@ -51,7 +51,26 @@ What it says:
 
 ## Status
 
-Measured, not built. The ceiling is committed with its command; the backend comes after `Map` iteration.
+**Built.** `parallel for (let i = start; i < end; i++)` is checked and compiled; `--threads on`, or `threads: true` for Vite, runs it on threads.
+
+- **The proof.** Lowering moves the loop's body into a job, `f__par0(start, end, captures…)`, with the outer function's buffers lent, and calls it over every turn. A turn that could see another is refused with its reason ([E0241](../errors/E0241.md)). Without threads, the job is an ordinary function, and gets every optimization of a loop: its bounds checks are proven away, with `start >= 0` in the guard, and its loop runs four lanes at once.
+- **The memory.** The runtime and the module import their memory, declared unshared with a maximum of 2 GiB. A page that can share memory (cross-origin isolated, with workers) sets the shared bit of both imports, one byte each, before compiling them: the same build runs on one thread elsewhere, with the same results.
+- **The pool.** The loader starts `hardwareConcurrency − 1` workers, at most 15, from a script it carries. Each instantiates the module over the same memory with no runtime: a job never allocates, so the per-thread arenas of point 3 wait for jobs that may. A job's arguments go through a second shared buffer; a worker waits with `Atomics.wait`, runs its range, counts down, and reports an index out of bounds, which the page throws as its own.
+- **The page spins** until every worker is done, where point 4 said `Atomics.waitAsync`: the loop is a synchronous call, and the main thread may not block. A loop of fewer than 256 turns runs on the page alone.
+
+Measured with `node scripts/bench-workers.mjs` (_parallel for_), on 4 cores, Chromium 153, 2 runs, against the direct call on one thread:
+
+| Kernel               | Copies to workers | `parallel for`, 4 threads |     Ceiling |
+| -------------------- | ----------------: | ------------------------: | ----------: |
+| particles, 10 steps  |       0.82 – 0.91 |           **1.95 – 2.23** | 2.20 – 2.23 |
+| particles, 200 steps |       2.89 – 3.00 |           **2.68 – 2.81** | 3.32 – 3.45 |
+| grayscale            |       0.31 – 0.38 |           **1.70 – 1.87** | 1.91 – 2.14 |
+
+Grayscale's checksum is a reduction, which a parallel loop may not make: a second loop computes it on one thread, counted. 200 steps call the pool 200 times; waking the workers each time is most of what separates them from the ceiling. Before the bounds proof learnt `start >= 0`, the jobs kept their checks and were not vectorized: 1.75 to 1.83 for 200 steps.
+
+Tests: the kernels as `parallel for` and as `for` give the same results in the interpreter; in Chromium, served with the two headers, on 4 threads, against the same kernels in JavaScript, bit for bit, an index out of bounds in a worker thrown by the page; in Node, the same on one thread. A range made one turn short makes them fail.
+
+Not done: reductions (`sum += xs[i]`), calls in a turn, jobs that allocate, and work stealing.
 
 ## Consequences
 

@@ -255,6 +255,7 @@ fn variables_read_before_assignment_start_at_zero_again() {
     let function = Function {
         name: "f".to_owned(),
         exported: true,
+        job: false,
         param_count: 1,
         locals: vec![
             Local {
@@ -485,6 +486,21 @@ fn a_bound_that_is_not_a_length_is_guarded_and_nested_loops_inherit_the_proof() 
     let text = after.to_string();
     // One guard, on the outer loop; the inner loop of its fast copy needs none.
     assert_eq!(text.matches("if (i32.>=").count(), 1, "{text}");
+}
+
+/// A loop that starts at a local, as the job of a `parallel for` starts at
+/// its `start`: the guard proves it at least zero too, and the loop as
+/// written traps the same below zero.
+#[test]
+fn a_start_that_is_a_local_joins_the_guard() {
+    let source = "export fn f(n: i32, m: i32): i32 {\n  let xs: Array<i32> = [];\n  for (let k = 0; k < 5; k++) xs.push(k + 1);\n  let total = 0;\n  const from = n - 2;\n  for (let i = from; i < m; i++) {\n    total = total * 3 + xs[i];\n  }\n  return total;\n}\n";
+    let (before, after) = same_results(source, &pairs(0..=5, 0..=7));
+    let text = after.to_string();
+    assert!(text.contains("if (bool.&& (i32.>= %"), "{text}");
+    assert!(
+        checks(&after) >= checks(&before),
+        "the loop as written keeps its checks"
+    );
 }
 
 #[test]

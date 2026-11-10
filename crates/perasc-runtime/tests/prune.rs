@@ -123,3 +123,55 @@ fn asking_for_every_export_keeps_every_export() {
     // Only the names section goes.
     assert!(pruned.len() < full.len());
 }
+
+/// With threads, the runtime imports its memory, with a maximum, and the
+/// loader finds the byte that makes it shared: both forms validate.
+#[test]
+fn the_threaded_runtime_imports_a_memory_it_can_share() {
+    use wasmparser::{Parser, Payload, TypeRef, Validator};
+    for wasm in [
+        perasc_runtime::DEBUG_ALLOCATOR,
+        perasc_runtime::TLSF_ALLOCATOR,
+    ] {
+        let imported =
+            perasc_runtime::import_memory(wasm, 32_768).unwrap_or_else(|e| unreachable!("{e}"));
+        let mut memories = Vec::new();
+        for payload in Parser::new(0).parse_all(&imported) {
+            if let Ok(Payload::ImportSection(section)) = payload {
+                for import in section.into_imports() {
+                    if let Ok(i) = import
+                        && let TypeRef::Memory(m) = i.ty
+                    {
+                        memories.push((
+                            i.module.to_owned(),
+                            i.name.to_owned(),
+                            m.maximum,
+                            m.shared,
+                        ));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            memories,
+            [("env".to_owned(), "memory".to_owned(), Some(32_768), false)]
+        );
+        Validator::new()
+            .validate_all(&imported)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let at = perasc_runtime::memory_flag(&imported).unwrap_or_else(|| unreachable!("no flag"));
+        assert_eq!(imported.get(at), Some(&0x01));
+        let mut shared = imported.clone();
+        if let Some(flag) = shared.get_mut(at) {
+            *flag = 0x03;
+        }
+        Validator::new()
+            .validate_all(&shared)
+            .unwrap_or_else(|e| unreachable!("shared: {e}"));
+        assert_eq!(
+            perasc_runtime::memory_flag(wasm),
+            None,
+            "defines its memory"
+        );
+    }
+}

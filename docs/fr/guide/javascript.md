@@ -87,6 +87,21 @@ Le runtime s’en sert aussi, pour chercher un octet seize à la fois : `split` 
 
 Le SIMD de WebAssembly est activé par défaut. Un module qui s’en sert, dans ses boucles ou son runtime, demande Chrome et Edge 91, Firefox 89, Safari 16.4, Node 16.4 ou suivants ; ailleurs, son chargeur lève une erreur qui le dit avant de charger quoi que ce soit. `perasc build --simd off`, ou `simd: false` pour Vite, compile sans lui, pour les moteurs qui n’en ont pas, comme Safari avant 16.4 sur les iPhone bloqués à iOS 15.
 
+## Threads
+
+`perasc build --threads on`, ou `threads: true` pour Vite, fait tourner les tours de chaque boucle [`parallel for`](control-flow.md#parallel-for) sur tous les cœurs ([décision 0007](../decisions/0007-threads-over-shared-memory.md)). Le module, son runtime et un pool de workers partagent une seule mémoire : aucune donnée n’est copiée. La page appelle la boucle, donne une part de ses tours à chaque worker, fait la sienne, et les attend.
+
+Les threads demandent une page qui peut partager sa mémoire, servie avec deux en-têtes :
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Le serveur de développement de Vite les envoie quand `threads` est activé ; en production, le serveur doit le faire. Ailleurs, dans Node ou sur une page sans eux, le module se charge tout de même et fait tourner chaque boucle sur un seul fil, avec les mêmes résultats. `__perasHeap.threads()` dit combien de fils les font tourner.
+
+Dans `bench/browser`, sur 4 cœurs, 200 pas d’un million de particules vont 2,7 à 2,8 fois plus vite que sur un fil, 10 pas 2 à 2,2 fois, un filtre de gris sur 16 Mo 1,7 à 1,9 fois, sa somme de contrôle comprise, qu’une seconde boucle calcule sur un fil.
+
 ## Avec Vite
 
 ```ts
@@ -106,6 +121,7 @@ export default defineConfig({
 | `dts`       | `true`                                                             | écrire `nom.d.peras.ts` à côté de chaque `nom.peras`                                              |
 | `allocator` | `debug` pour le serveur de développement, `tlsf` pour `vite build` | l’allocateur des modules qui utilisent le tas                                                     |
 | `simd`      | `true`                                                             | le SIMD de WebAssembly dans les boucles et le runtime ; `false` pour les moteurs qui n’en ont pas |
+| `threads`   | `false`                                                            | les boucles `parallel for` sur tous les cœurs ; le serveur de développement isole la page         |
 
 En développement, le WebAssembly est intégré au module ; `vite build` l’émet comme un fichier séparé, compilé pendant son téléchargement. Une erreur dans un fichier `.peras` s’affiche dans l’overlay de Vite avec son extrait, sa cause et sa correction, et fait échouer `vite build`.
 

@@ -4,6 +4,7 @@
 // called directly on the main thread. Every split result is checked equal to
 // the direct one, element by element. scripts/bench-workers.mjs drives it.
 import * as peras from "./kernels.js";
+import * as threaded from "./parallel.js";
 
 /**
  * @typedef {{ kind: "particles", xs: Float64Array, vs: Float64Array, steps: number }
@@ -83,7 +84,7 @@ function ask(w, task, transfer) {
 /**
  * Times every kernel directly and split across 1, 2 and 4 workers.
  * @param {{ scale: number, runs: number }} config
- * @returns {Promise<{ cores: number, rows: Row[] }>}
+ * @returns {Promise<{ cores: number, threads: number, rows: Row[] }>}
  */
 export async function measure({ scale, runs }) {
   /** @param {number} x */
@@ -300,6 +301,42 @@ export async function measure({ scale, runs }) {
     return ms;
   };
 
+  // The same kernels as `parallel for`, on every core, arrays in memory.
+  const tx = threaded.__perasHeap.array("f64", count);
+  const tv = threaded.__perasHeap.array("f64", count);
+  const tp = threaded.__perasHeap.array("i32", pixelCount);
+  /**
+   * One run of `kernel` built with threads, checked; its time in ms.
+   * @param {string} kernel
+   */
+  const parallel = (kernel) => {
+    const steps = particleKernels.find(([name]) => name === kernel)?.[1];
+    if (steps !== undefined) {
+      tx.view().set(x0);
+      tv.view().set(v0);
+      const t0 = performance.now();
+      threaded.particles(tx, tv, steps);
+      const ms = performance.now() - t0;
+      const want = positions.get(kernel) ?? new Float64Array(0);
+      const got = tx.view();
+      for (let i = 0; i < count; i++) {
+        if (!Object.is(got[i], want[i]))
+          throw new Error(`${kernel}, parallel for, differs at ${String(i)}`);
+      }
+      return ms;
+    }
+    tp.view().set(image);
+    const t0 = performance.now();
+    const xor = threaded.grayscale(tp);
+    const ms = performance.now() - t0;
+    if (xor !== checksum) throw new Error("grayscale, parallel for: checksum");
+    const got = tp.view();
+    for (let i = 0; i < pixelCount; i++) {
+      if (got[i] !== pixels[i]) throw new Error(`grayscale, parallel for, differs at ${String(i)}`);
+    }
+    return ms;
+  };
+
   const sizes = [1, 2, 4];
   /** @type {Map<number, Worker[]>} */
   const pools = new Map();
@@ -313,6 +350,8 @@ export async function measure({ scale, runs }) {
     const splitTimes = new Map(sizes.map((k) => [k, []]));
     /** @type {number[]} */
     const residentTimes = [];
+    /** @type {number[]} */
+    const threadTimes = [];
     // Text has no resident form: the loader takes a JavaScript string.
     const ceiling = kernel !== "words";
     // Warm-up, then rounds alternating every way.
@@ -326,16 +365,28 @@ export async function measure({ scale, runs }) {
       if (ceiling) {
         const ms = await resident(kernel, pools.get(4) ?? []);
         if (r >= 2) residentTimes.push(ms);
+        const own = parallel(kernel);
+        if (r >= 2) threadTimes.push(own);
       }
     }
     rows.push({ kernel, way: "direct", median: median(directTimes) });
     for (const k of sizes)
       rows.push({ kernel, way: String(k), median: median(splitTimes.get(k) ?? []) });
-    if (ceiling) rows.push({ kernel, way: "4 resident", median: median(residentTimes) });
+    if (ceiling) {
+      rows.push({ kernel, way: "4 resident", median: median(residentTimes) });
+      rows.push({ kernel, way: "threads", median: median(threadTimes) });
+    }
   }
   for (const ws of pools.values()) for (const w of ws) w.terminate();
   px.release();
   pv.release();
   pp.release();
-  return { cores: navigator.hardwareConcurrency, rows };
+  tx.release();
+  tv.release();
+  tp.release();
+  return {
+    cores: navigator.hardwareConcurrency,
+    threads: threaded.__perasHeap.threads(),
+    rows,
+  };
 }

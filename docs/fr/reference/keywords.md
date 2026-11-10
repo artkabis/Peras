@@ -14,6 +14,7 @@ Ces mots ne peuvent pas nommer une variable, une fonction ou un type.
 | `return`             | quitte une fonction, avec son résultat                                                |
 | `if`, `else`         | choisit entre deux branches                                                           |
 | `while`, `for`, `of` | boucles ; `of` est contextuel, dans `for…of` seulement                                |
+| `parallel`           | contextuel, devant `for` : [`parallel for`](../guide/control-flow.md#parallel-for)    |
 | `break`, `continue`  | quittent une boucle, passent à son tour suivant                                       |
 | `true`, `false`      | les deux valeurs `bool`                                                               |
 | `inout`, `sink`      | conventions de passage ([fonctions](../guide/functions.md#conventions-de-passage))    |

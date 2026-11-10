@@ -1,0 +1,34 @@
+// Kernels whose turns run on several threads where the page is
+// cross-origin isolated, and on one elsewhere, with the same results.
+
+export fn gray(pixels: inout Array<i32>, gain: i32): void {
+  parallel for (let i = 0; i < pixels.length; i++) {
+    const p = pixels[i];
+    const y = (((p >> 16) & 255) * 77 + ((p >> 8) & 255) * 150 + (p & 255) * 29) >> 8;
+    if (y > 200) {
+      continue;
+    }
+    pixels[i] = y * gain;
+  }
+}
+
+export fn move(xs: inout Array<f64>, vs: inout Array<f64>, steps: i32): void {
+  for (let s = 0; s < steps; s++) {
+    parallel for (let i = 0; i < xs.length; i++) {
+      let v = vs[i];
+      const x = xs[i] + v * 0.01;
+      if (x < 0.0 || x > 10.0) {
+        v = -v;
+      }
+      vs[i] = v;
+      xs[i] = x.sqrt() * 0.5 + x * 0.5;
+    }
+  }
+}
+
+// Writes past the end when `n` is larger than the array.
+export fn fill(xs: inout Array<i32>, n: i32): void {
+  parallel for (let i = 0; i < n; i++) {
+    xs[i] = i;
+  }
+}

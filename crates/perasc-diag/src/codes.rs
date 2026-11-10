@@ -146,6 +146,8 @@ pub const ARROW_FUNCTION: ErrorCode = ErrorCode::new(238);
 pub const TEMPLATE_VALUE: ErrorCode = ErrorCode::new(239);
 /// A map's key or a set's element of a type that cannot be one yet.
 pub const MAP_KEY: ErrorCode = ErrorCode::new(240);
+/// A `parallel for` whose turns could see each other.
+pub const PARALLEL: ErrorCode = ErrorCode::new(241);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -271,6 +273,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(ARROW_FUNCTION, "check-arrow", "E0238"),
     active!(TEMPLATE_VALUE, "check-template", "E0239"),
     active!(MAP_KEY, "check-map-key", "E0240"),
+    active!(PARALLEL, "check-parallel", "E0241"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

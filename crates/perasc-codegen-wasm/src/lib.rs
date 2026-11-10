@@ -66,6 +66,9 @@ struct Host<'m> {
     math: &'m [HostMath],
     /// The runtime's functions the module imports, in order.
     runtime: &'m [RuntimeFn],
+    /// For each function of the module that is a job run on threads, the
+    /// import that dispatches it.
+    dispatch: &'m [Option<u32>],
 }
 
 impl Host<'_> {
@@ -105,12 +108,23 @@ pub fn compile_module(module: &Module) -> Compiled {
     compile_for(module, true)
 }
 
-/// Declares the runtime's types and imports: the heap, buffers and memory.
-/// Gives how many types it declared, which come first.
+/// The most pages a memory of a module built with threads may grow to: a
+/// memory shared between threads needs its maximum (2 GiB).
+pub const THREAD_PAGES: u64 = 32_768;
+
+/// The namespace of the functions a module built with threads imports to
+/// run its `parallel for` loops: `par0`, `par1`…, one per job, which the
+/// loader gives.
+pub const PARALLEL_MODULE: &str = "peras_par";
+
+/// Declares the runtime's types and imports: the heap, buffers and memory,
+/// its maximum given when threads share it. Gives how many types it
+/// declared, which come first.
 fn heap_imports_into(
     types: &mut TypeSection,
     imports: &mut ImportSection,
     runtime: &[RuntimeFn],
+    threads: bool,
 ) -> u32 {
     use ValType::I32 as T;
     // The types of the allocation and buffer functions, then each function
@@ -163,7 +177,7 @@ fn heap_imports_into(
         "memory",
         EntityType::Memory(MemoryType {
             minimum: 1,
-            maximum: None,
+            maximum: threads.then_some(THREAD_PAGES),
             memory64: false,
             shared: false,
             page_size_log2: None,
@@ -200,33 +214,97 @@ fn math_imports_into(
 /// `perasc-runtime`; the imports come first, so its own functions follow them.
 #[must_use]
 pub fn compile_for(module: &Module, simd: bool) -> Compiled {
+    compile_with(module, simd, false)
+}
+
+/// Declares one dispatcher per job, `par0`, `par1`…, of the job's type, the
+/// first of type `first_type` and import index `first_import`; gives, for each
+/// function of the module, the import that dispatches it when it is a job.
+fn dispatchers_into(
+    (types, imports): (&mut TypeSection, &mut ImportSection),
+    module: &Module,
+    jobs: &[u32],
+    (first_type, first_import): (u32, u32),
+) -> Vec<Option<u32>> {
+    let mut dispatch = vec![None; module.functions.len()];
+    for (k, &id) in jobs.iter().enumerate() {
+        let k = u32::try_from(k).unwrap_or(0);
+        let params: Vec<ValType> = module
+            .functions
+            .get(usize::try_from(id).unwrap_or(usize::MAX))
+            .map(|f| f.params().filter_map(|l| val_type(l.ty)).collect())
+            .unwrap_or_default();
+        types.ty().function(params, []);
+        imports.import(
+            PARALLEL_MODULE,
+            &format!("par{k}"),
+            EntityType::Function(first_type + k),
+        );
+        if let Some(slot) = dispatch.get_mut(usize::try_from(id).unwrap_or(usize::MAX)) {
+            *slot = Some(first_import + k);
+        }
+    }
+    dispatch
+}
+
+/// The jobs of a module's `parallel for` loops, in order: their ids.
+#[must_use]
+pub fn jobs(module: &Module) -> Vec<u32> {
+    module
+        .functions
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.job)
+        .filter_map(|(i, _)| u32::try_from(i).ok())
+        .collect()
+}
+
+/// [`compile_for`], with threads when `threads`: the memory imported with
+/// its maximum, so that the loader can share it between threads; each job
+/// exported as `__job0`, `__job1`…, and each call to one made to the
+/// function `par0`, `par1`… of [`PARALLEL_MODULE`], which runs its turns
+/// on the threads. A module that does not use the heap has nothing to share.
+#[must_use]
+pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
     let mut types = TypeSection::new();
     let mut imports = ImportSection::new();
     let mut functions = FunctionSection::new();
     let mut exports = ExportSection::new();
     let mut code = CodeSection::new();
     let heap = module.uses_heap();
+    let threads = threads && heap;
     let math = module.host_math();
     let runtime = module.runtime_fns();
+    let jobs = if threads { jobs(module) } else { Vec::new() };
     let heap_imports = if heap {
         RUNTIME_FIRST + u32::try_from(runtime.len()).unwrap_or(0)
     } else {
         0
     };
-    let offset = heap_imports + u32::try_from(math.len()).unwrap_or(0);
+    let math_imports = u32::try_from(math.len()).unwrap_or(0);
+    let job_imports = u32::try_from(jobs.len()).unwrap_or(0);
+    let offset = heap_imports + math_imports + job_imports;
     let heap_types = if heap {
-        heap_imports_into(&mut types, &mut imports, &runtime)
+        heap_imports_into(&mut types, &mut imports, &runtime, threads)
     } else {
         0
     };
     if !math.is_empty() {
         math_imports_into(&mut types, &mut imports, &math, heap_types);
     }
-    let type_offset = heap_types + if math.is_empty() { 0 } else { HOST_TYPES };
+    let job_types = heap_types + if math.is_empty() { 0 } else { HOST_TYPES };
+    let dispatch = dispatchers_into(
+        (&mut types, &mut imports),
+        module,
+        &jobs,
+        (job_types, heap_imports + math_imports),
+    );
+    let type_offset = job_types + job_imports;
     let host = Host {
         first: heap_imports,
         runtime: &runtime,
         math: &math,
+        dispatch: &dispatch,
     };
     let mut sites = Vec::new();
     let mut vectors = false;
@@ -245,6 +323,9 @@ pub fn compile_for(module: &Module, simd: bool) -> Compiled {
         if function.exported {
             exports.export(&function.name, ExportKind::Func, index);
         }
+        if let Some(k) = jobs.iter().position(|&j| j == position) {
+            exports.export(&format!("__job{k}"), ExportKind::Func, index);
+        }
         vectors |= simd && simd::vectorizes(&function.body);
         code.function(&FnEncoder::encode(
             function,
@@ -256,7 +337,7 @@ pub fn compile_for(module: &Module, simd: bool) -> Compiled {
     }
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
-    if heap || !math.is_empty() {
+    if heap || !math.is_empty() || !jobs.is_empty() {
         wasm.section(&imports);
     }
     wasm.section(&functions).section(&exports);
@@ -583,7 +664,14 @@ impl<'a> FnEncoder<'a> {
                 for arg in args {
                     self.expr(arg);
                 }
-                self.emit(&I::Call(id.0 + self.offset));
+                // A job runs on the threads, through its dispatcher.
+                let dispatcher = self
+                    .host
+                    .dispatch
+                    .get(usize::try_from(id.0).unwrap_or(usize::MAX))
+                    .copied()
+                    .flatten();
+                self.emit(&I::Call(dispatcher.unwrap_or(id.0 + self.offset)));
             }
             ExprKind::Convert(operand) => {
                 self.expr(operand);
@@ -1128,6 +1216,19 @@ pub struct Runtime<'a> {
     /// When the module uses WebAssembly SIMD, in its runtime or its loops:
     /// the message thrown before loading it where the engine has none.
     pub simd: Option<&'a str>,
+    /// When the module runs its `parallel for` loops on threads: where the
+    /// shared bit of each memory import is.
+    pub threads: Option<Threads>,
+}
+
+/// Where a module built with threads, and its runtime, declare their memory
+/// import: the byte a page that can share memory sets to `0x03`.
+#[derive(Debug, Clone, Copy)]
+pub struct Threads {
+    /// In the runtime, which imports its memory from `env.memory`.
+    pub runtime_flag: usize,
+    /// In the module, which imports it from the runtime.
+    pub module_flag: usize,
 }
 
 /// The smallest module that uses WebAssembly SIMD, `v128.const` in a
@@ -1156,30 +1257,50 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
             runtime,
             &module.runtime_fns(),
             crosses_map(module),
+            &job_kinds(module),
         )),
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
         None => js.push_str("const $imports = { Math };\n"),
     }
+    let threads = runtime.is_some_and(|r| r.threads.is_some()) && heap;
+    // A module whose memory may be shared is patched before it is compiled.
+    let patched = |bytes: &str| {
+        if threads {
+            format!("$patch({bytes})")
+        } else {
+            bytes.to_owned()
+        }
+    };
+    let stream = if threads {
+        "false"
+    } else {
+        "response.headers.get(\"content-type\")?.startsWith(\"application/wasm\")"
+    };
+    let read_file = patched("await (await import(\"node:fs/promises\")).readFile($url)");
+    let downloaded = patched("await response.arrayBuffer()");
     let _ = write!(
         js,
         "{LOAD_MARKER}\n\
          const $url = new URL(\"./{wasm_file}\", import.meta.url);\n\
          const $load = async () => {{\n  \
          if ($url.protocol === \"file:\")\n    \
-         return WebAssembly.instantiate(await (await import(\"node:fs/promises\")).readFile($url), $imports);\n  \
+         return WebAssembly.instantiate({read_file}, $imports);\n  \
          const response = await fetch($url);\n  \
          if (!response.ok) throw new Error(`Peras: cannot load ${{response.url}} (${{response.status}})`);\n  \
          // Compiled while it downloads, when the server labels it as WebAssembly.\n  \
-         return response.headers.get(\"content-type\")?.startsWith(\"application/wasm\")\n    \
+         return {stream}\n    \
          ? WebAssembly.instantiateStreaming(response, $imports)\n    \
-         : WebAssembly.instantiate(await response.arrayBuffer(), $imports);\n\
+         : WebAssembly.instantiate({downloaded}, $imports);\n\
          }};\n\
          const {{ instance: $instance }} = await $load();\n\
          {EXPORTS_MARKER}\n\
          const $wasm = $instance.exports;\n"
     );
+    if threads {
+        js.push_str(&start_threads(module));
+    }
     if module
         .functions
         .iter()
@@ -1201,12 +1322,20 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         }
     }
     if heap {
-        js.push_str(
-            "export const __perasHeap = {\n  \
+        let threads_count = if threads {
+            "\n  threads: () => $threads.length + 1,"
+        } else if module.functions.iter().any(|f| f.job) {
+            "\n  threads: () => 1,"
+        } else {
+            ""
+        };
+        let _ = write!(
+            js,
+            "export const __perasHeap = {{\n  \
              live: () => $runtime.live_count(),\n  \
              checkLeaks: () => $runtime.check_leaks(),\n  \
-             array: $array,\n};\n\
-             export { PerasArray };\n",
+             array: $array,{threads_count}\n}};\n\
+             export {{ PerasArray }};\n",
         );
     }
     if js.contains(HELPERS_MARKER) {
@@ -1363,6 +1492,37 @@ fn rows(element: &Shape) -> (String, String) {
     let mut index = 0;
     let object = rebuild_at(element, &mut index, &|k| format!("c[{k}][i]"), false);
     (kinds.join(", "), format!("(c, i) => {object}"))
+}
+
+/// Starts the threads of a module built with them, once it is loaded.
+fn start_threads(module: &Module) -> String {
+    let kinds: Vec<String> = job_kinds(module)
+        .iter()
+        .map(|k| {
+            let k: Vec<String> = k.iter().map(|k| format!("\"{k}\"")).collect();
+            format!("[{}]", k.join(", "))
+        })
+        .collect();
+    format!(
+        "if ($shared) $threads = await $startThreads(await WebAssembly.compile($moduleBytes), [{}]);\n",
+        kinds.join(", ")
+    )
+}
+
+/// The kind of each argument of each job after `start` and `end`, as the
+/// threads read them: an `i64` as a `BigInt`, any other as a number.
+fn job_kinds(module: &Module) -> Vec<Vec<&'static str>> {
+    module
+        .functions
+        .iter()
+        .filter(|f| f.job)
+        .map(|f| {
+            f.params()
+                .skip(2)
+                .map(|l| if l.ty == Ty::I64 { "i64" } else { "f64" })
+                .collect()
+        })
+        .collect()
 }
 
 /// Whether a map crosses between JavaScript and the module: one is then
@@ -1830,7 +1990,12 @@ fn rebuild_at(
 }
 
 /// The allocator, instantiated first, and the imports it gives the module.
-fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn], maps: bool) -> String {
+fn runtime_imports(
+    runtime: &Runtime<'_>,
+    used: &[RuntimeFn],
+    maps: bool,
+    jobs: &[Vec<&'static str>],
+) -> String {
     let faults: Vec<String> = runtime.faults.iter().map(|m| js_string(m)).collect();
     let sites: Vec<String> = std::iter::once("?".to_owned())
         .chain(runtime.sites.iter().cloned())
@@ -1870,12 +2035,14 @@ fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn], maps: bool) -> Str
          return text.length;\n\
          }};\n\
          const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
-         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }} }})).instance.exports;\n\
+         {memory}\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }}{env} }})).instance.exports;\n\
          {seed}\
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
-         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math }};\n\
+         const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math{par} }};\n\
+         {pool}\
 ",
         strings = used.iter().fold(String::new(), |mut out, f| {
             let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
@@ -1896,8 +2063,151 @@ fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn], maps: bool) -> Str
         sites = sites.join(", "),
         allocator = base64(runtime.allocator),
         module = RUNTIME_MODULE,
+        memory = runtime
+            .threads
+            .map_or_else(String::new, |t| thread_memory(t.runtime_flag)),
+        env = if runtime.threads.is_some() {
+            ", env: { memory: $memory }"
+        } else {
+            ""
+        },
+        par = runtime
+            .threads
+            .map_or_else(String::new, |_| dispatchers(jobs)),
+        pool = runtime
+            .threads
+            .map_or_else(String::new, |t| thread_pool(t.module_flag)),
     );
     imports + HELPERS_MARKER
+}
+
+/// The memory of a module built with threads: shared where the page can
+/// share it, and the runtime's import marked shared to match.
+fn thread_memory(runtime_flag: usize) -> String {
+    format!(
+        "// Threads share the module's memory where the page is cross-origin isolated\n\
+         // (decision 0007); elsewhere the module runs on one thread, with the same results.\n\
+         const $shared = typeof SharedArrayBuffer !== \"undefined\" && globalThis.crossOriginIsolated === true && typeof Worker !== \"undefined\";\n\
+         const $memory = new WebAssembly.Memory({{ initial: 1, maximum: {THREAD_PAGES}, shared: $shared }});\n\
+         if ($shared) $allocator[{runtime_flag}] = 3;\n"
+    )
+}
+
+/// The `par0`, `par1`… the module imports: each runs the turns of its job,
+/// whose arguments after `start` and `end` have these kinds.
+fn dispatchers(jobs: &[Vec<&'static str>]) -> String {
+    if jobs.is_empty() {
+        return String::new();
+    }
+    let entries: Vec<String> = jobs
+        .iter()
+        .enumerate()
+        .map(|(k, kinds)| {
+            let kinds: Vec<String> = kinds.iter().map(|k| format!("\"{k}\"")).collect();
+            format!(
+                "par{k}: (start, end, ...args) => $par({k}, [{}], start, end, args)",
+                kinds.join(", ")
+            )
+        })
+        .collect();
+    format!(", {PARALLEL_MODULE}: {{ {} }}", entries.join(", "))
+}
+
+/// The pool of threads and `$par`, which runs a job's turns on them; and
+/// `$patch`, which marks the module's memory import shared to match.
+fn thread_pool(module_flag: usize) -> String {
+    format!(
+        "let $moduleBytes;\n\
+         const $patch = (bytes) => {{\n  \
+         $moduleBytes = new Uint8Array(bytes);\n  \
+         if ($shared) $moduleBytes[{module_flag}] = 3;\n  \
+         return $moduleBytes;\n\
+         }};\n\
+         // Each thread runs the module over the same memory, with no runtime: a\n\
+         // job never allocates. It waits for a job, runs its range, and counts down.\n\
+         const $threadCode = `onmessage = ({{ data }}) => {{\n  \
+         const {{ module, memory, control, args, w }} = data;\n  \
+         const ctl = new Int32Array(control);\n  \
+         const f = new Float64Array(args, 0, 64);\n  \
+         const b = new BigInt64Array(args, 512, 64);\n  \
+         const imports = {{}};\n  \
+         for (const i of WebAssembly.Module.imports(module)) {{\n    \
+         const ns = (imports[i.module] ??= {{}});\n    \
+         ns[i.name] = i.kind === \"memory\" ? memory\n      \
+         : i.module === \"Math\" ? Math[i.name]\n      \
+         : i.name === \"bounds\" ? (index, length) => {{ ctl[4] = index; ctl[5] = length; throw new RangeError(\"bounds\"); }}\n      \
+         : () => {{ throw new Error(\"perasc: \" + i.name + \" called on a thread\"); }};\n  \
+         }}\n  \
+         const exports = new WebAssembly.Instance(module, imports).exports;\n  \
+         postMessage(\"ready\");\n  \
+         let generation = Atomics.load(ctl, 0);\n  \
+         for (;;) {{\n    \
+         Atomics.wait(ctl, 0, generation);\n    \
+         generation = Atomics.load(ctl, 0);\n    \
+         const start = ctl[16 + 2 * w], end = ctl[17 + 2 * w];\n    \
+         if (start < end) {{\n      \
+         const kinds = data.jobs[ctl[2]];\n      \
+         try {{\n        \
+         exports[\"__job\" + ctl[2]](start, end, ...kinds.map((k, j) => (k === \"i64\" ? b[j] : f[j])));\n      \
+         }} catch (e) {{\n        \
+         Atomics.compareExchange(ctl, 3, 0, e instanceof RangeError && e.message === \"bounds\" ? 1 : 2);\n      \
+         }}\n    \
+         }}\n    \
+         if (Atomics.sub(ctl, 1, 1) === 1) Atomics.notify(ctl, 1);\n  \
+         }}\n\
+         }};`;\n\
+         let $threads = [];\n\
+         const $control = typeof SharedArrayBuffer === \"undefined\" ? new ArrayBuffer(4) : new SharedArrayBuffer(64 * 4 + 2 * 64 * 4);\n\
+         const $ctl = new Int32Array($control);\n\
+         const $args = typeof SharedArrayBuffer === \"undefined\" ? new ArrayBuffer(1024) : new SharedArrayBuffer(1024);\n\
+         const $argsF = new Float64Array($args, 0, 64);\n\
+         const $argsI = new BigInt64Array($args, 512, 64);\n\
+         // At most 15 threads beside the page's own.\n\
+         const $startThreads = async (module, jobs) => {{\n  \
+         const count = Math.min(Math.max((globalThis.navigator?.hardwareConcurrency ?? 1) - 1, 0), 15);\n  \
+         const url = URL.createObjectURL(new Blob([$threadCode], {{ type: \"text/javascript\" }}));\n  \
+         const started = Array.from({{ length: count }}, (_, w) => new Promise((ready, fail) => {{\n    \
+         const thread = new Worker(url);\n    \
+         thread.onmessage = () => ready(thread);\n    \
+         thread.onerror = fail;\n    \
+         thread.postMessage({{ module, memory: $memory, control: $control, args: $args, w, jobs }});\n  \
+         }}));\n  \
+         return Promise.all(started);\n\
+         }};\n\
+         // A job's turns from `start` to `end`: a part for each thread and one for\n\
+         // the page, which then waits for every thread. The page may not block:\n\
+         // it spins. A short loop runs on the page alone.\n\
+         const $par = (k, kinds, start, end, args) => {{\n  \
+         const job = $wasm[\"__job\" + k];\n  \
+         const n = end - start;\n  \
+         if ($threads.length === 0 || n < 256) return job(start, end, ...args);\n  \
+         const size = Math.ceil(n / ($threads.length + 1));\n  \
+         kinds.forEach((kind, j) => {{\n    \
+         if (kind === \"i64\") $argsI[j] = args[j];\n    \
+         else $argsF[j] = args[j];\n  \
+         }});\n  \
+         $ctl[2] = k;\n  \
+         $ctl[3] = 0;\n  \
+         $threads.forEach((_, w) => {{\n    \
+         $ctl[16 + 2 * w] = Math.min(start + w * size, end);\n    \
+         $ctl[17 + 2 * w] = Math.min(start + (w + 1) * size, end);\n  \
+         }});\n  \
+         Atomics.store($ctl, 1, $threads.length);\n  \
+         Atomics.add($ctl, 0, 1);\n  \
+         Atomics.notify($ctl, 0);\n  \
+         let failure;\n  \
+         const mine = Math.min(start + $threads.length * size, end);\n  \
+         try {{\n    \
+         if (mine < end) job(mine, end, ...args);\n  \
+         }} catch (e) {{\n    \
+         failure = e;\n  \
+         }}\n  \
+         while (Atomics.load($ctl, 1) !== 0);\n  \
+         if (failure !== undefined) throw failure;\n  \
+         if ($ctl[3] === 1) $bounds($ctl[4], $ctl[5]);\n  \
+         if ($ctl[3] !== 0) throw new Error(\"perasc: a thread of a parallel loop failed\");\n\
+         }};\n"
+    )
 }
 
 /// The loader's helpers for options and enumerations: every part is read,
@@ -2008,7 +2318,9 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          const $readStr = (h) => {\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          const n = view.getUint32(h, true);\n  \
-         return $decoder.decode(new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n));\n\
+         const bytes = new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), n);\n  \
+         // A decoder reads no shared memory: a copy of it, with threads.\n  \
+         return $decoder.decode(bytes.buffer instanceof ArrayBuffer ? bytes : bytes.slice());\n\
          };\n\
          const $takeStr = (h) => {\n  \
          const text = $readStr(h);\n  \
@@ -2178,6 +2490,14 @@ pub fn dts(module: &Module) -> String {
              array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[]): PerasArray<K>;\n\
              };\n",
         );
+        // A module with `parallel for` loops says how many threads run them.
+        if module.functions.iter().any(|f| f.job) {
+            out = out.replacen(
+                "  checkLeaks(): void;\n",
+                "  checkLeaks(): void;\n  /** The threads its `parallel for` loops run on: 1 where memory cannot be shared. */\n  threads(): number;\n",
+                1,
+            );
+        }
     }
     for f in module.functions.iter().filter(|f| f.exported) {
         if let Some(shape) = &f.shape {

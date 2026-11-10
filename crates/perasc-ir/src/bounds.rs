@@ -7,7 +7,9 @@
 //! A loop is _counted_ when:
 //!
 //! - its condition is `i < bound`, on an `i32` local `i`;
-//! - the statement just before it sets `i` to a constant of zero or more;
+//! - the statement just before it sets `i` to a constant of zero or more, or
+//!   to a local the loop never assigns, as the job of a `parallel for` starts
+//!   at its own `start`: then `start >= 0` joins the guard;
 //! - its step is exactly `i = i + 1`, and its body never assigns `i`;
 //! - `bound` is the same at every turn: a constant, a local the loop never
 //!   assigns, or the length of such a buffer.
@@ -110,9 +112,14 @@ fn counted_loop(
     cond: Option<Expr>,
     body: Vec<Stmt>,
     step: Vec<Stmt>,
-    start: Option<LocalId>,
+    start: Option<(LocalId, Option<LocalId>)>,
     facts: &Facts,
 ) -> Stmt {
+    // A start that is a local must be at least zero, and stay as it is.
+    let from = start.and_then(|(_, from)| from);
+    let start = start
+        .filter(|_| from.is_none_or(|f| !assigns(&body, f)))
+        .map(|(index, _)| index);
     let Some((index, bound)) = counted(cond.as_ref(), &body, &step, start) else {
         // Not counted: what encloses it still holds inside.
         return Stmt::Loop {
@@ -148,9 +155,24 @@ fn counted_loop(
         body: block(body.clone(), &inner),
         step: step.clone(),
     };
-    let Some(guard) = guards
-        .iter()
-        .map(|len| binary(BinOp::Ge, (*len).clone(), bound.clone(), Ty::Bool))
+    let zero = Expr {
+        kind: ExprKind::Const(Const::Int(0)),
+        ty: Ty::I32,
+    };
+    let Some(guard) = from
+        .map(|f| {
+            let start = Expr {
+                kind: ExprKind::Local(f),
+                ty: Ty::I32,
+            };
+            binary(BinOp::Ge, start, zero, Ty::Bool)
+        })
+        .into_iter()
+        .chain(
+            guards
+                .iter()
+                .map(|len| binary(BinOp::Ge, (*len).clone(), bound.clone(), Ty::Bool)),
+        )
         .reduce(|a, b| binary(BinOp::And, a, b, Ty::Bool))
     else {
         return fast;
@@ -195,8 +217,9 @@ fn counted(
         .then(|| (index, (**bound).clone()))
 }
 
-/// The local `stmt` sets to a constant of zero or more.
-fn start_of(stmt: &Stmt) -> Option<LocalId> {
+/// The local `stmt` sets to a constant of zero or more, or to another local,
+/// which a guard must then prove at least zero.
+fn start_of(stmt: &Stmt) -> Option<(LocalId, Option<LocalId>)> {
     match stmt {
         Stmt::Set(
             local,
@@ -204,7 +227,14 @@ fn start_of(stmt: &Stmt) -> Option<LocalId> {
                 kind: ExprKind::Const(Const::Int(k)),
                 ty: Ty::I32,
             },
-        ) if *k >= 0 => Some(*local),
+        ) if *k >= 0 => Some((*local, None)),
+        Stmt::Set(
+            local,
+            Expr {
+                kind: ExprKind::Local(from),
+                ty: Ty::I32,
+            },
+        ) if local != from => Some((*local, Some(*from))),
         _ => None,
     }
 }

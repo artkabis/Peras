@@ -67,6 +67,7 @@ impl Checker<'_> {
                 self.scoped(body);
             }
             StmtKind::For {
+                parallel: _,
                 init,
                 cond,
                 update,
@@ -86,6 +87,7 @@ impl Checker<'_> {
                 self.pop_scope();
             }
             StmtKind::ForOf {
+                parallel: _,
                 mutable,
                 keyword,
                 name,

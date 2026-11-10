@@ -15,6 +15,7 @@ fn build(source: &str) -> DirectOutput {
             optimize: true,
             allocator: Allocator::Tlsf,
             simd: true,
+            threads: false,
         },
         &Localizer::new(Language::English),
     )
