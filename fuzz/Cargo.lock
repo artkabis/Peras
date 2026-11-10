@@ -326,6 +326,8 @@ dependencies = [
 name = "perasc-runtime"
 version = "0.0.1"
 dependencies = [
+ "wasm-encoder",
+ "wasmparser",
  "wat",
 ]
 

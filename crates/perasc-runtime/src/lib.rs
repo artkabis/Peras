@@ -21,6 +21,10 @@
 //! traps. A site is the number perasc gives to a place in the source that
 //! allocates or releases; `0` means unknown.
 
+mod prune;
+
+pub use prune::{PruneError, prune};
+
 /// The debug allocator, as a WebAssembly module.
 pub const DEBUG_ALLOCATOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug.wasm"));
 

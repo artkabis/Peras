@@ -47,7 +47,7 @@ What the results say, today, against the **fastest** JavaScript (three runs, Chr
 - **Structures** (n-body): **the same speed** (0.97 to 1.01) as JavaScript storing the fields in columns of `Float64Array`, which is what Peras does; 1.5 times faster than an object per body.
 - **Floating-point arithmetic alone** (Mandelbrot): the same speed (0.98 to 1.07).
 - **Calls**: a call into the module costs 1.4 to 1.7 times a JavaScript call, which the engine inlines. Work should cross the boundary in large pieces.
-- **Start**: 13 KiB gzip more to download, and the import takes about twice as long (19 ms against 9.5), mostly the allocator inlined in the loader. It is paid once per module.
+- **Start**: 8.8 KiB gzip for the eight kernels, against 2.4 for their JavaScript, and the import takes about 1.7 times as long (18 ms against 11 here). A module carries only the runtime functions it calls, its embedded runtime pruned to them, and only the loader helpers its functions use: 13.3 KiB before for these kernels (−34 %), and for a small module, a function over an array or a text, 4.5 to 5.7 KiB against 11.3 to 11.5 (−49 to −59 %). The import time did not move with the bytes: what is left is compiling and instantiating two modules, the runtime and the program, and a second request, the `.wasm` asked for once the loader runs. One module instead of two, and a hint that fetches the `.wasm` with the loader, are the next steps.
 
 What Peras brings, then, is less a speed JavaScript cannot reach than the expert's speed from the usual code: `text.split(" ").filter(…).length` and an array of structures run as fast as, or faster than, the JavaScript an expert rewrites them into.
 
@@ -68,7 +68,7 @@ Three runs, Chromium 153; the contender's time divided by Peras's, above 1 when 
 | mandel    |  0.94 – 0.98 |            0.98 – 1.01 |
 | calls     |  1.02 – 1.05 |             1.0 – 1.02 |
 
-Download, gzip: Peras 13.1 KiB, Rust 16.1 KiB, AssemblyScript 6.1 KiB.
+Download, gzip: Peras 8.8 KiB (13.1 before its runtime was pruned to what a module calls), Rust 16.1 KiB, AssemblyScript 6.1 KiB.
 
 What it says:
 
@@ -101,7 +101,7 @@ What it says:
 These are known and not done yet; each is a reason to read the figures above with care.
 
 - **Expert contenders**: Rust and AssemblyScript are measured as they are usually written (above); their experts' versions are not.
-- **Every measure in the repository**: the prototypes and probes behind decisions 0004 and 0005, and the measures of floats as text and of `encodeInto`, were run from a scratch folder; they should be committed under `bench/` with one command each.
+- **Every measure in the repository**: the prototypes and probes behind decisions 0004 and 0005, and the measures of floats as text and of `encodeInto`, were run from a scratch folder; they should be committed under `bench/` with one command each, as [`bench/prototypes`](prototypes/outer-simd/README.md) now is.
 - **Statistics**: confidence intervals (bootstrap over the runs) rather than medians alone; more runs; the engine's tiers reported.
 - **Machines**: macOS with Apple's Safari, Windows, an ARM phone; WebKit's timer counts whole milliseconds, too coarse for kernels of 2 or 3 ms.
 - **A whole application**, measured from loading to the last frame.

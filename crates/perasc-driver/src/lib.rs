@@ -173,8 +173,18 @@ pub fn emit_direct_for(
             .text("index", "{index}")
             .text("length", "{length}"),
     );
+    // The runtime this module needs: what its loader calls, and the
+    // functions on strings and arrays the module calls.
+    let full = options.allocator.runtime(options.simd);
+    let used = module.runtime_fns();
+    let keep: Vec<&str> = LOADER_EXPORTS
+        .iter()
+        .copied()
+        .chain(used.iter().map(|f| f.name()))
+        .collect();
+    let allocator = perasc_runtime::prune(full, &keep).unwrap_or_else(|_| full.to_vec());
     let runtime = perasc_codegen_wasm::Runtime {
-        allocator: options.allocator.runtime(options.simd),
+        allocator: &allocator,
         sites: &compiled.sites,
         faults: &faults,
         bounds: &bounds,
@@ -186,6 +196,22 @@ pub fn emit_direct_for(
         wasm: compiled.wasm,
     }
 }
+
+/// What the JavaScript loader takes from the runtime, whatever the module
+/// calls: its memory, the allocation and buffer functions, and the counts its
+/// `__perasHeap` and the A/B benchmark read.
+const LOADER_EXPORTS: [&str; 10] = [
+    "memory",
+    "alloc",
+    "release",
+    "buf_new",
+    "buf_reserve",
+    "buf_release",
+    "buf_clone",
+    "live_count",
+    "check_leaks",
+    "allocations",
+];
 
 /// The message of each fault of the debug allocator, kind 1 first, with the
 /// placeholders the generated JavaScript fills in.

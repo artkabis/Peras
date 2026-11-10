@@ -9,3 +9,4 @@ bench/browser/WORKERS.md
 bench/browser/kernels.d.ts
 website/.pages/
 website/dist/
+bench/prototypes/*/RESULTS.md
