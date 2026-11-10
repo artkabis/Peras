@@ -205,6 +205,8 @@ enum Template {
 enum TypeDef {
     Plain(Ty),
     Array,
+    Map,
+    Set,
     Option,
     Result,
     Generic(Template, usize),
@@ -287,6 +289,8 @@ impl<'a> Checker<'a> {
         types.insert("String".to_owned(), TypeDef::Plain(Ty::String));
         types.insert("void".to_owned(), TypeDef::Plain(Ty::Void));
         types.insert("Array".to_owned(), TypeDef::Array);
+        types.insert("Map".to_owned(), TypeDef::Map);
+        types.insert("Set".to_owned(), TypeDef::Set);
         types.insert("Option".to_owned(), TypeDef::Option);
         types.insert("Result".to_owned(), TypeDef::Result);
         Self {
@@ -781,8 +785,8 @@ impl<'a> Checker<'a> {
         };
         let expected = match def {
             TypeDef::Plain(_) => 0,
-            TypeDef::Array | TypeDef::Option => 1,
-            TypeDef::Result => 2,
+            TypeDef::Array | TypeDef::Set | TypeDef::Option => 1,
+            TypeDef::Result | TypeDef::Map => 2,
             TypeDef::Generic(_, count) => count,
             TypeDef::Alias(index) => self.aliases.get(index).map_or(0, |a| a.generics.len()),
             TypeDef::Interface(index) => {
@@ -806,6 +810,17 @@ impl<'a> Checker<'a> {
         match def {
             TypeDef::Plain(t) => t,
             TypeDef::Array => Ty::Array(Box::new(self.type_arg(args))),
+            TypeDef::Map => {
+                let key = self.type_arg(args);
+                let value = args.get(1).map_or(Ty::Error, |a| self.resolve_type(a));
+                self.check_key(&key, args.first().map_or(ty.span, |a| a.span));
+                Ty::Map(Box::new(key), Box::new(value))
+            }
+            TypeDef::Set => {
+                let key = self.type_arg(args);
+                self.check_key(&key, args.first().map_or(ty.span, |a| a.span));
+                Ty::Set(Box::new(key))
+            }
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
             TypeDef::Result => {
                 let ok = self.type_arg(args);
@@ -852,6 +867,16 @@ impl<'a> Checker<'a> {
                     ));
                 }
             }
+        }
+    }
+
+    /// `E0240` unless `key` can be a map's key or a set's element: an
+    /// integer, a `bool` or a `String`, for now ([decision 0005]).
+    ///
+    /// [decision 0005]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0005-maps-and-sets.md
+    fn check_key(&mut self, key: &Ty, span: Span) {
+        if !matches!(key, Ty::Int(_) | Ty::Bool | Ty::String | Ty::Error) {
+            self.report(errors::map_key(span, key));
         }
     }
 

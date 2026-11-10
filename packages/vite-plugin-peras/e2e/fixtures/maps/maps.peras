@@ -1,0 +1,37 @@
+// Maps and sets, driven from JavaScript: the e2e test runs the same
+// operations on JavaScript's Map and Set.
+
+// How many times `word` comes in `text`, and how many words differ.
+export fn frequency(text: String, word: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  let seen: Set<String> = Set.new();
+  for (const w of text.split(" ")) {
+    counts.set(w.copy(), counts.get(w).unwrapOr(0) + 1);
+    seen.add(w.copy());
+  }
+  return counts.get(word).unwrapOr(0) * 100000 + seen.size;
+}
+
+// Operations on a map, one per element: 0 sets, 1 reads, 2 deletes, 3 asks,
+// 4 clears. Each one is folded into the result.
+export fn operations(ops: Array<i32>, keys: Array<i32>, values: Array<f64>): f64 {
+  let m: Map<i64, f64> = Map.new();
+  let check = 0.0;
+  for (let i = 0; i < ops.length; i++) {
+    const k = keys[i].toI64();
+    const op = ops[i];
+    if (op == 0) {
+      m.set(k, values[i]);
+    } else if (op == 1) {
+      check += m.get(k).unwrapOr(-1.0);
+    } else if (op == 2) {
+      if (m.delete(k)) check += 1000.0;
+    } else if (op == 3) {
+      if (m.has(k)) check += 7.0;
+    } else {
+      m.clear();
+    }
+    check = check * 0.5 + m.size.toF64();
+  }
+  return check;
+}

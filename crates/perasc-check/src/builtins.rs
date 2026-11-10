@@ -1,7 +1,8 @@
 //! Fields and methods the language provides on its built-in types.
 //!
 //! Numbers convert explicitly (`x.toF64()`), as the spec requires, and expose
-//! checked and wrapping arithmetic; arrays and strings have a `length`.
+//! checked and wrapping arithmetic; arrays and strings have a `length`, maps
+//! and sets a `size`.
 
 use crate::ty::{FloatTy, IntTy, Ty};
 
@@ -38,7 +39,9 @@ const CHECKED: [&str; 3] = ["checkedAdd", "checkedSub", "checkedMul"];
 #[must_use]
 pub fn field(receiver: &Ty, name: &str) -> Option<Ty> {
     match (receiver, name) {
-        (Ty::Array(_) | Ty::String, "length") => Some(Ty::Int(IntTy::I32)),
+        (Ty::Array(_) | Ty::String, "length") | (Ty::Map(..) | Ty::Set(_), "size") => {
+            Some(Ty::Int(IntTy::I32))
+        }
         _ => None,
     }
 }
@@ -124,6 +127,7 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
         },
         Ty::Bool if name == "toString" => simple(Ty::String),
         Ty::String => string_method(name),
+        Ty::Map(..) | Ty::Set(_) => collection_method(&me, name),
         Ty::Result(ok, _) => match name {
             "isOk" | "isErr" => simple(Ty::Bool),
             "unwrapOr" => Some(Method {
@@ -142,6 +146,27 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
         },
         _ => None,
     }
+}
+
+/// A method of `Map` or `Set`.
+fn collection_method(me: &Ty, name: &str) -> Option<Method> {
+    let (params, ret) = match me {
+        Ty::Map(key, value) => match name {
+            "set" => (vec![(**key).clone(), (**value).clone()], Ty::Void),
+            "get" => (vec![(**key).clone()], Ty::Option(value.clone())),
+            "has" | "delete" => (vec![(**key).clone()], Ty::Bool),
+            "clear" => (Vec::new(), Ty::Void),
+            _ => return None,
+        },
+        Ty::Set(element) => match name {
+            "add" => (vec![(**element).clone()], Ty::Void),
+            "has" | "delete" => (vec![(**element).clone()], Ty::Bool),
+            "clear" => (Vec::new(), Ty::Void),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(Method { params, ret })
 }
 
 /// Whether `sort()` orders elements of this type: `i32`, `i64` and floats.
@@ -232,6 +257,8 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             names.extend(STRING_METHODS);
         }
         Ty::Bool => names.push("toString"),
+        Ty::Map(..) => names.extend(["size", "set", "get", "has", "delete", "clear"]),
+        Ty::Set(_) => names.extend(["size", "add", "has", "delete", "clear"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}

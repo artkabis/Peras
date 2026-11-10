@@ -187,7 +187,7 @@ impl<'a> Verifier<'a> {
                     (ty, Some(first)) if first.ty == ty => self.expr(first),
                     (ty, _) => self.problem(&format!("{} on a {ty:?} expected", f.name())),
                 }
-                // The other buffers are lent too.
+                // The other buffers are lent too, but for a map's key, given.
                 let given: Vec<Ty> = rest.iter().map(|a| a.ty).collect();
                 if given != f.operands() {
                     self.problem(&format!(
@@ -199,6 +199,8 @@ impl<'a> Verifier<'a> {
                 for arg in rest {
                     if arg.ty == Ty::Borrowed {
                         self.buffer(Some(arg));
+                    } else if arg.ty == Ty::Owned {
+                        self.handed_over(arg);
                     } else {
                         self.expr(arg);
                     }

@@ -75,6 +75,12 @@ impl Lowering<'_> {
                     .collect())
             }
             CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
+            // A map or a set is one handle, held by a local or a parameter,
+            // not yet by a structure, an array or an option.
+            CheckTy::Map(..) | CheckTy::Set(_) if depth == 0 => {
+                Ok(vec![(String::new(), Ty::Owned)])
+            }
+            CheckTy::Map(..) | CheckTy::Set(_) => Err("map-place"),
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -394,6 +400,9 @@ impl Lowering<'_> {
             }
             AstExpr::Field { base, name } => {
                 let method = self.ast.name(name.symbol);
+                if let Some(values) = self.map_new(state, id, base, method, mode) {
+                    return values;
+                }
                 if let Some(values) = self.enum_value(state, id, base, method, args) {
                     return Self::fresh(state, values, mode);
                 }
@@ -488,6 +497,9 @@ impl Lowering<'_> {
     ) -> Vec<Expr> {
         if self.is_buffer(base) {
             return self.array_method(state, base, method, args, mode, span);
+        }
+        if self.is_map(base) {
+            return self.map_method(state, base, method, args, span);
         }
         if !self.is_aggregate(base) {
             if method == "toString" {
@@ -972,6 +984,8 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::String
             | CheckTy::Enum(..)
             | CheckTy::Result(..)
+            | CheckTy::Map(..)
+            | CheckTy::Set(_)
     )
 }
 
@@ -1075,7 +1089,14 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::String
         | CheckTy::Void
         | CheckTy::Struct(..)
-        | CheckTy::Enum(..) => Ok(()),
+        | CheckTy::Enum(..)
+        | CheckTy::Map(..)
+        | CheckTy::Set(_) => Ok(()),
+        CheckTy::Array(inner) | CheckTy::Option(inner)
+            if matches!(**inner, CheckTy::Map(..) | CheckTy::Set(_)) =>
+        {
+            Err("map-place")
+        }
         CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         CheckTy::Int(_) => Err("integer-type"),

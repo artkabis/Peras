@@ -633,6 +633,10 @@ check-template = a template literal cannot write a `{ $type }` as text yet
 check-template-label = a `{ $type }`
 check-template-why = A template literal writes each of its values as text: a string as it is, a number or a boolean as `toString()` writes it, as JavaScript does. A structure, an array or an option has no text of its own yet: which fields, in which order, is for the program to say.
 check-template-fix = write its fields there, one value each
+check-map-key = a `{ $type }` cannot be a map's key or a set's element yet
+check-map-key-label = a `{ $type }` key
+check-map-key-why = A map finds its keys by their hash and their equality, written in its runtime for integers, booleans and strings. A structure, an enumeration or a float needs a rule for both: a float, because `NaN` is not equal to itself and `-0` is equal to `+0`.
+check-map-key-fix = use an integer, a boolean or a string as the key: an identifier, or a key built as text
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->
@@ -659,6 +663,10 @@ gen-unsupported = code generation does not support { $feature ->
     [integer-type] integer types other than `i32` and `i64`
     [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
+    [map-value] maps whose values are not numbers or booleans
+    [map-place] maps and sets inside structures, arrays or options
+    [map-export] maps and sets in the signature of an exported function: JavaScript sees them through functions of the module
+    [map-iteration] `for…of` over a map or a set
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet

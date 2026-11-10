@@ -154,6 +154,8 @@ fn the_method_reference_lists_exactly_the_built_in_methods() {
         Ty::String,
         Ty::Option(Box::new(Ty::Int(IntTy::I32))),
         Ty::Result(Box::new(Ty::Int(IntTy::I32)), Box::new(Ty::String)),
+        Ty::Map(Box::new(Ty::String), Box::new(Ty::Int(IntTy::I32))),
+        Ty::Set(Box::new(Ty::Int(IntTy::I32))),
     ];
     let known: Vec<&str> = receivers.iter().flat_map(builtins::members).collect();
     for lang in ["en", "fr"] {
@@ -172,6 +174,10 @@ fn the_method_reference_lists_exactly_the_built_in_methods() {
                 let Some((name, _)) = part.split_once('(') else {
                     continue;
                 };
+                // The constructors, called on the type.
+                if matches!(name, "Map.new" | "Set.new") {
+                    continue;
+                }
                 assert!(
                     known.contains(&name),
                     "{lang}/reference/methods.md documents `{name}`, which the compiler does not know"

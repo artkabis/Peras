@@ -154,6 +154,12 @@ pub enum Ty {
     Void,
     /// `Array<T>`
     Array(Box<Ty>),
+    /// `Map<K, V>`, in insertion order ([decision 0005]).
+    ///
+    /// [decision 0005]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0005-maps-and-sets.md
+    Map(Box<Ty>, Box<Ty>),
+    /// `Set<T>`, in insertion order.
+    Set(Box<Ty>),
     /// `Option<T>`
     Option(Box<Ty>),
     /// `Result<T, E>`: `Ok(T)` or `Err(E)`.
@@ -226,6 +232,8 @@ impl fmt::Display for Ty {
             Self::String => f.write_str("String"),
             Self::Void => f.write_str("void"),
             Self::Array(t) => write!(f, "Array<{t}>"),
+            Self::Map(k, v) => write!(f, "Map<{k}, {v}>"),
+            Self::Set(t) => write!(f, "Set<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
             Self::Struct(_, name) | Self::Enum(_, name) | Self::Param(_, name) => f.write_str(name),

@@ -201,3 +201,40 @@ The TypeScript declaration says so: `half(n: number): number | undefined`.
 > A complete set of methods on strings and arrays (`split`, `slice`, `map`, `filter`…) is planned: see the [roadmap](../reference/roadmap.md).
 
 Next: [memory](memory.md).
+
+## `Map<K, V>` and `Set<T>`
+
+A map keeps a value for each key; a set keeps keys alone. They are hashed with SipHash-1-3 under a key the loader draws for each instance of the module, so that keys chosen to collide cost no more than others ([decision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compiled</span>, in part
+
+```peras build
+export fn distinct_words(text: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  for (const word of text.split(" ")) {
+    counts.set(word.copy(), counts.get(word).unwrapOr(0) + 1);
+  }
+  let seen: Set<i64> = Set.new();
+  seen.add(42);
+  if (seen.has(42) && !counts.has("")) {
+    return counts.size;
+  }
+  return -1;
+}
+```
+
+A map is made with `Map.new()`, its types written on its variable. `m.set(k, v)` takes its key, as `push` does: a string held elsewhere is given as `word.copy()`. `m.get(k)` lends its key and gives an `Option<V>`.
+
+| Method                    | Gives                                  |
+| ------------------------- | -------------------------------------- |
+| `m.set(k, v)`, `s.add(k)` | nothing; replaces the value of a key   |
+| `m.get(k)`                | `Some(value)`, or `None`               |
+| `m.has(k)`                | whether the key is there               |
+| `m.delete(k)`             | whether the key was there, now removed |
+| `m.clear()`               | nothing; removes every key             |
+| `m.size`                  | how many keys, an `i32`                |
+
+What is compiled today, and what is not yet:
+
+- Keys are integers, booleans or strings; any other key is refused ([E0240](../errors/E0240.md)).
+- Values are numbers or booleans. A map whose values are strings, arrays or structures is [checked](../reference/status.md), not compiled yet.
+- A map lives in a local or a parameter of a function that is not exported: not in a structure, an array or an option, and not across the boundary with JavaScript yet.
+- `for…of` over a map or a set comes with its iteration in insertion order.

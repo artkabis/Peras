@@ -86,6 +86,7 @@ const fn why(code: ErrorCode) -> &'static str {
         237 => "check-interface-as-type-why",
         238 => "check-arrow-why",
         239 => "check-template-why",
+        240 => "check-map-key-why",
         _ => "check-operator-why",
     }
 }
@@ -856,6 +857,24 @@ pub fn cannot_infer(span: Span, param: &str, name: &str, declared: Span) -> Diag
     )
 }
 
+/// `E0229`: nothing tells which type `param` of a built-in `name` stands for.
+pub fn cannot_infer_new(span: Span, param: &str, name: &str) -> Diagnostic {
+    diagnostic(
+        codes::CANNOT_INFER,
+        Message::new("check-cannot-infer")
+            .text("param", param)
+            .text("name", name),
+        vec![primary(
+            span,
+            Message::new("check-cannot-infer-label").text("param", param),
+        )],
+        Fix {
+            message: Message::new("check-cannot-infer-fix").text("param", param),
+            edits: Vec::new(),
+        },
+    )
+}
+
 /// `E0230`
 pub fn generic_export(span: Span, name: &str) -> Diagnostic {
     diagnostic(
@@ -1019,6 +1038,22 @@ pub fn template_value(span: Span, ty: &Ty) -> Diagnostic {
         )],
         Fix {
             message: Message::new("check-template-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0240`: a map's key or a set's element of a type that cannot be one yet.
+pub fn map_key(span: Span, ty: &Ty) -> Diagnostic {
+    diagnostic(
+        codes::MAP_KEY,
+        Message::new("check-map-key").text("type", ty.to_string()),
+        vec![primary(
+            span,
+            Message::new("check-map-key-label").text("type", ty.to_string()),
+        )],
+        Fix {
+            message: Message::new("check-map-key-fix"),
             edits: Vec::new(),
         },
     )

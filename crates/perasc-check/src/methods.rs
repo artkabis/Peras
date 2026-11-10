@@ -547,6 +547,61 @@ impl<'a> Checker<'a> {
         Some(self.call_method(at, id, &text, None))
     }
 
+    /// `Map.new()` or `Set.new()`: an empty collection, its types those the
+    /// context expects, `let seen: Map<String, i32> = Map.new()`. Only when
+    /// `Map` or `Set` names no binding of the program.
+    pub(crate) fn collection_new(
+        &mut self,
+        at: &CallSite<'_>,
+        base: ExprId,
+        name: &Ident,
+    ) -> Option<Ty> {
+        let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
+            return None;
+        };
+        let set = match self.name(symbol) {
+            "Map" => false,
+            "Set" => true,
+            _ => return None,
+        };
+        if self.scopes.lookup(symbol).is_some() {
+            return None;
+        }
+        let span = self.ast.expr(base).span.to(name.span);
+        let label = if set { "Set" } else { "Map" };
+        if self.name(name.symbol) != "new" {
+            let member = self.name(name.symbol).to_owned();
+            let ty = if set {
+                Ty::Set(Box::new(Ty::Error))
+            } else {
+                Ty::Map(Box::new(Ty::Error), Box::new(Ty::Error))
+            };
+            self.unknown_member(&ty, &member, name.span);
+            self.check_args(at.args, &[]);
+            return Some(Ty::Error);
+        }
+        self.check_args(at.args, &[]);
+        if !at.args.is_empty() {
+            self.report(errors::argument_count(
+                at.span,
+                "new",
+                0,
+                at.args.len(),
+                None,
+            ));
+        }
+        let ty = match at.expected {
+            Some(ty @ Ty::Map(..)) if !set => ty.clone(),
+            Some(ty @ Ty::Set(_)) if set => ty.clone(),
+            _ => {
+                let param = if set { "T" } else { "K" };
+                self.report(errors::cannot_infer_new(span, param, label));
+                return Some(Ty::Error);
+            }
+        };
+        Some(ty)
+    }
+
     /// `value.method(args)` for a method of the module, or of an interface
     /// when the value is of a type parameter.
     pub(crate) fn user_method(

@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0240-map-key.peras
+---
+diagnostics:
+  error[E0240] check-map-key { type: "f64" }
+    primary 3:17-3:20: check-map-key-label { type: "f64" }
+    cause: check-map-key-why
+    fix: check-map-key-fix

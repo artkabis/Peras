@@ -76,6 +76,16 @@ export fn counts(text: String): Map<String, i32> {
 - **A multiplicative hash by default.** It is 40 % faster, but such hashes have had collisions that no seed prevents; keys come from the network as often as from the program. A faster hash for keys the compiler proves come from the program itself may follow, measured.
 - **FxHash, and any hash without a key.** Measured: a hundred times slower on ordinary identifiers.
 
+## Status
+
+**The first part is done.** `Map<K, V>` and `Set<T>` are compiled for integer, boolean and string keys and for number and boolean values:
+
+- The table is the runtime's, in WebAssembly, written once for both allocators: a 32-byte header, entries of 24 bytes in insertion order, and an index of slots that holds 0 for empty, −1 for a removed entry, `e + 1` otherwise. SipHash-1-3 is checked against the vector of its paper.
+- The loader draws the 128-bit key with `crypto.getRandomValues` for a module that has maps, and only then.
+- Tests run the same random operations three ways, against Rust's `HashMap` and `HashSet`: compiled to WebAssembly on the debug allocator, in the IR interpreter, and in Chromium against JavaScript's `Map` and `Set` on both allocators, with no block left alive. Taking away the store of a removed entry, or widening a `bool` key wrongly, makes them fail.
+
+Still to come, in this order: `for…of` in insertion order, values that own buffers, maps in structures, then the copy across the JavaScript boundary.
+
 ## Consequences
 
 - The collections row of the [roadmap](../reference/roadmap.md#phase-3-a-standard-library) links here; `Map` and `Set` come next, for integer, boolean and string keys, then `Deque`.

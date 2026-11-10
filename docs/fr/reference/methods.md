@@ -156,6 +156,19 @@ export fn port(text: String): i32 {
 
 Sur un `Array<String>`, `join(separator)` donne ses chaînes avec `separator` entre chaque paire. <span class="status compiled">compilé</span>
 
+## `Map<K, V>` et `Set<T>`
+
+| Membre                   | Donne                         | Statut                                       |
+| ------------------------ | ----------------------------- | -------------------------------------------- |
+| `Map.new()`, `Set.new()` | une table ou un ensemble vide | <span class="status compiled">compilé</span> |
+| `set(k, v)`, `add(k)`    | rien ; la clé est prise       | <span class="status compiled">compilé</span> |
+| `get(k)`                 | `Option<V>`                   | <span class="status compiled">compilé</span> |
+| `has(k)`, `delete(k)`    | `bool`                        | <span class="status compiled">compilé</span> |
+| `clear()`                | rien                          | <span class="status compiled">compilé</span> |
+| `size`                   | `i32`                         | <span class="status compiled">compilé</span> |
+
+Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E0240.md)) ; les valeurs, pour l’instant, des nombres ou des booléens. Voir [le guide](../guide/collections.md#mapk-v-et-sett).
+
 ## `Option<T>`
 
 | Méthode                | Donne                      | État                                         |

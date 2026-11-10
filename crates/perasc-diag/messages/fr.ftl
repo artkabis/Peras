@@ -633,6 +633,10 @@ check-template = un gabarit ne sait pas encore écrire un `{ $type }` en texte
 check-template-label = un `{ $type }`
 check-template-why = Un gabarit écrit chacune de ses valeurs en texte : une chaîne telle quelle, un nombre ou un booléen comme l’écrit `toString()`, comme le fait JavaScript. Une structure, un tableau ou une option n’a pas encore de texte à elle : quels champs, dans quel ordre, c’est au programme de le dire.
 check-template-fix = mettez-y ses champs, une valeur chacun
+check-map-key = un `{ $type }` ne peut pas encore être une clé de table ni un élément d’ensemble
+check-map-key-label = une clé `{ $type }`
+check-map-key-why = Une table retrouve ses clés par leur hachage et leur égalité, écrits dans son runtime pour les entiers, les booléens et les chaînes. Une structure, une énumération ou un flottant demande une règle pour les deux : un flottant, parce que `NaN` n’est pas égal à lui-même et que `-0` est égal à `+0`.
+check-map-key-fix = utilisez un entier, un booléen ou une chaîne comme clé : un identifiant, ou une clé construite en texte
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
@@ -659,6 +663,10 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [integer-type] les types entiers autres que `i32` et `i64`
     [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
+    [map-value] les tables dont les valeurs ne sont pas des nombres ou des booléens
+    [map-place] les tables et ensembles dans des structures, des tableaux ou des options
+    [map-export] les tables et ensembles dans la signature d’une fonction exportée : JavaScript les voit au travers des fonctions du module
+    [map-iteration] `for…of` sur une table ou un ensemble
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé

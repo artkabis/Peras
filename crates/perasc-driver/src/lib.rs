@@ -181,6 +181,11 @@ pub fn emit_direct_for(
         .iter()
         .copied()
         .chain(used.iter().map(|f| f.name()))
+        // The loader gives a map its hashing key.
+        .chain(
+            used.contains(&perasc_ir::RuntimeFn::MapNew)
+                .then_some("map_seed"),
+        )
         .collect();
     let allocator = perasc_runtime::prune(full, &keep).unwrap_or_else(|_| full.to_vec());
     let runtime = perasc_codegen_wasm::Runtime {
