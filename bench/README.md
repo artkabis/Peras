@@ -114,6 +114,22 @@ Ideas that go against what was done so far, to measure before keeping them:
 - **Floats as text in two paths.** A float with an integer value, the common case, can be written by the runtime's integer path; only the others need the host's `String()` (decision on floats as text, [methods](../docs/en/reference/methods.md)).
 - **Maps of two layouts.** Swiss tables for maps whose order cannot be seen, insertion order for the others ([decision 0005](../docs/en/decisions/0005-maps-and-sets.md)).
 
+## Maps and sets (`bench/maps`)
+
+`node scripts/bench-maps.mjs` runs [bench/maps/maps.peras](maps/maps.peras), compiled with the TLSF allocator, against the same work on JavaScript's `Map` and `Set` with number keys, in Node ([results](maps/RESULTS.md)). Each case is checked to give the same result first; CI runs the check.
+
+| Case                                | JavaScript | Peras      |        Speed-up |
+| ----------------------------------- | ---------- | ---------- | --------------: |
+| count 1 M words, `Map<String, i32>` | 235–262 ms | 200–208 ms | **1.13 – 1.31** |
+| 2 M integer keys set, read, deleted | 203–212 ms | 165–174 ms | **1.20 – 1.24** |
+| 2 M distinct integers, `Set<i32>`   | 109–112 ms | 104–110 ms |     1.02 – 1.06 |
+
+The first compiled maps were slower than JavaScript's: 0.68, 0.93 and 0.69. Two changes, each measured:
+
+- **SipHash in locals.** The runtime kept SipHash's state in globals, which the engine does not keep in registers: each round went through memory. Its rounds now work on locals, written out: integer keys go from 222 to 167 ms, the set from 150 to 112, words from 378 to 313.
+- **`m.set(word.copy(), …)` lends the word**, which the map copies only when the key is new: the copy made then released at each word already there is gone. Words go from 313 to 201 ms.
+- **Tried and dropped**: a cache of the entry the last lookup found, for the `get` then `set` of the same key. Words did not move (313 to 308 ms), and the comparison it adds to every lookup slowed integer keys to 191 ms and the set to 128.
+
 ## A/B benchmark (`scripts/bench-ab.mjs`)
 
 Two builds of Peras, compared on the kernels of `bench/browser` in one Chromium page, so that a change is decided on measures:

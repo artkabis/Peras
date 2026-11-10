@@ -11,3 +11,4 @@ bench/browser/parallel.d.ts
 website/.pages/
 website/dist/
 bench/prototypes/*/RESULTS.md
+bench/maps/RESULTS.md

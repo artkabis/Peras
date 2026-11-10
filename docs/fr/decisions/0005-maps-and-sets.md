@@ -87,6 +87,8 @@ export fn counts(text: String): Map<String, i32> {
 
 Les tests font des opérations aléatoires de trois façons, contre des tables de Rust ou des vecteurs dans l’ordre d’insertion : compilées en WebAssembly sur l’allocateur de débogage, dans l’interpréteur de l’IR, et dans Chromium contre `Map` et `Set` de JavaScript sur les deux allocateurs, sans bloc laissé vivant. Chaque étape a été cassée exprès pour montrer que les tests le voient : une entrée retirée non marquée, une clé `bool` mal élargie, une entrée retirée parcourue, une valeur non libérée au retrait, la mauvaise case lue, une table copiée comme un simple tampon.
 
+**La vitesse, mesurée une fois compilée** ([bench/maps](../../../bench/README.fr.md#tables-et-ensembles-benchmaps)), face à `Map` et `Set` de JavaScript avec des clés nombres, dans Node. Les premières tables compilées étaient plus lentes que celles de JavaScript (0,68 à 0,93 fois sa vitesse), en deçà des prototypes ci-dessus : l’état de SipHash vivait dans des globales, et `m.set(word.copy(), …)` copiait chaque mot puis libérait la copie quand la clé y était. Avec SipHash dans des locales et la clé prêtée, compter des mots va 1,13 à 1,31 fois la vitesse de JavaScript, des clés entières 1,20 à 1,24, un ensemble d’entiers 1,02 à 1,06. Les 2,2 à 3,2 des prototypes venaient d’une table intégrée au programme ; la table compilée est celle du runtime, appelée d’un module à l’autre.
+
 Pas fait : les clés structures, énumérations ou flottants, qui demandent une règle de hachage et d’égalité ; un `get` qui prête au lieu de copier, qui demande de prêter une valeur sortie d’une expression ; et les tables suisses pour les tables dont l’ordre ne se voit pas.
 
 ## Conséquences

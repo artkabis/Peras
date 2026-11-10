@@ -137,6 +137,8 @@ jobs:
         run: node scripts/bench-browser.mjs --check
       - name: Split across Web Workers, the kernels give what they give directly
         run: node scripts/bench-workers.mjs --check
+      - name: Maps and sets give what JavaScript's give
+        run: node scripts/bench-maps.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 
