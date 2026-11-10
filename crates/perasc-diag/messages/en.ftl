@@ -637,6 +637,19 @@ check-map-key = a `{ $type }` cannot be a map's key or a set's element yet
 check-map-key-label = a `{ $type }` key
 check-map-key-why = A map finds its keys by their hash and their equality, written in its runtime for integers, booleans and strings. A structure, an enumeration or a float needs a rule for both: a float, because `NaN` is not equal to itself and `-0` is equal to `+0`.
 check-map-key-fix = use an integer, a boolean or a string as the key: an identifier, or a key built as text
+check-parallel = this loop cannot run in parallel: { $reason ->
+    [shape] a parallel loop is written `parallel for (let i = start; i < end; i++)`
+    [outer] it assigns `{ $name }`, declared outside the loop
+    [index] it writes an element at another index than its counter's
+    [reads] it reads, at another index than its counter's, an array it writes
+    [calls] it calls a function
+    [heap] it makes, grows, moves or releases a string, an array or a map
+    [exits] it leaves the loop with `break` or `return`
+   *[other] its turns could see each other
+}
+check-parallel-label = turns that may run at the same time
+check-parallel-why = The turns of a parallel loop run on several threads at once, in any order. Each turn may read anything the loop does not change, and write only the elements at its own index, so that no turn sees another: the results are then those of the loop run in order, bit for bit.
+check-parallel-fix = keep in each turn only what reads the inputs and writes `xs[i]`; compute a sum or what needs memory in an ordinary loop after it
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

@@ -1012,6 +1012,43 @@ impl<'src> Parser<'src> {
             TokenKind::If => self.if_stmt(),
             TokenKind::While => self.while_stmt(),
             TokenKind::For => self.for_stmt(),
+            // `parallel for`: `parallel` is a word only before `for`.
+            TokenKind::Ident if self.at_word("parallel") && self.nth(1).kind == TokenKind::For => {
+                self.bump();
+                match self.for_stmt() {
+                    StmtKind::For {
+                        init,
+                        cond,
+                        update,
+                        body,
+                        ..
+                    } => StmtKind::For {
+                        parallel: true,
+                        init,
+                        cond,
+                        update,
+                        body,
+                    },
+                    StmtKind::ForOf {
+                        mutable,
+                        keyword,
+                        name,
+                        ty,
+                        iterable,
+                        body,
+                        ..
+                    } => StmtKind::ForOf {
+                        parallel: true,
+                        mutable,
+                        keyword,
+                        name,
+                        ty,
+                        iterable,
+                        body,
+                    },
+                    other => other,
+                }
+            }
             TokenKind::Break | TokenKind::Continue => self.jump_stmt(),
             TokenKind::Ident if self.at_word("var") && self.nth(1).kind == TokenKind::Ident => {
                 let token = self.peek();

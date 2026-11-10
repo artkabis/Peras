@@ -107,6 +107,9 @@ pub struct Function {
     pub name: String,
     /// Whether JavaScript can call it.
     pub exported: bool,
+    /// Whether it is the body of a `parallel for`, `(start, end, captures…)`,
+    /// which a thread may run on its own range of turns.
+    pub job: bool,
     /// Number of parameters: the first locals.
     pub param_count: u32,
     /// Parameters, then variables, each with its source name.
@@ -1329,6 +1332,8 @@ mod opt_tests;
 mod option_tests;
 #[cfg(test)]
 mod own_tests;
+#[cfg(test)]
+mod parallel_tests;
 #[cfg(test)]
 mod string_tests;
 #[cfg(test)]

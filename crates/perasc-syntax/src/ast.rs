@@ -446,8 +446,11 @@ pub enum StmtKind {
         /// The loop body.
         body: Box<Stmt>,
     },
-    /// `for (init; cond; update) body`
+    /// `for (init; cond; update) body`; `parallel for` when its turns may
+    /// run on several threads at once.
     For {
+        /// Written `parallel for`.
+        parallel: bool,
         /// Run once before the loop: `let i = 0` or an assignment.
         init: Option<Box<Stmt>>,
         /// Checked before each iteration; none means forever.
@@ -459,6 +462,8 @@ pub enum StmtKind {
     },
     /// `for (const item of items) body`
     ForOf {
+        /// Written `parallel for`, which only a counted loop can be.
+        parallel: bool,
         /// `let` (true) or `const` (false).
         mutable: bool,
         /// The `let` or `const` keyword.
@@ -972,6 +977,7 @@ impl Ast {
                 );
             }
             StmtKind::For {
+                parallel,
                 init,
                 cond,
                 update,
@@ -980,10 +986,12 @@ impl Ast {
                 let part =
                     |s: &Option<Box<Stmt>>| s.as_ref().map_or("_".to_owned(), |s| self.stmt(s));
                 let cond = cond.map_or("_".to_owned(), |c| self.sexpr(c));
-                let head = format!("(for {} {cond} {}", part(init), part(update));
+                let word = if *parallel { "parallel-for" } else { "for" };
+                let head = format!("({word} {} {cond} {}", part(init), part(update));
                 nested(out, head, &[body.as_ref()]);
             }
             StmtKind::ForOf {
+                parallel: _,
                 mutable,
                 keyword: _,
                 name,

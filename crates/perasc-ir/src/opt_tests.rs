@@ -255,6 +255,7 @@ fn variables_read_before_assignment_start_at_zero_again() {
     let function = Function {
         name: "f".to_owned(),
         exported: true,
+        job: false,
         param_count: 1,
         locals: vec![
             Local {

@@ -637,6 +637,19 @@ check-map-key = un `{ $type }` ne peut pas encore être une clé de table ni un 
 check-map-key-label = une clé `{ $type }`
 check-map-key-why = Une table retrouve ses clés par leur hachage et leur égalité, écrits dans son runtime pour les entiers, les booléens et les chaînes. Une structure, une énumération ou un flottant demande une règle pour les deux : un flottant, parce que `NaN` n’est pas égal à lui-même et que `-0` est égal à `+0`.
 check-map-key-fix = utilisez un entier, un booléen ou une chaîne comme clé : un identifiant, ou une clé construite en texte
+check-parallel = cette boucle ne peut pas tourner en parallèle : { $reason ->
+    [shape] une boucle parallèle s’écrit `parallel for (let i = début; i < fin; i++)`
+    [outer] elle affecte `{ $name }`, déclarée hors de la boucle
+    [index] elle écrit un élément à un autre indice que celui de son compteur
+    [reads] elle lit, à un autre indice que celui de son compteur, un tableau qu’elle écrit
+    [calls] elle appelle une fonction
+    [heap] elle crée, agrandit, déplace ou libère une chaîne, un tableau ou une table
+    [exits] elle sort de la boucle par `break` ou `return`
+   *[other] ses tours pourraient se voir
+}
+check-parallel-label = des tours qui peuvent tourner en même temps
+check-parallel-why = Les tours d’une boucle parallèle tournent sur plusieurs fils à la fois, dans n’importe quel ordre. Chaque tour peut lire tout ce que la boucle ne change pas, et n’écrire que les éléments à son propre indice, pour qu’aucun tour n’en voie un autre : les résultats sont alors ceux de la boucle exécutée dans l’ordre, bit pour bit.
+check-parallel-fix = ne gardez dans chaque tour que ce qui lit les entrées et écrit `xs[i]` ; calculez une somme ou ce qui demande de la mémoire dans une boucle ordinaire après
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

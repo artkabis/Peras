@@ -148,6 +148,7 @@ impl Parser<'_> {
         }
         let body = Box::new(self.loop_body("for"));
         StmtKind::For {
+            parallel: false,
             init,
             cond,
             update,
@@ -198,6 +199,7 @@ impl Parser<'_> {
         }
         let body = Box::new(self.loop_body("for"));
         StmtKind::ForOf {
+            parallel: false,
             mutable,
             keyword: keyword.span,
             name,

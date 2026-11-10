@@ -11,6 +11,7 @@ mod functional;
 mod heap;
 mod maps;
 mod matching;
+mod parallel;
 mod values;
 
 use std::collections::{BTreeSet, HashMap};
@@ -47,6 +48,9 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
         conventions: HashMap::new(),
         data: Vec::new(),
         diagnostics: Vec::new(),
+        current: String::new(),
+        jobs: Vec::new(),
+        job_base: 0,
     };
     // The functions of the module, in order, then the instances of the
     // generic ones: what each is, and its type arguments.
@@ -106,13 +110,16 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
             }
         }
     }
-    let functions = compiled
+    // The jobs of `parallel for` loops come after every other function.
+    lowering.job_base = u32::try_from(compiled.len()).unwrap_or(u32::MAX);
+    let mut functions: Vec<Function> = compiled
         .iter()
         .map(|(decl, args)| {
             lowering.args.clone_from(args);
             lowering.function(decl)
         })
         .collect();
+    functions.append(&mut lowering.jobs);
     if lowering.diagnostics.is_empty() {
         Ok(Module {
             functions,
@@ -128,6 +135,12 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
 struct Lowering<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
+    /// The name of the function being lowered, which its jobs carry.
+    current: String,
+    /// The jobs of the `parallel for` loops lowered so far.
+    jobs: Vec<Function>,
+    /// The id of the first job: the number of other functions.
+    job_base: u32,
     /// The functions that are not generic, by name.
     fns: HashMap<Symbol, FnId>,
     /// The functions and methods that are not generic, by their index in
@@ -482,6 +495,7 @@ impl Lowering<'_> {
     }
 
     fn function(&mut self, decl: &FnDecl) -> Function {
+        self.current = self.function_name(decl);
         let mut state = FnState::new();
         let errors_before = self.diagnostics.len();
         let mut shapes = Vec::new();
@@ -542,6 +556,7 @@ impl Lowering<'_> {
         Function {
             name: self.function_name(decl),
             exported: decl.exported,
+            job: false,
             param_count,
             locals: state.locals,
             ret: results.first().copied().unwrap_or(Ty::Void),
@@ -604,6 +619,44 @@ impl Lowering<'_> {
         out
     }
 
+    /// `for (init; cond; update) body`, or `parallel for`.
+    fn for_loop(&mut self, state: &mut FnState, stmt: &AstStmt, out: &mut Vec<Stmt>) {
+        let StmtKind::For {
+            parallel,
+            init,
+            cond,
+            update,
+            body,
+        } = &stmt.kind
+        else {
+            return;
+        };
+        if *parallel {
+            let head = parallel::Head {
+                init: init.as_deref(),
+                cond: *cond,
+                update: update.as_deref(),
+            };
+            self.parallel_for(state, stmt.span, head, body, out);
+            return;
+        }
+        state.open();
+        if let Some(init) = init {
+            self.stmt(state, init, out);
+        }
+        let (cond, before) = match cond {
+            Some(c) => self.loop_condition(state, *c),
+            None => (None, Vec::new()),
+        };
+        let mut step = Vec::new();
+        if let Some(update) = update {
+            self.stmt(state, update, &mut step);
+        }
+        let lowered = self.loop_body(state, cond, before, body, step, &mut Vec::new());
+        out.extend(lowered);
+        state.close(out);
+    }
+
     fn stmt(&mut self, state: &mut FnState, stmt: &AstStmt, out: &mut Vec<Stmt>) {
         match &stmt.kind {
             StmtKind::Local(local) => self.local(state, local, out),
@@ -663,27 +716,9 @@ impl Lowering<'_> {
                     self.loop_body(state, cond, before, body, Vec::new(), &mut Vec::new());
                 out.extend(lowered);
             }
-            StmtKind::For {
-                init,
-                cond,
-                update,
-                body,
-            } => {
-                state.open();
-                if let Some(init) = init {
-                    self.stmt(state, init, out);
-                }
-                let (cond, before) = match cond {
-                    Some(c) => self.loop_condition(state, *c),
-                    None => (None, Vec::new()),
-                };
-                let mut step = Vec::new();
-                if let Some(update) = update {
-                    self.stmt(state, update, &mut step);
-                }
-                let lowered = self.loop_body(state, cond, before, body, step, &mut Vec::new());
-                out.extend(lowered);
-                state.close(out);
+            StmtKind::For { .. } => self.for_loop(state, stmt, out),
+            StmtKind::ForOf { parallel: true, .. } => {
+                self.refuse_shape(state, stmt.span);
             }
             StmtKind::ForOf {
                 name,

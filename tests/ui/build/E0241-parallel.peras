@@ -1,0 +1,6 @@
+// E0241: each turn of a parallel loop writes only the elements at its own index.
+export fn smooth(xs: inout Array<f64>): void {
+  parallel for (let i = 1; i < xs.length; i++) {
+    xs[i] = (xs[i - 1] + xs[i]) / 2.0;
+  }
+}

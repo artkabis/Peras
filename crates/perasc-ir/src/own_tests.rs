@@ -88,6 +88,7 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
     let f = Function {
         name: "f".to_owned(),
         exported: true,
+        job: false,
         param_count: 1,
         locals: all,
         ret,
@@ -98,6 +99,7 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
     let helper = |name: &str, param: Option<Ty>, ret: Ty, body: Vec<Stmt>| Function {
         name: name.to_owned(),
         exported: false,
+        job: false,
         param_count: u32::from(param.is_some()),
         locals: param.map(|ty| local("x", ty)).into_iter().collect(),
         ret,

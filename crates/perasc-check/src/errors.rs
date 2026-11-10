@@ -87,6 +87,7 @@ const fn why(code: ErrorCode) -> &'static str {
         238 => "check-arrow-why",
         239 => "check-template-why",
         240 => "check-map-key-why",
+        241 => "check-parallel-why",
         _ => "check-operator-why",
     }
 }

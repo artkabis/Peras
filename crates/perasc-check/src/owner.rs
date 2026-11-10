@@ -252,6 +252,7 @@ impl<'c, 'a> Owner<'c, 'a> {
             }
             StmtKind::While { cond, body } => self.loop_(Some(*cond), body, None, path),
             StmtKind::For {
+                parallel: _,
                 init,
                 cond,
                 update,
