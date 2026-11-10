@@ -92,4 +92,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short: English first, then French in 
 
 ## Licence
 
-To be decided (MIT, Apache-2.0, or both). The manifests use `MIT OR Apache-2.0` as a placeholder until then.
+Peras is free software under the [GNU Affero General Public License, version 3 or later](LICENSE), with the [Peras Runtime Exception](RUNTIME-EXCEPTION.md): the programs you compile with Peras are yours, under the terms you choose, closed ones included; Peras itself, modified or not, stays under the AGPL, as a service too. The code examples of the documentation and of `examples/` are under 0BSD. The memory leak analyzer and the VS Code extension are separate, proprietary tools. Why: [decision 0006](docs/en/decisions/0006-licensing.md).
+
+Copyright © 2026 Artkabis and the Peras contributors.

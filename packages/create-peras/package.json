@@ -3,6 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "description": "Scaffolds a new Peras project: `pnpm create peras`. Arrives with the integration milestone.",
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module"
 }
