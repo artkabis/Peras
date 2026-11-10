@@ -36,6 +36,7 @@ export const sections: Section[] = [
       "reference/types",
       "reference/operators",
       "reference/methods",
+      "reference/browser",
       "reference/keywords",
       "reference/cli",
       "reference/roadmap",
@@ -60,6 +61,7 @@ export const sections: Section[] = [
       "decisions/0006-licensing",
       "decisions/0007-threads-over-shared-memory",
       "decisions/0008-managed-mode",
+      "decisions/0009-browser-and-resources",
     ],
   },
 ];

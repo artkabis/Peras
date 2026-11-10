@@ -72,6 +72,8 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0236](E0236.md) | Méthode qui ne correspond pas à son interface                                     | noms et types      |
 | [E0237](E0237.md) | Interface utilisée comme un type                                                  | noms et types      |
 | [E0238](E0238.md) | Fonction fléchée là où aucune ne peut aller                                       | noms et types      |
+| [E0246](E0246.md) | Une propriété qui ne peut qu’être lue                                             | noms et types      |
+| [E0245](E0245.md) | Une ressource sans propriétaire                                                   | noms et types      |
 | [E0244](E0244.md) | Un import impossible                                                              | noms et types      |
 | [E0243](E0243.md) | Ce que seul un module owned possède                                               | noms et types      |
 | [E0242](E0242.md) | Ce que seul un module managed possède                                             | noms et types      |

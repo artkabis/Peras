@@ -41,11 +41,11 @@ average([1, 2, 3, 4]); // 2.5, computed in WebAssembly
 
 ## Where it fits, and where it does not
 
-| Fits                                                         | Does not fit yet                                                         |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| a function or a module of computation called from TypeScript | a whole application: the browser's APIs are not typed in Peras yet       |
-| data that is large, numeric, or processed many times         | code that relies on npm libraries: Peras cannot import them yet          |
-| a team with one or two people willing to learn strict rules  | a team that needs the tooling of TypeScript today: no editor support yet |
+| Fits                                                         | Does not fit yet                                                                          |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| a function or a module of computation called from TypeScript | a whole application: only a [subset of the browser](../reference/browser.md) is typed yet |
+| data that is large, numeric, or processed many times         | code that relies on npm libraries: Peras cannot import them yet                           |
+| a team with one or two people willing to learn strict rules  | a team that needs the tooling of TypeScript today: no editor support yet                  |
 
 ## Maturity, stated plainly
 

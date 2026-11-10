@@ -127,10 +127,50 @@ import { report } from "./app.apeiron";
 document.body.textContent = await report(10);
 ```
 
+## The browser
+
+A managed module uses the browser directly: `document`, elements, events, a canvas, timers, `fetch` and `storage`, each typed ([browser reference](../reference/browser.md), [decision 0009](../decisions/0009-browser-and-resources.md)). Where the DOM gives `null`, Peras gives `None`, so a missing element is a case the compiler makes you handle:
+
+```apeiron build
+export fn greet(name: String): void {
+  match (document.getElementById("greeting")) {
+    Some(el) => {
+      el.textContent = `Hello, ${name}`;
+    }
+    None => log("no #greeting in the page"),
+  }
+}
+```
+
+An event handler is an arrow function, usually calling a function of the module: `button.on("click", (e) => clicked(e))`.
+
+## Resources
+
+A listener, a timer and a group are **resources**: each belongs to one variable, and the compiler releases it when that variable goes out of scope, however the block ends. A listener is removed, a timer cleared, a group releases everything added to it. Nothing keeps listening or ticking after its owner is gone, which is how most interfaces leak.
+
+```apeiron build
+fn tick(): void {
+  log("tick");
+}
+
+export fn start(root: Element): Group {
+  let group = Group.new();
+  const timer = setInterval(1000, () => tick());
+  group.add(timer);
+  const listener = root.on("click", (e) => e.stopPropagation());
+  group.add(listener);
+  return group;
+}
+```
+
+`start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
+
+In debug, the default of `perasc build` and Vite's dev server, a resource collected without being released is reported in the console with the file and line that made it.
+
 ## Not yet
 
-- **The browser, typed**: the DOM, events, `fetch`, timers and storage, with their types, come in the next step. Until then, a managed module receives and returns values, and TypeScript code calls the browser.
-- **Resources**: listeners and timers owned and released, with a detector of leaks in debug.
-- **Functions as values**, outside the arrow functions given to array methods.
+- **More of the browser**: forms, `requestAnimationFrame`, WebSockets and workers, added as programs need them.
+- **Arrays of resources**, and a request as a resource cancelled with its owner.
+- **Functions as values**, outside the arrow functions given to array methods and to `on`, `setTimeout` and `setInterval`; arrow functions with statements.
 - **Structures and enumerations across an import.**
 - **Options of options**, refused with [E0900](../errors/E0900.md): in JavaScript, `Some(None)` and `None` are both `undefined`.

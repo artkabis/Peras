@@ -127,10 +127,50 @@ import { report } from "./app.apeiron";
 document.body.textContent = await report(10);
 ```
 
+## Le navigateur
+
+Un module managed utilise le navigateur directement : `document`, les éléments, les évènements, un canvas, les minuteurs, `fetch` et `storage`, chacun typé ([référence du navigateur](../reference/browser.md), [décision 0009](../decisions/0009-browser-and-resources.md)). Là où le DOM donne `null`, Peras donne `None` : un élément absent est donc un cas que le compilateur vous fait traiter.
+
+```apeiron build
+export fn greet(name: String): void {
+  match (document.getElementById("greeting")) {
+    Some(el) => {
+      el.textContent = `Bonjour, ${name}`;
+    }
+    None => log("pas de #greeting dans la page"),
+  }
+}
+```
+
+Un gestionnaire d’évènement est une fonction fléchée, qui appelle en général une fonction du module : `button.on("click", (e) => clicked(e))`.
+
+## Les ressources
+
+Un écouteur, un minuteur et un groupe sont des **ressources** : chacun appartient à une variable, et le compilateur le libère quand cette variable sort de sa portée, quelle que soit la façon dont le bloc se termine. Un écouteur est retiré, un minuteur arrêté, un groupe libère tout ce qu’on lui a ajouté. Rien ne continue d’écouter ou de battre une fois son propriétaire parti, ce qui est la façon dont fuient la plupart des interfaces.
+
+```apeiron build
+fn tick(): void {
+  log("tick");
+}
+
+export fn start(root: Element): Group {
+  let group = Group.new();
+  const timer = setInterval(1000, () => tick());
+  group.add(timer);
+  const listener = root.on("click", (e) => e.stopPropagation());
+  group.add(listener);
+  return group;
+}
+```
+
+`start` donne son groupe à son appelant, qui le libère quand la vue disparaît : `group.release()` en TypeScript, ou `using group = start(root)`. Une ressource peut être donnée une fois : rendue, ajoutée à un groupe, ou libérée par `release()`. Le compilateur refuse une ressource que rien ne garde, utilisée après avoir été donnée, ou gardée par un tableau ou une fonction fléchée, là où rien ne la libérerait ([E0245](../errors/E0245.md)).
+
+En debug, le défaut de `perasc build` et du serveur de développement de Vite, une ressource ramassée sans avoir été libérée est signalée dans la console avec le fichier et la ligne qui l’ont créée.
+
 ## Pas encore
 
-- **Le navigateur, typé** : le DOM, les évènements, `fetch`, les minuteurs et le stockage, avec leurs types, viennent à l’étape suivante. D’ici là, un module managed reçoit et rend des valeurs, et le code TypeScript appelle le navigateur.
-- **Les ressources** : écouteurs et minuteurs possédés et libérés, avec un détecteur de fuites en debug.
-- **Les fonctions comme valeurs**, hors des fonctions fléchées données aux méthodes des tableaux.
+- **Davantage du navigateur** : les formulaires, `requestAnimationFrame`, les WebSockets et les workers, ajoutés quand des programmes en ont besoin.
+- **Les tableaux de ressources**, et une requête comme ressource annulée avec son propriétaire.
+- **Les fonctions comme valeurs**, hors des fonctions fléchées données aux méthodes des tableaux et à `on`, `setTimeout` et `setInterval` ; les fonctions fléchées à instructions.
 - **Les structures et les énumérations à travers un import.**
 - **Les options d’options**, refusées par [E0900](../errors/E0900.md) : en JavaScript, `Some(None)` et `None` valent tous deux `undefined`.
