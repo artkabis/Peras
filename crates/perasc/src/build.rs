@@ -19,7 +19,8 @@ use perasc_diag::json::{self, FileReport, Report};
 use perasc_diag::render::{RenderOptions, render};
 use perasc_diag::source::SourceFile;
 use perasc_driver::{
-    Checked, DirectOptions, ReadError, ToolError, build_direct, build_rust, crate_name, read_source,
+    Checked, DirectOptions, ReadError, ToolError, build_direct, build_managed, build_rust,
+    crate_name, read_source,
 };
 
 use crate::{COMPILER_BUG, ERRORS_FOUND, SUCCESS, USAGE_OR_IO, error_line, to_i64};
@@ -49,6 +50,7 @@ pub fn build(
     backend: Backend,
     options: DirectOptions,
     out_dir: &Path,
+    keep_imports: bool,
     localizer: &Localizer,
     style: Style,
     out: &mut dyn Write,
@@ -65,7 +67,16 @@ pub fn build(
         .unwrap_or("module")
         .to_owned();
     let started = Instant::now();
+    let managed =
+        perasc_driver::Mode::from_path(Path::new(path)) == Some(perasc_driver::Mode::Managed);
     let result = match backend {
+        _ if managed => {
+            let how = Managed {
+                options,
+                keep_imports,
+            };
+            managed_module(path, &text, &stem, out_dir, how, localizer)
+        }
         Backend::Direct => direct(&text, &stem, out_dir, options, localizer),
         Backend::Rust => {
             let name = crate_name(&stem);
@@ -177,6 +188,60 @@ fn read(
             Err(USAGE_OR_IO)
         }
     })
+}
+
+/// How a managed module is built.
+#[derive(Debug, Clone, Copy)]
+struct Managed {
+    /// How the owned modules it imports are built.
+    options: DirectOptions,
+    /// Its imports of `.peras` files are kept for a bundler, and those files
+    /// are not built.
+    keep_imports: bool,
+}
+
+/// A managed module: writes `<stem>.js` and `<stem>.d.ts`, and builds each
+/// owned module it imports with the direct backend, at the same relative
+/// path, so that its imports of `./x.peras` find `./x.js`.
+fn managed_module(
+    path: &str,
+    text: &str,
+    stem: &str,
+    out_dir: &Path,
+    Managed {
+        options,
+        keep_imports,
+    }: Managed,
+    localizer: &Localizer,
+) -> Result<PathBuf, ToolError> {
+    let output = build_managed(Path::new(path), text, !keep_imports, localizer)?;
+    let built = if keep_imports {
+        &[][..]
+    } else {
+        &output.imports[..]
+    };
+    for (from, file) in built {
+        let relative = from.trim_start_matches("./");
+        let target = out_dir.join(relative);
+        let dir = target.parent().unwrap_or(out_dir).to_path_buf();
+        let stem = target
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("module")
+            .to_owned();
+        let source = read_source(file).map_err(|_| {
+            ToolError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                file.display().to_string(),
+            ))
+        })?;
+        direct(&source, &stem, &dir, options, localizer)?;
+    }
+    fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
+    let js = out_dir.join(format!("{stem}.js"));
+    fs::write(&js, &output.js).map_err(ToolError::Io)?;
+    fs::write(out_dir.join(format!("{stem}.d.ts")), &output.dts).map_err(ToolError::Io)?;
+    Ok(js)
 }
 
 /// The direct backend: writes `<stem>.wasm`, `<stem>.js` and `<stem>.d.ts`.

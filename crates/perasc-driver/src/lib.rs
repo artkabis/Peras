@@ -9,7 +9,7 @@ use std::process::Command;
 
 use perasc_diag::Diagnostic;
 use perasc_diag::i18n::Localizer;
-use perasc_syntax::Mode;
+pub use perasc_syntax::Mode;
 pub use perasc_syntax::source_too_large;
 
 /// The compiler version, taken from the workspace manifest.
@@ -55,6 +55,119 @@ pub fn check(source: &str) -> Checked {
         return Checked::capped(parsed.diagnostics);
     }
     Checked::capped(perasc_check::check(&parsed.ast, source))
+}
+
+/// Checks a file in the mode its extension gives: a managed module against
+/// the owned modules it imports, read from beside it.
+#[must_use]
+pub fn check_file(path: &Path, source: &str) -> Checked {
+    if Mode::from_path(path) != Some(Mode::Managed) {
+        return check(source);
+    }
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return Checked::capped(parsed.diagnostics);
+    }
+    let context = managed_context(path, &parsed.ast);
+    Checked::capped(perasc_check::analyze_with(&parsed.ast, source, &context).diagnostics)
+}
+
+/// The path an `import` of the module at `path` names, when it is an owned
+/// module in the same folder or below it: `./x.peras` or `./lib/x.peras`,
+/// never `../` nor an absolute path.
+#[must_use]
+pub fn import_path(path: &Path, from: &str) -> Option<std::path::PathBuf> {
+    let relative = from.strip_prefix("./")?;
+    let inside = Path::new(relative)
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !inside || Mode::from_path(Path::new(relative)) != Some(Mode::Owned) {
+        return None;
+    }
+    Some(
+        path.parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(relative),
+    )
+}
+
+/// What a managed module is checked against: the exported functions of each
+/// owned module it imports, read and checked; `None` for one that cannot be.
+fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
+    let imports = ast
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            perasc_syntax::ast::ItemKind::Import(decl) => Some(decl.from.clone()),
+            _ => None,
+        })
+        .map(|from| {
+            let functions = import_path(path, &from)
+                .and_then(|file| read_source(&file).ok())
+                .and_then(|text| perasc_check::exports_of(&text));
+            perasc_check::ImportedModule { from, functions }
+        })
+        .collect();
+    perasc_check::Context {
+        managed: true,
+        imports,
+    }
+}
+
+/// What a managed module compiles to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedOutput {
+    /// The ES module.
+    pub js: String,
+    /// TypeScript declarations of its exports.
+    pub dts: String,
+    /// The owned modules it imports, as written, with their paths.
+    pub imports: Vec<(String, std::path::PathBuf)>,
+}
+
+/// Checks a managed module and compiles it to JavaScript. With
+/// `peras_imports_as_js`, its imports of `./x.peras` name `./x.js`, the
+/// loader [`build_direct`] writes.
+///
+/// # Errors
+///
+/// The errors of the first stage that has any: syntax, names and types, or
+/// what JavaScript generation does not support yet (`E0900`).
+pub fn build_managed(
+    path: &Path,
+    source: &str,
+    peras_imports_as_js: bool,
+    localizer: &Localizer,
+) -> Result<ManagedOutput, ToolError> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return Err(ToolError::Diagnostics(Checked::capped(parsed.diagnostics)));
+    }
+    let context = managed_context(path, &parsed.ast);
+    let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
+    if !analysis.diagnostics.is_empty() {
+        return Err(ToolError::Diagnostics(Checked::capped(
+            analysis.diagnostics,
+        )));
+    }
+    let bounds = localizer.message(
+        &perasc_diag::Message::new("runtime-index")
+            .text("index", "{index}")
+            .text("length", "{length}"),
+    );
+    let options = perasc_codegen_js::Options {
+        peras_imports_as_js,
+        bounds,
+    };
+    let js = perasc_codegen_js::generate(&parsed.ast, &analysis, &options)
+        .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;
+    let dts = perasc_codegen_js::declarations(&parsed.ast, &analysis);
+    let imports = context
+        .imports
+        .into_iter()
+        .filter_map(|m| Some((m.from.clone(), import_path(path, &m.from)?)))
+        .collect();
+    Ok(ManagedOutput { js, dts, imports })
 }
 
 /// Checks a source and lowers it to the IR, verified, or returns its errors.

@@ -160,46 +160,50 @@ export function firstError(report: Report): { summary: string; loc: Location | u
   return { summary: `${String(report.errorCount)} error(s)`, loc: undefined };
 }
 
-/** Compiles one `.peras` file with `perasc build`, the direct backend. */
-export async function compile(file: string, options: PerasOptions = {}): Promise<Compiled> {
+/**
+ * Runs `perasc build` on `file` into `out`, with `extra` arguments; throws a
+ * `PerasError` when the source has errors or `perasc` fails.
+ */
+async function perascBuild(
+  file: string,
+  out: string,
+  extra: string[],
+  options: PerasOptions,
+): Promise<void> {
   const perasc = options.perasc ?? process.env.PERASC ?? "perasc";
   const lang = options.lang === undefined ? [] : ["--lang", options.lang];
+  const built = await run(perasc, ["build", file, "--out", out, "--json", ...lang, ...extra]);
+  if (built.code === 1) {
+    const { summary, loc } = firstError(JSON.parse(built.stdout) as Report);
+    // The same errors, rendered as in a terminal, for the overlay.
+    const rendered = await run(perasc, [
+      "build",
+      file,
+      "--out",
+      out,
+      "--color",
+      "never",
+      ...lang,
+      ...extra,
+    ]);
+    throw new PerasError(summary, loc, rendered.stderr.trimEnd());
+  }
+  if (built.code !== 0) {
+    const kind = built.code === 3 ? "a compiler bug" : "a failure";
+    throw new PerasError(
+      `vite-plugin-peras: \`perasc build\` stopped on ${kind}:\n${built.stderr}`,
+    );
+  }
+}
+
+/** Compiles one `.peras` file with `perasc build`, the direct backend. */
+export async function compile(file: string, options: PerasOptions = {}): Promise<Compiled> {
   const allocator = options.allocator === undefined ? [] : ["--allocator", options.allocator];
   const simd = options.simd === false ? ["--simd", "off"] : [];
   const threads = options.threads === true ? ["--threads", "on"] : [];
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
-    const built = await run(perasc, [
-      "build",
-      file,
-      "--out",
-      out,
-      "--json",
-      ...lang,
-      ...allocator,
-      ...simd,
-      ...threads,
-    ]);
-    if (built.code === 1) {
-      const { summary, loc } = firstError(JSON.parse(built.stdout) as Report);
-      // The same errors, rendered as in a terminal, for the overlay.
-      const rendered = await run(perasc, [
-        "build",
-        file,
-        "--out",
-        out,
-        "--color",
-        "never",
-        ...lang,
-      ]);
-      throw new PerasError(summary, loc, rendered.stderr.trimEnd());
-    }
-    if (built.code !== 0) {
-      const kind = built.code === 3 ? "a compiler bug" : "a failure";
-      throw new PerasError(
-        `vite-plugin-peras: \`perasc build\` stopped on ${kind}:\n${built.stderr}`,
-      );
-    }
+    await perascBuild(file, out, [...allocator, ...simd, ...threads], options);
     const stem = basename(file, OWNED_EXTENSION);
     const [wasm, loader, dts] = await Promise.all([
       readFile(join(out, `${stem}.wasm`)),
@@ -207,6 +211,38 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
       readFile(join(out, `${stem}.d.ts`), "utf8"),
     ]);
     return { wasm, ...splitLoader(loader), dts };
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+}
+
+/** A compiled `.apeiron` module. */
+export interface CompiledManaged {
+  /** The ES module; its imports of `.peras` files are kept, for Vite to load. */
+  js: string;
+  /** TypeScript declarations of its exports. */
+  dts: string;
+  /** The `.peras` files it imports, as written: `./stats.peras`. */
+  imports: string[];
+}
+
+/** Compiles one `.apeiron` file to JavaScript with `perasc build`. */
+export async function compileManaged(
+  file: string,
+  options: PerasOptions = {},
+): Promise<CompiledManaged> {
+  const out = await mkdtemp(join(tmpdir(), "peras-"));
+  try {
+    await perascBuild(file, out, ["--imports", "source"], options);
+    const stem = basename(file, MANAGED_EXTENSION);
+    const [js, dts] = await Promise.all([
+      readFile(join(out, `${stem}.js`), "utf8"),
+      readFile(join(out, `${stem}.d.ts`), "utf8"),
+    ]);
+    const imports = [...js.matchAll(/^import \{[^}]*\} from "([^"]+\.peras)";$/gm)].map(
+      (m) => m[1] ?? "",
+    );
+    return { js, dts, imports };
   } finally {
     await rm(out, { recursive: true, force: true });
   }
@@ -246,20 +282,24 @@ const { instance: $instance } = ${threads ? "false" : '$response.headers.get("co
   return `${compiled.imports}${load}\n${compiled.exports}`;
 }
 
-/** Writes `name.d.peras.ts` next to `name.peras`, only when it changes. */
+/**
+ * Writes `name.d.peras.ts` next to `name.peras`, or `name.d.apeiron.ts` next
+ * to `name.apeiron`, only when it changes.
+ */
 async function writeDeclarations(file: string, dts: string): Promise<void> {
-  const target = join(dirname(file), `${basename(file, OWNED_EXTENSION)}.d.peras.ts`);
-  const text = dts.replace(
-    "// Generated by perasc.",
-    "// Generated by vite-plugin-peras from the .peras file. Do not edit.",
-  );
+  const extension = file.endsWith(MANAGED_EXTENSION) ? MANAGED_EXTENSION : OWNED_EXTENSION;
+  const target = join(dirname(file), `${basename(file, extension)}.d${extension}.ts`);
+  const header = `// Generated by vite-plugin-peras from the ${extension} file. Do not edit.`;
+  const text = dts.startsWith("// Generated by perasc.")
+    ? dts.replace("// Generated by perasc.", header)
+    : `${header}\n${dts}`;
   const current = await readFile(target, "utf8").catch(() => null);
   if (current !== text) await writeFile(target, text);
 }
 
 /**
  * Compiles imported `.peras` modules to WebAssembly with the direct backend of
- * `perasc`; no Rust toolchain is needed. An error in the source is shown in the
+ * `perasc`, and `.apeiron` modules to JavaScript; no Rust toolchain is needed. An error in the source is shown in the
  * overlay of the dev server and fails `vite build`. The dev server links the
  * debug allocator, `vite build` the TLSF one.
  */
@@ -284,11 +324,15 @@ export default function peras(options: PerasOptions = {}): Plugin {
       const mode = modeOf(id);
       if (mode === null) return null;
       const file = pathOf(id);
-      if (mode === "managed") {
-        this.error(`vite-plugin-peras: managed modules (.apeiron) are not compiled yet (${file}).`);
-      }
       let compiled: Compiled;
       try {
+        if (mode === "managed") {
+          const managed = await compileManaged(file, options);
+          // Its checks read the signatures of the modules it imports.
+          for (const from of managed.imports) this.addWatchFile(join(dirname(file), from));
+          if (options.dts ?? true) await writeDeclarations(file, managed.dts);
+          return managed.js;
+        }
         compiled = await compile(file, {
           ...options,
           allocator: options.allocator ?? (building ? "tlsf" : "debug"),

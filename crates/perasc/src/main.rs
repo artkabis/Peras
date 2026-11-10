@@ -17,7 +17,7 @@ use perasc_diag::messages::Language;
 use perasc_diag::render::{RenderOptions, colon, render};
 use perasc_diag::source::SourceFile;
 use perasc_diag::{Message, codes};
-use perasc_driver::{MAX_ERRORS_PER_FILE, ReadError, VERSION, check, read_source};
+use perasc_driver::{MAX_ERRORS_PER_FILE, ReadError, VERSION, check_file, read_source};
 
 const SUCCESS: u8 = 0;
 const ERRORS_FOUND: u8 = 1;
@@ -49,6 +49,9 @@ struct Options {
     backend: build::Backend,
     direct: perasc_driver::DirectOptions,
     out: Option<String>,
+    /// `--imports source`: a managed module's imports of `.peras` files are
+    /// kept for a bundler, and those files are not built.
+    keep_imports: bool,
 }
 
 /// A command-line mistake, as a message to show.
@@ -68,6 +71,9 @@ const ALLOCATORS: [(&str, perasc_driver::Allocator); 2] = [
 
 /// The values of `--simd` and `--threads`.
 const SIMD: [(&str, bool); 2] = [("on", true), ("off", false)];
+
+/// The values of `--imports`.
+const IMPORTS: [(&str, bool); 2] = [("built", false), ("source", true)];
 
 /// The values of `--color`.
 const COLORS: [(&str, Color); 3] = [
@@ -102,6 +108,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         backend: build::Backend::Direct,
         direct: perasc_driver::DirectOptions::default(),
         out: None,
+        keep_imports: false,
     };
     let mut positional = Vec::new();
     let mut iter = args.iter();
@@ -144,6 +151,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
                 options.direct.threads = pick("--threads", value("--threads")?, &SIMD)?;
             }
             "--color" => options.color = pick("--color", value("--color")?, &COLORS)?,
+            "--imports" => options.keep_imports = pick("--imports", value("--imports")?, &IMPORTS)?,
             other if other.starts_with('-') && other.len() > 1 => {
                 return Err(Message::new("cli-unknown-argument").text("argument", other));
             }
@@ -240,6 +248,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
                 options.backend,
                 options.direct,
                 &out_dir,
+                options.keep_imports,
                 &localizer,
                 build::Style {
                     color,
@@ -289,7 +298,7 @@ fn check_files(
     for path in files {
         let (text, checked) = match read_source(Path::new(path)) {
             Ok(text) => {
-                let checked = check(&text);
+                let checked = check_file(Path::new(path), &text);
                 (text, checked)
             }
             Err(ReadError::TooLarge(len)) => (

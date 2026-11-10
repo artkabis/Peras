@@ -1,0 +1,17 @@
+// An owned module, imported by `app.apeiron`.
+
+export fn mean(xs: Array<f64>): f64 {
+  return xs.reduce((a, x) => a + x, 0.0) / xs.length.toF64();
+}
+
+export fn histogram(xs: Array<f64>, buckets: i32): Array<i32> {
+  let out: Array<i32> = [];
+  for (let i = 0; i < buckets; i++) {
+    out.push(0);
+  }
+  for (const x of xs) {
+    const k = (x * buckets.toF64()).toI32().clamp(0, buckets - 1);
+    out[k] += 1;
+  }
+  return out;
+}
