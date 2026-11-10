@@ -12,6 +12,7 @@ export const sections: Section[] = [
   {
     title: { en: "Guide", fr: "Guide" },
     pages: [
+      "guide/overview",
       "guide/introduction",
       "guide/getting-started",
       "guide/basics",
@@ -78,6 +79,12 @@ export interface Words {
   copy: string;
   copied: string;
   compiled: string;
+  /** The label of an `apeiron build` block. */
+  compiledJs: string;
+  /** The label of the fix on an error's page. */
+  fixed: string;
+  /** How to use the search box. */
+  searchHelp: string;
   checked: string;
   planned: string;
   error: string;
@@ -99,6 +106,9 @@ export const words: Record<Lang, Words> = {
     copy: "Copy",
     copied: "Copied",
     compiled: "compiled to WebAssembly",
+    compiledJs: "compiled to JavaScript",
+    fixed: "fixed: accepted",
+    searchHelp: "↑ ↓ to move, Enter to open, Esc to close",
     checked: "checked, not compiled yet",
     planned: "planned: not in the language yet",
     error: "refused with",
@@ -117,6 +127,9 @@ export const words: Record<Lang, Words> = {
     copy: "Copier",
     copied: "Copié",
     compiled: "compilé en WebAssembly",
+    compiledJs: "compilé en JavaScript",
+    fixed: "corrigé : accepté",
+    searchHelp: "↑ ↓ pour choisir, Entrée pour ouvrir, Échap pour fermer",
     checked: "vérifié, pas encore compilé",
     planned: "prévu : pas encore dans le langage",
     error: "refusé avec",

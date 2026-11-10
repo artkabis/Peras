@@ -20,6 +20,8 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 
 ## Documentation
 
+Le site, avec recherche, en français et en anglais : **<https://artkabis.github.io/Peras/>**, construit depuis `docs/` à chaque push sur `main`. Pour une première décision : [Peras pour les décideurs](docs/fr/guide/overview.md).
+
 - [Guide](docs/fr/guide/introduction.md), du premier programme à l’échange avec JavaScript
 - [Référence](docs/fr/reference/status.md) : état, types, opérateurs, méthodes, mots-clés, CLI, [feuille de route](docs/fr/reference/roadmap.md)
 - [Codes d’erreur](docs/fr/errors/index.md), chacun avec sa cause et sa correction

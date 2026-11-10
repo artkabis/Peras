@@ -20,6 +20,8 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 
 ## Documentation
 
+The site, with search, in English and French: **<https://artkabis.github.io/Peras/>**, built from `docs/` on every push to `main`. For a first decision: [Peras for decision-makers](docs/en/guide/overview.md).
+
 - [Guide](docs/en/guide/introduction.md), from the first program to JavaScript interop
 - [Reference](docs/en/reference/status.md): status, types, operators, methods, keywords, CLI, [roadmap](docs/en/reference/roadmap.md)
 - [Error codes](docs/en/errors/index.md), each with its cause and fix
