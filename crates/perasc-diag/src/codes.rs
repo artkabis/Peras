@@ -154,6 +154,10 @@ pub const MANAGED_ONLY: ErrorCode = ErrorCode::new(242);
 pub const OWNED_ONLY: ErrorCode = ErrorCode::new(243);
 /// An `import` that names a missing module, function, or signature.
 pub const IMPORT: ErrorCode = ErrorCode::new(244);
+/// A resource kept, given away or used as its owner does not allow.
+pub const RESOURCE: ErrorCode = ErrorCode::new(245);
+/// A property of the browser that can only be read, assigned.
+pub const READ_ONLY: ErrorCode = ErrorCode::new(246);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -283,6 +287,8 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(MANAGED_ONLY, "check-managed-only", "E0242"),
     active!(OWNED_ONLY, "check-owned-only", "E0243"),
     active!(IMPORT, "check-import", "E0244"),
+    active!(RESOURCE, "check-resource", "E0245"),
+    active!(READ_ONLY, "check-read-only", "E0246"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

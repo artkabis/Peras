@@ -1,0 +1,52 @@
+// The browser, typed, and resources with one owner each.
+let clicks = 0;
+
+fn clicked(e: Event): void {
+  clicks += 1;
+  e.preventDefault();
+}
+
+fn draw(canvas: CanvasElement): void {
+  const ctx = canvas.context2d();
+  match (ctx) {
+    Some(c) => {
+      c.fillStyle = "#a34b26";
+      c.fillRect(0.0, 0.0, canvas.width.toF64(), 10.0);
+    }
+    None => log("no 2d context"),
+  }
+}
+
+export fn mount(root: Element): Group {
+  let group = Group.new();
+  const button = document.createElement("button");
+  button.textContent = "Add";
+  root.append(button);
+  const listener = button.on("click", (e) => clicked(e));
+  group.add(listener);
+  const tick = setInterval(1000, () => log(`clicks: ${clicks}`));
+  group.add(tick);
+  match (root.querySelector("canvas")) {
+    Some(el) => match (el.asCanvas()) {
+      Some(canvas) => draw(canvas),
+      None => {}
+    },
+    None => {}
+  }
+  return group;
+}
+
+export async fn load(url: String): Promise<String> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    return `error ${response.status}`;
+  }
+  storage.set("last", url);
+  await sleep(10);
+  return await response.text();
+}
+
+export fn early(button: Element): void {
+  const listener = button.on("keydown", (e) => log(e.key.unwrapOr("?")));
+  listener.release();
+}

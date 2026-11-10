@@ -172,6 +172,8 @@ pub enum Ty {
     Enum(EnumId, String),
     /// A function used as a value, with its name for messages.
     Fn(FnId, String),
+    /// A type of the browser, in a managed module: `Element`, `Listener`…
+    Host(crate::browser::Host),
     /// A type parameter of the function, structure or enumeration being
     /// checked: its index among them, and its name.
     Param(u32, String),
@@ -241,6 +243,7 @@ impl fmt::Display for Ty {
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
             Self::Struct(_, name) | Self::Enum(_, name) | Self::Param(_, name) => f.write_str(name),
             Self::Fn(_, name) => write!(f, "fn {name}"),
+            Self::Host(h) => f.write_str(h.name()),
             Self::Error => f.write_str("?"),
         }
     }

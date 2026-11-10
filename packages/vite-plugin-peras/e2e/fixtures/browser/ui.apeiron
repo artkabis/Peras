@@ -1,0 +1,94 @@
+// A small interface in a managed module: a counter, an echo, a canvas, a
+// timer, all released with the group `mount` returns.
+let clicks = 0;
+let ticks = 0;
+
+fn clicked(label: Element, e: Event): void {
+  clicks += 1;
+  label.textContent = `${clicks}`;
+  e.preventDefault();
+}
+
+fn typed(input: InputElement, echo: Element): void {
+  echo.textContent = input.value.toUpperCase();
+}
+
+fn ticked(): void {
+  ticks += 1;
+}
+
+export fn tickCount(): i32 {
+  return ticks;
+}
+
+fn draw(canvas: CanvasElement): void {
+  match (canvas.context2d()) {
+    Some(c) => {
+      c.fillStyle = "rgb(163, 75, 38)";
+      c.fillRect(0.0, 0.0, canvas.width.toF64(), canvas.height.toF64());
+    }
+    None => log("no 2d context"),
+  }
+}
+
+export fn mount(root: Element): Group {
+  let group = Group.new();
+  const button = document.createElement("button");
+  button.id = "count";
+  button.textContent = "+1";
+  const label = document.createElement("span");
+  label.id = "clicks";
+  label.textContent = "0";
+  root.append(button);
+  root.append(label);
+  const listener = button.on("click", (e) => clicked(label, e));
+  group.add(listener);
+  match (document.getElementById("name")) {
+    Some(el) => match (el.asInput()) {
+      Some(input) => {
+        const echo = document.createElement("p");
+        echo.id = "echo";
+        root.append(echo);
+        const typing = input.on("input", (e) => typed(input, echo));
+        group.add(typing);
+      }
+      None => log("#name is not an input"),
+    },
+    None => log("no #name"),
+  }
+  match (root.querySelector("canvas")) {
+    Some(el) => match (el.asCanvas()) {
+      Some(canvas) => draw(canvas),
+      None => {}
+    },
+    None => {}
+  }
+  const timer = setInterval(5, () => ticked());
+  group.add(timer);
+  return group;
+}
+
+export async fn load(url: String): Promise<String> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    return `error ${response.status}`;
+  }
+  return (await response.text()).trim();
+}
+
+export fn remember(key: String, value: String): String {
+  storage.set(key, value);
+  const back = storage.get(key).unwrapOr("missing");
+  storage.remove(key);
+  return `${back} ${storage.get(key).isNone()}`;
+}
+
+export fn forgotten(button: Element): Listener {
+  return button.on("click", (e) => log(e.kind));
+}
+
+export async fn waited(ms: i32): Promise<f64> {
+  const start = now();
+  await sleep(ms);
+  return now() - start;
+}

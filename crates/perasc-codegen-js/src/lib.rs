@@ -22,6 +22,7 @@ use perasc_diag::{Diagnostic, Fix, Label, Message, Span, codes};
 use perasc_syntax::ast::{Ast, Block, FnDecl, ItemKind};
 
 mod bounds;
+mod browser;
 mod dts;
 mod expr;
 mod methods;
@@ -40,6 +41,46 @@ pub struct Options {
     /// `{index}` and `{length}` in it: the one owned modules throw, in the
     /// language of the build.
     pub bounds: String,
+    /// In debug, the leak detector: each resource collected without being
+    /// released is reported, with the file and line that made it.
+    pub debug: Option<Debug>,
+}
+
+/// Where the module comes from, for the messages of the leak detector.
+#[derive(Debug, Clone)]
+pub struct Debug {
+    /// The file, as messages name it.
+    pub file: String,
+    /// Where each line of the source starts.
+    pub lines: Vec<u32>,
+}
+
+impl Debug {
+    /// The detector's view of `source`, read from `file`.
+    #[must_use]
+    pub fn new(file: &str, source: &str) -> Self {
+        let mut lines = vec![0];
+        for (i, b) in source.bytes().enumerate() {
+            if b == b'\n' {
+                lines.push(u32::try_from(i + 1).unwrap_or(u32::MAX));
+            }
+        }
+        Self {
+            file: file.to_owned(),
+            lines,
+        }
+    }
+}
+
+impl Options {
+    /// `file:line` for a span, or nothing without the detector.
+    #[must_use]
+    pub fn locate(&self, span: Span) -> String {
+        self.debug.as_ref().map_or_else(String::new, |d| {
+            let line = d.lines.partition_point(|&start| start <= span.start);
+            format!("{}:{line}", d.file)
+        })
+    }
 }
 
 impl Default for Options {
@@ -47,6 +88,7 @@ impl Default for Options {
         Self {
             peras_imports_as_js: false,
             bounds: "index {index} is out of bounds: the length is {length}".to_owned(),
+            debug: None,
         }
     }
 }
@@ -62,7 +104,7 @@ pub fn generate(
     analysis: &Analysis,
     options: &Options,
 ) -> Result<String, Vec<Diagnostic>> {
-    let mut module = Module::new(ast, analysis);
+    let mut module = Module::new(ast, analysis, options);
     module.nested_options();
     let body = module.items();
     if !module.diagnostics.is_empty() {
@@ -90,7 +132,11 @@ pub fn generate(
         }
     }
     for helper in runtime::closure(&module.helpers) {
-        out.push_str(&runtime::source(helper, &options.bounds));
+        out.push_str(&runtime::source(
+            helper,
+            &options.bounds,
+            options.debug.is_some(),
+        ));
         out.push('\n');
     }
     out.push_str(&body);
@@ -101,6 +147,7 @@ pub fn generate(
 struct Module<'a> {
     ast: &'a Ast,
     analysis: &'a Analysis,
+    options: &'a Options,
     /// The runtime helpers the code calls.
     helpers: BTreeSet<&'static str>,
     diagnostics: Vec<Diagnostic>,
@@ -217,7 +264,7 @@ fn safe(name: &str) -> String {
 }
 
 impl<'a> Module<'a> {
-    fn new(ast: &'a Ast, analysis: &'a Analysis) -> Self {
+    fn new(ast: &'a Ast, analysis: &'a Analysis, options: &'a Options) -> Self {
         let declared = analysis
             .bindings
             .iter()
@@ -227,6 +274,7 @@ impl<'a> Module<'a> {
         Self {
             ast,
             analysis,
+            options,
             helpers: BTreeSet::new(),
             diagnostics: Vec::new(),
             fns: HashMap::new(),
@@ -368,8 +416,39 @@ impl<'a> Module<'a> {
 
     /// The statements of a block, at the current depth.
     fn block_stmts(&mut self, block: &Block) {
-        for stmt in &block.stmts {
+        self.stmts(&block.stmts);
+    }
+
+    /// Statements in order. A variable that owns a resource releases it when
+    /// its block ends, by any way out, unless it gave it away: the rest of
+    /// the block runs in a `try` whose `finally` releases it.
+    fn stmts(&mut self, stmts: &[perasc_syntax::ast::Stmt]) {
+        for (i, stmt) in stmts.iter().enumerate() {
             self.stmt(stmt);
+            let perasc_syntax::ast::StmtKind::Local(local) = &stmt.kind else {
+                continue;
+            };
+            let span = local.name.span;
+            if !self.owns_resource(span) {
+                continue;
+            }
+            let name = self
+                .declared
+                .get(&(span.start, span.end))
+                .map(|&b| self.variable(b))
+                .unwrap_or_default();
+            let release = self.helper("$release");
+            self.line(format!("let {name}$live = true;"));
+            self.line("try {");
+            self.current.depth += 1;
+            self.stmts(stmts.get(i + 1..).unwrap_or_default());
+            self.current.depth -= 1;
+            self.line("} finally {");
+            self.current.depth += 1;
+            self.line(format!("if ({name}$live) {release}({name});"));
+            self.current.depth -= 1;
+            self.line("}");
+            return;
         }
     }
 

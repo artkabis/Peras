@@ -5,13 +5,16 @@
 //! [`ty::Ty::Error`], compatible with everything, so one mistake gives one error.
 //! The walk runs only on a tree without syntax errors.
 
+pub mod browser;
 pub mod builtins;
 mod errors;
 mod expr;
 mod generics;
+mod host;
 mod matching;
 mod methods;
 mod owner;
+mod resources;
 mod scope;
 mod stdlib;
 mod stmt;
@@ -104,6 +107,8 @@ pub struct Bound {
     pub span: Option<Span>,
     /// What it is.
     pub kind: NameKind,
+    /// Its type.
+    pub ty: Ty,
 }
 
 /// What a declared name is.
@@ -220,6 +225,10 @@ pub fn exports_of(source: &str) -> Option<Vec<ImportedFn>> {
 pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
     let mut checker = Checker::new(ast, source, context);
     checker.module();
+    // Resources need correct types too: each must have exactly one owner.
+    if checker.diagnostics.is_empty() && context.managed {
+        resources::Resources::new(&mut checker).module();
+    }
     // Ownership needs correct types: one wrong type would give false moves.
     // A managed module has none: its values are the garbage collector's.
     if checker.diagnostics.is_empty() && !context.managed {
@@ -249,6 +258,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
                 Kind::Ok => NameKind::Ok,
                 Kind::Err => NameKind::Err,
             },
+            ty: b.ty.clone(),
         })
         .collect();
     let exports = checker
@@ -357,6 +367,8 @@ enum TypeDef {
     Number,
     /// `Promise<T>`, in a managed module.
     Promise,
+    /// A type of the browser, in a managed module.
+    Host(browser::Host),
     Array,
     Map,
     Set,
@@ -457,6 +469,11 @@ impl<'a> Checker<'a> {
         // Managed only, each refused in an owned module.
         types.insert("number".to_owned(), TypeDef::Number);
         types.insert("Promise".to_owned(), TypeDef::Promise);
+        // The browser's types, managed only; a structure of the module with
+        // the same name replaces one.
+        for h in browser::Host::ALL {
+            types.insert(h.name().to_owned(), TypeDef::Host(h));
+        }
         Self {
             ast,
             source,
@@ -1031,6 +1048,20 @@ impl<'a> Checker<'a> {
         resolved
     }
 
+    /// A type only a managed module has: `number`, `Promise<T>`, the
+    /// browser's; refused in an owned one.
+    fn managed_type(&mut self, def: &TypeDef, span: Span, args: &[Type]) -> Ty {
+        let (what, ty) = match def {
+            TypeDef::Number => ("number", Ty::Float(FloatTy::F64)),
+            TypeDef::Host(h) => ("browser", Ty::Host(*h)),
+            _ => ("promise", Ty::Promise(Box::new(self.type_arg(args)))),
+        };
+        if !self.managed {
+            self.report(errors::managed_only(span, what));
+        }
+        ty
+    }
+
     fn resolve_type_inner(&mut self, ty: &Type) -> Ty {
         let (name, args) = match &ty.kind {
             TypeKind::Named { name, args } => (name, args),
@@ -1061,7 +1092,7 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         };
         let expected = match def {
-            TypeDef::Plain(_) | TypeDef::Number => 0,
+            TypeDef::Plain(_) | TypeDef::Number | TypeDef::Host(_) => 0,
             TypeDef::Array | TypeDef::Set | TypeDef::Option | TypeDef::Promise => 1,
             TypeDef::Result | TypeDef::Map => 2,
             TypeDef::Generic(_, count) => count,
@@ -1086,17 +1117,8 @@ impl<'a> Checker<'a> {
         }
         match def {
             TypeDef::Plain(t) => t,
-            TypeDef::Number => {
-                if !self.managed {
-                    self.report(errors::managed_only(ty.span, "number"));
-                }
-                Ty::Float(FloatTy::F64)
-            }
-            TypeDef::Promise => {
-                if !self.managed {
-                    self.report(errors::managed_only(ty.span, "promise"));
-                }
-                Ty::Promise(Box::new(self.type_arg(args)))
+            TypeDef::Number | TypeDef::Host(_) | TypeDef::Promise => {
+                self.managed_type(&def, ty.span, args)
             }
             TypeDef::Array => Ty::Array(Box::new(self.type_arg(args))),
             TypeDef::Map => {

@@ -127,7 +127,8 @@ pub struct ManagedOutput {
 
 /// Checks a managed module and compiles it to JavaScript. With
 /// `peras_imports_as_js`, its imports of `./x.peras` name `./x.js`, the
-/// loader [`build_direct`] writes.
+/// loader [`build_direct`] writes. With `debug`, the module reports a
+/// resource collected without being released, with its file and line.
 ///
 /// # Errors
 ///
@@ -137,6 +138,7 @@ pub fn build_managed(
     path: &Path,
     source: &str,
     peras_imports_as_js: bool,
+    debug: bool,
     localizer: &Localizer,
 ) -> Result<ManagedOutput, ToolError> {
     let parsed = perasc_syntax::parse(source);
@@ -155,9 +157,14 @@ pub fn build_managed(
             .text("index", "{index}")
             .text("length", "{length}"),
     );
+    let file = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |f| f.to_string_lossy().into_owned(),
+    );
     let options = perasc_codegen_js::Options {
         peras_imports_as_js,
         bounds,
+        debug: debug.then(|| perasc_codegen_js::Debug::new(&file, source)),
     };
     let js = perasc_codegen_js::generate(&parsed.ast, &analysis, &options)
         .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;

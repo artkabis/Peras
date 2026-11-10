@@ -1,0 +1,5 @@
+// Properties the browser sets itself.
+export fn rename(e: Event, r: Response): void {
+  e.kind = "click";
+  r.status = 200;
+}

@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0246-read-only.apeiron
+---
+diagnostics:
+  error[E0246] check-read-only { type: "Event", member: "kind" }
+    primary 3:5-3:9: check-read-only-label
+    cause: check-read-only-why
+    fix: check-read-only-fix
+  error[E0246] check-read-only { type: "Response", member: "status" }
+    primary 4:5-4:11: check-read-only-label
+    cause: check-read-only-why
+    fix: check-read-only-fix

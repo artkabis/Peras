@@ -126,6 +126,15 @@ impl Types<'_> {
                 }
                 name
             }
+            Ty::Host(h) => {
+                if h.is_resource() {
+                    self.named.insert(
+                        "PerasResource".to_owned(),
+                        "{ release(): void; [Symbol.dispose](): void }".to_owned(),
+                    );
+                }
+                h.ts_name().to_owned()
+            }
             Ty::Fn(..) | Ty::Param(..) | Ty::Error => "unknown".to_owned(),
         }
     }

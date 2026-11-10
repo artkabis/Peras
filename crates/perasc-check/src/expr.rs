@@ -282,7 +282,11 @@ impl Checker<'_> {
     /// A name read as a value: marks it used.
     fn read_name(&mut self, symbol: Symbol, span: Span) -> Ty {
         let Some(index) = self.scopes.lookup(symbol) else {
-            let name = self.name(symbol);
+            let name = self.name(symbol).to_owned();
+            if let Some(ty) = self.host_value(&name, span) {
+                return ty;
+            }
+            let name = name.as_str();
             let suggestion = scope::suggest(name, self.scopes.visible_names()).map(str::to_owned);
             // The suggested name was probably meant: count it as read, so that the
             // typo does not also make it "never read".
@@ -525,6 +529,9 @@ impl Checker<'_> {
                 if let Some(ty) = self.collection_new(&site, *base, name) {
                     return ty;
                 }
+                if let Some(ty) = self.group_new(*base, name, args, span) {
+                    return ty;
+                }
                 if let Some(ty) = self.static_method(&site, *base, name) {
                     return ty;
                 }
@@ -571,6 +578,12 @@ impl Checker<'_> {
         expected: Option<&Ty>,
     ) -> Ty {
         let (name_span, span) = (call.name_span, call.span);
+        if self.scopes.lookup(symbol).is_none() {
+            let name = self.name(symbol).to_owned();
+            if let Some(ty) = self.host_call(&name, args, span) {
+                return ty;
+            }
+        }
         let Some(index) = self.scopes.lookup(symbol) else {
             self.read_name(symbol, name_span);
             self.check_args(args, &[]);
@@ -791,6 +804,10 @@ impl Checker<'_> {
             self.check_args(args, &[]);
             return Ty::Error;
         }
+        if let Ty::Host(h) = receiver {
+            let text = self.name(name).to_owned();
+            return self.host_method(*h, &text, name_span, args, span);
+        }
         let text = self.name(name);
         if let Ty::Array(element) = receiver
             && let Some(ty) = self.array_function_method(element, text, args, span)
@@ -829,6 +846,10 @@ impl Checker<'_> {
         let text = self.name(name);
         match base {
             Ty::Error => Ty::Error,
+            Ty::Host(h) => {
+                let text = text.to_owned();
+                self.host_field(*h, &text, span)
+            }
             Ty::Struct(id, _) => {
                 let field = self
                     .structs

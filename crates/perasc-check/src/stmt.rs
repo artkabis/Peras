@@ -260,11 +260,22 @@ impl Checker<'_> {
                 ty
             }
             ExprKind::Field { base, .. } | ExprKind::Index { base, .. } => {
-                if let Some(root) = self.root(*base) {
+                let ty = self.infer(target, None);
+                // A property of the browser belongs to the page, not to the
+                // variable: `const button = …; button.textContent = …` is fine.
+                let host = matches!(self.expr_types.get(base), Some(Ty::Host(_)));
+                if !host && let Some(root) = self.root(*base) {
                     let span = self.ast.expr(*base).span;
                     self.check_mutable(root, span);
                 }
-                self.infer(target, None)
+                // A property of the browser that can only be read.
+                if let ExprKind::Field { base, name } = &expr.kind
+                    && let Some(Ty::Host(h)) = self.expr_types.get(base).cloned()
+                {
+                    let text = self.name(name.symbol).to_owned();
+                    self.host_field_written(h, &text, name.span);
+                }
+                ty
             }
             ExprKind::Paren(inner) => self.place(*inner),
             _ => self.infer(target, None),

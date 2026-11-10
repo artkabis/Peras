@@ -144,8 +144,24 @@ impl Module<'_> {
     fn name(&mut self, id: ExprId) -> String {
         let span = self.ast.expr(id).span;
         match self.bound(id) {
+            // A resource given away: its owner no longer releases it.
+            Some((binding, NameKind::Local)) if self.analysis.moves.contains(&id) => {
+                let name = self.variable(binding);
+                format!("({name}$live = false, {name})")
+            }
             Some((binding, NameKind::Local | NameKind::Global)) => self.variable(binding),
             Some((_, NameKind::None)) => "undefined".to_owned(),
+            None => {
+                let ExprKind::Name(symbol) = self.ast.expr(id).kind else {
+                    return "undefined".to_owned();
+                };
+                if let Some(js) = Self::host_value(self.ast.name(symbol)) {
+                    js.to_owned()
+                } else {
+                    self.unsupported(span, "other");
+                    "undefined".to_owned()
+                }
+            }
             _ => {
                 self.unsupported(span, "function-value");
                 "undefined".to_owned()
@@ -224,7 +240,10 @@ impl Module<'_> {
         let symbol = match op {
             BinaryOp::Eq | BinaryOp::Ne => {
                 let negate = if op == BinaryOp::Ne { "!" } else { "" };
-                return if matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::String) {
+                return if matches!(
+                    ty,
+                    Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::String | Ty::Host(_)
+                ) {
                     let strict = if negate.is_empty() { "===" } else { "!==" };
                     format!("({a} {strict} {b})")
                 } else {
@@ -370,6 +389,7 @@ impl Module<'_> {
         match (&ty, text) {
             (Ty::Array(_) | Ty::String, "length") => format!("{value}.length"),
             (Ty::Map(..) | Ty::Set(_), "size") => format!("{value}.size"),
+            (Ty::Host(h), _) => format!("{value}.{}", Self::host_field(*h, text)),
             _ if self.is_tuple(&ty) => format!("{value}[{text}]"),
             _ => {
                 let _ = id;
@@ -403,7 +423,14 @@ impl Module<'_> {
     fn call(&mut self, id: ExprId, callee: ExprId, args: &[ExprId]) -> String {
         let span = self.ast.expr(id).span;
         match &self.ast.expr(callee).kind {
-            ExprKind::Name(_) => match self.bound(callee) {
+            ExprKind::Name(symbol) => match self.bound(callee) {
+                None => {
+                    let name = self.ast.name(*symbol).to_owned();
+                    self.host_call(id, &name, args).unwrap_or_else(|| {
+                        self.unsupported(span, "function-value");
+                        "undefined".to_owned()
+                    })
+                }
                 Some((_, NameKind::Fn(f))) => {
                     let name = self.callee_name(id, f.0);
                     let values = self.exprs(args);
@@ -480,6 +507,17 @@ impl Module<'_> {
                 Ty::Set(_) => return "new Set()".to_owned(),
                 _ => {}
             }
+        }
+        if let Some(js) = self.group_new(id, base, name) {
+            return js;
+        }
+        // A method of the browser.
+        if let Ty::Host(h) = self.ty(base) {
+            let mut all = Vec::with_capacity(args.len() + 1);
+            all.push(base);
+            all.extend_from_slice(args);
+            let values = self.exprs(&all);
+            return self.host_method(id, h, text, &values[0], &values[1..]);
         }
         // `Shape.Circle(r)`.
         if let Some((_, NameKind::Enum(_))) = self.bound(base) {

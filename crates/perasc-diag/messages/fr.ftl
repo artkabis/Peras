@@ -661,6 +661,7 @@ check-managed-only = { $what ->
     [number] le type `number`
     [promise] le type `Promise`
     [import] un `import`
+    [browser] l’API du navigateur
    *[other] ceci
 } { $what ->
     [await-sync] ne peut pas attendre
@@ -674,6 +675,7 @@ check-managed-only-why = Un module owned (`.peras`) se compile en WebAssembly, o
 check-managed-only-fix = { $what ->
     [await-sync] marquez la fonction `async`, et son résultat `Promise<T>`
     [number] utilisez `f64`, que `number` nomme dans un module managed
+    [browser] utilisez le navigateur dans un module `.apeiron`, et donnez les données à ce module
    *[other] déplacez ce code dans un module `.apeiron`, qui peut importer celui-ci
 }
 
@@ -713,6 +715,45 @@ check-import-fix = { $reason ->
     [signature] donnez à la fonction des nombres, des chaînes, ou des tableaux de ceux-ci, et construisez la structure de chaque côté
    *[other] vérifiez l’import
 }
+
+# E0245
+check-resource = { $reason ->
+    [dropped] cette ressource est libérée dès qu’elle est créée
+    [moved] `{ $name }` est utilisé après avoir été donné
+    [loop] `{ $name }` est donné dans une boucle
+    [capture] `{ $name }` est une ressource, et une fonction fléchée ne peut pas la garder
+    [holder] une ressource ne peut pas être gardée dans une structure, un tableau, une option ou une table
+    [lent] `{ $name }` est prêté à cette fonction, qui ne peut pas le donner
+    [reassign] `{ $name }` tient une ressource, qui ne peut pas être remplacée
+   *[other] cette ressource ne peut pas être utilisée ici
+}
+check-resource-label = { $reason ->
+    [dropped] créée ici, gardée par rien
+    [moved] utilisé ici
+    [loop] donné à chaque tour
+    [capture] gardé par la fonction fléchée
+    [holder] gardée ici
+    [lent] donné ici
+    [reassign] remplacé ici
+   *[other] ici
+}
+check-resource-why = Un écouteur, un minuteur et un groupe sont des ressources : chacun appartient à une variable, et est libéré quand cette variable sort de sa portée, pour que rien ne continue d’écouter ou de battre une fois son propriétaire parti. Une ressource peut être donnée une fois : rendue, ajoutée à un `Group`, ou libérée par `release()` ; ensuite, sa variable ne tient plus rien. Une ressource que rien ne garde serait libérée aussitôt, et une ressource gardée par une structure, un tableau ou une fonction fléchée n’aurait pas de propriétaire pour la libérer.
+check-resource-fix = { $reason ->
+    [dropped] gardez-la dans une variable, `const listener = …`, ajoutez-la à un `Group`, ou rendez-la
+    [moved] donnez-la en dernier, ou gardez-la dans un `Group` et utilisez le groupe
+    [loop] ajoutez chacune à un `Group` déclaré avant la boucle
+    [capture] gardez la ressource à l’extérieur, et laissez la fonction fléchée appeler une fonction
+    [holder] gardez-la dans une variable ou un `Group`
+    [lent] rendez-la depuis la fonction qui l’a créée, ou ajoutez-la à un `Group` là-bas
+    [reassign] déclarez une nouvelle `const` pour la nouvelle ressource
+   *[other] gardez la ressource dans une variable
+}
+
+# E0246
+check-read-only = `{ $member }` de `{ $type }` ne peut qu’être lu
+check-read-only-label = affecté ici
+check-read-only-why = Le navigateur fixe lui-même cette propriété : le type et la touche d’un évènement, le statut d’une réponse, le corps d’une page. Une page ne peut pas la changer.
+check-read-only-fix = lisez-la dans une variable à vous, et changez celle-ci
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
