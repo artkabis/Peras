@@ -1,0 +1,7 @@
+# Pinned toolchain: every contributor and CI run use the same compiler.
+# Bump deliberately, in its own pull request, after checking the release notes.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

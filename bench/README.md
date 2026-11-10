@@ -101,7 +101,7 @@ What it says:
 These are known and not done yet; each is a reason to read the figures above with care.
 
 - **Expert contenders**: Rust and AssemblyScript are measured as they are usually written (above); their experts' versions are not.
-- **Every measure in the repository**: the prototypes and probes behind decisions 0004 and 0005, and the measures of floats as text and of `encodeInto`, were run from a scratch folder; they should be committed under `bench/` with one command each.
+- **Every measure in the repository**: the prototypes and probes behind decisions 0004 and 0005, and the measures of floats as text and of `encodeInto`, were run from a scratch folder; they should be committed under `bench/` with one command each, as [`bench/prototypes`](prototypes/outer-simd/README.md) now is.
 - **Statistics**: confidence intervals (bootstrap over the runs) rather than medians alone; more runs; the engine's tiers reported.
 - **Machines**: macOS with Apple's Safari, Windows, an ARM phone; WebKit's timer counts whole milliseconds, too coarse for kernels of 2 or 3 ms.
 - **A whole application**, measured from loading to the last frame.

@@ -101,7 +101,7 @@ Ce que cela dit :
 Ces points sont connus et pas encore faits ; chacun est une raison de lire les chiffres ci-dessus avec prudence.
 
 - **Des concurrents experts** : Rust et AssemblyScript sont mesurés tels qu’on les écrit habituellement (ci-dessus) ; les versions de leurs experts ne le sont pas.
-- **Toutes les mesures dans le dépôt** : les prototypes et sondes derrière les décisions 0004 et 0005, et les mesures des flottants en texte et d’`encodeInto`, ont été exécutés depuis un dossier de travail ; ils doivent être versionnés sous `bench/`, avec une commande chacun.
+- **Toutes les mesures dans le dépôt** : les prototypes et sondes derrière les décisions 0004 et 0005, et les mesures des flottants en texte et d’`encodeInto`, ont été exécutés depuis un dossier de travail ; ils doivent être versionnés sous `bench/`, avec une commande chacun, comme l’est maintenant [`bench/prototypes`](prototypes/outer-simd/README.fr.md).
 - **Statistiques** : des intervalles de confiance (bootstrap sur les exécutions) plutôt que des médianes seules ; plus d’exécutions ; les niveaux d’optimisation du moteur indiqués.
 - **Machines** : macOS avec le Safari d’Apple, Windows, un téléphone ARM ; le chronomètre de WebKit compte des millisecondes entières, trop grossier pour des noyaux de 2 ou 3 ms.
 - **Une application entière**, mesurée du chargement à la dernière image.
