@@ -155,7 +155,7 @@ export async function render(): Promise<string[]> {
               defaultColor: false,
             });
       let label = "";
-      if (name === "peras") {
+      if (name === "peras" || name === "apeiron") {
         // What the compiler does with the block; the docs tests hold it to it.
         const kind = attrs[0] ?? "check";
         const text: Record<string, string> = {
@@ -165,7 +165,7 @@ export async function render(): Promise<string[]> {
           error: `${words[lang].error} ${attrs[1] ?? ""}`,
         };
         const said = text[kind];
-        if (said === undefined) problems.push(`${key}.md: unknown kind of Peras block "${kind}"`);
+        if (said === undefined) problems.push(`${key}.md: unknown kind of ${name} block "${kind}"`);
         label = `<span class="code-label code-${escapeHtml(kind)}">${escapeHtml(said ?? kind)}</span>`;
       }
       return `<div class="code">${label}${highlighted}</div>\n`;

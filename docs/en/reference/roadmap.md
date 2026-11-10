@@ -54,14 +54,15 @@ export fn words(text: String): i32 {
 
 ## Phase 4: managed mode, for the rest of the application
 
-`.apeiron` modules compiled to JavaScript, for everything that talks to the browser ([spec](../spec.md#managed-mode-apeiron)).
+`.apeiron` modules compiled to JavaScript, for everything that talks to the browser ([spec](../spec.md#managed-mode-apeiron), [decision 0008](../decisions/0008-managed-mode.md)). In progress: the core of the language compiles to JavaScript, with the meaning numbers have in owned modules ([managed modules](../guide/managed.md)).
 
+- ~~`.apeiron` modules compiled to JavaScript, through the CLI and the Vite plugin~~: done, with `number` for `f64`.
+- ~~`async` and `await`~~: done.
+- ~~Calls from managed to owned modules, with conversions checked at the boundary~~: done for numbers, strings, and arrays, options, results, maps and sets of them; structures and enumerations next.
 - The DOM, events, `fetch`, timers, storage, WebSockets, Web Workers, with typed APIs.
-- `async` and `await`.
 - Closures, with rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not.
-- Calls between managed and owned modules, with conversions checked at the boundary.
 
-```peras planned
+```apeiron planned
 import { inside } from "./mandel.peras";
 
 export async fn render(canvas: HTMLCanvasElement): Promise<void> {
@@ -101,7 +102,7 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 An outside review of the project, in November 2026, advised against using it in production yet. Its facts that hold, checked in this repository, are kept here; each is work for the phases above, not a verdict on where the language is going.
 
 - **Version 0.0.1, no stability promise**: until 1.0, any version may break the language. A written policy, saying what may change and how a change is announced, comes before any outside user.
-- **Half of the design is missing**: `.apeiron` modules and their compiler to JavaScript (phase 4) do not exist yet; `perasc-codegen-js` is an empty crate, and `std/` holds only its README.
+- **Half of the design was missing**: `.apeiron` modules now compile to JavaScript and call owned modules ([managed modules](../guide/managed.md)), but the browser is not typed yet (phase 4), and `std/` holds only its README.
 - **One maintainer**: the project depends on one person, helped by an AI assistant; it has no community yet.
 - **No libraries of its own**: the plan is to use those of npm through their declarations (phase 5), not to rewrite them; until then, a Peras module does one job inside a TypeScript application.
 - **Workers, but no shared memory; no GPU**: a module runs in Web Workers as it is, one instance each, measured 2.6 to 2.9 times faster on 4 cores where the work outweighs copying the data and slower where it does not ([Web Workers](../../../bench/README.md#web-workers)); memory shared between workers is not built yet (decision [0003](../decisions/0003-runtime-proved-at-compile-time.md) plans moves between threads), nor WebGPU (phase 6).

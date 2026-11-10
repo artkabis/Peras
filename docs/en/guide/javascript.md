@@ -114,16 +114,16 @@ export default defineConfig({
 });
 ```
 
-| Option      | Default                                             | Meaning                                                                   |
-| ----------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
-| `perasc`    | `PERASC`, then `perasc` on the `PATH`               | the compiler to run                                                       |
-| `lang`      | the system's                                        | `"en"` or `"fr"` for diagnostics                                          |
-| `dts`       | `true`                                              | write `name.d.peras.ts` next to each `name.peras`                         |
-| `allocator` | `debug` for the dev server, `tlsf` for `vite build` | the allocator of modules that use the heap                                |
-| `simd`      | `true`                                              | WebAssembly SIMD in loops and the runtime; `false` for engines without it |
-| `threads`   | `false`                                             | `parallel for` loops on every core; the dev server isolates the page      |
+| Option      | Default                                             | Meaning                                                                                            |
+| ----------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `perasc`    | `PERASC`, then `perasc` on the `PATH`               | the compiler to run                                                                                |
+| `lang`      | the system's                                        | `"en"` or `"fr"` for diagnostics                                                                   |
+| `dts`       | `true`                                              | write `name.d.peras.ts` next to each `name.peras`, `name.d.apeiron.ts` next to each `name.apeiron` |
+| `allocator` | `debug` for the dev server, `tlsf` for `vite build` | the allocator of modules that use the heap                                                         |
+| `simd`      | `true`                                              | WebAssembly SIMD in loops and the runtime; `false` for engines without it                          |
+| `threads`   | `false`                                             | `parallel for` loops on every core; the dev server isolates the page                               |
 
-In development the WebAssembly is inlined in the module; `vite build` emits it as a separate file, compiled while it downloads. An error in a `.peras` file shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`.
+In development the WebAssembly is inlined in the module; `vite build` emits it as a separate file, compiled while it downloads. An error in a `.peras` file shows in Vite's overlay with its excerpt, cause and fix, and fails `vite build`. The plugin compiles `.apeiron` files too, to JavaScript ([managed modules](managed.md)).
 
 ## Memory errors at run time
 

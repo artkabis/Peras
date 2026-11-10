@@ -41,7 +41,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | ownership: moves, borrows, aliasing refused, releases        | <span class="status compiled">compiled</span>                                                                   |
 | module-level `const`                                         | <span class="status compiled">compiled</span>                                                                   |
 | module-level `let`                                           | <span class="status checked">checked</span>                                                                     |
-| `import` between modules                                     | <span class="status planned">planned</span>                                                                     |
+| `import` of owned functions into a managed module            | <span class="status compiled">compiled</span>, numbers, strings and collections of them                         |
 
 ## Methods
 
@@ -49,14 +49,15 @@ Every built-in method, with its status, is in the [method reference](methods.md)
 
 ## Modes and tooling
 
-| Feature                                                       | Status                                                                |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| owned mode, `.peras`, to WebAssembly                          | <span class="status compiled">compiled</span>, for the features above |
-| managed mode, `.apeiron`, to JavaScript                       | <span class="status planned">planned</span>                           |
-| diagnostics in English and French, `--json`, `perasc explain` | available                                                             |
-| Vite plugin, TypeScript declarations                          | available                                                             |
-| debug allocator, release verifier                             | in use in every module that allocates                                 |
-| `async`, the DOM, `fetch`, events                             | <span class="status planned">planned</span>, in managed mode          |
-| editor support (LSP), formatter, test runner                  | <span class="status planned">planned</span>                           |
+| Feature                                                                | Status                                                                |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| owned mode, `.peras`, to WebAssembly                                   | <span class="status compiled">compiled</span>, for the features above |
+| managed mode, `.apeiron`, to JavaScript ([guide](../guide/managed.md)) | <span class="status compiled">compiled</span>, for the features above |
+| diagnostics in English and French, `--json`, `perasc explain`          | available                                                             |
+| Vite plugin, TypeScript declarations                                   | available                                                             |
+| debug allocator, release verifier                                      | in use in every module that allocates                                 |
+| `async`, `await`, `number`, in managed mode                            | <span class="status compiled">compiled</span>                         |
+| the DOM, `fetch`, events, resources                                    | <span class="status planned">planned</span>, in managed mode          |
+| editor support (LSP), formatter, test runner                           | <span class="status planned">planned</span>                           |
 
 What comes next, and in which order: [toward a complete language](roadmap.md).

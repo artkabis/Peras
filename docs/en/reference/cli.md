@@ -6,13 +6,13 @@ perasc <command> [options]
 
 ## Commands
 
-| Command                  | Does                                                        |
-| ------------------------ | ----------------------------------------------------------- |
-| `perasc check <files…>`  | checks every file and reports every error, without building |
-| `perasc build <file>`    | checks, then compiles one `.peras` file to WebAssembly      |
-| `perasc explain <code>`  | shows the page of an error code, such as `E0006`            |
-| `perasc --version`, `-V` | shows the version                                           |
-| `perasc --help`, `-h`    | shows the help, in your language                            |
+| Command                  | Does                                                                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `perasc check <files…>`  | checks every file and reports every error, without building                                                                                                                      |
+| `perasc build <file>`    | checks, then compiles one `.peras` file to WebAssembly, or one `.apeiron` file to JavaScript with the owned modules it imports ([managed modules](../guide/managed.md#building)) |
+| `perasc explain <code>`  | shows the page of an error code, such as `E0006`                                                                                                                                 |
+| `perasc --version`, `-V` | shows the version                                                                                                                                                                |
+| `perasc --help`, `-h`    | shows the help, in your language                                                                                                                                                 |
 
 ## Options
 
@@ -27,6 +27,7 @@ perasc <command> [options]
 | `--allocator debug\|tlsf`     | `build`          | the allocator of a module that uses the heap: `debug`, the default, catches every memory bug; `tlsf` allocates in bounded time, for production ([0002](../decisions/0002-tlsf-allocator.md))     |
 | `--simd on\|off`              | `build`          | WebAssembly SIMD in loops and the runtime: `on`, the default, is faster; `off` loads in engines without it, such as Safari before 16.4 ([0004](../decisions/0004-strings-without-allocation.md)) |
 | `--threads on\|off`           | `build`          | `parallel for` loops on every core of a cross-origin isolated page, on one thread elsewhere; `off` by default ([0007](../decisions/0007-threads-over-shared-memory.md))                          |
+| `--imports built\|source`     | `build`          | a `.apeiron` module's imports of `.peras` files: `built`, the default, builds each next to it and imports its loader; `source` keeps them for a bundler, such as Vite's plugin                   |
 
 ## Exit codes
 

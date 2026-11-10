@@ -25,6 +25,7 @@ export const sections: Section[] = [
       "guide/memory",
       "guide/diagnostics",
       "guide/javascript",
+      "guide/managed",
     ],
   },
   {
@@ -56,6 +57,7 @@ export const sections: Section[] = [
       "decisions/0005-maps-and-sets",
       "decisions/0006-licensing",
       "decisions/0007-threads-over-shared-memory",
+      "decisions/0008-managed-mode",
     ],
   },
 ];

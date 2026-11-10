@@ -54,14 +54,15 @@ export fn words(text: String): i32 {
 
 ## Phase 4 : le mode géré, pour le reste de l’application
 
-Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au navigateur ([spécification](../spec.md#mode-managed)).
+Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au navigateur ([spécification](../spec.md#mode-managed), [décision 0008](../decisions/0008-managed-mode.md)). En cours : le cœur du langage se compile en JavaScript, avec le sens qu’ont les nombres dans les modules possédés ([modules managed](../guide/managed.md)).
 
+- ~~Les modules `.apeiron` compilés en JavaScript, par la CLI et le plugin Vite~~ : fait, avec `number` pour `f64`.
+- ~~`async` et `await`~~ : fait.
+- ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci ; les structures et les énumérations ensuite.
 - Le DOM, les événements, `fetch`, les minuteries, le stockage, les WebSockets, les Web Workers, avec des API typées.
-- `async` et `await`.
 - Des fermetures, avec des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas.
-- Des appels entre modules gérés et possédés, avec des conversions vérifiées à la frontière.
 
-```peras planned
+```apeiron planned
 import { inside } from "./mandel.peras";
 
 export async fn render(canvas: HTMLCanvasElement): Promise<void> {
@@ -101,7 +102,7 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 Une revue extérieure du projet, en novembre 2026, a déconseillé de l’utiliser en production pour l’instant. Ses faits qui tiennent, vérifiés dans ce dépôt, sont gardés ici ; chacun est du travail pour les phases ci-dessus, pas un verdict sur la direction du langage.
 
 - **Version 0.0.1, sans promesse de stabilité** : jusqu’à la 1.0, toute version peut casser le langage. Une politique écrite, qui dit ce qui peut changer et comment un changement est annoncé, vient avant tout utilisateur extérieur.
-- **La moitié de la conception manque** : les modules `.apeiron` et leur compilateur vers JavaScript (phase 4) n’existent pas encore ; `perasc-codegen-js` est une crate vide, et `std/` ne contient que son README.
+- **La moitié de la conception manquait** : les modules `.apeiron` se compilent désormais en JavaScript et appellent les modules possédés ([modules managed](../guide/managed.md)), mais le navigateur n’est pas encore typé (phase 4), et `std/` ne contient que son README.
 - **Un seul mainteneur** : le projet dépend d’une personne, aidée d’un assistant d’IA ; il n’a pas encore de communauté.
 - **Pas de bibliothèques à lui** : le plan est d’utiliser celles de npm à travers leurs déclarations (phase 5), pas de les réécrire ; d’ici là, un module Peras fait un travail précis au sein d’une application TypeScript.
 - **Des workers, mais pas de mémoire partagée ; pas de GPU** : un module tourne tel quel dans des Web Workers, une instance chacun, mesuré 2,6 à 2,9 fois plus rapide sur 4 cœurs là où le travail l’emporte sur la copie des données, et plus lent sinon ([Web Workers](../../../bench/README.fr.md#web-workers)) ; la mémoire partagée entre workers n’est pas encore produite (la décision [0003](../decisions/0003-runtime-proved-at-compile-time.md) prévoit des déplacements entre fils), ni WebGPU (phase 6).

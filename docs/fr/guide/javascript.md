@@ -114,16 +114,16 @@ export default defineConfig({
 });
 ```
 
-| Option      | Par défaut                                                         | Sens                                                                                              |
-| ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `perasc`    | `PERASC`, puis `perasc` dans le `PATH`                             | le compilateur à lancer                                                                           |
-| `lang`      | celle du système                                                   | `"en"` ou `"fr"` pour les diagnostics                                                             |
-| `dts`       | `true`                                                             | écrire `nom.d.peras.ts` à côté de chaque `nom.peras`                                              |
-| `allocator` | `debug` pour le serveur de développement, `tlsf` pour `vite build` | l’allocateur des modules qui utilisent le tas                                                     |
-| `simd`      | `true`                                                             | le SIMD de WebAssembly dans les boucles et le runtime ; `false` pour les moteurs qui n’en ont pas |
-| `threads`   | `false`                                                            | les boucles `parallel for` sur tous les cœurs ; le serveur de développement isole la page         |
+| Option      | Par défaut                                                         | Sens                                                                                                    |
+| ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `perasc`    | `PERASC`, puis `perasc` dans le `PATH`                             | le compilateur à lancer                                                                                 |
+| `lang`      | celle du système                                                   | `"en"` ou `"fr"` pour les diagnostics                                                                   |
+| `dts`       | `true`                                                             | écrire `nom.d.peras.ts` à côté de chaque `nom.peras`, `nom.d.apeiron.ts` à côté de chaque `nom.apeiron` |
+| `allocator` | `debug` pour le serveur de développement, `tlsf` pour `vite build` | l’allocateur des modules qui utilisent le tas                                                           |
+| `simd`      | `true`                                                             | le SIMD de WebAssembly dans les boucles et le runtime ; `false` pour les moteurs qui n’en ont pas       |
+| `threads`   | `false`                                                            | les boucles `parallel for` sur tous les cœurs ; le serveur de développement isole la page               |
 
-En développement, le WebAssembly est intégré au module ; `vite build` l’émet comme un fichier séparé, compilé pendant son téléchargement. Une erreur dans un fichier `.peras` s’affiche dans l’overlay de Vite avec son extrait, sa cause et sa correction, et fait échouer `vite build`.
+En développement, le WebAssembly est intégré au module ; `vite build` l’émet comme un fichier séparé, compilé pendant son téléchargement. Une erreur dans un fichier `.peras` s’affiche dans l’overlay de Vite avec son extrait, sa cause et sa correction, et fait échouer `vite build`. Le plugin compile aussi les fichiers `.apeiron`, en JavaScript ([modules managed](managed.md)).
 
 ## Les erreurs mémoire à l’exécution
 
