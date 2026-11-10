@@ -977,7 +977,8 @@ impl Lowering<'_> {
                         UnaryOp::Neg => UnOp::Neg,
                         UnaryOp::Not => UnOp::Not,
                         UnaryOp::BitNot => UnOp::BitNot,
-                        UnaryOp::Borrow => {
+                        // `await` is refused in an owned module by the checker.
+                        UnaryOp::Borrow | UnaryOp::Await => {
                             self.unsupported(span, "borrow");
                             return zero(ty);
                         }

@@ -1,0 +1,56 @@
+// The managed benchmark's kernels: compiled to JavaScript as they are, and to
+// WebAssembly as the same source in a `.peras` file, against the same work
+// written by hand in JavaScript (scripts/bench-managed.mjs).
+
+export fn sum(xs: Array<i32>): i32 {
+  let s = 0;
+  for (let i = 0; i < xs.length; i++) {
+    s += xs[i];
+  }
+  return s;
+}
+
+export fn step(xs: inout Array<f64>, vs: inout Array<f64>): void {
+  for (let i = 0; i < xs.length; i++) {
+    let v = vs[i];
+    const x = xs[i] + v * 0.01;
+    if (x < 0.0 || x > 10.0) {
+      v = -v;
+    }
+    vs[i] = v;
+    xs[i] = x.sqrt() * 0.5 + x * 0.5;
+  }
+}
+
+export fn words(line: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  for (const w of line.split(" ")) {
+    counts.set(w.copy(), counts.get(w).unwrapOr(0) + 1);
+  }
+  return counts.size;
+}
+
+struct Body {
+  x: f64,
+  y: f64,
+  mass: f64,
+}
+
+export fn gravity(n: i32): f64 {
+  let bodies: Array<Body> = [];
+  for (let i = 0; i < n; i++) {
+    const t = i.toF64();
+    bodies.push(Body((t * 0.37).sin() * 10.0, (t * 0.71).cos() * 10.0, 1.0 + (i % 3).toF64()));
+  }
+  let energy = 0.0;
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i];
+      const b = bodies[j];
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      energy -= a.mass * b.mass / (dx * dx + dy * dy + 0.01).sqrt();
+    }
+  }
+  return energy;
+}

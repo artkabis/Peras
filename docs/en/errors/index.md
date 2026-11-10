@@ -72,6 +72,9 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0236](E0236.md) | Method that does not match its interface                        | names and types |
 | [E0237](E0237.md) | Interface used as a type                                        | names and types |
 | [E0238](E0238.md) | Arrow function where none can go                                | names and types |
+| [E0244](E0244.md) | An import that cannot be made                                   | names and types |
+| [E0243](E0243.md) | Something only an owned module has                              | names and types |
+| [E0242](E0242.md) | Something only a managed module has                             | names and types |
 | [E0241](E0241.md) | A loop that cannot run in parallel                              | names and types |
 | [E0240](E0240.md) | A map's key or a set's element of a type that cannot be one yet | names and types |
 | [E0239](E0239.md) | A value a template literal cannot write yet                     | names and types |

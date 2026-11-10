@@ -1,0 +1,113 @@
+// The same source in both modes: compiled to WebAssembly as `kernels.peras`,
+// to JavaScript as `kernels.apeiron`. The tests compare their results.
+
+struct Point {
+  x: f64,
+  y: f64,
+}
+
+enum Shape {
+  Circle(f64),
+  Rect(f64, f64),
+  Empty,
+}
+
+impl Point {
+  fn norm(self): f64 {
+    return (self.x * self.x + self.y * self.y).sqrt();
+  }
+}
+
+fn area(s: Shape): f64 {
+  return match (s) {
+    Circle(r) => 3.0 * r * r,
+    Rect(w, h) => w * h,
+    Empty => 0.0,
+  };
+}
+
+fn twice<T: Numeric>(x: T): T {
+  return x + x;
+}
+
+export fn integers(a: i32, b: i32): Array<i32> {
+  let h = a;
+  for (let i = 0; i < 20; i++) {
+    h = h * 31 + b;
+    h = h ^ (h >> 7);
+  }
+  return [a + b, a - b, a * b, a / b, a % b, a << 5, a >> 3, ~a, h, twice(a), a.abs()];
+}
+
+export fn longs(a: i64, b: i64): Array<i64> {
+  let h = a;
+  for (let i = 0; i < 20; i++) {
+    h = h * 1000003 + b;
+  }
+  return [a + b, a * b, a / b, a % b, h, a.toI32().toI64(), b.min(a)];
+}
+
+export fn floats(x: f64): Array<f64> {
+  const s = x.toF32();
+  const t = s * 3.0.toF32() + 0.1.toF32();
+  return [x.sqrt(), x.floor(), x.round(), x.pow(1.5), x.atan2(2.0), t.toF64(), twice(x)];
+}
+
+export fn conversions(x: f64): Array<i32> {
+  return [x.toI32(), (x * 1.0e12).toI32(), (-x * 1.0e12).toI32(), (0.0 / 0.0).toI32(), x.toI64().toI32()];
+}
+
+export fn words(line: String): String {
+  let counts: Map<String, i32> = Map.new();
+  for (const w of line.split(" ")) {
+    if (w.length > 0) {
+      counts.set(w.copy(), counts.get(w).unwrapOr(0) + 1);
+    }
+  }
+  let out = "";
+  for (const entry of counts) {
+    out += `${entry.0}:${entry.1} `;
+  }
+  return out.trim().toUpperCase();
+}
+
+export fn sorted(xs: Array<f64>): Array<f64> {
+  let ys = xs.copy();
+  ys.sort();
+  return ys.filter((y) => y > 0.0).map((y) => y * 2.0);
+}
+
+export fn shapes(r: f64): f64 {
+  const all = [Shape.Circle(r), Shape.Rect(r, 2.0), Shape.Empty];
+  let total = 0.0;
+  for (const s of all) {
+    total += area(s);
+  }
+  return total + Point(3.0, 4.0).norm();
+}
+
+fn half(n: i32): Option<i32> {
+  if (n % 2 != 0) {
+    return None;
+  }
+  return Some(n / 2);
+}
+
+fn quarter(n: i32): Option<i32> {
+  const h = half(n)?;
+  return half(h);
+}
+
+export fn options(n: i32): i32 {
+  return quarter(n).unwrapOr(-1);
+}
+
+export fn formatted(a: f64, n: i32): String {
+  const f = a.toF32();
+  return `${a} ${f} ${n} ${n.toI64() * 3} ${a > 1.0}`;
+}
+
+export fn faults(n: i32): i32 {
+  const xs = [1, 2, 3];
+  return xs[n] / (n - 1);
+}

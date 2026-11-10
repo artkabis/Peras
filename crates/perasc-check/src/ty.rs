@@ -160,6 +160,8 @@ pub enum Ty {
     Map(Box<Ty>, Box<Ty>),
     /// `Set<T>`, in insertion order.
     Set(Box<Ty>),
+    /// `Promise<T>`: what an `async` function of a managed module gives.
+    Promise(Box<Ty>),
     /// `Option<T>`
     Option(Box<Ty>),
     /// `Result<T, E>`: `Ok(T)` or `Err(E)`.
@@ -234,6 +236,7 @@ impl fmt::Display for Ty {
             Self::Array(t) => write!(f, "Array<{t}>"),
             Self::Map(k, v) => write!(f, "Map<{k}, {v}>"),
             Self::Set(t) => write!(f, "Set<{t}>"),
+            Self::Promise(t) => write!(f, "Promise<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
             Self::Struct(_, name) | Self::Enum(_, name) | Self::Param(_, name) => f.write_str(name),

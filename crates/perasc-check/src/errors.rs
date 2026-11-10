@@ -88,6 +88,9 @@ const fn why(code: ErrorCode) -> &'static str {
         239 => "check-template-why",
         240 => "check-map-key-why",
         241 => "check-parallel-why",
+        242 => "check-managed-only-why",
+        243 => "check-owned-only-why",
+        244 => "check-import-why",
         _ => "check-operator-why",
     }
 }
@@ -1079,5 +1082,41 @@ pub fn arrow_expected(span: Span) -> Diagnostic {
         span,
         Message::new("check-arrow-expected-label"),
         Message::new("check-arrow-expected-fix"),
+    )
+}
+
+/// `E0242`: something only a managed module has, in an owned one.
+pub fn managed_only(span: Span, what: &str) -> Diagnostic {
+    simple(
+        codes::MANAGED_ONLY,
+        Message::new("check-managed-only").text("what", what),
+        span,
+        Message::new("check-managed-only-label").text("what", what),
+        Message::new("check-managed-only-fix").text("what", what),
+    )
+}
+
+/// `E0243`: something only an owned module has, in a managed one.
+pub fn owned_only(span: Span, what: &str) -> Diagnostic {
+    simple(
+        codes::OWNED_ONLY,
+        Message::new("check-owned-only").text("what", what),
+        span,
+        Message::new("check-owned-only-label"),
+        Message::new("check-owned-only-fix").text("what", what),
+    )
+}
+
+/// `E0244`: an `import` naming a missing module or function, or one whose
+/// signature cannot cross yet.
+pub fn import(span: Span, reason: &str, name: &str) -> Diagnostic {
+    simple(
+        codes::IMPORT,
+        Message::new("check-import")
+            .text("reason", reason)
+            .text("name", name),
+        span,
+        Message::new("check-import-label").text("reason", reason),
+        Message::new("check-import-fix").text("reason", reason),
     )
 }

@@ -12,3 +12,4 @@ website/.pages/
 website/dist/
 bench/prototypes/*/RESULTS.md
 bench/maps/RESULTS.md
+bench/managed/RESULTS.md

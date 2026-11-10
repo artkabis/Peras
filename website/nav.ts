@@ -25,6 +25,7 @@ export const sections: Section[] = [
       "guide/memory",
       "guide/diagnostics",
       "guide/javascript",
+      "guide/managed",
     ],
   },
   {
@@ -48,6 +49,7 @@ export const sections: Section[] = [
     pages: [
       "spec",
       "architecture",
+      "research",
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
       "decisions/0002-tlsf-allocator",
@@ -56,6 +58,7 @@ export const sections: Section[] = [
       "decisions/0005-maps-and-sets",
       "decisions/0006-licensing",
       "decisions/0007-threads-over-shared-memory",
+      "decisions/0008-managed-mode",
     ],
   },
 ];

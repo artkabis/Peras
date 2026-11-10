@@ -106,7 +106,10 @@ fn unreadable_files_are_reported_and_the_rest_still_checked() {
 fn usage_errors_are_explained() {
     for (args, expected) in [
         (&["compile"][..], "error: unknown command `compile`"),
-        (&["build"][..], "error: `build` needs a .peras file"),
+        (
+            &["build"][..],
+            "error: `build` needs a .peras or .apeiron file",
+        ),
         (&["check"][..], "error: `check` needs at least one file"),
         (
             &["check", "a.peras", "--wat"][..],

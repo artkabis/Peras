@@ -8,10 +8,10 @@ diagnostics:
     primary 2:13-2:18: check-unknown-type-label
     cause: check-unknown-type-why
     fix: check-unknown-type-fix
-  error[E0213] check-unknown-type { name: "number" }
-    primary 2:27-2:33: check-unknown-type-label
-    cause: check-unknown-type-why
-    fix: check-unknown-type-fix
+  error[E0242] check-managed-only { what: "number" }
+    primary 2:27-2:33: check-managed-only-label { what: "number" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "number" }
   error[E0213] check-unknown-type { name: "Strng" }
     primary 2:36-2:41: check-unknown-type-label
     cause: check-unknown-type-why

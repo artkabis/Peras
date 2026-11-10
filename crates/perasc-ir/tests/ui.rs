@@ -22,6 +22,42 @@ fn compile(source: &str) -> Result<perasc_ir::Module, Vec<Diagnostic>> {
     perasc_ir::lower(&parsed.ast, &analysis)
 }
 
+/// The owned module the managed tests import, as `./stats.peras`.
+const STATS: &str = "export fn mean(xs: Array<f64>): f64 { return xs[0]; }\n\
+                     export struct Point { x: f64 }\n\
+                     export fn origin(): Point { return Point(0.0); }\n";
+
+/// A managed module's checks, importing `./stats.peras`: it is not lowered,
+/// since it compiles to JavaScript.
+fn check_managed(source: &str) -> Result<(), Vec<Diagnostic>> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return Err(parsed.diagnostics);
+    }
+    let context = perasc_check::Context {
+        managed: true,
+        imports: vec![perasc_check::ImportedModule {
+            from: "./stats.peras".to_owned(),
+            functions: perasc_check::exports_of(STATS),
+        }],
+    };
+    let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
+    if analysis.diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(analysis.diagnostics)
+    }
+}
+
+/// A test file's errors, in the mode its extension gives.
+fn errors_of(path: &Path, source: &str) -> Vec<Diagnostic> {
+    if path.extension().is_some_and(|e| e == "apeiron") {
+        check_managed(source).err().unwrap_or_default()
+    } else {
+        compile(source).err().unwrap_or_default()
+    }
+}
+
 #[test]
 fn build_ui() {
     insta::glob!("../../../tests/ui", "build/*.peras", |path| {
@@ -48,9 +84,7 @@ fn every_code_has_a_ui_test() {
             .join(stage);
         for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let source = fs::read_to_string(entry.path()).unwrap_or_default();
-            if let Err(errors) = compile(&source) {
-                seen.extend(errors.iter().map(|d| d.code));
-            }
+            seen.extend(errors_of(&entry.path(), &source).iter().map(|d| d.code));
         }
     }
     for entry in codes::REGISTRY {
@@ -84,9 +118,10 @@ fn every_diagnostic_shows_excerpt_cause_and_fix_in_both_languages() {
         for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let path = entry.path().display().to_string();
             let source = fs::read_to_string(entry.path()).unwrap_or_default();
-            let Err(errors) = compile(&source) else {
+            let errors = errors_of(&entry.path(), &source);
+            if errors.is_empty() {
                 continue;
-            };
+            }
             let file = SourceFile::new(&path, &source);
             for d in &errors {
                 let mut causes = Vec::new();
@@ -142,13 +177,15 @@ fn every_diagnostic_shows_excerpt_cause_and_fix_in_both_languages() {
 
 /// The code block under a heading of a page, if any. Pages write invisible
 /// characters as `<U+202E>`, never as themselves: they are decoded here.
-fn block_after(page: &str, heading: &str) -> Option<String> {
+fn block_after(page: &str, heading: &str) -> Option<(String, bool)> {
     let rest = page.split_once(&format!("\n## {heading}\n"))?.1;
     let rest = rest.split("\n## ").next()?;
-    let code = ["```peras\n", "```text\n"]
+    let (fence, code) = ["```peras\n", "```apeiron\n", "```text\n"]
         .iter()
-        .find_map(|fence| rest.split_once(fence))?
-        .1;
+        .filter_map(|fence| Some((*fence, rest.split_once(fence)?)))
+        .min_by_key(|(_, (before, _))| before.len())
+        .map(|(fence, (_, after))| (fence, after))?;
+    let managed = fence == "```apeiron\n";
     let code = code.split_once("\n```").map(|(code, _)| code)?;
     let mut out = String::new();
     let mut rest = code;
@@ -167,7 +204,7 @@ fn block_after(page: &str, heading: &str) -> Option<String> {
         }
     }
     out.push_str(rest);
-    Some(out)
+    Some((out, managed))
 }
 
 /// The documentation of every code is true: its example produces the code, and
@@ -187,11 +224,15 @@ fn every_documented_example_and_fix_is_true() {
             let context = format!("{} ({language:?})", entry.code);
             // Pages show fragments: `…` stands for anything, and statements that
             // are not a declaration (E0110 at the top level) go inside a function.
-            let produces = |code: &str| {
+            let produces = |(code, managed): &(String, bool)| {
                 let code = code.replace('…', "");
                 let codes_of = |source: &str| -> Vec<String> {
-                    compile(source)
-                        .err()
+                    let errors = if *managed {
+                        check_managed(source).err()
+                    } else {
+                        compile(source).err()
+                    };
+                    errors
                         .unwrap_or_default()
                         .iter()
                         .map(|d| d.code.to_string())
@@ -207,13 +248,13 @@ fn every_documented_example_and_fix_is_true() {
             if entry.code.to_string() == "E0111" {
                 continue;
             }
-            if let Some(code) = block_after(page, example).as_deref() {
+            if let Some(code) = block_after(page, example).as_ref() {
                 if !produces(code) {
                     problems.push(format!("{context}: the example does not produce it"));
                 }
                 checked += 1;
             }
-            if let Some(code) = block_after(page, fix).as_deref()
+            if let Some(code) = block_after(page, fix).as_ref()
                 && produces(code)
             {
                 problems.push(format!("{context}: the fix still produces it"));

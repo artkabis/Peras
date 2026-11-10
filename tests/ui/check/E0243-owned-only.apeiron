@@ -1,0 +1,15 @@
+// What belongs to owned modules: `inout` on a value JavaScript copies,
+// replacing an `inout` parameter, `sink`, and threads.
+export fn grow(n: inout i32, xs: inout Array<number>, ys: sink Array<number>): void {
+  xs = [];
+  parallel for (let i = 0; i < xs.length; i++) {
+    xs[i] = 0.0;
+  }
+  n += 1;
+}
+
+// `inout` on an array, a map, a set or a structure: shared, changed in place.
+export fn fill(xs: inout Array<number>, seen: inout Set<i32>): void {
+  xs.push(1.0);
+  seen.add(1);
+}

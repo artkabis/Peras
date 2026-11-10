@@ -139,6 +139,8 @@ jobs:
         run: node scripts/bench-workers.mjs --check
       - name: Maps and sets give what JavaScript's give
         run: node scripts/bench-maps.mjs --check
+      - name: Managed and owned modules give what hand-written JavaScript gives
+        run: node scripts/bench-managed.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

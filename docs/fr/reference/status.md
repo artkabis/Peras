@@ -41,7 +41,7 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | possession : déplacements, emprunts, alias refusés, libérations | <span class="status compiled">compilé</span>                                                                         |
 | `const` au niveau du module                                     | <span class="status compiled">compilé</span>                                                                         |
 | `let` au niveau du module                                       | <span class="status checked">vérifié</span>                                                                          |
-| `import` entre modules                                          | <span class="status planned">prévu</span>                                                                            |
+| `import` de fonctions possédées dans un module géré             | <span class="status compiled">compilé</span>, nombres, chaînes et collections de ceux-ci                             |
 
 ## Méthodes
 
@@ -49,14 +49,15 @@ Chaque méthode intégrée, avec son état, est dans la [référence des méthod
 
 ## Modes et outillage
 
-| Fonctionnalité                                                    | État                                                                             |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| mode possédé, `.peras`, vers WebAssembly                          | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
-| mode géré, `.apeiron`, vers JavaScript                            | <span class="status planned">prévu</span>                                        |
-| diagnostics en anglais et en français, `--json`, `perasc explain` | disponible                                                                       |
-| plugin Vite, déclarations TypeScript                              | disponible                                                                       |
-| allocateur de débogage, vérificateur de libérations               | en service dans chaque module qui alloue                                         |
-| `async`, le DOM, `fetch`, les événements                          | <span class="status planned">prévu</span>, en mode géré                          |
-| prise en charge des éditeurs (LSP), formateur, lanceur de tests   | <span class="status planned">prévu</span>                                        |
+| Fonctionnalité                                                        | État                                                                             |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| mode possédé, `.peras`, vers WebAssembly                              | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
+| mode géré, `.apeiron`, vers JavaScript ([guide](../guide/managed.md)) | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
+| diagnostics en anglais et en français, `--json`, `perasc explain`     | disponible                                                                       |
+| plugin Vite, déclarations TypeScript                                  | disponible                                                                       |
+| allocateur de débogage, vérificateur de libérations                   | en service dans chaque module qui alloue                                         |
+| `async`, `await`, `number`, en mode géré                              | <span class="status compiled">compilé</span>                                     |
+| le DOM, `fetch`, les événements, les ressources                       | <span class="status planned">prévu</span>, en mode géré                          |
+| prise en charge des éditeurs (LSP), formateur, lanceur de tests       | <span class="status planned">prévu</span>                                        |
 
 Ce qui vient ensuite, et dans quel ordre : [vers un langage complet](roadmap.md).

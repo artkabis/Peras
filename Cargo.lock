@@ -334,7 +334,10 @@ dependencies = [
 name = "perasc-codegen-js"
 version = "0.0.1"
 dependencies = [
- "perasc-ir",
+ "insta",
+ "perasc-check",
+ "perasc-diag",
+ "perasc-syntax",
 ]
 
 [[package]]
@@ -391,6 +394,7 @@ version = "0.0.1"
 dependencies = [
  "insta",
  "perasc-check",
+ "perasc-codegen-js",
  "perasc-diag",
  "perasc-syntax",
 ]

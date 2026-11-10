@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0242-await-sync.apeiron
+---
+diagnostics:
+  error[E0242] check-managed-only { what: "await-sync" }
+    primary 7:10-7:22: check-managed-only-label { what: "await-sync" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "await-sync" }
+  error[E0210] check-mismatch { expected: "Promise<f64>", found: "f64" }
+    primary 11:26-11:32: check-mismatch-label { found: "f64" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "Promise<f64>" }

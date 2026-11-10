@@ -1,0 +1,18 @@
+// A managed module: it waits, counts with `number`, and calls an owned
+// module compiled to WebAssembly.
+import { mean, histogram } from "./lib/stats.peras";
+
+async fn load(n: i32): Promise<Array<number>> {
+  let xs: Array<number> = [];
+  for (let i = 0; i < n; i++) {
+    xs.push((i * 37 % 100).toF64() / 100.0);
+  }
+  return xs;
+}
+
+export async fn report(n: i32): Promise<String> {
+  const xs = await load(n);
+  const m: number = mean(xs);
+  const h = histogram(xs, 4);
+  return `mean ${m}, buckets ${h.map((c) => c.toString()).join(",")}`;
+}

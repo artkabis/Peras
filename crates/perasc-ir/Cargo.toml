@@ -15,6 +15,7 @@ perasc-syntax.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+perasc-codegen-js.workspace = true
 
 [lints]
 workspace = true

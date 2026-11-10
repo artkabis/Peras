@@ -258,7 +258,9 @@ dependencies = [
 name = "perasc-codegen-js"
 version = "0.0.1"
 dependencies = [
- "perasc-ir",
+ "perasc-check",
+ "perasc-diag",
+ "perasc-syntax",
 ]
 
 [[package]]

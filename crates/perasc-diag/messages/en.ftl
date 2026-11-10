@@ -7,7 +7,7 @@ cli-usage =
 
     Commands:
       check <file>...    check .peras and .apeiron files and report every error
-      build <file>       compile a .peras file to WebAssembly
+      build <file>       compile a .peras file to WebAssembly, or a .apeiron file to JavaScript
       explain <code>     explain an error code, e.g. `perasc explain E0001`
 
     Options:
@@ -19,6 +19,7 @@ cli-usage =
       --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
+      --imports <how>    imports of .peras files in a .apeiron module: built (default, each next to it) or source (kept for a bundler such as Vite)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help
@@ -27,7 +28,7 @@ cli-unknown-command = unknown command `{ $command }`
 cli-missing-value = `{ $option }` needs a value
 cli-invalid-value = invalid value `{ $value }` for `{ $option }`
 cli-no-files = `check` needs at least one file
-cli-no-build-file = `build` needs a .peras file
+cli-no-build-file = `build` needs a .peras or .apeiron file
 cli-missing-code = `explain` needs an error code, e.g. E0001
 cli-unknown-code = unknown error code `{ $code }`
 cli-not-a-source = `{ $path }` is not a Peras source: the extension must be .peras or .apeiron
@@ -652,6 +653,67 @@ check-parallel-label = turns that may run at the same time
 check-parallel-why = The turns of a parallel loop run on several threads at once, in any order. Each turn may read anything the loop does not change, and write only the elements at its own index, so that no turn sees another: the results are then those of the loop run in order, bit for bit.
 check-parallel-fix = keep in each turn only what reads the inputs and writes `xs[i]`; compute a sum or what needs memory in an ordinary loop after it
 
+# E0242
+check-managed-only = { $what ->
+    [async] an `async` function
+    [await] `await`
+    [await-sync] `await` outside an `async` function
+    [number] the type `number`
+    [promise] the type `Promise`
+    [import] an `import`
+   *[other] this
+} { $what ->
+    [await-sync] cannot wait
+   *[other] belongs to managed modules (`.apeiron`)
+}
+check-managed-only-label = { $what ->
+    [await-sync] waits in a function that does not
+   *[other] only in a `.apeiron` module
+}
+check-managed-only-why = An owned module (`.peras`) compiles to WebAssembly, where nothing waits: it computes and returns. A managed module (`.apeiron`) compiles to JavaScript, for what talks to the browser: it waits with `async` and `await`, counts with `number`, and calls owned modules by importing them. `await` waits for a promise, so only a function that gives a promise itself, an `async` one, may use it.
+check-managed-only-fix = { $what ->
+    [await-sync] mark the function `async`, and its result `Promise<T>`
+    [number] use `f64`, which `number` names in a managed module
+   *[other] move this code to a `.apeiron` module, which may import this one
+}
+
+# E0243
+check-owned-only = { $what ->
+    [inout] `inout` on a value JavaScript copies
+    [inout-assign] replacing an `inout` parameter
+    [sink] `sink`
+    [parallel] `parallel for`
+   *[other] this
+} belongs to owned modules (`.peras`)
+check-owned-only-label = only in a `.peras` module
+check-owned-only-why = A managed module's values belong to the JavaScript garbage collector: nothing moves and nothing is lent. An array, a map, a set or a structure is shared with the caller, so an `inout` one can be changed, and the caller sees it; a number, a boolean, a string or an option is copied, and an `inout` one could not reach its caller, nor could a parameter replaced by another value. Giving a value with `sink`, and loops that split work between threads over shared memory, are those of owned modules, compiled to WebAssembly.
+check-owned-only-fix = { $what ->
+    [parallel] write the loop in a `.peras` module and import its function
+    [inout-assign] change its elements or fields, or return the new value
+   *[other] remove the convention: return the new value instead of changing the argument
+}
+
+# E0244
+check-import = { $reason ->
+    [module] cannot import from `{ $name }`
+    [name] `{ $name }` is not an exported function of this module
+    [signature] `{ $name }` takes or gives a value that cannot cross between modules yet
+   *[other] cannot import `{ $name }`
+}
+check-import-label = { $reason ->
+    [module] not an owned module that compiles
+    [name] not exported here
+    [signature] imported here
+   *[other] here
+}
+check-import-why = A managed module imports functions from owned modules (`.peras`), in the same folder or below it, and calls them through checked conversions: numbers, booleans, strings, and arrays, options, results, maps and sets of them cross between the two. A structure or an enumeration is the other module's own type, and does not cross yet.
+check-import-fix = { $reason ->
+    [module] import a `.peras` file by its relative path, such as `"./maths.peras"`, and fix its errors first
+    [name] mark the function `export` in its module, or check its spelling
+    [signature] give the function numbers, strings, or arrays of them, and build the structure on each side
+   *[other] check the import
+}
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
@@ -678,6 +740,7 @@ gen-unsupported = code generation does not support { $feature ->
     [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
     [map-value] maps whose values have more than 24 scalars
+    [nested-option] in a managed module, options of options, whose `Some(None)` JavaScript cannot tell from `None`
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet

@@ -14,8 +14,8 @@ use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
     AliasDecl, Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, ImplDecl,
-    InterfaceDecl, Item, ItemKind, Local, MethodSig, Param, Stmt, StmtKind, StructDecl, Type,
-    TypeKind, TypeParam, Variant,
+    ImportDecl, InterfaceDecl, Item, ItemKind, Local, MethodSig, Param, Stmt, StmtKind, StructDecl,
+    Type, TypeKind, TypeParam, Variant,
 };
 
 /// What comes before `fn`: attributes, `export`, `async`.
@@ -491,8 +491,45 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// `import { a, b } from "./module.peras";`
+    fn import_decl(&mut self, start: u32) -> Option<Item> {
+        self.bump();
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let mut names = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at(TokenKind::Eof) {
+            names.push(self.ident(NameOf::Function)?);
+            if self.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        if !self.expect_close(open, TokenKind::RBrace, "}") {
+            return None;
+        }
+        if self.at_word("from") {
+            self.bump();
+        } else {
+            let found = self.peek();
+            self.unexpected(found, errors::expected_token("from"));
+            return None;
+        }
+        let path = self.expect(TokenKind::String, "\"")?;
+        let from = crate::string_value(self.text(path));
+        self.expect_semicolon();
+        Some(Item {
+            kind: ItemKind::Import(ImportDecl {
+                names,
+                from,
+                from_span: path.span,
+            }),
+            span: self.since(start),
+        })
+    }
+
     fn item(&mut self) -> Option<Item> {
         let start = self.peek().span.start;
+        if self.at(TokenKind::Import) {
+            return self.import_decl(start);
+        }
         let mut attributes = Vec::new();
         while self.eat(TokenKind::At).is_some() {
             attributes.extend(self.ident(NameOf::Attribute));

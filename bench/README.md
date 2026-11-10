@@ -130,6 +130,19 @@ The first compiled maps were slower than JavaScript's: 0.68, 0.93 and 0.69. Two 
 - **`m.set(word.copy(), …)` lends the word**, which the map copies only when the key is new: the copy made then released at each word already there is gone. Words go from 313 to 201 ms.
 - **Tried and dropped**: a cache of the entry the last lookup found, for the `get` then `set` of the same key. Words did not move (313 to 308 ms), and the comparison it adds to every lookup slowed integer keys to 191 ms and the set to 128.
 
+## Managed modules (`bench/managed`)
+
+`node scripts/bench-managed.mjs` compiles [bench/managed/kernels.apeiron](managed/kernels.apeiron) to JavaScript, and the same source to WebAssembly as a `.peras` file with the TLSF allocator, and runs both against the same work written by hand in JavaScript, in Node ([results](managed/RESULTS.md), [decision 0008](../docs/en/decisions/0008-managed-mode.md)). Each case is checked to give the same result on the three sides first; CI runs the check. Speed is the time of hand-written JavaScript divided by the module's, over 6 runs:
+
+| Case                                      | Managed (JavaScript) | Owned (WebAssembly) |
+| ----------------------------------------- | -------------------: | ------------------: |
+| sum of 1 M `i32`, wrapping                |          0.99 – 1.01 |         1.09 – 1.14 |
+| one step of 1 M particles, `inout` arrays |          0.94 – 1.03 |         0.16 – 0.18 |
+| count 500 k words, `Map<String, i32>`     |          0.96 – 1.31 |         1.67 – 1.91 |
+| energy of 2,000 bodies, structures        |          0.93 – 0.99 |         1.02 – 1.10 |
+
+A managed module runs at the speed of the JavaScript one would write: its numbers wrap as hand-written code wraps them, and the bounds checks of `xs[i]` are proven away in a counted loop over `xs` whose body calls nothing, as in WebAssembly; before that proof, the sum ran at 0.83 – 0.86 and the particles at 0.89 – 0.93. The particles' arrays are JavaScript arrays, copied into the owned module and back at each call: a `PerasArray` avoids it ([arrays without a copy](../docs/en/guide/javascript.md#arrays-without-a-copy)).
+
 ## A/B benchmark (`scripts/bench-ab.mjs`)
 
 Two builds of Peras, compared on the kernels of `bench/browser` in one Chromium page, so that a change is decided on measures:

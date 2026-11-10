@@ -1,0 +1,27 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0243-owned-only.apeiron
+---
+diagnostics:
+  error[E0243] check-owned-only { what: "inout" }
+    primary 3:16-3:17: check-owned-only-label
+    cause: check-owned-only-why
+    fix: check-owned-only-fix { what: "inout" }
+  error[E0243] check-owned-only { what: "sink" }
+    primary 3:55-3:57: check-owned-only-label
+    cause: check-owned-only-why
+    fix: check-owned-only-fix { what: "sink" }
+  error[E0203] check-unused { what: "parameter", name: "ys" }
+    primary 3:55-3:57: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-parameter { name: "ys" }
+      3:55-3:55 -> "_"
+  error[E0243] check-owned-only { what: "inout-assign" }
+    primary 4:3-4:5: check-owned-only-label
+    cause: check-owned-only-why
+    fix: check-owned-only-fix { what: "inout-assign" }
+  error[E0243] check-owned-only { what: "parallel" }
+    primary 5:3-7:4: check-owned-only-label
+    cause: check-owned-only-why
+    fix: check-owned-only-fix { what: "parallel" }

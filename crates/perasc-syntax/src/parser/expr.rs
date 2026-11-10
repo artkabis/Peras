@@ -141,6 +141,7 @@ impl Parser<'_> {
             TokenKind::Bang => Some(UnaryOp::Not),
             TokenKind::Tilde => Some(UnaryOp::BitNot),
             TokenKind::Amp => Some(UnaryOp::Borrow),
+            TokenKind::Await => Some(UnaryOp::Await),
             _ => None,
         };
         if let Some(op) = unary {

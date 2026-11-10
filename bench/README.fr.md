@@ -130,6 +130,19 @@ Les premières tables compilées étaient plus lentes que celles de JavaScript :
 - **`m.set(word.copy(), …)` prête le mot**, que la table ne copie que si la clé est nouvelle : la copie faite puis libérée à chaque mot déjà présent disparaît. Les mots passent de 313 à 201 ms.
 - **Essayé puis écarté** : un cache de l’entrée trouvée par la dernière recherche, pour le `get` puis `set` de la même clé. Les mots n’ont pas bougé (313 à 308 ms), et la comparaison qu’il ajoute à chaque recherche a ralenti les clés entières à 191 ms et l’ensemble à 128.
 
+## Modules managed (`bench/managed`)
+
+`node scripts/bench-managed.mjs` compile [bench/managed/kernels.apeiron](managed/kernels.apeiron) en JavaScript, et la même source en WebAssembly comme fichier `.peras` avec l’allocateur TLSF, et les exécute face au même travail écrit à la main en JavaScript, dans Node ([résultats](managed/RESULTS.md), [décision 0008](../docs/fr/decisions/0008-managed-mode.md)). Chaque cas est d’abord vérifié donner le même résultat des trois côtés ; la CI exécute la vérification. La vitesse est le temps du JavaScript écrit à la main divisé par celui du module, sur 6 exécutions :
+
+| Cas                                          | Managed (JavaScript) | Owned (WebAssembly) |
+| -------------------------------------------- | -------------------: | ------------------: |
+| somme d’1 M de `i32`, repliée                |          0,99 – 1,01 |         1,09 – 1,14 |
+| un pas d’1 M de particules, tableaux `inout` |          0,94 – 1,03 |         0,16 – 0,18 |
+| compter 500 k mots, `Map<String, i32>`       |          0,96 – 1,31 |         1,67 – 1,91 |
+| énergie de 2 000 corps, structures           |          0,93 – 0,99 |         1,02 – 1,10 |
+
+Un module managed va à la vitesse du JavaScript qu’on écrirait : ses nombres se replient comme le code écrit à la main les replie, et les contrôles de bornes de `xs[i]` sont prouvés inutiles dans une boucle comptée sur `xs` dont le corps n’appelle rien, comme en WebAssembly ; avant cette preuve, la somme tournait à 0,83 – 0,86 et les particules à 0,89 – 0,93. Les tableaux des particules sont des tableaux JavaScript, copiés dans le module owned et en retour à chaque appel : un `PerasArray` l’évite ([des tableaux sans copie](../docs/fr/guide/javascript.md#des-tableaux-sans-copie)).
+
 ## Banc A/B (`scripts/bench-ab.mjs`)
 
 Deux compilations de Peras, comparées sur les noyaux de `bench/browser` dans une même page Chromium, pour décider d’un changement sur des mesures :

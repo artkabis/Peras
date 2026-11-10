@@ -1,0 +1,18 @@
+// A managed module: `number`, `async`, `await`, and an imported function.
+import { mean } from "./stats.peras";
+
+async fn fetchScores(): Promise<Array<number>> {
+  return [1.0, 2.0, 3.0];
+}
+
+export async fn report(): Promise<String> {
+  const xs = await fetchScores();
+  const m: number = mean(xs);
+  return `mean ${m}`;
+}
+
+export fn twice(xs: Array<number>): Array<number> {
+  let ys = xs;
+  ys.push(1.0);
+  return xs;
+}
