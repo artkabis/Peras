@@ -75,7 +75,7 @@ jobs:
     # Decision 0001: the direct WebAssembly backend is checked against the Rust backend.
     name: Backends agree (direct WebAssembly and Rust)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +91,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/bench-backends.mjs --check
+      # The browser kernels in Rust and AssemblyScript give what Peras and
+      # JavaScript give: the comparison of bench/README.md stays runnable.
+      - run: cargo build --release --locked -p perasc
+      - name: Install the Chromium of the pinned Playwright
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Peras, JavaScript, Rust and AssemblyScript agree in the browser benchmark
+        run: node scripts/bench-browser.mjs --check --contenders
 
   i18n:
     name: Translations (English first, then French)
@@ -128,6 +135,8 @@ jobs:
       - run: pnpm run e2e
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
+      - name: Split across Web Workers, the kernels give what they give directly
+        run: node scripts/bench-workers.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

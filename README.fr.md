@@ -8,7 +8,7 @@ Peras est un langage web à la syntaxe TypeScript et à la rigueur de Rust. Les 
 
 **État :** version 0.0.1, en phase 3 de la [feuille de route](docs/fr/reference/roadmap.md), la bibliothèque standard ([journal des modifications](CHANGELOG.fr.md), [ce qui est compilé aujourd’hui](docs/fr/reference/status.md)). `perasc` vérifie la syntaxe, les noms, les types et la possession d’une source, et la compile en WebAssembly sans toolchain Rust : nombres, structures, énumérations et `match`, options et résultats, génériques, méthodes et interfaces, tableaux et chaînes avec leurs méthodes, fonctions fléchées pour `map`, `filter` et les autres, et chaînes gabarits. Chaque bloc de mémoire est libéré par le compilateur, vérifié par un vérificateur, avec un allocateur de débogage en développement et TLSF en production. `vite-plugin-peras` exécute les modules dans le navigateur. `Map` et `Set` ([décision 0005](docs/fr/decisions/0005-maps-and-sets.md)) et les modules `.apeiron` viennent ensuite.
 
-**Vitesse**, mesurée dans Chromium face à du JavaScript écrit pour la vitesse ([banc d’essai](bench/README.fr.md#banc-dessai-dans-le-navigateur-benchbrowser)) : 5,4 fois plus rapide sur les entiers 64 bits, 1,6 à 2,4 fois sur les nombres en tableaux, le tri et le texte, la même vitesse sur les structures et l’arithmétique flottante seule, et plus lent sur les appels très courts à travers la frontière. Face à JavaScript tel qu’on l’écrit habituellement, les écarts sont plus grands ; les deux sont publiés.
+**Vitesse**, mesurée dans Chromium face à du JavaScript écrit pour la vitesse ([banc d’essai](bench/README.fr.md#banc-dessai-dans-le-navigateur-benchbrowser)) : 5,4 fois plus rapide sur les entiers 64 bits, 1,6 à 2,4 fois sur les nombres en tableaux, le tri et le texte, la même vitesse sur les structures et l’arithmétique flottante seule, et plus lent sur les appels très courts à travers la frontière. Face à JavaScript tel qu’on l’écrit habituellement, les écarts sont plus grands ; les deux sont publiés. Face à Rust et AssemblyScript tels qu’on les écrit habituellement, Peras va à la vitesse de Rust, devant lui sur quatre noyaux où son compilateur en fait plus, et plus vite qu’AssemblyScript partout où entrent des tableaux ou des allocations.
 
 ## Piliers
 
@@ -92,4 +92,6 @@ Voir [CONTRIBUTING.fr.md](CONTRIBUTING.fr.md). En bref : anglais d'abord, puis f
 
 ## Licence
 
-À décider (MIT, Apache-2.0, ou les deux). Les manifestes utilisent `MIT OR Apache-2.0` en attendant.
+Peras est un logiciel libre sous [GNU Affero General Public License, version 3 ou ultérieure](LICENSE), avec l’[exception de runtime de Peras](RUNTIME-EXCEPTION.fr.md) : les programmes que vous compilez avec Peras vous appartiennent, aux conditions de votre choix, fermées comprises ; Peras lui-même, modifié ou non, reste sous AGPL, y compris proposé comme service. Les exemples de code de la documentation et de `examples/` sont sous 0BSD. L’analyseur de fuites mémoire et l’extension VS Code sont des outils séparés et propriétaires. Pourquoi : [décision 0006](docs/fr/decisions/0006-licensing.md).
+
+Copyright © 2026 Artkabis et les contributeurs de Peras.

@@ -8,7 +8,7 @@ L'anglais fait foi pour les commentaires de code, la documentation, les messages
 
 - messages du compilateur : `crates/*/messages/en.ftl` et `fr.ftl`, mêmes clés ;
 - documentation : `docs/en/<page>` et `docs/fr/<page>`, mêmes chemins ;
-- fichiers racine : `README.md` / `README.fr.md`, `CONTRIBUTING.md` / `CONTRIBUTING.fr.md`.
+- fichiers racine : `README.md` / `README.fr.md`, `CONTRIBUTING.md` / `CONTRIBUTING.fr.md`, `RUNTIME-EXCEPTION.md` / `RUNTIME-EXCEPTION.fr.md` (le texte anglais est celui qui s’applique).
 
 `node scripts/check-i18n.mjs` le vérifie en local ; sinon la CI bloque la fusion.
 
@@ -52,6 +52,16 @@ cd fuzz && cargo +nightly fuzz run pipeline corpus/pipeline seeds -- -max_total_
 ```
 
 Un crash laisse son entrée dans `fuzz/artifacts/<cible>/`. Corrige-le avec un test de régression qui utilise cette entrée, dans le crate qui a paniqué.
+
+## Licence des contributions
+
+Peras est sous AGPL-3.0-or-later avec l’[exception de runtime de Peras](RUNTIME-EXCEPTION.fr.md) ([décision 0006](docs/fr/decisions/0006-licensing.md)). En ouvrant une pull request, vous confirmez avoir le droit d’en soumettre le contenu, et vous acceptez que :
+
+- votre contribution soit sous AGPL-3.0-or-later avec l’exception de runtime de Peras ;
+- vous accordiez aussi au propriétaire du projet une licence perpétuelle, mondiale, non exclusive et gratuite pour utiliser, modifier et licencier votre contribution à d’autres conditions, commerciales comprises, afin que Peras puisse être proposé sous licence commerciale à qui en a besoin ;
+- vous gardiez le droit d’auteur sur votre contribution.
+
+Ajoutez une ligne `Signed-off-by:` à vos commits (`git commit -s`) pour en garder la trace.
 
 ## Commits et pull requests
 

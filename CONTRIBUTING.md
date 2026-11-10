@@ -8,7 +8,7 @@ English is the source of truth for code comments, documentation, compiler messag
 
 - compiler messages: `crates/*/messages/en.ftl` and `fr.ftl`, same keys;
 - documentation: `docs/en/<page>` and `docs/fr/<page>`, same paths;
-- root files: `README.md` / `README.fr.md`, `CONTRIBUTING.md` / `CONTRIBUTING.fr.md`.
+- root files: `README.md` / `README.fr.md`, `CONTRIBUTING.md` / `CONTRIBUTING.fr.md`, `RUNTIME-EXCEPTION.md` / `RUNTIME-EXCEPTION.fr.md` (the English text is the one that applies).
 
 `node scripts/check-i18n.mjs` checks this locally; CI blocks the merge otherwise.
 
@@ -52,6 +52,16 @@ cd fuzz && cargo +nightly fuzz run pipeline corpus/pipeline seeds -- -max_total_
 ```
 
 A crash leaves its input in `fuzz/artifacts/<target>/`. Fix it with a regression test that uses this input, in the crate that panicked.
+
+## Licence of contributions
+
+Peras is under the AGPL-3.0-or-later with the [Peras Runtime Exception](RUNTIME-EXCEPTION.md) ([decision 0006](docs/en/decisions/0006-licensing.md)). By opening a pull request, you confirm that you have the right to submit its contents, and you agree that:
+
+- your contribution is licensed under the AGPL-3.0-or-later with the Peras Runtime Exception;
+- you also grant the owner of the project a perpetual, worldwide, non-exclusive, royalty-free licence to use, change and license your contribution under other terms, commercial ones included, so that Peras can be offered under a commercial licence to those who need one;
+- you keep the copyright on your contribution.
+
+Add a `Signed-off-by:` line to your commits (`git commit -s`) to record it.
 
 ## Commits and pull requests
 

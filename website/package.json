@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "The Peras documentation site, built from docs/ with Vite.",
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",

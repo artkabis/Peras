@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "description": "JS tooling for the Peras language: Vite plugin, Vitest adapter, project scaffolding.",
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "engines": {
     "node": ">=26.13.0"
   },
@@ -24,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "26.6.6",
+    "assemblyscript": "0.28.20",
     "binaryen": "132.0.0",
     "eslint": "10.14.0",
     "playwright": "1.64.1",

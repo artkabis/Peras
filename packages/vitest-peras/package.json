@@ -3,6 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "description": "Runs `test` blocks from .peras and .apeiron files with Vitest. Arrives with the integration milestone.",
-  "license": "MIT OR Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module"
 }

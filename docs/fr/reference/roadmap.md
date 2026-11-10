@@ -94,6 +94,22 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 - Un lanceur de tests : des tests écrits en Peras, lancés par Vitest.
 - `create-peras`, pour démarrer un projet en une commande.
 - Un bac à sable dans cette documentation : le compilateur lui-même compilé en WebAssembly, qui tourne dans la page.
+- Deux outils à part du cœur ouvert, propriétaires ([décision 0006](../decisions/0006-licensing.md)) : l’extension VS Code et un analyseur de fuites mémoire, construits sur ce que Peras publie. Les contrôles de fuites de l’allocateur de débogage restent dans le cœur.
+
+## Avant d’utiliser Peras en production
+
+Une revue extérieure du projet, en novembre 2026, a déconseillé de l’utiliser en production pour l’instant. Ses faits qui tiennent, vérifiés dans ce dépôt, sont gardés ici ; chacun est du travail pour les phases ci-dessus, pas un verdict sur la direction du langage.
+
+- **Version 0.0.1, sans promesse de stabilité** : jusqu’à la 1.0, toute version peut casser le langage. Une politique écrite, qui dit ce qui peut changer et comment un changement est annoncé, vient avant tout utilisateur extérieur.
+- **La moitié de la conception manque** : les modules `.apeiron` et leur compilateur vers JavaScript (phase 4) n’existent pas encore ; `perasc-codegen-js` est une crate vide, et `std/` ne contient que son README.
+- **Un seul mainteneur** : le projet dépend d’une personne, aidée d’un assistant d’IA ; il n’a pas encore de communauté.
+- **Pas de bibliothèques à lui** : le plan est d’utiliser celles de npm à travers leurs déclarations (phase 5), pas de les réécrire ; d’ici là, un module Peras fait un travail précis au sein d’une application TypeScript.
+- **Des workers, mais pas de mémoire partagée ; pas de GPU** : un module tourne tel quel dans des Web Workers, une instance chacun, mesuré 2,6 à 2,9 fois plus rapide sur 4 cœurs là où le travail l’emporte sur la copie des données, et plus lent sinon ([Web Workers](../../../bench/README.fr.md#web-workers)) ; la mémoire partagée entre workers n’est pas encore produite (la décision [0003](../decisions/0003-runtime-proved-at-compile-time.md) prévoit des déplacements entre fils), ni WebGPU (phase 6).
+- **La possession s’apprend** : les diagnostics expliquent chaque refus, avec l’historique de la valeur et la correction, mais il n’existe pas encore de savoir communautaire sur lequel s’appuyer.
+- **Comparé à Rust et AssemblyScript tels qu’on les écrit habituellement, pas encore à leurs experts** : Peras va à la vitesse du Rust idiomatique, devant là où son compilateur en fait plus (boucles SIMD avec conditions, tri par base, passage du texte), et 2,4 à 7,3 fois plus vite qu’AssemblyScript là où il alloue ou parcourt des tableaux ([face à Rust et AssemblyScript](../../../bench/README.fr.md#face-à-rust-et-assemblyscript)).
+- **Une licence manquait** : réglé par la [décision 0006](../decisions/0006-licensing.md).
+
+Aujourd’hui, Peras a sa place là où son risque reste petit : quelques fonctions de calcul, compilées en WebAssembly et appelées depuis une application TypeScript à travers le plugin Vite.
 
 ## Pourquoi cet ordre
 

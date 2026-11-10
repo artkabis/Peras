@@ -8,7 +8,7 @@ Peras is a web language with TypeScript syntax and Rust-grade rigour. `.peras` m
 
 **Status:** version 0.0.1, in phase 3 of the [roadmap](docs/en/reference/roadmap.md), the standard library ([changelog](CHANGELOG.md), [what is compiled today](docs/en/reference/status.md)). `perasc` checks the syntax, names, types and ownership of a source, and compiles it to WebAssembly without a Rust toolchain: numbers, structures, enumerations and `match`, options and results, generics, methods and interfaces, arrays and strings with their methods, arrow functions for `map`, `filter` and the others, and template literals. Every block of memory is released by the compiler, checked by a verifier, with a debug allocator in development and TLSF in production. `vite-plugin-peras` runs modules in the browser. `Map` and `Set` ([decision 0005](docs/en/decisions/0005-maps-and-sets.md)) and `.apeiron` modules come next.
 
-**Speed**, measured in Chromium against JavaScript written for speed ([benchmark](bench/README.md#browser-benchmark-benchbrowser)): 5.4 times faster on 64-bit integers, 1.6 to 2.4 times on numbers in arrays, sorting and text, the same speed on structures and floating-point arithmetic alone, and slower on very short calls across the boundary. Against JavaScript as usually written, the gaps are larger; both are published.
+**Speed**, measured in Chromium against JavaScript written for speed ([benchmark](bench/README.md#browser-benchmark-benchbrowser)): 5.4 times faster on 64-bit integers, 1.6 to 2.4 times on numbers in arrays, sorting and text, the same speed on structures and floating-point arithmetic alone, and slower on very short calls across the boundary. Against JavaScript as usually written, the gaps are larger; both are published. Against Rust and AssemblyScript as usually written, Peras runs at the speed of Rust, ahead of it on four kernels where its compiler does more, and faster than AssemblyScript wherever arrays or allocation are involved.
 
 ## Pillars
 
@@ -92,4 +92,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short: English first, then French in 
 
 ## Licence
 
-To be decided (MIT, Apache-2.0, or both). The manifests use `MIT OR Apache-2.0` as a placeholder until then.
+Peras is free software under the [GNU Affero General Public License, version 3 or later](LICENSE), with the [Peras Runtime Exception](RUNTIME-EXCEPTION.md): the programs you compile with Peras are yours, under the terms you choose, closed ones included; Peras itself, modified or not, stays under the AGPL, as a service too. The code examples of the documentation and of `examples/` are under 0BSD. The memory leak analyzer and the VS Code extension are separate, proprietary tools. Why: [decision 0006](docs/en/decisions/0006-licensing.md).
+
+Copyright © 2026 Artkabis and the Peras contributors.

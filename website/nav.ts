@@ -54,6 +54,7 @@ export const sections: Section[] = [
       "decisions/0003-runtime-proved-at-compile-time",
       "decisions/0004-strings-without-allocation",
       "decisions/0005-maps-and-sets",
+      "decisions/0006-licensing",
     ],
   },
 ];

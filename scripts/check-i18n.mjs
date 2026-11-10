@@ -71,6 +71,7 @@ for (const page of filesUnder(join(root, "docs", "en"))) {
 for (const [en, fr] of /** @type {[string, string][]} */ ([
   ["README.md", "README.fr.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.fr.md"],
+  ["RUNTIME-EXCEPTION.md", "RUNTIME-EXCEPTION.fr.md"],
 ])) {
   if (existsSync(join(root, en)) && !existsSync(join(root, fr))) {
     problems.push(`${fr} is missing (translation of ${en})`);

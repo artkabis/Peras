@@ -6,7 +6,7 @@ name = "perasc-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-or-later"
 
 [package.metadata]
 cargo-fuzz = true

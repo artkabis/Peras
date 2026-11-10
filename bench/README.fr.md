@@ -51,11 +51,56 @@ Ce que disent les résultats aujourd’hui, face au JavaScript **le plus rapide*
 
 Ce qu’apporte Peras, donc, c’est moins une vitesse que JavaScript ne peut pas atteindre que la vitesse de l’expert à partir du code habituel : `text.split(" ").filter(…).length` et un tableau de structures vont aussi vite, ou plus vite, que le JavaScript en lequel un expert les réécrit.
 
+### Face à Rust et AssemblyScript
+
+`node scripts/bench-browser.mjs --contenders` compile aussi les noyaux en Rust ([`browser/rust`](browser/rust/src/lib.rs), wasm-bindgen 0.2.130) et en AssemblyScript ([`browser/assemblyscript`](browser/assemblyscript/kernels.ts), 0.28.20), les deux autres façons d’écrire du WebAssembly pour le web, et les exécute dans la même page. Chacun est écrit comme on écrit habituellement ce langage : une structure ou une classe par corps, `split` et `filter`, le tri de la bibliothèque standard. Chacun est compilé pour la vitesse : Rust en release avec LTO et SIMD, AssemblyScript en `-O3` avec le SIMD permis. Leurs tableaux restent dans la mémoire de leur module, comme le fait un `PerasArray`. Chaque variante donne exactement le même résultat, vérifié dans la page ; la CI le vérifie à chaque pull request.
+
+Trois exécutions, Chromium 153 ; le temps du concurrent divisé par celui de Peras, au-dessus de 1 quand Peras est plus rapide :
+
+| Noyau     | Rust / Peras | AssemblyScript / Peras |
+| --------- | -----------: | ---------------------: |
+| particles |  1,49 – 1,52 |              4,8 – 4,9 |
+| grayscale |  1,28 – 1,33 |              2,4 – 2,5 |
+| sort      |  1,30 – 1,43 |              5,1 – 5,5 |
+| words     |  1,44 – 1,48 |                    7,3 |
+| nbody     |         0,98 |                    3,3 |
+| hash64    |         1,00 |             1,0 – 1,04 |
+| mandel    |  0,94 – 0,98 |            0,98 – 1,01 |
+| calls     |  1,02 – 1,05 |             1,0 – 1,02 |
+
+Téléchargement, gzip : Peras 13,1 Kio, Rust 16,1 Kio, AssemblyScript 6,1 Kio.
+
+Ce que cela dit :
+
+- **Là où le code est le même, la vitesse aussi.** n-body, le hachage, Mandelbrot et les appels donnent à Rust et à Peras le même code machine, à 6 % près : le WebAssembly de Peras y vaut celui de LLVM.
+- **Là où Peras devance Rust, son compilateur en fait plus pour le code habituel**, ce n’est pas une meilleure génération de code : la boucle des particules, avec sa condition, tourne sur quatre voies sous un masque, le tri est un tri par base là où la bibliothèque standard de Rust compare, et le temps de Rust pour `words` comprend le passage du texte par wasm-bindgen, qui copie les caractères ASCII un par un avant `encodeInto`. Pourquoi grayscale est 1,3 fois plus rapide en Peras, les deux étant vectorisés, n’est pas encore analysé.
+- **C’est du Rust idiomatique, pas celui d’un expert.** Un expert utiliserait les intrinsèques de `std::arch`, une crate de tri par base comme `radsort`, et passerait le texte en octets : ce Rust n’a pas été mesuré, et comblerait probablement les écarts ci-dessus. La lecture juste est « aussi rapide que Rust, à partir de code écrit comme du TypeScript », pas « plus rapide que Rust ».
+- **AssemblyScript** est 2,4 à 7,3 fois plus lent là où il alloue ou parcourt des tableaux : son optimiseur ne vectorise pas, ses tableaux typés vérifient chaque indice, ses objets et ses chaînes passent par son ramasse-miettes. C’est le plus petit téléchargement. Un expert écrirait `unchecked()` et `StaticArray` ; pas mesuré non plus.
+
+### Web Workers
+
+`node scripts/bench-workers.mjs` mesure ce que rapporte le découpage d’un noyau entre des Web Workers ([résultats](browser/WORKERS.md)). Un module compilé par `perasc` tourne tel quel dans un worker de module : chaque worker charge sa propre instance, avec sa propre mémoire. La page coupe les données en N parts, les transfère à N workers, chacun copie sa part dans la mémoire de son module, exécute le noyau, recopie le résultat et le transfère ; la page rassemble les parts. Tout est compté, face au noyau appelé directement sur le fil principal, ses tableaux déjà dans la mémoire du module. Chaque résultat découpé est vérifié égal au résultat direct, élément par élément ; la CI exécute la vérification.
+
+Sur 4 cœurs, Chromium 153, sur 2 à 4 exécutions :
+
+| Noyau              | Direct     | 4 workers  |  Accélération |
+| ------------------ | ---------- | ---------- | ------------: |
+| particles, 200 pas | 243–263 ms | 86–100 ms  | **2,6 – 2,9** |
+| words              | 2,9–3,8 ms | 2,5–3,2 ms |     1,1 – 1,2 |
+| particles, 10 pas  | 13–18 ms   | 18–27 ms   |   0,64 – 0,73 |
+| grayscale          | 4,0–4,9 ms | 21–29 ms   |   0,17 – 0,19 |
+
+Ce que cela dit :
+
+- **Les workers paient là où le travail l’emporte sur le déplacement des données.** 200 pas sur un million de particules, vingt fois le travail de 10 pour les mêmes octets, vont 2,6 à 2,9 fois plus vite sur 4 cœurs. Un seul passage d’un filtre sur 16 Mo de pixels va 5 fois moins vite : couper, transférer, copier à l’aller et au retour coûtent environ 20 ms, le filtre 4.
+- **Ce qui manque, c’est la mémoire partagée.** Chaque worker a sa propre mémoire, les données entrent et sortent donc par copie. Les threads WebAssembly sur un `SharedArrayBuffer` laisseraient les workers lire les mêmes tableaux ; Peras ne les produit pas encore, et une page qui les utilise doit être servie avec les en-têtes COOP et COEP. La [décision 0003](../docs/fr/decisions/0003-runtime-proved-at-compile-time.md) prévoit de déplacer des valeurs entre fils avec `sink`.
+- **Rien de cela n’est propre à Peras** : JavaScript, Rust ou AssemblyScript dans des workers paient les mêmes copies.
+
 ### Ce qu’une revue indépendante demanderait encore
 
 Ces points sont connus et pas encore faits ; chacun est une raison de lire les chiffres ci-dessus avec prudence.
 
-- **D’autres concurrents** : les mêmes noyaux en Rust compilé en WebAssembly, et en AssemblyScript, les alternatives à un nouveau langage.
+- **Des concurrents experts** : Rust et AssemblyScript sont mesurés tels qu’on les écrit habituellement (ci-dessus) ; les versions de leurs experts ne le sont pas.
 - **Toutes les mesures dans le dépôt** : les prototypes et sondes derrière les décisions 0004 et 0005, et les mesures des flottants en texte et d’`encodeInto`, ont été exécutés depuis un dossier de travail ; ils doivent être versionnés sous `bench/`, avec une commande chacun.
 - **Statistiques** : des intervalles de confiance (bootstrap sur les exécutions) plutôt que des médianes seules ; plus d’exécutions ; les niveaux d’optimisation du moteur indiqués.
 - **Machines** : macOS avec le Safari d’Apple, Windows, un téléphone ARM ; le chronomètre de WebKit compte des millisecondes entières, trop grossier pour des noyaux de 2 ou 3 ms.

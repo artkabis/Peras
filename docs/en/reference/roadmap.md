@@ -94,6 +94,22 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 - A test runner: tests written in Peras, run by Vitest.
 - `create-peras`, to start a project in one command.
 - A playground in this documentation: the compiler itself compiled to WebAssembly, running in the page.
+- Two tools apart from the open core, proprietary ([decision 0006](../decisions/0006-licensing.md)): the VS Code extension and a memory leak analyzer, built on what Peras publishes. The leak checks of the debug allocator stay in the core.
+
+## Before using Peras in production
+
+An outside review of the project, in November 2026, advised against using it in production yet. Its facts that hold, checked in this repository, are kept here; each is work for the phases above, not a verdict on where the language is going.
+
+- **Version 0.0.1, no stability promise**: until 1.0, any version may break the language. A written policy, saying what may change and how a change is announced, comes before any outside user.
+- **Half of the design is missing**: `.apeiron` modules and their compiler to JavaScript (phase 4) do not exist yet; `perasc-codegen-js` is an empty crate, and `std/` holds only its README.
+- **One maintainer**: the project depends on one person, helped by an AI assistant; it has no community yet.
+- **No libraries of its own**: the plan is to use those of npm through their declarations (phase 5), not to rewrite them; until then, a Peras module does one job inside a TypeScript application.
+- **Workers, but no shared memory; no GPU**: a module runs in Web Workers as it is, one instance each, measured 2.6 to 2.9 times faster on 4 cores where the work outweighs copying the data and slower where it does not ([Web Workers](../../../bench/README.md#web-workers)); memory shared between workers is not built yet (decision [0003](../decisions/0003-runtime-proved-at-compile-time.md) plans moves between threads), nor WebGPU (phase 6).
+- **Ownership is learned**: diagnostics explain every refusal, with the value's history and the fix, but there is no community knowledge to lean on yet.
+- **Compared with Rust and AssemblyScript as usually written, not yet with their experts**: Peras runs at the speed of idiomatic Rust, ahead where its compiler does more (SIMD loops with branches, radix sort, text crossing), and 2.4 to 7.3 times faster than AssemblyScript where it allocates or loops ([against Rust and AssemblyScript](../../../bench/README.md#against-rust-and-assemblyscript)).
+- **A licence was missing**: settled by [decision 0006](../decisions/0006-licensing.md).
+
+Today, Peras fits where its risk stays small: a few functions of computation, compiled to WebAssembly and called from a TypeScript application through the Vite plugin.
 
 ## Why this order
 

@@ -17,6 +17,10 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.9
+# The workspace's own crates are licensed AGPL-3.0-or-later with the Peras
+# Runtime Exception (decision 0006): a choice of the project, not a
+# dependency's licence to vet. They are all `publish = false`.
+private = { ignore = true }
 # libFuzzer, from LLVM, used only by the fuzz targets in fuzz/; never part of perasc
 # nor of a compiled module.
 exceptions = [{ crate = "libfuzzer-sys", allow = ["NCSA"] }]
