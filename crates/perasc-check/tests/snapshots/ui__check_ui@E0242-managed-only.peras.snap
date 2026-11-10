@@ -1,0 +1,34 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0242-managed-only.peras
+---
+diagnostics:
+  error[E0242] check-managed-only { what: "import" }
+    primary 2:1-2:38: check-managed-only-label { what: "import" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "import" }
+  error[E0242] check-managed-only { what: "async" }
+    primary 4:17-4:22: check-managed-only-label { what: "async" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "async" }
+  error[E0242] check-managed-only { what: "number" }
+    primary 4:33-4:39: check-managed-only-label { what: "number" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "number" }
+  error[E0242] check-managed-only { what: "promise" }
+    primary 4:43-4:55: check-managed-only-label { what: "promise" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "promise" }
+  error[E0203] check-unused { what: "variable", name: "n" }
+    primary 5:9-5:10: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-variable
+  error[E0242] check-managed-only { what: "await" }
+    primary 5:13-5:28: check-managed-only-label { what: "await" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "await" }
+  error[E0200] check-undefined { name: "count" }
+    primary 5:19-5:24: check-undefined-label
+    cause: check-undefined-why
+    fix: check-undefined-fix

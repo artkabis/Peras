@@ -1,0 +1,6 @@
+// Ownership conventions and threads belong to owned modules.
+export fn grow(xs: inout Array<number>, ys: sink Array<number>): void {
+  parallel for (let i = 0; i < xs.length; i++) {
+    xs[i] = 0.0;
+  }
+}

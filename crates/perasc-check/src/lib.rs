@@ -21,8 +21,8 @@ use std::collections::{HashMap, HashSet};
 
 use perasc_diag::{Diagnostic, Span};
 use perasc_syntax::ast::{
-    Ast, Convention, EnumDecl, ExprId, ExprKind, FnDecl, ItemKind, Local, Stmt, StmtKind,
-    StructDecl, Symbol, Type, TypeKind,
+    Ast, Convention, EnumDecl, ExprId, ExprKind, FnDecl, ImportDecl, ItemKind, Local, Stmt,
+    StmtKind, StructDecl, Symbol, Type, TypeKind,
 };
 
 use crate::generics::GenericParam;
@@ -85,6 +85,8 @@ pub struct Analysis {
     /// method each instance of that function calls, by the call and the
     /// instance's type arguments, with the method's own type arguments.
     pub dyn_targets: HashMap<(ExprId, Vec<Ty>), (FnId, Vec<Ty>)>,
+    /// The module's exported functions, as another module imports them.
+    pub exports: Vec<ImportedFn>,
 }
 
 /// What a method call reaches.
@@ -109,10 +111,78 @@ pub type Variant = (String, Vec<Ty>);
 /// Checks a module and keeps the type of every expression, for code generation.
 #[must_use]
 pub fn analyze(ast: &Ast, source: &str) -> Analysis {
-    let mut checker = Checker::new(ast, source);
+    analyze_with(ast, source, &Context::default())
+}
+
+/// What a module is checked against: its mode, and the functions of the
+/// modules it imports.
+#[derive(Debug, Clone, Default)]
+pub struct Context {
+    /// A managed module (`.apeiron`): its values are the garbage collector's,
+    /// with no moves or borrows; `async`, `number` and imports are allowed.
+    pub managed: bool,
+    /// The modules its `import`s name.
+    pub imports: Vec<ImportedModule>,
+}
+
+/// A module an `import` names, as the driver read it.
+#[derive(Debug, Clone)]
+pub struct ImportedModule {
+    /// Its path, as the `import` writes it.
+    pub from: String,
+    /// Its exported functions; `None` when it could not be read or checked.
+    pub functions: Option<Vec<ImportedFn>>,
+}
+
+/// An exported function of an imported module.
+#[derive(Debug, Clone)]
+pub struct ImportedFn {
+    /// Its name.
+    pub name: String,
+    /// Its parameters' types and conventions.
+    pub params: Vec<(Ty, Convention)>,
+    /// Its result.
+    pub ret: Ty,
+}
+
+impl ImportedFn {
+    /// Whether its signature crosses into another module: numbers, booleans,
+    /// strings, and arrays, options, results and maps of them. A structure
+    /// or an enumeration is the other module's, and does not yet.
+    #[must_use]
+    pub fn portable(&self) -> bool {
+        fn crosses(ty: &Ty) -> bool {
+            match ty {
+                Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::String | Ty::Void => true,
+                Ty::Array(t) | Ty::Option(t) | Ty::Set(t) => crosses(t),
+                Ty::Result(a, b) | Ty::Map(a, b) => crosses(a) && crosses(b),
+                _ => false,
+            }
+        }
+        self.params.iter().all(|(t, _)| crosses(t)) && crosses(&self.ret)
+    }
+}
+
+/// The exported functions of an owned module's source, as a managed module
+/// imports them; `None` when it does not parse or check.
+#[must_use]
+pub fn exports_of(source: &str) -> Option<Vec<ImportedFn>> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return None;
+    }
+    let analysis = analyze(&parsed.ast, source);
+    analysis.diagnostics.is_empty().then_some(analysis.exports)
+}
+
+/// Checks a module in its mode, against the modules it imports.
+#[must_use]
+pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
+    let mut checker = Checker::new(ast, source, context);
     checker.module();
     // Ownership needs correct types: one wrong type would give false moves.
-    if checker.diagnostics.is_empty() {
+    // A managed module has none: its values are the garbage collector's.
+    if checker.diagnostics.is_empty() && !context.managed {
         owner::Owner::new(&mut checker).module();
     }
     let (instances, dyn_targets) = if checker.diagnostics.is_empty() {
@@ -121,6 +191,22 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
         (Vec::new(), HashMap::new())
     };
     let fn_generics = checker.fns.iter().map(|f| f.generics.len()).collect();
+    let exports = checker
+        .exported
+        .iter()
+        .filter_map(|id| checker.fns.get(id.0))
+        .filter(|f| f.generics.is_empty())
+        .map(|f| ImportedFn {
+            name: f.name.clone(),
+            params: f
+                .params
+                .iter()
+                .cloned()
+                .zip(f.conventions.iter().copied())
+                .collect(),
+            ret: f.ret.clone(),
+        })
+        .collect();
     let struct_origins = checker.structs.iter().map(|s| s.origin.clone()).collect();
     let enum_origins = checker.enums.iter().map(|e| e.origin.clone()).collect();
     let mut diagnostics = checker.diagnostics;
@@ -157,6 +243,7 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
             .map(|(id, call)| (id, call.public()))
             .collect(),
         dyn_targets,
+        exports,
         moves: checker.moves,
         enums: checker
             .enums
@@ -204,6 +291,10 @@ enum Template {
 #[derive(Clone)]
 enum TypeDef {
     Plain(Ty),
+    /// `number`, a managed module's `f64`.
+    Number,
+    /// `Promise<T>`, in a managed module.
+    Promise,
     Array,
     Map,
     Set,
@@ -220,6 +311,14 @@ enum TypeDef {
 struct Checker<'a> {
     ast: &'a Ast,
     source: &'a str,
+    /// A managed module (`.apeiron`): no ownership, `async`, `number`, imports.
+    managed: bool,
+    /// The functions of the modules it imports, as the driver read them.
+    imports: &'a [ImportedModule],
+    /// Whether the function being checked is `async`.
+    in_async: bool,
+    /// The module's exported functions, in order.
+    exported: Vec<FnId>,
     diagnostics: Vec<Diagnostic>,
     scopes: Scopes,
     types: HashMap<String, TypeDef>,
@@ -277,7 +376,7 @@ struct EnumDef {
 }
 
 impl<'a> Checker<'a> {
-    fn new(ast: &'a Ast, source: &'a str) -> Self {
+    fn new(ast: &'a Ast, source: &'a str, context: &'a Context) -> Self {
         let mut types = HashMap::new();
         for int in IntTy::ALL {
             types.insert(int.name().to_owned(), TypeDef::Plain(Ty::Int(int)));
@@ -293,9 +392,16 @@ impl<'a> Checker<'a> {
         types.insert("Set".to_owned(), TypeDef::Set);
         types.insert("Option".to_owned(), TypeDef::Option);
         types.insert("Result".to_owned(), TypeDef::Result);
+        // Managed only, each refused in an owned module.
+        types.insert("number".to_owned(), TypeDef::Number);
+        types.insert("Promise".to_owned(), TypeDef::Promise);
         Self {
             ast,
             source,
+            managed: context.managed,
+            imports: &context.imports,
+            in_async: false,
+            exported: Vec::new(),
             diagnostics: Vec::new(),
             scopes: Scopes::default(),
             types,
@@ -456,6 +562,11 @@ impl<'a> Checker<'a> {
         for item in items {
             if let ItemKind::Impl(decl) = &item.kind {
                 self.check_implementation(decl);
+            }
+        }
+        for item in items {
+            if let ItemKind::Import(decl) = &item.kind {
+                self.import(decl, item.span);
             }
         }
         for item in items {
@@ -631,6 +742,9 @@ impl<'a> Checker<'a> {
             self_ty: self.self_ty.take(),
             has_self: decl.has_self(),
         });
+        if decl.exported && decl.impl_of.is_none() {
+            self.exported.push(id);
+        }
         if decl.impl_of.is_none() {
             self.declare(
                 decl.name.symbol,
@@ -665,6 +779,41 @@ impl<'a> Checker<'a> {
             (Some(ty), Some(sig)) => (Some(sig.ret.clone()), Some(ty.span)),
             _ => (None, None),
         };
+        // An `async` function returns a `Promise<T>`; its body returns `T`.
+        self.in_async = decl.is_async;
+        let ret = if decl.is_async {
+            if !self.managed {
+                self.report(errors::managed_only(decl.name.span, "async"));
+            }
+            match ret {
+                Some(Ty::Promise(inner)) => Some(*inner),
+                Some(Ty::Error) | None => ret,
+                Some(other) => {
+                    if let Some(span) = ret_span {
+                        let want = Ty::Promise(Box::new(other.clone()));
+                        self.report(errors::mismatch(span, &want, &other, None));
+                    }
+                    Some(Ty::Error)
+                }
+            }
+        } else {
+            ret
+        };
+        // Conventions say who owns a value: a managed module has no owners.
+        if self.managed {
+            for param in decl
+                .params
+                .iter()
+                .filter(|p| p.convention != Convention::Let)
+            {
+                let what = if param.convention == Convention::Inout {
+                    "inout"
+                } else {
+                    "sink"
+                };
+                self.report(errors::owned_only(param.name.span, what));
+            }
+        }
         self.ret = ret.clone().map(|t| (t, ret_span));
         self.returned.clear();
         self.generics = self
@@ -727,8 +876,52 @@ impl<'a> Checker<'a> {
             }
         }
         self.ret = None;
+        self.in_async = false;
         self.generics.clear();
         self.self_ty = None;
+    }
+
+    /// `import { a, b } from "./x.peras"`: each name declared as a function
+    /// of the module, with the signature the imported module gives it.
+    fn import(&mut self, decl: &ImportDecl, span: Span) {
+        if !self.managed {
+            self.report(errors::managed_only(span, "import"));
+            return;
+        }
+        let module = self.imports.iter().find(|m| m.from == decl.from);
+        let Some(functions) = module.and_then(|m| m.functions.as_ref()) else {
+            self.report(errors::import(decl.from_span, "module", &decl.from));
+            return;
+        };
+        let functions = functions.clone();
+        for name in &decl.names {
+            let text = self.name(name.symbol).to_owned();
+            let Some(f) = functions.iter().find(|f| f.name == text) else {
+                self.report(errors::import(name.span, "name", &text));
+                continue;
+            };
+            if !f.portable() {
+                self.report(errors::import(name.span, "signature", &text));
+                continue;
+            }
+            let id = FnId(self.fns.len());
+            self.fns.push(FnSig {
+                name: text,
+                name_span: name.span,
+                generics: Vec::new(),
+                params: f.params.iter().map(|(t, _)| t.clone()).collect(),
+                ret: f.ret.clone(),
+                conventions: f.params.iter().map(|(_, c)| *c).collect(),
+                self_ty: None,
+                has_self: false,
+            });
+            self.declare(
+                name.symbol,
+                Some(name.span),
+                Kind::Fn(id),
+                Ty::Fn(id, self.name(name.symbol).to_owned()),
+            );
+        }
     }
 
     /// The declared or inferred type of a `let` or `const`, its value checked.
@@ -784,8 +977,8 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         };
         let expected = match def {
-            TypeDef::Plain(_) => 0,
-            TypeDef::Array | TypeDef::Set | TypeDef::Option => 1,
+            TypeDef::Plain(_) | TypeDef::Number => 0,
+            TypeDef::Array | TypeDef::Set | TypeDef::Option | TypeDef::Promise => 1,
             TypeDef::Result | TypeDef::Map => 2,
             TypeDef::Generic(_, count) => count,
             TypeDef::Alias(index) => self.aliases.get(index).map_or(0, |a| a.generics.len()),
@@ -809,6 +1002,18 @@ impl<'a> Checker<'a> {
         }
         match def {
             TypeDef::Plain(t) => t,
+            TypeDef::Number => {
+                if !self.managed {
+                    self.report(errors::managed_only(ty.span, "number"));
+                }
+                Ty::Float(FloatTy::F64)
+            }
+            TypeDef::Promise => {
+                if !self.managed {
+                    self.report(errors::managed_only(ty.span, "promise"));
+                }
+                Ty::Promise(Box::new(self.type_arg(args)))
+            }
             TypeDef::Array => Ty::Array(Box::new(self.type_arg(args))),
             TypeDef::Map => {
                 let key = self.type_arg(args);

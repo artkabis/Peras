@@ -147,6 +147,20 @@ pub enum ItemKind {
     Impl(ImplDecl),
     /// `interface Name { fn method(self, …): Type; … }`
     Interface(InterfaceDecl),
+    /// `import { a, b } from "./module.peras";`
+    Import(ImportDecl),
+}
+
+/// `import { a, b } from "./dsp.peras";`: the functions of another module a
+/// managed module calls.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportDecl {
+    /// The names imported, in order.
+    pub names: Vec<Ident>,
+    /// The module they come from, as written: `./dsp.peras`.
+    pub from: String,
+    /// Where the module's path is written.
+    pub from_span: Span,
 }
 
 /// `type Meters = f64;`: another name for a type, interchangeable with it.
@@ -632,6 +646,8 @@ pub enum UnaryOp {
     BitNot,
     /// `&`: a visible exclusive borrow, for an `inout` argument.
     Borrow,
+    /// `await`: the value of a promise, in an `async` function.
+    Await,
 }
 
 /// Binary operators.
@@ -784,6 +800,11 @@ impl Ast {
                         self.generics(&alias.generics),
                         self.ty(&alias.ty)
                     );
+                }
+                ItemKind::Import(import) => {
+                    let names: Vec<&str> =
+                        import.names.iter().map(|n| self.name(n.symbol)).collect();
+                    let _ = writeln!(out, "(import ({}) {:?})", names.join(" "), import.from);
                 }
                 ItemKind::Interface(interface) => {
                     let _ = writeln!(out, "(interface {}", self.name(interface.name.symbol));
@@ -1087,6 +1108,7 @@ impl Ast {
                     UnaryOp::Not => "!",
                     UnaryOp::BitNot => "~",
                     UnaryOp::Borrow => "&",
+                    UnaryOp::Await => "await",
                 };
                 format!("({op} {})", self.sexpr(*operand))
             }

@@ -376,6 +376,28 @@ impl Checker<'_> {
                 }
             }
             UnaryOp::Borrow => self.infer(operand, expected),
+            // `await p`: the value of a promise, in an `async` function.
+            UnaryOp::Await => {
+                let wanted = expected.map(|t| Ty::Promise(Box::new(t.clone())));
+                let ty = self.infer(operand, wanted.as_ref());
+                if !self.managed {
+                    self.report(errors::managed_only(span, "await"));
+                    return Ty::Error;
+                }
+                if !self.in_async {
+                    self.report(errors::managed_only(span, "await-sync"));
+                }
+                match ty {
+                    Ty::Promise(inner) => *inner,
+                    Ty::Error => Ty::Error,
+                    other => {
+                        let want = Ty::Promise(Box::new(other.clone()));
+                        let at = self.ast.expr(operand).span;
+                        self.report(errors::mismatch(at, &want, &other, None));
+                        Ty::Error
+                    }
+                }
+            }
         }
     }
 

@@ -1,0 +1,23 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0244-import.apeiron
+---
+diagnostics:
+  error[E0244] check-import { reason: "name", name: "average" }
+    primary 2:10-2:17: check-import-label { reason: "name" }
+    cause: check-import-why
+    fix: check-import-fix { reason: "name" }
+  error[E0244] check-import { reason: "signature", name: "origin" }
+    primary 2:19-2:25: check-import-label { reason: "signature" }
+    cause: check-import-why
+    fix: check-import-fix { reason: "signature" }
+  error[E0244] check-import { reason: "module", name: "./missing.peras" }
+    primary 3:22-3:39: check-import-label { reason: "module" }
+    cause: check-import-why
+    fix: check-import-fix { reason: "module" }
+  error[E0203] check-unused { what: "parameter", name: "xs" }
+    primary 5:17-5:19: check-unused-label
+    cause: check-unused-why
+    fix: check-unused-fix-parameter { name: "xs" }
+      5:17-5:17 -> "_"

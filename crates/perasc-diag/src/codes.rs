@@ -148,6 +148,12 @@ pub const TEMPLATE_VALUE: ErrorCode = ErrorCode::new(239);
 pub const MAP_KEY: ErrorCode = ErrorCode::new(240);
 /// A `parallel for` whose turns could see each other.
 pub const PARALLEL: ErrorCode = ErrorCode::new(241);
+/// Something only a managed module (`.apeiron`) has, in an owned one.
+pub const MANAGED_ONLY: ErrorCode = ErrorCode::new(242);
+/// Something only an owned module (`.peras`) has, in a managed one.
+pub const OWNED_ONLY: ErrorCode = ErrorCode::new(243);
+/// An `import` that names a missing module, function, or signature.
+pub const IMPORT: ErrorCode = ErrorCode::new(244);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -274,6 +280,9 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(TEMPLATE_VALUE, "check-template", "E0239"),
     active!(MAP_KEY, "check-map-key", "E0240"),
     active!(PARALLEL, "check-parallel", "E0241"),
+    active!(MANAGED_ONLY, "check-managed-only", "E0242"),
+    active!(OWNED_ONLY, "check-owned-only", "E0243"),
+    active!(IMPORT, "check-import", "E0244"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

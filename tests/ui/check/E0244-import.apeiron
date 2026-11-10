@@ -1,0 +1,7 @@
+// What an import may name.
+import { average, origin } from "./stats.peras";
+import { mean } from "./missing.peras";
+
+export fn score(xs: Array<number>): number {
+  return 0.0;
+}

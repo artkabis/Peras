@@ -1,0 +1,13 @@
+// `await` needs an `async` function.
+async fn load(): Promise<number> {
+  return 1.0;
+}
+
+export fn now(): number {
+  return await load();
+}
+
+// An `async` function gives a promise.
+export async fn wrong(): number {
+  return 1.0;
+}

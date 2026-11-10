@@ -1,0 +1,7 @@
+// Waiting, `number`, `Promise` and imports belong to managed modules.
+import { mean } from "./stats.peras";
+
+export async fn total(xs: Array<number>): Promise<f64> {
+  const n = await count(xs);
+  return 0.0;
+}

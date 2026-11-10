@@ -67,12 +67,15 @@ impl Checker<'_> {
                 self.scoped(body);
             }
             StmtKind::For {
-                parallel: _,
+                parallel,
                 init,
                 cond,
                 update,
                 body,
             } => {
+                if *parallel && self.managed {
+                    self.report(errors::owned_only(stmt.span, "parallel"));
+                }
                 self.scopes.push();
                 if let Some(init) = init {
                     self.stmt(init);
