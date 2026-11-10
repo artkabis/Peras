@@ -5,19 +5,23 @@ input_file: tests/ui/check/E0243-owned-only.apeiron
 ---
 diagnostics:
   error[E0243] check-owned-only { what: "inout" }
-    primary 2:16-2:18: check-owned-only-label
+    primary 3:16-3:17: check-owned-only-label
     cause: check-owned-only-why
     fix: check-owned-only-fix { what: "inout" }
   error[E0243] check-owned-only { what: "sink" }
-    primary 2:41-2:43: check-owned-only-label
+    primary 3:55-3:57: check-owned-only-label
     cause: check-owned-only-why
     fix: check-owned-only-fix { what: "sink" }
   error[E0203] check-unused { what: "parameter", name: "ys" }
-    primary 2:41-2:43: check-unused-label
+    primary 3:55-3:57: check-unused-label
     cause: check-unused-why
     fix: check-unused-fix-parameter { name: "ys" }
-      2:41-2:41 -> "_"
+      3:55-3:55 -> "_"
+  error[E0243] check-owned-only { what: "inout-assign" }
+    primary 4:3-4:5: check-owned-only-label
+    cause: check-owned-only-why
+    fix: check-owned-only-fix { what: "inout-assign" }
   error[E0243] check-owned-only { what: "parallel" }
-    primary 3:3-5:4: check-owned-only-label
+    primary 5:3-7:4: check-owned-only-label
     cause: check-owned-only-why
     fix: check-owned-only-fix { what: "parallel" }

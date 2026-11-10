@@ -232,10 +232,32 @@ impl Checker<'_> {
                 };
                 self.resolved.insert(target, index);
                 self.check_mutable(index, expr.span);
-                self.scopes
+                // A managed `inout` parameter shares its caller's value: it
+                // can be changed, not replaced. One JavaScript copies is
+                // already refused where it is declared.
+                let inout = self.scopes.bindings.get(index).is_some_and(|b| {
+                    matches!(
+                        b.kind,
+                        Kind::Param {
+                            convention: Convention::Inout,
+                            ..
+                        }
+                    ) && matches!(
+                        b.ty,
+                        Ty::Array(_) | Ty::Map(..) | Ty::Set(_) | Ty::Struct(..)
+                    )
+                });
+                if self.managed && inout {
+                    self.report(errors::owned_only(expr.span, "inout-assign"));
+                }
+                let ty = self
+                    .scopes
                     .bindings
                     .get(index)
-                    .map_or(Ty::Error, |b| b.ty.clone())
+                    .map_or(Ty::Error, |b| b.ty.clone());
+                // Kept for code generation, which computes `x += 1` by its type.
+                self.expr_types.insert(target, ty.clone());
+                ty
             }
             ExprKind::Field { base, .. } | ExprKind::Index { base, .. } => {
                 if let Some(root) = self.root(*base) {

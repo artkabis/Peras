@@ -87,6 +87,46 @@ pub struct Analysis {
     pub dyn_targets: HashMap<(ExprId, Vec<Ty>), (FnId, Vec<Ty>)>,
     /// The module's exported functions, as another module imports them.
     pub exports: Vec<ImportedFn>,
+    /// Every name declared, by its index: locals, parameters, functions,
+    /// types and the names the language provides.
+    pub bindings: Vec<Bound>,
+    /// The declaration each name read refers to, an index in
+    /// [`Analysis::bindings`]: variables, callees and enumerations.
+    pub names: HashMap<ExprId, usize>,
+}
+
+/// A declared name, for code generation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bound {
+    /// Its text.
+    pub name: String,
+    /// Where it is declared; `None` for the language's names.
+    pub span: Option<Span>,
+    /// What it is.
+    pub kind: NameKind,
+}
+
+/// What a declared name is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameKind {
+    /// A local variable, a parameter, or a name a pattern gives.
+    Local,
+    /// A module-level `let` or `const`.
+    Global,
+    /// A function, the module's or an imported one.
+    Fn(FnId),
+    /// A structure.
+    Struct(StructId),
+    /// An enumeration.
+    Enum(EnumId),
+    /// `Some`.
+    Some,
+    /// `None`.
+    None,
+    /// `Ok`.
+    Ok,
+    /// `Err`.
+    Err,
 }
 
 /// What a method call reaches.
@@ -191,6 +231,26 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         (Vec::new(), HashMap::new())
     };
     let fn_generics = checker.fns.iter().map(|f| f.generics.len()).collect();
+    let bindings = checker
+        .scopes
+        .bindings
+        .iter()
+        .map(|b| Bound {
+            name: b.name.clone(),
+            span: b.span,
+            kind: match b.kind {
+                Kind::Local { .. } | Kind::Param { .. } | Kind::Pattern => NameKind::Local,
+                Kind::Global { .. } => NameKind::Global,
+                Kind::Fn(id) => NameKind::Fn(id),
+                Kind::Struct(id) => NameKind::Struct(id),
+                Kind::Enum(id) => NameKind::Enum(id),
+                Kind::Some => NameKind::Some,
+                Kind::None => NameKind::None,
+                Kind::Ok => NameKind::Ok,
+                Kind::Err => NameKind::Err,
+            },
+        })
+        .collect();
     let exports = checker
         .exported
         .iter()
@@ -244,6 +304,8 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
             .collect(),
         dyn_targets,
         exports,
+        bindings,
+        names: checker.resolved,
         moves: checker.moves,
         enums: checker
             .enums
@@ -774,45 +836,67 @@ impl<'a> Checker<'a> {
         );
     }
 
+    /// What the body of a function returns: for an `async` one, the `T` of
+    /// the `Promise<T>` it declares.
+    fn async_result(
+        &mut self,
+        decl: &FnDecl,
+        ret: Option<Ty>,
+        ret_span: Option<Span>,
+    ) -> Option<Ty> {
+        if !decl.is_async {
+            return ret;
+        }
+        if !self.managed {
+            self.report(errors::managed_only(decl.name.span, "async"));
+        }
+        match ret {
+            Some(Ty::Promise(inner)) => Some(*inner),
+            Some(Ty::Error) | None => ret,
+            Some(other) => {
+                if let Some(span) = ret_span {
+                    let want = Ty::Promise(Box::new(other.clone()));
+                    self.report(errors::mismatch(span, &want, &other, None));
+                }
+                Some(Ty::Error)
+            }
+        }
+    }
+
+    /// A managed module has no owners: nothing is given with `sink`. A value
+    /// JavaScript shares, an array, a map, a set or a structure, may be
+    /// `inout`, which says the function changes it for its caller; one it
+    /// copies, a number, a string or an option, cannot be.
+    fn managed_conventions(&mut self, decl: &FnDecl, id: FnId) {
+        let types = self
+            .fns
+            .get(id.0)
+            .map(|f| f.params.clone())
+            .unwrap_or_default();
+        for (i, param) in decl.params.iter().enumerate() {
+            let shared = matches!(
+                types.get(i),
+                Some(Ty::Array(_) | Ty::Map(..) | Ty::Set(_) | Ty::Struct(..) | Ty::Error)
+            );
+            let what = match param.convention {
+                Convention::Let => continue,
+                Convention::Inout if shared => continue,
+                Convention::Inout => "inout",
+                Convention::Sink => "sink",
+            };
+            self.report(errors::owned_only(param.name.span, what));
+        }
+    }
+
     fn fn_body(&mut self, decl: &FnDecl, id: FnId) {
         let (ret, ret_span) = match (&decl.ret, self.fns.get(id.0)) {
             (Some(ty), Some(sig)) => (Some(sig.ret.clone()), Some(ty.span)),
             _ => (None, None),
         };
-        // An `async` function returns a `Promise<T>`; its body returns `T`.
         self.in_async = decl.is_async;
-        let ret = if decl.is_async {
-            if !self.managed {
-                self.report(errors::managed_only(decl.name.span, "async"));
-            }
-            match ret {
-                Some(Ty::Promise(inner)) => Some(*inner),
-                Some(Ty::Error) | None => ret,
-                Some(other) => {
-                    if let Some(span) = ret_span {
-                        let want = Ty::Promise(Box::new(other.clone()));
-                        self.report(errors::mismatch(span, &want, &other, None));
-                    }
-                    Some(Ty::Error)
-                }
-            }
-        } else {
-            ret
-        };
-        // Conventions say who owns a value: a managed module has no owners.
+        let ret = self.async_result(decl, ret, ret_span);
         if self.managed {
-            for param in decl
-                .params
-                .iter()
-                .filter(|p| p.convention != Convention::Let)
-            {
-                let what = if param.convention == Convention::Inout {
-                    "inout"
-                } else {
-                    "sink"
-                };
-                self.report(errors::owned_only(param.name.span, what));
-            }
+            self.managed_conventions(decl, id);
         }
         self.ret = ret.clone().map(|t| (t, ret_span));
         self.returned.clear();

@@ -7,6 +7,10 @@
 //! - `peras planned`: refused by the parser or the checker, so that the page is
 //!   updated when the feature lands.
 //!
+//! An `apeiron` block is a managed module, importing `./stats.peras`:
+//! `apeiron build` is checked and compiled to JavaScript, `apeiron error
+//! E0xxx` refused with that code, `apeiron planned` refused.
+//!
 //! The method reference also lists exactly the compiler's built-in methods.
 
 use std::fs;
@@ -38,6 +42,93 @@ fn pages() -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// The owned module the managed examples import, as `./stats.peras`.
+const STATS: &str = "export fn mean(xs: Array<f64>): f64 {\n\
+                       return xs.reduce((a, x) => a + x, 0.0) / xs.length.toF64();\n\
+                     }\n";
+
+/// A managed module's errors: syntax, checks, then JavaScript generation.
+fn compile_managed(source: &str) -> Vec<Diagnostic> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return parsed.diagnostics;
+    }
+    let context = perasc_check::Context {
+        managed: true,
+        imports: vec![perasc_check::ImportedModule {
+            from: "./stats.peras".to_owned(),
+            functions: perasc_check::exports_of(STATS),
+        }],
+    };
+    let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
+    if !analysis.diagnostics.is_empty() {
+        return analysis.diagnostics;
+    }
+    let options = perasc_codegen_js::Options::default();
+    perasc_codegen_js::generate(&parsed.ast, &analysis, &options)
+        .err()
+        .unwrap_or_default()
+}
+
+/// The `apeiron` blocks of a page: their label and their code.
+fn managed_blocks(page: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for block in page.split("```apeiron").skip(1) {
+        let Some((info, body)) = block.split_once('\n') else {
+            continue;
+        };
+        let Some((code, _)) = body.split_once("\n```") else {
+            continue;
+        };
+        out.push((info.trim().to_owned(), code.to_owned()));
+    }
+    out
+}
+
+#[test]
+fn every_managed_block_does_what_its_label_says() {
+    let mut problems = Vec::new();
+    let mut counted = 0;
+    for path in pages() {
+        let page = fs::read_to_string(&path).unwrap_or_default();
+        let name = path
+            .strip_prefix(docs())
+            .unwrap_or(&path)
+            .display()
+            .to_string();
+        for (info, code) in managed_blocks(&page) {
+            counted += 1;
+            let found = codes(&compile_managed(&code));
+            let first = code
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .trim();
+            let at = format!("{name}, block starting `{first}`");
+            match info.split_whitespace().collect::<Vec<_>>().as_slice() {
+                ["build"] => {
+                    if !found.is_empty() {
+                        problems.push(format!("{at}: does not compile: {found:?}"));
+                    }
+                }
+                ["error", code] => {
+                    if !found.iter().any(|c| c == code) {
+                        problems.push(format!("{at}: expected {code}, got {found:?}"));
+                    }
+                }
+                ["planned"] => {
+                    if found.is_empty() {
+                        problems.push(format!("{at}: is accepted now: update the page"));
+                    }
+                }
+                _ => problems.push(format!("{at}: unknown label `apeiron {info}`")),
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    assert!(counted >= 10, "only {counted} managed blocks checked");
 }
 
 /// The Peras blocks of a page: their label and their code.

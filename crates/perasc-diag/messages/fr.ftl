@@ -7,7 +7,7 @@ cli-usage =
 
     Commandes :
       check <fichier>... vérifie des fichiers .peras et .apeiron et signale toutes les erreurs
-      build <fichier>    compile un fichier .peras en WebAssembly
+      build <fichier>    compile un fichier .peras en WebAssembly, ou un fichier .apeiron en JavaScript
       explain <code>     explique un code d’erreur, par exemple `perasc explain E0001`
 
     Options :
@@ -19,6 +19,7 @@ cli-usage =
       --allocator <nom>  allocateur d’un module qui utilise le tas : debug (par défaut, chaque bug mémoire détecté) ou tlsf (production, temps borné)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
+      --imports <mode>   imports de fichiers .peras dans un module .apeiron : built (par défaut, chacun compilé à côté) ou source (gardés pour un bundler comme Vite)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
       -h, --help         affiche cette aide
@@ -27,7 +28,7 @@ cli-unknown-command = commande inconnue `{ $command }`
 cli-missing-value = `{ $option }` attend une valeur
 cli-invalid-value = valeur `{ $value }` invalide pour `{ $option }`
 cli-no-files = `check` attend au moins un fichier
-cli-no-build-file = `build` attend un fichier .peras
+cli-no-build-file = `build` attend un fichier .peras ou .apeiron
 cli-missing-code = `explain` attend un code d’erreur, par exemple E0001
 cli-unknown-code = code d’erreur inconnu `{ $code }`
 cli-not-a-source = `{ $path }` n’est pas un source Peras : l’extension doit être .peras ou .apeiron
@@ -678,15 +679,17 @@ check-managed-only-fix = { $what ->
 
 # E0243
 check-owned-only = { $what ->
-    [inout] `inout`
+    [inout] `inout` sur une valeur que JavaScript copie
+    [inout-assign] remplacer un paramètre `inout`
     [sink] `sink`
     [parallel] `parallel for`
    *[other] ceci
 } appartient aux modules owned (`.peras`)
 check-owned-only-label = seulement dans un module `.peras`
-check-owned-only-why = Les valeurs d’un module managed appartiennent au ramasse-miettes de JavaScript : rien n’est déplacé, rien n’est prêté, et un paramètre est toujours partagé. Les conventions qui disent à qui appartient une valeur, et les boucles qui partagent le travail entre fils sur une mémoire commune, sont celles des modules owned, compilés en WebAssembly.
+check-owned-only-why = Les valeurs d’un module managed appartiennent au ramasse-miettes de JavaScript : rien n’est déplacé, rien n’est prêté. Un tableau, une table, un ensemble ou une structure est partagé avec l’appelant : un `inout` peut donc être changé, et l’appelant le voit ; un nombre, un booléen, une chaîne ou une option est copié, et un `inout` ne pourrait pas atteindre son appelant, pas plus qu’un paramètre remplacé par une autre valeur. Donner une valeur avec `sink`, et les boucles qui partagent le travail entre fils sur une mémoire commune, sont propres aux modules owned, compilés en WebAssembly.
 check-owned-only-fix = { $what ->
     [parallel] écrivez la boucle dans un module `.peras` et importez sa fonction
+    [inout-assign] changez ses éléments ou ses champs, ou rendez la nouvelle valeur
    *[other] retirez la convention : rendez la nouvelle valeur au lieu de changer l’argument
 }
 
@@ -737,6 +740,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
     [map-value] les tables dont les valeurs ont plus de 24 scalaires
+    [nested-option] dans un module managed, les options d’options, dont JavaScript ne distingue pas `Some(None)` de `None`
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé

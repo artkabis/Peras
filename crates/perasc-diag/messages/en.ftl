@@ -7,7 +7,7 @@ cli-usage =
 
     Commands:
       check <file>...    check .peras and .apeiron files and report every error
-      build <file>       compile a .peras file to WebAssembly
+      build <file>       compile a .peras file to WebAssembly, or a .apeiron file to JavaScript
       explain <code>     explain an error code, e.g. `perasc explain E0001`
 
     Options:
@@ -19,6 +19,7 @@ cli-usage =
       --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
+      --imports <how>    imports of .peras files in a .apeiron module: built (default, each next to it) or source (kept for a bundler such as Vite)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version
       -h, --help         print this help
@@ -27,7 +28,7 @@ cli-unknown-command = unknown command `{ $command }`
 cli-missing-value = `{ $option }` needs a value
 cli-invalid-value = invalid value `{ $value }` for `{ $option }`
 cli-no-files = `check` needs at least one file
-cli-no-build-file = `build` needs a .peras file
+cli-no-build-file = `build` needs a .peras or .apeiron file
 cli-missing-code = `explain` needs an error code, e.g. E0001
 cli-unknown-code = unknown error code `{ $code }`
 cli-not-a-source = `{ $path }` is not a Peras source: the extension must be .peras or .apeiron
@@ -678,15 +679,17 @@ check-managed-only-fix = { $what ->
 
 # E0243
 check-owned-only = { $what ->
-    [inout] `inout`
+    [inout] `inout` on a value JavaScript copies
+    [inout-assign] replacing an `inout` parameter
     [sink] `sink`
     [parallel] `parallel for`
    *[other] this
 } belongs to owned modules (`.peras`)
 check-owned-only-label = only in a `.peras` module
-check-owned-only-why = A managed module's values belong to the JavaScript garbage collector: nothing moves, nothing is lent, and a parameter is always shared. Conventions that say who owns a value, and loops that split work between threads over shared memory, are those of owned modules, compiled to WebAssembly.
+check-owned-only-why = A managed module's values belong to the JavaScript garbage collector: nothing moves and nothing is lent. An array, a map, a set or a structure is shared with the caller, so an `inout` one can be changed, and the caller sees it; a number, a boolean, a string or an option is copied, and an `inout` one could not reach its caller, nor could a parameter replaced by another value. Giving a value with `sink`, and loops that split work between threads over shared memory, are those of owned modules, compiled to WebAssembly.
 check-owned-only-fix = { $what ->
     [parallel] write the loop in a `.peras` module and import its function
+    [inout-assign] change its elements or fields, or return the new value
    *[other] remove the convention: return the new value instead of changing the argument
 }
 
@@ -737,6 +740,7 @@ gen-unsupported = code generation does not support { $feature ->
     [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
     [map-value] maps whose values have more than 24 scalars
+    [nested-option] in a managed module, options of options, whose `Some(None)` JavaScript cannot tell from `None`
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet
