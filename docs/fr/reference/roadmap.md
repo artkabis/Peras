@@ -59,8 +59,8 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 - ~~Les modules `.apeiron` compilés en JavaScript, par la CLI et le plugin Vite~~ : fait, avec `number` pour `f64`.
 - ~~`async` et `await`~~ : fait.
 - ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci ; les structures et les énumérations ensuite.
-- Le DOM, les événements, `fetch`, les minuteries, le stockage, les WebSockets, les Web Workers, avec des API typées.
-- Des fermetures, avec des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas.
+- ~~Le DOM, les événements, `fetch`, les minuteries, le stockage, avec des API typées~~ : fait pour un sous-ensemble, la [référence du navigateur](browser.md) ([décision 0009](../decisions/0009-browser-and-resources.md)) ; les WebSockets, les Web Workers, les formulaires et `requestAnimationFrame` ensuite.
+- ~~Des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas~~ : fait. Les fermetures comme valeurs, et les fonctions fléchées à instructions, ensuite.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

@@ -233,7 +233,9 @@ export async function compileManaged(
 ): Promise<CompiledManaged> {
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
-    await perascBuild(file, out, ["--imports", "source"], options);
+    // The debug allocator's build also detects leaked resources.
+    const allocator = options.allocator === undefined ? [] : ["--allocator", options.allocator];
+    await perascBuild(file, out, ["--imports", "source", ...allocator], options);
     const stem = basename(file, MANAGED_EXTENSION);
     const [js, dts] = await Promise.all([
       readFile(join(out, `${stem}.js`), "utf8"),
@@ -327,7 +329,10 @@ export default function peras(options: PerasOptions = {}): Plugin {
       let compiled: Compiled;
       try {
         if (mode === "managed") {
-          const managed = await compileManaged(file, options);
+          const managed = await compileManaged(file, {
+            ...options,
+            allocator: options.allocator ?? (building ? "tlsf" : "debug"),
+          });
           // Its checks read the signatures of the modules it imports.
           for (const from of managed.imports) this.addWatchFile(join(dirname(file), from));
           if (options.dts ?? true) await writeDeclarations(file, managed.dts);

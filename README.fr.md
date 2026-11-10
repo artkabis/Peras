@@ -20,10 +20,12 @@ Chaque diagnostic bloque le build et explique la cause, l'historique de la valeu
 
 ## Documentation
 
+Le site, avec recherche, en français et en anglais : **<https://artkabis.github.io/Peras/>**, construit depuis `docs/` à chaque push sur `main`. Pour une première décision : [Peras pour les décideurs](docs/fr/guide/overview.md).
+
 - [Guide](docs/fr/guide/introduction.md), du premier programme à l’échange avec JavaScript
 - [Référence](docs/fr/reference/status.md) : état, types, opérateurs, méthodes, mots-clés, CLI, [feuille de route](docs/fr/reference/roadmap.md)
 - [Codes d’erreur](docs/fr/errors/index.md), chacun avec sa cause et sa correction
-- Décisions : [0001 backend WebAssembly](docs/fr/decisions/0001-webassembly-backend.md), [0002 allocateur TLSF](docs/fr/decisions/0002-tlsf-allocator.md), [0003 un runtime prouvé à la compilation](docs/fr/decisions/0003-runtime-proved-at-compile-time.md), [0004 du texte sans allocation](docs/fr/decisions/0004-strings-without-allocation.md), [0005 tables et ensembles](docs/fr/decisions/0005-maps-and-sets.md), [0006 licences](docs/fr/decisions/0006-licensing.md), [0007 threads sur mémoire partagée](docs/fr/decisions/0007-threads-over-shared-memory.md), [0008 le mode managed](docs/fr/decisions/0008-managed-mode.md) ; [la recherche derrière Peras](docs/fr/research.md), chaque choix avec les travaux publiés sur lesquels il repose
+- Décisions : [0001 backend WebAssembly](docs/fr/decisions/0001-webassembly-backend.md), [0002 allocateur TLSF](docs/fr/decisions/0002-tlsf-allocator.md), [0003 un runtime prouvé à la compilation](docs/fr/decisions/0003-runtime-proved-at-compile-time.md), [0004 du texte sans allocation](docs/fr/decisions/0004-strings-without-allocation.md), [0005 tables et ensembles](docs/fr/decisions/0005-maps-and-sets.md), [0006 licences](docs/fr/decisions/0006-licensing.md), [0007 threads sur mémoire partagée](docs/fr/decisions/0007-threads-over-shared-memory.md), [0008 le mode managed](docs/fr/decisions/0008-managed-mode.md), [0009 le navigateur et les ressources](docs/fr/decisions/0009-browser-and-resources.md) ; [la recherche derrière Peras](docs/fr/research.md), chaque choix avec les travaux publiés sur lesquels il repose
 - [Bancs d’essai](bench/README.fr.md), ce qu’ils mesurent et ce qu’ils ne mesurent pas
 - [Spec du langage](docs/fr/spec.md), [architecture](docs/fr/architecture.md), [plan de démarrage du compilateur](docs/fr/kickoff-plan.md)
 

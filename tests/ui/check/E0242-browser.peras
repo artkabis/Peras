@@ -1,0 +1,5 @@
+// The browser belongs to managed modules.
+export fn title(): String {
+  log("hello");
+  return document.title;
+}

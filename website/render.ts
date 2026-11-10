@@ -34,6 +34,8 @@ interface Page {
   path: string;
   file: string;
   title: string;
+  /** The first paragraph, as plain text: the page's description. */
+  description: string;
   html: string;
   toc: { level: number; id: string; text: string }[];
 }
@@ -62,7 +64,7 @@ const codeLanguages: Record<string, string> = {
   yaml: "yaml",
   rust: "rust",
   text: "text",
-  mermaid: "text",
+  mermaid: "mermaid",
   "": "text",
 };
 
@@ -97,6 +99,23 @@ function slug(text: string, taken: Set<string>): string {
   return id;
 }
 
+/** Whether a block is under an error page's "Example" or "Fix" heading. */
+function errorSection(
+  tokens: { type: string; tag: string; content: string }[],
+  at: number,
+): string {
+  for (let i = at - 1; i >= 1; i--) {
+    const token = tokens[i];
+    if (token?.type === "heading_open" && token.tag === "h2") {
+      const heading = tokens[i + 1]?.content ?? "";
+      if (heading === "Example" || heading === "Exemple") return "example";
+      if (heading === "Fix" || heading === "Correction") return "fix";
+      return "";
+    }
+  }
+  return "";
+}
+
 function escapeHtml(text: string): string {
   return text
     .replaceAll("&", "&amp;")
@@ -127,8 +146,14 @@ export async function render(): Promise<string[]> {
     }
   }
 
-  for (const [key, source] of sources) {
+  for (const [key, written] of sources) {
     const [lang, ...rest] = key.split("/") as [Lang, ...string[]];
+    // The line that links a page to its translation is for readers on
+    // GitHub; the site has its own language switch.
+    const source = written.replace(
+      /^_(French translation|Version anglaise, qui fait foi) ?: [^\n]*_\n+/m,
+      "",
+    );
     const path = rest.join("/");
     const md = new MarkdownIt({ html: true, linkify: true });
     const toc: Page["toc"] = [];
@@ -146,6 +171,10 @@ export async function render(): Promise<string[]> {
         return "";
       }
       const code = token.content.replace(/\n$/, "");
+      // A diagram: drawn in the browser by Mermaid, in the site's colours.
+      if (language === "mermaid") {
+        return `<figure class="diagram"><pre class="mermaid">${escapeHtml(code)}</pre></figure>\n`;
+      }
       const highlighted =
         language === "text"
           ? `<pre class="shiki"><code>${escapeHtml(code)}</code></pre>`
@@ -157,13 +186,26 @@ export async function render(): Promise<string[]> {
       let label = "";
       if (name === "peras" || name === "apeiron") {
         // What the compiler does with the block; the docs tests hold it to it.
-        const kind = attrs[0] ?? "check";
+        // On an error's page, the example is refused with that code and the
+        // fix no longer is (crates/perasc-ir/tests/ui.rs checks both).
+        const section = errorSection(tokens, index);
+        const code = path.split("/").pop() ?? "";
+        const kind =
+          attrs[0] ??
+          (path.startsWith("errors/E") && section === "example"
+            ? "error"
+            : path.startsWith("errors/E") && section === "fix"
+              ? "fixed"
+              : "check");
         const text: Record<string, string> = {
           build: words[lang].compiled,
           check: words[lang].checked,
           planned: words[lang].planned,
-          error: `${words[lang].error} ${attrs[1] ?? ""}`,
+          error: `${words[lang].error} ${attrs[1] ?? code}`,
+          fixed: words[lang].fixed,
         };
+        // A managed module compiles to JavaScript, an owned one to WebAssembly.
+        if (name === "apeiron") text.build = words[lang].compiledJs;
         const said = text[kind];
         if (said === undefined) problems.push(`${key}.md: unknown kind of ${name} block "${kind}"`);
         label = `<span class="code-label code-${escapeHtml(kind)}">${escapeHtml(said ?? kind)}</span>`;
@@ -225,7 +267,14 @@ export async function render(): Promise<string[]> {
     };
 
     const html = md.render(source);
-    pages.set(key, { lang, path, file: `${lang}/${path}.md`, title, html, toc });
+    const first = /<p>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+    const description = first
+      .replace(/<[^>]+>/g, "")
+      .replace(/&[a-z]+;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300);
+    pages.set(key, { lang, path, file: `${lang}/${path}.md`, title, description, html, toc });
   }
 
   for (const { from, to, anchor } of anchors) {
@@ -350,6 +399,10 @@ function layout(page: Page, pages: Map<string, Page>): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(page.title)} · Peras</title>
+<meta name="description" content="${escapeHtml(page.description)}" />
+<meta property="og:title" content="${escapeHtml(page.title)} · Peras" />
+<meta property="og:description" content="${escapeHtml(page.description)}" />
+<meta name="theme-color" content="#a34b26" />
 <link rel="icon" href="data:," />
 <script>try{const t=localStorage.getItem("peras-theme");if(t)document.documentElement.dataset.theme=t}catch{}</script>
 <link rel="stylesheet" href="${up}_assets/style.css" />
@@ -364,7 +417,7 @@ function layout(page: Page, pages: Map<string, Page>): string {
     ${top("reference/status", sections[1]?.title[lang] ?? "")}
     ${top("errors/index", sections[2]?.title[lang] ?? "")}
   </nav>
-  <button class="search-open" type="button"><span>${w.search}</span><kbd>/</kbd></button>
+  <button class="search-open" type="button" aria-label="${w.search}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>${w.search}</span><kbd>/</kbd></button>
   <a class="lang" href="${otherHref}" hreflang="${other}">${w.other}</a>
   <button class="theme" type="button" aria-label="${w.theme}" title="${w.theme}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button>
   <a class="github" href="${repository}">GitHub</a>

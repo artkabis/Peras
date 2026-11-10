@@ -235,6 +235,53 @@ fn every_code_block_does_what_its_label_says() {
     assert!(counted >= 60, "only {counted} blocks checked");
 }
 
+/// The browser reference lists every type, member and global the compiler
+/// knows, and nothing else.
+#[test]
+fn the_browser_reference_lists_exactly_the_browser_api() {
+    use perasc_check::browser::{GLOBALS, Host, members};
+    for lang in ["en", "fr"] {
+        let page =
+            fs::read_to_string(docs().join(lang).join("reference/browser.md")).unwrap_or_default();
+        let mut known: Vec<String> = GLOBALS.iter().map(|g| (*g).to_owned()).collect();
+        for host in Host::ALL {
+            assert!(
+                page.contains(&format!("`{}`", host.name())),
+                "{lang}/reference/browser.md does not document `{}`",
+                host.name()
+            );
+            known.push(host.name().to_owned());
+            for (name, _) in members(host) {
+                known.push(name.to_owned());
+                assert!(
+                    page.contains(&format!("`{name}`")) || page.contains(&format!("`{name}(")),
+                    "{lang}/reference/browser.md does not document `{name}` of `{}`",
+                    host.name()
+                );
+            }
+            if host.has_events() {
+                known.push("on".to_owned());
+            }
+        }
+        known.extend(["Group.new".to_owned(), "new".to_owned()]);
+        // Every name written in the first cell of a table is known.
+        for line in page
+            .lines()
+            .filter(|l| l.starts_with('|') && !l.starts_with("| -"))
+        {
+            let first_cell = line.split('|').nth(1).unwrap_or("");
+            for part in first_cell.split('`').skip(1).step_by(2) {
+                let name = part.split(['(', ' ']).next().unwrap_or("");
+                assert!(
+                    known.iter().any(|k| k == name)
+                        || ["Member", "Global", "Membre", "Globale"].contains(&name),
+                    "{lang}/reference/browser.md documents `{name}`, which the compiler does not know"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn the_method_reference_lists_exactly_the_built_in_methods() {
     let receivers = [

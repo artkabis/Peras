@@ -59,8 +59,8 @@ export fn words(text: String): i32 {
 - ~~`.apeiron` modules compiled to JavaScript, through the CLI and the Vite plugin~~: done, with `number` for `f64`.
 - ~~`async` and `await`~~: done.
 - ~~Calls from managed to owned modules, with conversions checked at the boundary~~: done for numbers, strings, and arrays, options, results, maps and sets of them; structures and enumerations next.
-- The DOM, events, `fetch`, timers, storage, WebSockets, Web Workers, with typed APIs.
-- Closures, with rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not.
+- ~~The DOM, events, `fetch`, timers, storage, with typed APIs~~: done for a subset, the [browser reference](browser.md) ([decision 0009](../decisions/0009-browser-and-resources.md)); WebSockets, Web Workers, forms and `requestAnimationFrame` next.
+- ~~Rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not~~: done. Closures as values, and arrow functions with statements, next.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

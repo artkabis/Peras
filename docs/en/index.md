@@ -21,6 +21,7 @@ length({ x: 3, y: 4 }); // 5, computed by WebAssembly
 
 ## Where to start
 
+- [Peras for decision-makers](guide/overview.md): what it brings, measured, where it fits, how mature it is, and how to try it safely.
 - [Introduction](guide/introduction.md): what Peras is for, its two modes, and what makes it different.
 - [Getting started](guide/getting-started.md): build the compiler, write a module, run it in the browser with Vite.
 - [The language, step by step](guide/basics.md): values, functions, control flow, structures, collections, memory.

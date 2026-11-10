@@ -20,10 +20,12 @@ Every diagnostic blocks the build and explains the cause, the value's history an
 
 ## Documentation
 
+The site, with search, in English and French: **<https://artkabis.github.io/Peras/>**, built from `docs/` on every push to `main`. For a first decision: [Peras for decision-makers](docs/en/guide/overview.md).
+
 - [Guide](docs/en/guide/introduction.md), from the first program to JavaScript interop
 - [Reference](docs/en/reference/status.md): status, types, operators, methods, keywords, CLI, [roadmap](docs/en/reference/roadmap.md)
 - [Error codes](docs/en/errors/index.md), each with its cause and fix
-- Decisions: [0001 WebAssembly backend](docs/en/decisions/0001-webassembly-backend.md), [0002 TLSF allocator](docs/en/decisions/0002-tlsf-allocator.md), [0003 a runtime proved at compile time](docs/en/decisions/0003-runtime-proved-at-compile-time.md), [0004 strings without allocation](docs/en/decisions/0004-strings-without-allocation.md), [0005 maps and sets](docs/en/decisions/0005-maps-and-sets.md), [0006 licensing](docs/en/decisions/0006-licensing.md), [0007 threads over shared memory](docs/en/decisions/0007-threads-over-shared-memory.md), [0008 managed mode](docs/en/decisions/0008-managed-mode.md); [the research behind Peras](docs/en/research.md), each choice with the published work it rests on
+- Decisions: [0001 WebAssembly backend](docs/en/decisions/0001-webassembly-backend.md), [0002 TLSF allocator](docs/en/decisions/0002-tlsf-allocator.md), [0003 a runtime proved at compile time](docs/en/decisions/0003-runtime-proved-at-compile-time.md), [0004 strings without allocation](docs/en/decisions/0004-strings-without-allocation.md), [0005 maps and sets](docs/en/decisions/0005-maps-and-sets.md), [0006 licensing](docs/en/decisions/0006-licensing.md), [0007 threads over shared memory](docs/en/decisions/0007-threads-over-shared-memory.md), [0008 managed mode](docs/en/decisions/0008-managed-mode.md), [0009 the browser and resources](docs/en/decisions/0009-browser-and-resources.md); [the research behind Peras](docs/en/research.md), each choice with the published work it rests on
 - [Benchmarks](bench/README.md), what they measure and what they do not
 - [Language spec](docs/en/spec.md), [architecture](docs/en/architecture.md), [compiler kickoff plan](docs/en/kickoff-plan.md)
 

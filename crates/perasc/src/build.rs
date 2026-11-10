@@ -214,7 +214,8 @@ fn managed_module(
     }: Managed,
     localizer: &Localizer,
 ) -> Result<PathBuf, ToolError> {
-    let output = build_managed(Path::new(path), text, !keep_imports, localizer)?;
+    let debug = options.allocator == perasc_driver::Allocator::Debug;
+    let output = build_managed(Path::new(path), text, !keep_imports, debug, localizer)?;
     let built = if keep_imports {
         &[][..]
     } else {

@@ -263,6 +263,12 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
         Ty::Set(_) => names.extend(["size", "add", "has", "delete", "clear", "copy"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
+        Ty::Host(h) => {
+            names.extend(crate::browser::members(*h).into_iter().map(|(n, _)| n));
+            if h.has_events() {
+                names.push("on");
+            }
+        }
         _ => {}
     }
     names

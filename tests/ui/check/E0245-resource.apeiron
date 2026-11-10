@@ -1,0 +1,54 @@
+// What a resource's single owner forbids.
+fn noop(e: Event): void {
+  e.stopPropagation();
+}
+
+export fn dropped(button: Element): void {
+  button.on("click", (e) => noop(e));
+}
+
+export fn moved(button: Element): Group {
+  let group = Group.new();
+  const listener = button.on("click", (e) => noop(e));
+  group.add(listener);
+  listener.release();
+  return group;
+}
+
+export fn looped(buttons: Array<Element>): Group {
+  let group = Group.new();
+  const listener = buttons[0].on("click", (e) => noop(e));
+  for (const b of buttons) {
+    group.add(listener);
+    b.focus();
+  }
+  return group;
+}
+
+export fn held(button: Element): void {
+  const listeners = [button.on("click", (e) => noop(e))];
+  log(`${listeners.length}`);
+}
+
+export fn lent(listener: Listener): Listener {
+  return listener;
+}
+
+export fn captured(button: Element): Group {
+  let group = Group.new();
+  const timer = setTimeout(10, () => log("late"));
+  const listener = button.on("click", (e) => stop(timer, e));
+  group.add(listener);
+  return group;
+}
+
+fn stop(t: Timer, e: Event): void {
+  e.stopPropagation();
+  log(`${t == t}`);
+}
+
+export fn replaced(button: Element): Listener {
+  let listener = button.on("click", (e) => noop(e));
+  listener = button.on("focus", (e) => noop(e));
+  return listener;
+}

@@ -661,6 +661,7 @@ check-managed-only = { $what ->
     [number] the type `number`
     [promise] the type `Promise`
     [import] an `import`
+    [browser] the browser's API
    *[other] this
 } { $what ->
     [await-sync] cannot wait
@@ -674,6 +675,7 @@ check-managed-only-why = An owned module (`.peras`) compiles to WebAssembly, whe
 check-managed-only-fix = { $what ->
     [await-sync] mark the function `async`, and its result `Promise<T>`
     [number] use `f64`, which `number` names in a managed module
+    [browser] use the browser in a `.apeiron` module, and give this module the data
    *[other] move this code to a `.apeiron` module, which may import this one
 }
 
@@ -713,6 +715,45 @@ check-import-fix = { $reason ->
     [signature] give the function numbers, strings, or arrays of them, and build the structure on each side
    *[other] check the import
 }
+
+# E0245
+check-resource = { $reason ->
+    [dropped] this resource is released as soon as it is made
+    [moved] `{ $name }` is used after it was given away
+    [loop] `{ $name }` is given away in a loop
+    [capture] `{ $name }` is a resource, and an arrow function cannot keep it
+    [holder] a resource cannot be kept in a structure, an array, an option or a map
+    [lent] `{ $name }` is lent to this function, which cannot give it away
+    [reassign] `{ $name }` holds a resource, which cannot be replaced
+   *[other] this resource cannot be used here
+}
+check-resource-label = { $reason ->
+    [dropped] made here, kept by nothing
+    [moved] used here
+    [loop] given away at each turn
+    [capture] kept by the arrow function
+    [holder] kept here
+    [lent] given away here
+    [reassign] replaced here
+   *[other] here
+}
+check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, or released with `release()`; after that, its variable holds nothing. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
+check-resource-fix = { $reason ->
+    [dropped] keep it in a variable, `const listener = …`, add it to a `Group`, or return it
+    [moved] give it away last, or keep it in a `Group` and use the group
+    [loop] add each one to a `Group` declared before the loop
+    [capture] keep the resource outside, and let the arrow function call a function
+    [holder] keep it in a variable or a `Group`
+    [lent] return it from the function that made it, or add it to a `Group` there
+    [reassign] declare a new `const` for the new resource
+   *[other] keep the resource in a variable
+}
+
+# E0246
+check-read-only = `{ $member }` of `{ $type }` can only be read
+check-read-only-label = assigned here
+check-read-only-why = The browser sets this property itself: an event's type and key, the status of a response, the body of a page. A page cannot change it.
+check-read-only-fix = read it into a variable of your own, and change that one
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

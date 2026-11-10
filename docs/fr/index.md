@@ -21,6 +21,7 @@ length({ x: 3, y: 4 }); // 5, calculé par WebAssembly
 
 ## Par où commencer
 
+- [Peras pour les décideurs](guide/overview.md) : ce qu’il apporte, mesuré, où il convient, sa maturité, et comment l’essayer sans risque.
 - [Introduction](guide/introduction.md) : à quoi sert Peras, ses deux modes, ce qui le distingue.
 - [Premiers pas](guide/getting-started.md) : compiler le compilateur, écrire un module, l’exécuter dans le navigateur avec Vite.
 - [Le langage, pas à pas](guide/basics.md) : valeurs, fonctions, contrôle du flux, structures, collections, mémoire.

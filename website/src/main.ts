@@ -1,5 +1,5 @@
-// The documentation's few behaviours: theme, search, copy buttons, menu, and
-// the table of contents following the reader.
+// The documentation's few behaviours: theme, search, copy buttons, menu,
+// diagrams, and the table of contents following the reader.
 import MiniSearch from "minisearch";
 
 /** A search result, with the fields the index stores. */
@@ -7,6 +7,8 @@ interface SearchHit {
   url: string;
   title: string;
   section: string;
+  text: string;
+  terms: string[];
 }
 
 interface SearchDoc {
@@ -35,7 +37,54 @@ document.querySelector(".theme")?.addEventListener("click", () => {
   } catch {
     // Storage may be unavailable: the choice then lasts for the page only.
   }
+  void drawDiagrams();
 });
+
+/** Whether the page is shown dark: the reader's choice, else the system's. */
+function isDark(): boolean {
+  const chosen = document.documentElement.dataset.theme;
+  return chosen ? chosen === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+// Diagrams: Mermaid is loaded only by a page that has one, and draws them in
+// the site's colours, again when the theme changes.
+const diagrams = [...document.querySelectorAll<HTMLElement>("pre.mermaid")].map((pre) => ({
+  pre,
+  source: pre.textContent,
+}));
+async function drawDiagrams(): Promise<void> {
+  if (diagrams.length === 0) return;
+  const { default: mermaid } = await import("mermaid");
+  const style = getComputedStyle(document.documentElement);
+  const token = (name: string): string => style.getPropertyValue(name).trim();
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: "base",
+    fontFamily: token("--sans"),
+    themeVariables: {
+      darkMode: isDark(),
+      background: token("--bg"),
+      primaryColor: token("--bg-soft"),
+      primaryTextColor: token("--fg"),
+      primaryBorderColor: token("--accent"),
+      secondaryColor: token("--accent-soft"),
+      tertiaryColor: token("--code-bg"),
+      lineColor: token("--muted"),
+      textColor: token("--fg"),
+      clusterBkg: token("--code-bg"),
+      clusterBorder: token("--line"),
+      edgeLabelBackground: token("--bg"),
+    },
+  });
+  for (const { pre, source } of diagrams) {
+    pre.removeAttribute("data-processed");
+    pre.textContent = source;
+  }
+  await mermaid.run({ nodes: diagrams.map((d) => d.pre) });
+}
+void drawDiagrams();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => void drawDiagrams());
 
 // Menu, on small screens.
 document.querySelector(".menu")?.addEventListener("click", () => {
@@ -73,18 +122,72 @@ async function openSearch(): Promise<void> {
   const docs = (await response.json()) as SearchDoc[];
   index = new MiniSearch<SearchDoc>({
     fields: ["title", "section", "text"],
-    storeFields: ["title", "section", "url"],
+    storeFields: ["title", "section", "url", "text"],
     searchOptions: { boost: { title: 3, section: 2 }, prefix: true, fuzzy: 0.2 },
   });
   index.addAll(docs);
   showResults();
 }
 
+/** The index of the result chosen with the arrow keys. */
+let chosen = 0;
+
+/** `text` with each of `terms` marked, as DOM nodes. */
+function marked(text: string, terms: string[]): Node[] {
+  const pattern = terms
+    .filter((t) => t.length > 1)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  if (pattern === "") return [document.createTextNode(text)];
+  const nodes: Node[] = [];
+  let last = 0;
+  for (const match of text.matchAll(new RegExp(pattern, "gi"))) {
+    const at = match.index;
+    nodes.push(document.createTextNode(text.slice(last, at)));
+    const mark = document.createElement("mark");
+    mark.textContent = match[0];
+    nodes.push(mark);
+    last = at + match[0].length;
+  }
+  nodes.push(document.createTextNode(text.slice(last)));
+  return nodes;
+}
+
+/** A few words of `text` around the first of `terms`. */
+function excerpt(text: string, terms: string[]): string {
+  const lower = text.toLowerCase();
+  const at = Math.max(
+    0,
+    Math.min(
+      ...terms.map((t) => lower.indexOf(t.toLowerCase())).filter((i) => i >= 0),
+      text.length,
+    ),
+  );
+  const start = Math.max(0, at - 60);
+  const piece = text.slice(start, start + 180);
+  return `${start > 0 ? "…" : ""}${piece}${start + 180 < text.length ? "…" : ""}`;
+}
+
+function choose(next: number): void {
+  const items = results?.querySelectorAll("a") ?? [];
+  if (items.length === 0) return;
+  chosen = (next + items.length) % items.length;
+  items.forEach((a, i) => a.classList.toggle("chosen", i === chosen));
+  items[chosen]?.scrollIntoView({ block: "nearest" });
+}
+
 function showResults(): void {
   if (!results || !input || !index) return;
   const query = input.value.trim();
   results.replaceChildren();
-  if (query === "") return;
+  chosen = 0;
+  if (query === "") {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = word("searchHelp");
+    results.append(li);
+    return;
+  }
   const found = index.search(query).slice(0, 12) as unknown as SearchHit[];
   if (found.length === 0) {
     const li = document.createElement("li");
@@ -105,12 +208,25 @@ function showResults(): void {
       section.textContent = hit.section;
       a.append(section);
     }
+    const text = document.createElement("small");
+    text.append(...marked(excerpt(hit.text, hit.terms), hit.terms));
+    a.append(text);
     li.append(a);
     results.append(li);
   }
+  choose(0);
 }
 
 input?.addEventListener("input", showResults);
+input?.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    choose(chosen + (event.key === "ArrowDown" ? 1 : -1));
+  } else if (event.key === "Enter") {
+    const target = results?.querySelectorAll("a")[chosen];
+    if (target) location.href = target.href;
+  }
+});
 document.querySelector(".search-open")?.addEventListener("click", () => void openSearch());
 dialog?.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close();

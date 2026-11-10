@@ -114,6 +114,44 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $parseI32 = (s) => { if (!/^[+-]?[0-9]+$/.test(s)) return undefined; const n = Number(s); return n >= -2147483648 && n <= 2147483647 ? n : undefined; };",
     ),
+    // Resources (decision 0009). In debug, the leak detector reports one
+    // collected without being released, with where it was made.
+    (
+        "$leaks",
+        &[],
+        "const $leaks = DEBUG ? new FinalizationRegistry((where) => console.error(`peras: a resource made at ${where} was collected without being released: it went on listening or ticking until then`)) : undefined;",
+    ),
+    (
+        "$Resource",
+        &["$leaks"],
+        "class $Resource { #release; constructor(release, where) { this.#release = release; $leaks?.register(this, where, this); } release() { const release = this.#release; if (release === undefined) return; this.#release = undefined; $leaks?.unregister(this); release(); } [Symbol.dispose ?? Symbol.for(\"Symbol.dispose\")]() { this.release(); } }",
+    ),
+    ("$release", &[], "const $release = (r) => r.release();"),
+    (
+        "$on",
+        &["$Resource"],
+        "const $on = (target, type, handler, where) => { const c = new AbortController(); target.addEventListener(type, handler, { signal: c.signal }); return new $Resource(() => c.abort(), where); };",
+    ),
+    (
+        "$timer",
+        &["$Resource"],
+        "const $timer = (repeat, ms, f, where) => { const id = repeat ? setInterval(f, ms) : setTimeout(f, ms); return new $Resource(() => (repeat ? clearInterval(id) : clearTimeout(id)), where); };",
+    ),
+    (
+        "$group",
+        &["$Resource"],
+        "const $group = (where) => { const held = []; let open = true; const group = new $Resource(() => { open = false; while (held.length > 0) held.pop().release(); }, where); group.add = (r) => { if (open) held.push(r); else r.release(); }; return group; };",
+    ),
+    (
+        "$sleep",
+        &[],
+        "const $sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));",
+    ),
+    (
+        "$as",
+        &[],
+        "const $as = (x, name) => (typeof globalThis[name] === \"function\" && x instanceof globalThis[name] ? x : undefined);",
+    ),
     (
         "$parseI64",
         &[],
@@ -145,10 +183,12 @@ pub fn closure(used: &BTreeSet<&'static str>) -> Vec<&'static str> {
 
 /// A helper's source; `bounds` is the text of an index out of bounds, with
 /// `{index}` and `{length}` in it.
-pub fn source(name: &str, bounds: &str) -> String {
+pub fn source(name: &str, bounds: &str, debug: bool) -> String {
     let source = HELPERS
         .iter()
         .find(|(n, _, _)| *n == name)
         .map_or("", |(_, _, source)| source);
-    source.replace("BOUNDS", &crate::expr::string_literal(bounds))
+    source
+        .replace("BOUNDS", &crate::expr::string_literal(bounds))
+        .replace("DEBUG ?", if debug { "true ?" } else { "false ?" })
 }

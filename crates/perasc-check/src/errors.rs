@@ -91,6 +91,8 @@ const fn why(code: ErrorCode) -> &'static str {
         242 => "check-managed-only-why",
         243 => "check-owned-only-why",
         244 => "check-import-why",
+        245 => "check-resource-why",
+        246 => "check-read-only-why",
         _ => "check-operator-why",
     }
 }
@@ -1118,5 +1120,31 @@ pub fn import(span: Span, reason: &str, name: &str) -> Diagnostic {
         span,
         Message::new("check-import-label").text("reason", reason),
         Message::new("check-import-fix").text("reason", reason),
+    )
+}
+
+/// `E0245`: a resource kept, given away or used as its owner does not allow.
+pub fn resource(span: Span, reason: &str, name: &str) -> Diagnostic {
+    simple(
+        codes::RESOURCE,
+        Message::new("check-resource")
+            .text("reason", reason)
+            .text("name", name),
+        span,
+        Message::new("check-resource-label").text("reason", reason),
+        Message::new("check-resource-fix").text("reason", reason),
+    )
+}
+
+/// `E0246`: a property of the browser that can only be read, assigned.
+pub fn read_only(span: Span, ty: &str, member: &str) -> Diagnostic {
+    simple(
+        codes::READ_ONLY,
+        Message::new("check-read-only")
+            .text("type", ty)
+            .text("member", member),
+        span,
+        Message::new("check-read-only-label"),
+        Message::new("check-read-only-fix"),
     )
 }

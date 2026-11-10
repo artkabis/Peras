@@ -5,12 +5,14 @@
   --fg: #1c1b19;
   --muted: #66625b;
   --line: #e2ded6;
-  --accent: #b4532a;
+  /* Every text colour reads at 4.8:1 or more on every background below
+     (WCAG AA asks 4.5:1), in both themes. */
+  --accent: #a34b26;
   --accent-soft: #f6e6dc;
   --code-bg: #f4f2ee;
-  --compiled: #1f7a4d;
-  --checked: #8a6d1f;
-  --planned: #6b5bb5;
+  --compiled: #1d7248;
+  --checked: #7a611b;
+  --planned: #6758af;
   --error: #b42a3a;
   --radius: 8px;
   --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -131,8 +133,8 @@ a:hover {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding: 0.35rem 0.6rem 0.35rem 0.8rem;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem 0.35rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-soft);
@@ -140,6 +142,10 @@ a:hover {
   font: inherit;
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+.search-open kbd {
+  margin-left: 1.5rem;
 }
 
 kbd {
@@ -384,7 +390,8 @@ main {
   font-weight: 600;
 }
 
-.code-build {
+.code-build,
+.code-fixed {
   color: var(--compiled);
 }
 
@@ -515,6 +522,54 @@ dialog.search input {
   font-size: 0.85rem;
 }
 
+.results small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.results mark {
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.results a.chosen {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.results a.chosen mark {
+  background: var(--bg);
+}
+
+/* Diagrams, drawn by Mermaid */
+.diagram {
+  max-width: 46rem;
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  text-align: center;
+}
+
+.diagram pre.mermaid {
+  margin: 0;
+  color: var(--muted);
+  font: 0.8rem/1.5 var(--mono);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.diagram pre.mermaid[data-processed] {
+  text-align: center;
+}
+
 .results .empty {
   padding: 0.75rem;
   color: var(--muted);
@@ -542,12 +597,13 @@ dialog.search input {
 
   .primary,
   .github,
-  .search-open span {
+  .search-open span,
+  .search-open kbd {
     display: none;
   }
 
   .search-open {
-    gap: 0;
+    padding: 0.45rem 0.55rem;
   }
 
   .sidebar {
