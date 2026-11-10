@@ -12,8 +12,8 @@ use std::fmt::Write as _;
 mod simd;
 
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MathOp,
-    Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MapShape,
+    MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
@@ -1152,7 +1152,11 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         );
     }
     match runtime.filter(|_| heap) {
-        Some(runtime) => js.push_str(&runtime_imports(runtime, &module.runtime_fns())),
+        Some(runtime) => js.push_str(&runtime_imports(
+            runtime,
+            &module.runtime_fns(),
+            crosses_map(module),
+        )),
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
         ),
@@ -1361,6 +1365,78 @@ fn rows(element: &Shape) -> (String, String) {
     (kinds.join(", "), format!("(c, i) => {object}"))
 }
 
+/// Whether a map crosses between JavaScript and the module: one is then
+/// made by the loader, which must have its hashing key first.
+fn crosses_map(module: &Module) -> bool {
+    fn has(shape: &Shape) -> bool {
+        match shape {
+            Shape::Map(_) => true,
+            Shape::Object(_, fields) => fields.iter().any(|(_, f)| has(f)),
+            Shape::Option(inner) | Shape::Records(inner, _) => has(inner),
+            Shape::Enum(_, variants) => variants.iter().any(|(_, f)| f.iter().any(has)),
+            Shape::Value(_) | Shape::Array(..) | Shape::String(_) => false,
+        }
+    }
+    module
+        .functions
+        .iter()
+        .filter_map(|f| f.shape.as_ref())
+        .any(|s| s.params.iter().any(|(_, p)| has(p)) || s.result.as_ref().is_some_and(has))
+}
+
+/// What the loader needs to know of a map's key: whether it is a string,
+/// and the kind of an integer or boolean key.
+fn map_key(map: &MapShape) -> (u8, &'static str) {
+    match map.key {
+        Shape::String(_) => (1, "\"i64\""),
+        Shape::Value(Ty::I32) => (0, "\"i32\""),
+        Shape::Value(Ty::Bool) => (0, "\"bool\""),
+        _ => (0, "\"i64\""),
+    }
+}
+
+/// `$toMap(…)`: a new map in the module's memory, filled from the `Map` or
+/// the `Set` at `source`; each value's slots come from its columns.
+fn to_map(source: &str, map: &MapShape, depth: usize) -> String {
+    let (strings, key) = map_key(map);
+    let columns = match &map.value {
+        Some(value) => {
+            let item = format!("m{depth}");
+            let mut columns = Vec::new();
+            record_columns(&item, value, depth + 1, false, &mut columns);
+            let pairs: Vec<String> = columns
+                .into_iter()
+                .map(|(x, kind)| format!("[{x}, \"{kind}\"]"))
+                .collect();
+            format!("({item}) => [{}]", pairs.join(", "))
+        }
+        None => "undefined".to_owned(),
+    };
+    format!(
+        "$toMap({source}, {strings}, {}, {key}, {columns})",
+        map.slots
+    )
+}
+
+/// What `$readMap` needs to rebuild a map: whether its keys are strings,
+/// their kind, the kind of each slot, and how a value is made of its slots.
+fn map_reader(map: &MapShape) -> (u8, &'static str, String, String) {
+    let (strings, key) = map_key(map);
+    match &map.value {
+        Some(value) => {
+            let mut columns = Vec::new();
+            record_columns("v", value, 0, false, &mut columns);
+            let kinds: Vec<String> = columns
+                .into_iter()
+                .map(|(_, kind)| format!("\"{kind}\""))
+                .collect();
+            let build = rebuild_at(value, &mut 0, &|k| format!("s[{k}]"), false);
+            (strings, key, kinds.join(", "), format!("(s) => {build}"))
+        }
+        None => (strings, key, String::new(), "undefined".to_owned()),
+    }
+}
+
 /// The columns of an array of `shape`, for an element at `path`: the
 /// JavaScript expression of each stored number, and its kind. A string or an
 /// array inside an element becomes a new buffer, stored as a pointer (`ptr`),
@@ -1429,6 +1505,14 @@ fn record_columns(
                 "ptr".to_owned(),
             ));
         }
+        Shape::Map(map) => {
+            let source = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            out.push((to_map(&source, map, depth), "ptr".to_owned()));
+        }
         Shape::Records(inner, _) => {
             let item = format!("w{depth}");
             let path = &if optional {
@@ -1456,7 +1540,7 @@ fn numbers(shape: &Shape) -> usize {
         Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
         Shape::Option(inner) => 1 + numbers(inner),
         Shape::Enum(..) => shape.scalars().len(),
-        Shape::Array(..) | Shape::String(_) | Shape::Records(..) => 0,
+        Shape::Array(..) | Shape::String(_) | Shape::Records(..) | Shape::Map(_) => 0,
     }
 }
 
@@ -1477,7 +1561,8 @@ fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mu
         | Shape::Enum(..)
         | Shape::Array(..)
         | Shape::String(_)
-        | Shape::Records(..) => {}
+        | Shape::Records(..)
+        | Shape::Map(_) => {}
     }
 }
 
@@ -1598,6 +1683,27 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             }
             out.args.push(buffer);
         }
+        Shape::Map(map) => {
+            let buffer = format!("$a{}", out.pre.len());
+            let source = if optional {
+                format!("({path} ?? [])")
+            } else {
+                path.to_owned()
+            };
+            out.pre
+                .push(format!("const {buffer} = {};", to_map(&source, map, 0)));
+            // An `inout` map gets the function's entries back, in order.
+            if map.pass == Pass::Inout {
+                let (strings, key, kinds, build) = map_reader(map);
+                out.post.push(format!(
+                    "{path}.clear(); $readMap({buffer}, {strings}, {key}, [{kinds}], {build}, {path});"
+                ));
+            }
+            if map.pass != Pass::Sink {
+                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
+            }
+            out.args.push(buffer);
+        }
         Shape::Value(ty) if optional => {
             let zero = match ty {
                 Ty::I64 => "0n",
@@ -1688,6 +1794,13 @@ fn rebuild_at(
             let take = if owned { "$takeStr" } else { "$readStr" };
             format!("{take}({handle})")
         }
+        Shape::Map(map) => {
+            let handle = at(*index);
+            *index += 1;
+            let (strings, key, kinds, build) = map_reader(map);
+            let take = if owned { "$takeMap" } else { "$readMap" };
+            format!("{take}({handle}, {strings}, {key}, [{kinds}], {build})")
+        }
         Shape::Option(inner) => {
             // Both read, so that a buffer inside is released even when empty.
             let some = rebuild_at(&Shape::Value(Ty::Bool), index, at, owned);
@@ -1717,7 +1830,7 @@ fn rebuild_at(
 }
 
 /// The allocator, instantiated first, and the imports it gives the module.
-fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn]) -> String {
+fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn], maps: bool) -> String {
     let faults: Vec<String> = runtime.faults.iter().map(|m| js_string(m)).collect();
     let sites: Vec<String> = std::iter::once("?".to_owned())
         .chain(runtime.sites.iter().cloned())
@@ -1770,7 +1883,7 @@ fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn]) -> String {
         }),
         // A map hashes its keys with a key of its own, drawn here: who
         // chooses the keys of a map cannot choose their collisions.
-        seed = if used.contains(&RuntimeFn::MapNew) {
+        seed = if maps || used.contains(&RuntimeFn::MapNew) {
             "if (globalThis.crypto?.getRandomValues) {\n  \
              const k = globalThis.crypto.getRandomValues(new BigInt64Array(2));\n  \
              $runtime.map_seed(k[0], k[1]);\n\
@@ -1934,6 +2047,47 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          values.length = out.length;\n  \
          for (let i = 0; i < out.length; i++) values[i] = out[i];\n  \
          return undefined;\n\
+         };\n\
+         // Maps and sets cross as copies, in insertion order: into a new map in\n\
+         // the module's memory, and out into a new Map or Set. A key or a\n\
+         // scalar is kept in 64 bits: an i32 or a bool as a BigInt.\n\
+         const $mapInt = (x, kind) => (kind === \"i64\" ? x : kind === \"bool\" ? (x ? 1n : 0n) : BigInt(x));\n\
+         const $toMap = (source, strings, slots, keyKind, columns) => {\n  \
+         const h = $runtime.map_new(strings, slots);\n  \
+         for (const item of source) {\n    \
+         const [k, v] = columns === undefined ? [item, undefined] : item;\n    \
+         const e = strings ? $runtime.map_put_s(h, $toStr(k)) : $runtime.map_put_i(h, $mapInt(k, keyKind));\n    \
+         if (columns === undefined) continue;\n    \
+         columns(v).forEach(([x, kind], slot) => {\n      \
+         if (kind === \"ptr\") $runtime.map_store_h(h, e, slot, x);\n      \
+         else if (kind === \"f64\" || kind === \"f32\") $runtime.map_store_f(h, e, slot, x);\n      \
+         else $runtime.map_store(h, e, slot, $mapInt(x, kind));\n    \
+         });\n  \
+         }\n  \
+         return h;\n\
+         };\n\
+         // A map's entries, its buffers lent: `build` makes a value of its slots.\n\
+         const $readMap = (h, strings, keyKind, kinds, build, into) => {\n  \
+         const out = into ?? (build === undefined ? new Set() : new Map());\n  \
+         for (let e = $runtime.map_next(h, 0); e >= 0; e = $runtime.map_next(h, e + 1)) {\n    \
+         const i = strings ? 0n : $runtime.map_key_i(h, e);\n    \
+         const k = strings ? $readStr($runtime.map_key_s(h, e)) : keyKind === \"i64\" ? i : keyKind === \"bool\" ? i !== 0n : Number(i);\n    \
+         if (build === undefined) {\n      \
+         out.add(k);\n      \
+         continue;\n    \
+         }\n    \
+         out.set(k, build(kinds.map((kind, slot) =>\n      \
+         kind === \"ptr\" ? $runtime.map_value_h(h, e, slot)\n      \
+         : kind === \"f64\" || kind === \"f32\" ? $runtime.map_value_f(h, e, slot)\n      \
+         : kind === \"i64\" ? $runtime.map_value(h, e, slot)\n      \
+         : Number($runtime.map_value(h, e, slot)))));\n  \
+         }\n  \
+         return out;\n\
+         };\n\
+         const $takeMap = (h, strings, keyKind, kinds, build) => {\n  \
+         const out = $readMap(h, strings, keyKind, kinds, build);\n  \
+         $runtime.buf_release(h, 0);\n  \
+         return out;\n\
          };\n";
 
 /// A JavaScript string literal.
@@ -2108,6 +2262,18 @@ fn ts_shape(shape: &Shape) -> String {
                 format!("{item}[]")
             }
         }
+        Shape::Map(map) => {
+            let key = ts_shape(&map.key);
+            let read_only = if matches!(map.pass, Pass::Borrow | Pass::Sink) {
+                "Readonly"
+            } else {
+                ""
+            };
+            match &map.value {
+                Some(value) => format!("{read_only}Map<{key}, {}>", ts_shape(value)),
+                None => format!("{read_only}Set<{key}>"),
+            }
+        }
         Shape::Array(elem, pass) => {
             let item = ts_scalar(elem.ty());
             // An array the function does not change can be read-only.
@@ -2158,6 +2324,13 @@ fn member(path: &str, dot: &str, field: &str) -> String {
 fn interface(shape: &Shape, out: &mut Vec<(String, String)>) {
     if let Shape::Option(inner) | Shape::Records(inner, _) = shape {
         return interface(inner, out);
+    }
+    if let Shape::Map(map) = shape {
+        interface(&map.key, out);
+        if let Some(value) = &map.value {
+            interface(value, out);
+        }
+        return;
     }
     if let Shape::Enum(name, variants) = shape {
         for (_, fields) in variants {

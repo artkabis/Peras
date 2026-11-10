@@ -663,10 +663,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [integer-type] les types entiers autres que `i32` et `i64`
     [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
-    [map-value] les tables dont les valeurs ne sont pas des nombres ou des booléens
-    [map-place] les tables et ensembles dans des structures, des tableaux ou des options
-    [map-export] les tables et ensembles dans la signature d’une fonction exportée : JavaScript les voit au travers des fonctions du module
-    [map-iteration] `for…of` sur une table ou un ensemble
+    [map-value] les tables dont les valeurs ont plus de 24 scalaires
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé

@@ -177,29 +177,49 @@ pub fn emit_direct_for(
     // functions on strings and arrays the module calls.
     let full = options.allocator.runtime(options.simd);
     let used = module.runtime_fns();
+    let loader = |allocator: &[u8]| {
+        let runtime = perasc_codegen_wasm::Runtime {
+            allocator,
+            sites: &compiled.sites,
+            faults: &faults,
+            bounds: &bounds,
+            simd: needs_simd.then_some(simd.as_str()),
+        };
+        perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime))
+    };
+    // The functions the loader calls itself, as `$runtime.map_put_s` to copy
+    // a map in, read from a first loader made with the whole runtime.
+    let draft = loader(full);
+    let called = loader_calls(&draft);
     let keep: Vec<&str> = LOADER_EXPORTS
         .iter()
         .copied()
         .chain(used.iter().map(|f| f.name()))
-        // The loader gives a map its hashing key.
-        .chain(
-            used.contains(&perasc_ir::RuntimeFn::MapNew)
-                .then_some("map_seed"),
-        )
+        .chain(called.iter().map(String::as_str))
         .collect();
     let allocator = perasc_runtime::prune(full, &keep).unwrap_or_else(|_| full.to_vec());
-    let runtime = perasc_codegen_wasm::Runtime {
-        allocator: &allocator,
-        sites: &compiled.sites,
-        faults: &faults,
-        bounds: &bounds,
-        simd: needs_simd.then_some(simd.as_str()),
-    };
     DirectOutput {
-        js: perasc_codegen_wasm::js_loader(module, wasm_file, Some(&runtime)),
+        js: loader(&allocator),
         dts: perasc_codegen_wasm::dts(module),
         wasm: compiled.wasm,
     }
+}
+
+/// The runtime's functions a loader calls: each `$runtime.name` in it.
+fn loader_calls(js: &str) -> Vec<String> {
+    let mut names: Vec<String> = js
+        .match_indices("$runtime.")
+        .map(|(at, found)| {
+            js[at + found.len()..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect()
+        })
+        .filter(|name: &String| !name.is_empty())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// What the JavaScript loader takes from the runtime, whatever the module

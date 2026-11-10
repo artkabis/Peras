@@ -115,11 +115,14 @@ impl Checker<'_> {
         }
     }
 
-    /// The element type of what a `for…of` walks.
+    /// The element type of what a `for…of` walks: an array's elements, a
+    /// set's keys, a map's entries as tuples.
     fn iterable(&mut self, iterable: ExprId) -> Ty {
         let ty = self.infer(iterable, None);
         match ty {
-            Ty::Array(element) => *element,
+            Ty::Array(element) | Ty::Set(element) => *element,
+            // A map's entries, in insertion order: `(key, value)`.
+            Ty::Map(key, value) => self.tuple_type(vec![*key, *value]),
             Ty::Error => Ty::Error,
             other => {
                 let span = self.ast.expr(iterable).span;

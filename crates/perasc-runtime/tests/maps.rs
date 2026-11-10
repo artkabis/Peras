@@ -67,15 +67,19 @@ struct Runtime {
     memory: Memory,
     new: TypedFunc<(i32, i32, i32), i32>,
     release: TypedFunc<(i32, i32), ()>,
+    clone: TypedFunc<(i32, i32), i32>,
     live: TypedFunc<(), i32>,
     sip: TypedFunc<(i32, i32), i64>,
     seed: TypedFunc<(i64, i64), ()>,
-    map_new: TypedFunc<i32, i32>,
+    map_new: TypedFunc<(i32, i32), i32>,
     find_i: TypedFunc<(i32, i64), i32>,
     find_s: TypedFunc<(i32, i32), i32>,
-    put_i: TypedFunc<(i32, i64, i64), ()>,
-    put_s: TypedFunc<(i32, i32, i64), ()>,
-    value: TypedFunc<(i32, i32), i64>,
+    put_i: TypedFunc<(i32, i64), i32>,
+    put_s: TypedFunc<(i32, i32), i32>,
+    store_value: TypedFunc<(i32, i32, i32, i64), ()>,
+    store_h: TypedFunc<(i32, i32, i32, i32), ()>,
+    value: TypedFunc<(i32, i32, i32), i64>,
+    value_h: TypedFunc<(i32, i32, i32), i32>,
     delete_i: TypedFunc<(i32, i64), i32>,
     delete_s: TypedFunc<(i32, i32), i32>,
     clear: TypedFunc<i32, ()>,
@@ -118,6 +122,7 @@ fn runtime(wasm: &[u8]) -> Runtime {
             .unwrap_or_else(|| unreachable!("memory")),
         new: f!("buf_new"),
         release: f!("buf_release"),
+        clone: f!("buf_clone"),
         live: f!("live_count"),
         sip: f!("map_sip"),
         seed: f!("map_seed"),
@@ -126,7 +131,10 @@ fn runtime(wasm: &[u8]) -> Runtime {
         find_s: f!("map_find_s"),
         put_i: f!("map_put_i"),
         put_s: f!("map_put_s"),
+        store_value: f!("map_store"),
+        store_h: f!("map_store_h"),
         value: f!("map_value"),
+        value_h: f!("map_value_h"),
         delete_i: f!("map_delete_i"),
         delete_s: f!("map_delete_s"),
         clear: f!("map_clear"),
@@ -176,9 +184,10 @@ impl Runtime {
     fn keys(&self, m: i32) -> (Vec<i64>, i32) {
         let used = self.read_i32(m + 4);
         let entries = self.read_i32(m + 8);
+        let stride = 16 + 8 * (self.read_i32(m + 28) & 0xff);
         let mut keys = Vec::new();
         for e in 0..used {
-            let at = entries + e * 24;
+            let at = entries + e * stride;
             if self.read_i32(at + 4) == 1 {
                 keys.push(self.read_i64(at + 8));
             }
@@ -280,7 +289,7 @@ fn integer_keys_behave_as_the_model_in_insertion_order() {
         for round in 0..9 {
             let m = rt
                 .map_new
-                .call(&mut rt.store, 0)
+                .call(&mut rt.store, (0, 1))
                 .unwrap_or_else(|e| unreachable!("{e}"));
             let mut model = Model::default();
             // Few keys, many operations: replacing, removing and growing.
@@ -290,8 +299,12 @@ fn integer_keys_behave_as_the_model_in_insertion_order() {
                 match random.next(10) {
                     0..=4 => {
                         let value = i64::try_from(random.next(1 << 40)).unwrap_or(0);
-                        rt.put_i
-                            .call(&mut rt.store, (m, key, value))
+                        let e = rt
+                            .put_i
+                            .call(&mut rt.store, (m, key))
+                            .unwrap_or_else(|e| unreachable!("{e}"));
+                        rt.store_value
+                            .call(&mut rt.store, (m, e, 0, value))
                             .unwrap_or_else(|e| unreachable!("{e}"));
                         model.put(key, value);
                     }
@@ -318,7 +331,7 @@ fn integer_keys_behave_as_the_model_in_insertion_order() {
                                 assert!(e >= 0, "{key} not found");
                                 let got = rt
                                     .value
-                                    .call(&mut rt.store, (m, e))
+                                    .call(&mut rt.store, (m, e, 0))
                                     .unwrap_or_else(|e| unreachable!("{e}"));
                                 assert_eq!(got, want);
                             }
@@ -345,7 +358,7 @@ fn string_keys_are_owned_released_and_found_by_their_text() {
         let mut random = Random(0x9e37_79b9_7f4a_7c15);
         let m = rt
             .map_new
-            .call(&mut rt.store, 1)
+            .call(&mut rt.store, (1, 1))
             .unwrap_or_else(|e| unreachable!("{e}"));
         let mut model: Vec<(Vec<u8>, i64)> = Vec::new();
         for _ in 0..3000 {
@@ -357,8 +370,12 @@ fn string_keys_are_owned_released_and_found_by_their_text() {
                     let value = i64::try_from(random.next(1000)).unwrap_or(0);
                     // The key is taken by the map: a fresh string each time.
                     let key = rt.string(&text);
-                    rt.put_s
-                        .call(&mut rt.store, (m, key, value))
+                    let e = rt
+                        .put_s
+                        .call(&mut rt.store, (m, key))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    rt.store_value
+                        .call(&mut rt.store, (m, e, 0, value))
                         .unwrap_or_else(|e| unreachable!("{e}"));
                     match model.iter_mut().find(|(k, _)| *k == text) {
                         Some(entry) => entry.1 = value,
@@ -391,7 +408,7 @@ fn string_keys_are_owned_released_and_found_by_their_text() {
                         Some(&(_, want)) => {
                             let got = rt
                                 .value
-                                .call(&mut rt.store, (m, e))
+                                .call(&mut rt.store, (m, e, 0))
                                 .unwrap_or_else(|e| unreachable!("{e}"));
                             assert_eq!(got, want);
                         }
@@ -411,6 +428,178 @@ fn string_keys_are_owned_released_and_found_by_their_text() {
         // Releasing the map releases every key it owns.
         rt.release
             .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// Values that own buffers: a string in slot 0, an integer in slot 1. The
+/// map releases the string a value held when the key is set again, deleted,
+/// cleared, or the map released.
+#[test]
+fn values_that_own_buffers_are_released_with_their_entries() {
+    // Two slots, the first owning a buffer.
+    const SHAPE: i32 = 2 | (1 << 8);
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let mut random = Random(0x0123_4567_89ab_cdef);
+        let m = rt
+            .map_new
+            .call(&mut rt.store, (0, SHAPE))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let mut model: Vec<(i64, Vec<u8>, i64)> = Vec::new();
+        for step in 0..3000_i64 {
+            let key = i64::try_from(random.next(200)).unwrap_or(0);
+            match random.next(10) {
+                0..=4 => {
+                    let text = format!("v{step}é").into_bytes();
+                    let h = rt.string(&text);
+                    let e = rt
+                        .put_i
+                        .call(&mut rt.store, (m, key))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    rt.store_h
+                        .call(&mut rt.store, (m, e, 0, h))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    rt.store_value
+                        .call(&mut rt.store, (m, e, 1, step))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    match model.iter_mut().find(|(k, _, _)| *k == key) {
+                        Some(entry) => {
+                            entry.1 = text;
+                            entry.2 = step;
+                        }
+                        None => model.push((key, text, step)),
+                    }
+                }
+                5..=6 => {
+                    let removed = rt
+                        .delete_i
+                        .call(&mut rt.store, (m, key))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    let before = model.len();
+                    model.retain(|(k, _, _)| *k != key);
+                    assert_eq!(removed == 1, model.len() < before);
+                }
+                7 if random.next(100) == 0 => {
+                    rt.clear
+                        .call(&mut rt.store, m)
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    model.clear();
+                }
+                _ => {
+                    let e = rt
+                        .find_i
+                        .call(&mut rt.store, (m, key))
+                        .unwrap_or_else(|e| unreachable!("{e}"));
+                    match model.iter().find(|(k, _, _)| *k == key) {
+                        Some((_, text, number)) => {
+                            let h = rt
+                                .value_h
+                                .call(&mut rt.store, (m, e, 0))
+                                .unwrap_or_else(|e| unreachable!("{e}"));
+                            assert_eq!(rt.text(h), *text);
+                            let got = rt
+                                .value
+                                .call(&mut rt.store, (m, e, 1))
+                                .unwrap_or_else(|e| unreachable!("{e}"));
+                            assert_eq!(got, *number);
+                        }
+                        None => assert_eq!(e, -1),
+                    }
+                }
+            }
+            // The map's blocks, and one string per live entry, nothing more.
+            let (keys, _) = rt.keys(m);
+            assert_eq!(keys, model.iter().map(|(k, _, _)| *k).collect::<Vec<_>>());
+        }
+        rt.release
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// A copy of a map owns copies of its string keys and of the buffers of its
+/// values: changing or releasing the original leaves it as it was.
+#[test]
+fn a_copied_map_owns_its_keys_and_values() {
+    const SHAPE: i32 = 2 | (1 << 8);
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let m = rt
+            .map_new
+            .call(&mut rt.store, (1, SHAPE))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let mut model: Vec<(Vec<u8>, Vec<u8>, i64)> = Vec::new();
+        for i in 0..300_i64 {
+            let key = format!("k{}", i % 120).into_bytes();
+            let text = format!("v{i}é").into_bytes();
+            let (k, h) = (rt.string(&key), rt.string(&text));
+            let e = rt
+                .put_s
+                .call(&mut rt.store, (m, k))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.store_h
+                .call(&mut rt.store, (m, e, 0, h))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.store_value
+                .call(&mut rt.store, (m, e, 1, i))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            match model.iter_mut().find(|(k, _, _)| *k == key) {
+                Some(entry) => {
+                    entry.1 = text;
+                    entry.2 = i;
+                }
+                None => model.push((key, text, i)),
+            }
+            if i % 7 == 3 {
+                let gone = format!("k{}", (i * 13) % 120).into_bytes();
+                let k = rt.string(&gone);
+                rt.delete_s
+                    .call(&mut rt.store, (m, k))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+                rt.release
+                    .call(&mut rt.store, (k, 0))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+                model.retain(|(k, _, _)| *k != gone);
+            }
+        }
+        let copy = rt
+            .clone
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        rt.clear
+            .call(&mut rt.store, m)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        rt.release
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let (keys, size) = rt.keys(copy);
+        assert_eq!(usize::try_from(size).unwrap_or(0), model.len());
+        for (h, (key, text, number)) in keys.iter().zip(&model) {
+            assert_eq!(rt.text(i32::try_from(*h).unwrap_or(0)), *key);
+            let k = rt.string(key);
+            let e = rt
+                .find_s
+                .call(&mut rt.store, (copy, k))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.release
+                .call(&mut rt.store, (k, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let held = rt
+                .value_h
+                .call(&mut rt.store, (copy, e, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(rt.text(held), *text);
+            let number_read = rt
+                .value
+                .call(&mut rt.store, (copy, e, 1))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(number_read, *number);
+        }
+        rt.release
+            .call(&mut rt.store, (copy, 0))
             .unwrap_or_else(|e| unreachable!("{e}"));
         assert_eq!(rt.live_count(), 0, "blocks left alive");
     }

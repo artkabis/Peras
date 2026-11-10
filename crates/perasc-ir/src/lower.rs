@@ -427,10 +427,6 @@ impl Lowering<'_> {
             return;
         };
         *has_struct |= values::is_aggregate(&ty);
-        if decl.exported && matches!(ty, CheckTy::Map(..) | CheckTy::Set(_)) {
-            self.unsupported(param.ty.span, "map-export");
-            return;
-        }
         let pass = match param.convention {
             Convention::Let => crate::Pass::Borrow,
             Convention::Inout => crate::Pass::Inout,
@@ -503,11 +499,6 @@ impl Lowering<'_> {
         }
         let param_count = u32::try_from(state.locals.len()).unwrap_or(u32::MAX);
         let ret_ty = decl.ret.as_ref().and_then(|t| self.typed(t));
-        if decl.exported
-            && let (Some(CheckTy::Map(..) | CheckTy::Set(_)), Some(written)) = (&ret_ty, &decl.ret)
-        {
-            self.unsupported(written.span, "map-export");
-        }
         has_struct |= ret_ty.as_ref().is_some_and(values::is_aggregate);
         let mut results: Vec<Ty> = match &ret_ty {
             Some(ty) if *ty != CheckTy::Void => match self.leaves(ty) {

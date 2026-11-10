@@ -35,3 +35,105 @@ export fn operations(ops: Array<i32>, keys: Array<i32>, values: Array<f64>): f64
   }
   return check;
 }
+
+// The entries in the order `for…of` gives them: 0 sets, 1 deletes, 2 clears.
+export fn order(ops: Array<i32>, keys: Array<i32>): String {
+  let m: Map<i64, i32> = Map.new();
+  let seen: Set<String> = Set.new();
+  for (let i = 0; i < ops.length; i++) {
+    const k = keys[i].toI64();
+    if (ops[i] == 0) {
+      m.set(k, i);
+      seen.add(`k${k}`);
+    } else if (ops[i] == 1) {
+      m.delete(k);
+    } else {
+      m.clear();
+    }
+  }
+  let out = "";
+  for (const entry of m) {
+    out += `${entry.0}=${entry.1},`;
+  }
+  out += "|";
+  for (const key of seen) {
+    out += `${key},`;
+  }
+  return out;
+}
+
+// Where each word comes, as an array per word, in the order words first come.
+export fn positions(text: String): String {
+  let at: Map<String, Array<i32>> = Map.new();
+  let i = 0;
+  for (const w of text.split(" ")) {
+    let list = at.get(w).unwrapOr([]);
+    list.push(i);
+    at.set(w.copy(), list);
+    i += 1;
+  }
+  let out = "";
+  for (const entry of at) {
+    out += `${entry.0}:`;
+    for (const p of entry.1) {
+      out += `${p},`;
+    }
+    out += ";";
+  }
+  return out;
+}
+
+// Maps held by a structure, an array, an option and another map.
+struct Index {
+  name: String;
+  byId: Map<i64, String>;
+  seen: Set<String>;
+}
+
+fn fill(index: inout Index, n: i32): void {
+  for (let i = 0; i < n; i++) {
+    index.byId.set(i.toI64(), `id${i}`);
+    index.seen.add(`s${i % 3}`);
+  }
+}
+
+export fn nested(n: i32): String {
+  let index = Index("main", Map.new(), Set.new());
+  fill(&index, n);
+  let groups: Map<String, Map<i32, i32>> = Map.new();
+  for (let i = 0; i < n; i++) {
+    let inner = groups.get(`g${i % 2}`).unwrapOr(Map.new());
+    inner.set(i, i * i);
+    groups.set(`g${i % 2}`, inner);
+  }
+  let shelves: Array<Map<i32, String>> = [];
+  for (let i = 0; i < 3; i++) {
+    let shelf: Map<i32, String> = Map.new();
+    shelf.set(i, `book${i}`);
+    shelves.push(shelf);
+  }
+  shelves[1].set(9, "nine");
+  let copies = shelves.copy();
+  shelves[1].delete(9);
+  let maybe: Option<Map<i32, i32>> = None;
+  if (n > 2) {
+    let m: Map<i32, i32> = Map.new();
+    m.set(1, 2);
+    maybe = Some(m);
+  }
+  let out = `${index.name}:${index.byId.size}/${index.seen.size};`;
+  for (const g of groups) {
+    out += `${g.0}=${g.1.size}`;
+    for (const e of g.1) {
+      out += `(${e.0},${e.1})`;
+    }
+  }
+  out += `;${shelves[1].size}/${copies[1].size}:${copies[1].get(9).unwrapOr("?")}`;
+  const sized = match (maybe) {
+    Some(m) => m.size,
+    None => -1,
+  };
+  const twin = index.byId.copy();
+  index.byId.clear();
+  return out + `;${sized};${twin.size}/${index.byId.size}`;
+}

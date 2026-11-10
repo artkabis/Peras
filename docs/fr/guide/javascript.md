@@ -14,15 +14,16 @@ Pour `geometry.peras` :
 
 ## Les types à la frontière
 
-| Peras               | JavaScript                                                                |
-| ------------------- | ------------------------------------------------------------------------- |
-| `i32`, `f32`, `f64` | `number`                                                                  |
-| `i64`               | `bigint`                                                                  |
-| `bool`              | `boolean`                                                                 |
-| une structure       | un simple objet, déclaré comme `interface`                                |
-| `Option<T>`         | la valeur, ou `undefined`                                                 |
-| `Array<T>`          | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie |
-| `String`            | une chaîne, copiée en UTF-8                                               |
+| Peras                 | JavaScript                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `i32`, `f32`, `f64`   | `number`                                                                                                                                   |
+| `i64`                 | `bigint`                                                                                                                                   |
+| `bool`                | `boolean`                                                                                                                                  |
+| une structure         | un simple objet, déclaré comme `interface`                                                                                                 |
+| `Option<T>`           | la valeur, ou `undefined`                                                                                                                  |
+| `Array<T>`            | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie                                                                  |
+| `String`              | une chaîne, copiée en UTF-8                                                                                                                |
+| `Map<K, V>`, `Set<K>` | une `Map` ou un `Set`, copiés dans l’ordre d’insertion, à l’entrée et à la sortie ; un `inout` reçoit en retour les entrées de la fonction |
 
 ```peras build
 export struct Rect {

@@ -12,6 +12,9 @@ const source = fileURLToPath(new URL("fixtures/maps/maps.peras", import.meta.url
 interface Maps {
   frequency(text: string, word: string): number;
   operations(ops: number[], keys: number[], values: number[]): number;
+  order(ops: number[], keys: number[]): string;
+  positions(text: string): string;
+  nested(n: number): string;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -86,6 +89,82 @@ describe("maps and sets", () => {
           check = check * 0.5 + map.size;
         });
         expect(m.operations(ops, keys, values), `${String(count)} operations`).toBe(check);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`walk entries in insertion order as Map and Set do, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const next = random(13);
+      for (const [count, range] of [
+        [0, 1],
+        [40, 6],
+        [3000, 200],
+      ] as const) {
+        const ops = Array.from({ length: count }, () => {
+          const r = next();
+          return r < 0.6 ? 0 : r < 0.995 ? 1 : 2;
+        });
+        const keys = ops.map(() => Math.floor(next() * range) - range / 2);
+        const map = new Map<number, number>();
+        const seen = new Set<string>();
+        ops.forEach((op, i) => {
+          const k = keys[i] ?? 0;
+          if (op === 0) {
+            map.set(k, i);
+            seen.add(`k${String(k)}`);
+          } else if (op === 1) map.delete(k);
+          else map.clear();
+        });
+        let want = "";
+        for (const [k, v] of map) want += `${String(k)}=${String(v)},`;
+        want += "|";
+        for (const k of seen) want += `${k},`;
+        expect(m.order(ops, keys), `${String(count)} operations`).toBe(want);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`keep arrays as values, as Map does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const next = random(17);
+      for (const length of [1, 5, 3000]) {
+        const text = Array.from(
+          { length },
+          () => VOCABULARY[Math.floor(next() * VOCABULARY.length)] ?? "",
+        ).join(" ");
+        const at = new Map<string, number[]>();
+        text.split(" ").forEach((w, i) => {
+          const list = at.get(w) ?? [];
+          list.push(i);
+          at.set(w, list);
+        });
+        let want = "";
+        for (const [w, list] of at) want += `${w}:${list.map((p) => `${String(p)},`).join("")};`;
+        expect(m.positions(text), `${String(length)} words`).toBe(want);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`hold maps in structures, arrays, options and maps, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      for (const n of [0, 1, 2, 3, 5, 40]) {
+        const groups = new Map<string, Map<number, number>>();
+        for (let i = 0; i < n; i++) {
+          const inner = groups.get(`g${String(i % 2)}`) ?? new Map<number, number>();
+          inner.set(i, i * i);
+          groups.set(`g${String(i % 2)}`, inner);
+        }
+        let want = `main:${String(n)}/${String(Math.min(n, 3))};`;
+        for (const [g, inner] of groups) {
+          want += `${g}=${String(inner.size)}`;
+          for (const [k, v] of inner) want += `(${String(k)},${String(v)})`;
+        }
+        want += `;1/2:nine;${n > 2 ? "1" : "-1"};${String(n)}/0`;
+        expect(m.nested(n), `nested(${String(n)})`).toBe(want);
       }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);

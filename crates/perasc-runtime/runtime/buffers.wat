@@ -103,7 +103,7 @@
   ;; before its poisoned contents are read, then the buffers it owns, if its
   ;; elements are buffers, then its elements.
   (func $buf_release (export "buf_release") (param $h i32) (param $site i32)
-    (local $data i32) (local $len i32) (local $deep i32) (local $i i32)
+    (local $data i32) (local $len i32) (local $deep i32) (local $i i32) (local $shape i32)
     ;; A map: its header first, which catches a block released twice, then
     ;; its keys and blocks, from what the header held.
     (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $MAP))
@@ -112,8 +112,10 @@
         (local.set $len (i32.load offset=4 (local.get $h)))
         (local.set $deep (i32.and (i32.load offset=12 (local.get $h)) (global.get $STRKEY)))
         (local.set $i (i32.load offset=20 (local.get $h)))
+        (local.set $shape (i32.load offset=28 (local.get $h)))
         (call $release (local.get $h) (local.get $site))
-        (call $map_free (local.get $data) (local.get $len) (local.get $deep) (local.get $i))
+        (call $map_free (local.get $data) (local.get $len) (local.get $deep) (local.get $i)
+          (local.get $shape))
         (return)))
     (local.set $data (i32.load offset=8 (local.get $h)))
     (local.set $len (i32.load (local.get $h)))
@@ -138,6 +140,9 @@
   ;; A copy of a buffer, with copies of the buffers it owns.
   (func $buf_clone (export "buf_clone") (param $h i32) (param $site i32) (result i32)
     (local $copy i32) (local $len i32) (local $size i32) (local $i i32) (local $at i32)
+    ;; A map: its own copy, keys and values included.
+    (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $MAP))
+      (then (return (call $map_clone (local.get $h) (local.get $site)))))
     (local.set $len (i32.load (local.get $h)))
     (local.set $size (i32.load offset=12 (local.get $h)))
     (local.set $copy (call $buf_new (local.get $len) (local.get $size) (local.get $site)))
@@ -1196,10 +1201,13 @@
   ;;   +0 live entries   +4 entries used, removed ones included   +8 the entries
   ;;   +12 MAP, plus STRKEY when its keys are strings it owns   +16 room for entries
   ;;   +20 the index   +24 its slots minus one, a power of two minus one
+  ;;   +28 its shape: the number of value slots in the low byte, and above it
+  ;;       one bit per slot that holds a buffer the map owns
   ;;
-  ;; An entry is 24 bytes, in insertion order: +0 the low 32 bits of its
-  ;; key's hash, +4 1 while it is live, +8 its key, an integer as an i64 or a
-  ;; string's handle, +16 the 64 bits of its value. An index slot holds 0 when
+  ;; An entry is 16 bytes and 8 per value slot, in insertion order: +0 the
+  ;; low 32 bits of its key's hash, +4 1 while it is live, +8 its key, an
+  ;; integer as an i64 or a string's handle, +16 its value slots, the scalars
+  ;; of the value, each in 64 bits. A set has none. An index slot holds 0 when
   ;; empty, -1 where an entry was removed, otherwise the entry's number plus
   ;; one. The index is at most two thirds full, removed slots included: it is
   ;; rebuilt, and the entries packed, when the entries are full.
@@ -1327,9 +1335,28 @@
       (br $probe))
     (i32.const 0))
 
+  ;; The size of an entry of a map of this shape.
+  (func $map_stride (param $shape i32) (result i32)
+    (i32.add (i32.const 16) (i32.shl (i32.and (local.get $shape) (i32.const 0xff)) (i32.const 3))))
+
   ;; The address of entry `e`.
   (func $map_entry (param $m i32) (param $e i32) (result i32)
-    (i32.add (i32.load offset=8 (local.get $m)) (i32.mul (local.get $e) (i32.const 24))))
+    (i32.add (i32.load offset=8 (local.get $m))
+      (i32.mul (local.get $e) (call $map_stride (i32.load offset=28 (local.get $m))))))
+
+  ;; Releases the buffers the value slots of `entry` own.
+  (func $map_release_values (param $shape i32) (param $entry i32)
+    (local $owned i32) (local $at i32)
+    (local.set $owned (i32.shr_u (local.get $shape) (i32.const 8)))
+    (local.set $at (i32.add (local.get $entry) (i32.const 16)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.eqz (local.get $owned)))
+        (if (i32.and (local.get $owned) (i32.const 1))
+          (then (call $buf_release (i32.wrap_i64 (i64.load (local.get $at))) (i32.const 0))))
+        (local.set $owned (i32.shr_u (local.get $owned) (i32.const 1)))
+        (local.set $at (i32.add (local.get $at) (i32.const 8)))
+        (br $next))))
 
   ;; Puts entry `e` into the index, in the first free slot from its hash.
   (func $map_place (param $m i32) (param $e i32)
@@ -1349,6 +1376,8 @@
   (func $map_grow (param $m i32)
     (local $live i32) (local $cap i32) (local $slots i32) (local $old i32) (local $used i32)
     (local $entries i32) (local $index i32) (local $i i32) (local $n i32) (local $from i32)
+    (local $stride i32)
+    (local.set $stride (call $map_stride (i32.load offset=28 (local.get $m))))
     (local.set $live (i32.load (local.get $m)))
     (local.set $used (i32.load offset=4 (local.get $m)))
     (local.set $old (i32.load offset=8 (local.get $m)))
@@ -1360,17 +1389,17 @@
         (br_if $big (i32.ge_u (i32.mul (local.get $slots) (i32.const 2)) (i32.mul (local.get $cap) (i32.const 3))))
         (local.set $slots (i32.shl (local.get $slots) (i32.const 1)))
         (br $double)))
-    (local.set $entries (call $alloc (i32.mul (local.get $cap) (i32.const 24)) (i32.const 0)))
+    (local.set $entries (call $alloc (i32.mul (local.get $cap) (local.get $stride)) (i32.const 0)))
     (local.set $index (call $alloc (i32.shl (local.get $slots) (i32.const 2)) (i32.const 0)))
     (memory.fill (local.get $index) (i32.const 0) (i32.shl (local.get $slots) (i32.const 2)))
     (block $done
       (loop $next
         (br_if $done (i32.ge_u (local.get $i) (local.get $used)))
-        (local.set $from (i32.add (local.get $old) (i32.mul (local.get $i) (i32.const 24))))
+        (local.set $from (i32.add (local.get $old) (i32.mul (local.get $i) (local.get $stride))))
         (if (i32.load offset=4 (local.get $from))
           (then
-            (memory.copy (i32.add (local.get $entries) (i32.mul (local.get $n) (i32.const 24)))
-              (local.get $from) (i32.const 24))
+            (memory.copy (i32.add (local.get $entries) (i32.mul (local.get $n) (local.get $stride)))
+              (local.get $from) (local.get $stride))
             (local.set $n (i32.add (local.get $n) (i32.const 1)))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
@@ -1390,13 +1419,15 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $place))))
 
-  ;; A new, empty map; `strings` when its keys are strings it owns.
-  (func (export "map_new") (param $strings i32) (result i32)
+  ;; A new, empty map; `strings` when its keys are strings it owns, `shape`
+  ;; its value slots and those that own a buffer.
+  (func (export "map_new") (param $strings i32) (param $shape i32) (result i32)
     (local $m i32)
     (local.set $m (call $alloc (i32.const 32) (i32.const 0)))
     (memory.fill (local.get $m) (i32.const 0) (i32.const 32))
     (i32.store offset=12 (local.get $m)
       (i32.or (global.get $MAP) (select (global.get $STRKEY) (i32.const 0) (local.get $strings))))
+    (i32.store offset=28 (local.get $m) (local.get $shape))
     (local.get $m))
 
   ;; The entry of `key`, or -1.
@@ -1413,20 +1444,22 @@
   (func (export "map_find_s") (param $m i32) (param $key i32) (result i32)
     (call $map_find (local.get $m) (i64.extend_i32_u (local.get $key))))
 
-  ;; Sets `key` to `value`, the key taken: a string key already there is
-  ;; released, the one in the map stays.
-  (func $map_put (param $m i32) (param $key i64) (param $value i64)
+  ;; The entry of `key`, the key taken, made when it is not there: a string
+  ;; key already there is released, the one in the map stays, and the
+  ;; buffers its value owned are released, for the new value to be stored.
+  ;; A new entry's value slots are zero.
+  (func $map_put (param $m i32) (param $key i64) (result i32)
     (local $hash i32) (local $at i32) (local $e i32) (local $entry i32)
     (local.set $hash (call $map_hash (local.get $m) (local.get $key)))
     (local.set $at (call $map_slot (local.get $m) (local.get $hash) (local.get $key)))
     (if (local.get $at)
       (then
-        (i64.store offset=16
-          (call $map_entry (local.get $m) (i32.sub (i32.load (local.get $at)) (i32.const 1)))
-          (local.get $value))
+        (local.set $e (i32.sub (i32.load (local.get $at)) (i32.const 1)))
+        (call $map_release_values (i32.load offset=28 (local.get $m))
+          (call $map_entry (local.get $m) (local.get $e)))
         (if (call $map_strings (local.get $m))
           (then (call $buf_release (i32.wrap_i64 (local.get $key)) (i32.const 0))))
-        (return)))
+        (return (local.get $e))))
     (if (i32.ge_u (i32.load offset=4 (local.get $m)) (i32.load offset=16 (local.get $m)))
       (then (call $map_grow (local.get $m))))
     (local.set $e (i32.load offset=4 (local.get $m)))
@@ -1434,28 +1467,67 @@
     (i32.store (local.get $entry) (local.get $hash))
     (i32.store offset=4 (local.get $entry) (i32.const 1))
     (i64.store offset=8 (local.get $entry) (local.get $key))
-    (i64.store offset=16 (local.get $entry) (local.get $value))
+    (memory.fill (i32.add (local.get $entry) (i32.const 16)) (i32.const 0)
+      (i32.sub (call $map_stride (i32.load offset=28 (local.get $m))) (i32.const 16)))
     (i32.store offset=4 (local.get $m) (i32.add (local.get $e) (i32.const 1)))
     (i32.store (local.get $m) (i32.add (i32.load (local.get $m)) (i32.const 1)))
-    (call $map_place (local.get $m) (local.get $e)))
+    (call $map_place (local.get $m) (local.get $e))
+    (local.get $e))
 
-  (func (export "map_put_i") (param $m i32) (param $key i64) (param $value i64)
-    (call $map_put (local.get $m) (local.get $key) (local.get $value)))
+  (func (export "map_put_i") (param $m i32) (param $key i64) (result i32)
+    (call $map_put (local.get $m) (local.get $key)))
 
-  (func (export "map_put_s") (param $m i32) (param $key i32) (param $value i64)
-    (call $map_put (local.get $m) (i64.extend_i32_u (local.get $key)) (local.get $value)))
+  (func (export "map_put_s") (param $m i32) (param $key i32) (result i32)
+    (call $map_put (local.get $m) (i64.extend_i32_u (local.get $key))))
 
-  (func (export "map_put_if") (param $m i32) (param $key i64) (param $value f64)
-    (call $map_put (local.get $m) (local.get $key) (i64.reinterpret_f64 (local.get $value))))
+  ;; The address of value slot `slot` of entry `e`.
+  (func $map_at (param $m i32) (param $e i32) (param $slot i32) (result i32)
+    (i32.add (call $map_entry (local.get $m) (local.get $e))
+      (i32.add (i32.const 16) (i32.shl (local.get $slot) (i32.const 3)))))
 
-  (func (export "map_put_sf") (param $m i32) (param $key i32) (param $value f64)
-    (call $map_put (local.get $m) (i64.extend_i32_u (local.get $key)) (i64.reinterpret_f64 (local.get $value))))
+  ;; Stores a scalar of a value: an integer or a boolean widened to an i64,
+  ;; a float as an f64, a buffer the map now owns.
+  (func (export "map_store") (param $m i32) (param $e i32) (param $slot i32) (param $v i64)
+    (i64.store (call $map_at (local.get $m) (local.get $e) (local.get $slot)) (local.get $v)))
 
-  (func (export "map_value") (param $m i32) (param $e i32) (result i64)
-    (i64.load offset=16 (call $map_entry (local.get $m) (local.get $e))))
+  (func (export "map_store_f") (param $m i32) (param $e i32) (param $slot i32) (param $v f64)
+    (f64.store (call $map_at (local.get $m) (local.get $e) (local.get $slot)) (local.get $v)))
 
-  (func (export "map_value_f") (param $m i32) (param $e i32) (result f64)
-    (f64.reinterpret_i64 (i64.load offset=16 (call $map_entry (local.get $m) (local.get $e)))))
+  (func (export "map_store_h") (param $m i32) (param $e i32) (param $slot i32) (param $v i32)
+    (i64.store (call $map_at (local.get $m) (local.get $e) (local.get $slot))
+      (i64.extend_i32_u (local.get $v))))
+
+  ;; A scalar of the value of entry `e`; a buffer, lent.
+  (func (export "map_value") (param $m i32) (param $e i32) (param $slot i32) (result i64)
+    (i64.load (call $map_at (local.get $m) (local.get $e) (local.get $slot))))
+
+  (func (export "map_value_f") (param $m i32) (param $e i32) (param $slot i32) (result f64)
+    (f64.load (call $map_at (local.get $m) (local.get $e) (local.get $slot))))
+
+  (func (export "map_value_h") (param $m i32) (param $e i32) (param $slot i32) (result i32)
+    (i32.load (call $map_at (local.get $m) (local.get $e) (local.get $slot))))
+
+  ;; The first live entry from `e` on, or -1 past the last: `for…of` walks
+  ;; the entries in insertion order, stepping over removed ones. The loop
+  ;; cannot change the map, so the entries stay where they are.
+  (func (export "map_next") (param $m i32) (param $e i32) (result i32)
+    (local $used i32)
+    (local.set $used (i32.load offset=4 (local.get $m)))
+    (block $done
+      (loop $scan
+        (br_if $done (i32.ge_u (local.get $e) (local.get $used)))
+        (if (i32.load offset=4 (call $map_entry (local.get $m) (local.get $e)))
+          (then (return (local.get $e))))
+        (local.set $e (i32.add (local.get $e) (i32.const 1)))
+        (br $scan)))
+    (i32.const -1))
+
+  ;; The key of entry `e`: an integer, or a string's handle, lent.
+  (func (export "map_key_i") (param $m i32) (param $e i32) (result i64)
+    (i64.load offset=8 (call $map_entry (local.get $m) (local.get $e))))
+
+  (func (export "map_key_s") (param $m i32) (param $e i32) (result i32)
+    (i32.wrap_i64 (i64.load offset=8 (call $map_entry (local.get $m) (local.get $e)))))
 
   ;; Removes `key`: 1 if it was there. Its slot becomes -1, its entry dead,
   ;; and a string key is released.
@@ -1469,6 +1541,7 @@
     (i32.store (local.get $m) (i32.sub (i32.load (local.get $m)) (i32.const 1)))
     (if (call $map_strings (local.get $m))
       (then (call $buf_release (i32.wrap_i64 (i64.load offset=8 (local.get $entry))) (i32.const 0))))
+    (call $map_release_values (i32.load offset=28 (local.get $m)) (local.get $entry))
     (i32.const 1))
 
   (func (export "map_delete_i") (param $m i32) (param $key i64) (result i32)
@@ -1478,26 +1551,78 @@
     (call $map_delete (local.get $m) (i64.extend_i32_u (local.get $key))))
 
   ;; Releases a map's parts: the `used` entries at `entries`, their string
-  ;; keys when `strings`, and the index.
+  ;; keys when `strings`, the buffers their values own by `shape`, and the
+  ;; index.
   (func $map_free (param $entries i32) (param $used i32) (param $strings i32) (param $index i32)
+    (param $shape i32)
     (local $i i32) (local $entry i32)
-    (if (local.get $strings)
+    (if (i32.or (local.get $strings) (i32.shr_u (local.get $shape) (i32.const 8)))
       (then
         (block $done
           (loop $next
             (br_if $done (i32.ge_u (local.get $i) (local.get $used)))
-            (local.set $entry (i32.add (local.get $entries) (i32.mul (local.get $i) (i32.const 24))))
+            (local.set $entry (i32.add (local.get $entries)
+              (i32.mul (local.get $i) (call $map_stride (local.get $shape)))))
             (if (i32.load offset=4 (local.get $entry))
-              (then (call $buf_release (i32.wrap_i64 (i64.load offset=8 (local.get $entry))) (i32.const 0))))
+              (then
+                (if (local.get $strings)
+                  (then (call $buf_release (i32.wrap_i64 (i64.load offset=8 (local.get $entry))) (i32.const 0))))
+                (call $map_release_values (local.get $shape) (local.get $entry))))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             (br $next)))))
     (if (local.get $entries) (then (call $release (local.get $entries) (i32.const 0))))
     (if (local.get $index) (then (call $release (local.get $index) (i32.const 0)))))
 
+;; A copy of map `m`: its header, entries and index, then a copy of each
+  ;; string key and of each buffer a value owns, for live entries.
+  (func $map_clone (param $m i32) (param $site i32) (result i32)
+    (local $copy i32) (local $shape i32) (local $stride i32) (local $bytes i32)
+    (local $i i32) (local $used i32) (local $entry i32) (local $owned i32) (local $at i32)
+    (local.set $copy (call $alloc (i32.const 32) (local.get $site)))
+    (memory.copy (local.get $copy) (local.get $m) (i32.const 32))
+    (local.set $shape (i32.load offset=28 (local.get $m)))
+    (local.set $stride (call $map_stride (local.get $shape)))
+    (local.set $used (i32.load offset=4 (local.get $m)))
+    (if (i32.eqz (i32.load offset=8 (local.get $m))) (then (return (local.get $copy))))
+    (local.set $bytes (i32.mul (i32.load offset=16 (local.get $m)) (local.get $stride)))
+    (i32.store offset=8 (local.get $copy) (call $alloc (local.get $bytes) (local.get $site)))
+    (memory.copy (i32.load offset=8 (local.get $copy)) (i32.load offset=8 (local.get $m)) (local.get $bytes))
+    (local.set $bytes (i32.shl (i32.add (i32.load offset=24 (local.get $m)) (i32.const 1)) (i32.const 2)))
+    (i32.store offset=20 (local.get $copy) (call $alloc (local.get $bytes) (local.get $site)))
+    (memory.copy (i32.load offset=20 (local.get $copy)) (i32.load offset=20 (local.get $m)) (local.get $bytes))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $used)))
+        (local.set $entry (call $map_entry (local.get $copy) (local.get $i)))
+        (if (i32.load offset=4 (local.get $entry))
+          (then
+            (if (call $map_strings (local.get $m))
+              (then
+                (i64.store offset=8 (local.get $entry)
+                  (i64.extend_i32_u (call $buf_clone
+                    (i32.wrap_i64 (i64.load offset=8 (local.get $entry))) (local.get $site))))))
+            (local.set $owned (i32.shr_u (local.get $shape) (i32.const 8)))
+            (local.set $at (i32.add (local.get $entry) (i32.const 16)))
+            (block $values
+              (loop $value
+                (br_if $values (i32.eqz (local.get $owned)))
+                (if (i32.and (local.get $owned) (i32.const 1))
+                  (then
+                    (i64.store (local.get $at)
+                      (i64.extend_i32_u (call $buf_clone
+                        (i32.wrap_i64 (i64.load (local.get $at))) (local.get $site))))))
+                (local.set $owned (i32.shr_u (local.get $owned) (i32.const 1)))
+                (local.set $at (i32.add (local.get $at) (i32.const 8)))
+                (br $value)))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (local.get $copy))
+
   ;; Empties the map: its string keys released, its blocks given back.
   (func $map_clear (export "map_clear") (param $m i32)
     (call $map_free (i32.load offset=8 (local.get $m)) (i32.load offset=4 (local.get $m))
-      (call $map_strings (local.get $m)) (i32.load offset=20 (local.get $m)))
+      (call $map_strings (local.get $m)) (i32.load offset=20 (local.get $m))
+      (i32.load offset=28 (local.get $m)))
     (i32.store (local.get $m) (i32.const 0))
     (i32.store offset=4 (local.get $m) (i32.const 0))
     (i32.store offset=8 (local.get $m) (i32.const 0))
