@@ -61,3 +61,24 @@ export fn order(ops: Array<i32>, keys: Array<i32>): String {
   }
   return out;
 }
+
+// Where each word comes, as an array per word, in the order words first come.
+export fn positions(text: String): String {
+  let at: Map<String, Array<i32>> = Map.new();
+  let i = 0;
+  for (const w of text.split(" ")) {
+    let list = at.get(w).unwrapOr([]);
+    list.push(i);
+    at.set(w.copy(), list);
+    i += 1;
+  }
+  let out = "";
+  for (const entry of at) {
+    out += `${entry.0}:`;
+    for (const p of entry.1) {
+      out += `${p},`;
+    }
+    out += ";";
+  }
+  return out;
+}

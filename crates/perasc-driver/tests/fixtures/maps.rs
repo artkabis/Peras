@@ -113,7 +113,64 @@ fn walks(n: i32, range: i32): i32 {
   return check;
 }
 
+struct Item {
+  name: String;
+  count: i32;
+  ratio: f32;
+  ok: bool;
+  tags: Array<i32>;
+}
+
+fn score(item: Item): i32 {
+  let total = item.name.length * 1000 + item.count + (item.ratio * 4.0).toI32() + item.tags.length * 7;
+  for (const t of item.tags) {
+    total = total.wrappingAdd(t);
+  }
+  if (item.ok) {
+    total += 3;
+  }
+  return total;
+}
+
+fn records(n: i32, range: i32): i32 {
+  let table: Map<i64, Item> = Map.new();
+  let names: Map<String, String> = Map.new();
+  let s = 9;
+  let check = 0;
+  for (let i = 0; i < n; i++) {
+    s = step(s);
+    const k = (s / 65536) % range;
+    const op = ((s / 7) % 6).abs();
+    if (op <= 1) {
+      table.set(k.toI64(), Item(`n${i}`, i, i.toF32() * 0.25, i % 3 == 0, [i, k]));
+      names.set(`k${k}`, `v${i}é`);
+    } else if (op == 2) {
+      const got = match (table.get(k.toI64())) {
+        Some(item) => score(item),
+        None => -1,
+      };
+      check = check.wrappingAdd(got).wrappingAdd(names.get(`k${k}`).unwrapOr(\"\").length);
+    } else if (op == 3) {
+      if (table.delete(k.toI64())) check = check.wrappingAdd(1000);
+      names.delete(`k${k}`);
+    } else if (op == 4 && i % 40 == 0) {
+      for (const e of table) {
+        check = check.wrappingMul(31).wrappingAdd(score(e.1)).wrappingAdd(e.0.toI32());
+      }
+      for (const e of names) {
+        check = check.wrappingMul(7).wrappingAdd(e.0.length + e.1.length);
+      }
+    } else if (i % 211 == 7) {
+      table.clear();
+    }
+    check = check.wrappingMul(3).wrappingAdd(table.size + names.size);
+  }
+  return check;
+}
+
 export fn intsFew(n: i32): i32 { return ints(n, 16); }
+export fn recordsFew(n: i32): i32 { return records(n, 12); }
+export fn recordsMany(n: i32): i32 { return records(n, 900); }
 export fn walksFew(n: i32): i32 { return walks(n, 30); }
 export fn walksMany(n: i32): i32 { return walks(n, 2000); }
 export fn intsMany(n: i32): i32 { return ints(n, 5000); }
@@ -282,9 +339,109 @@ fn walks(n: i32, range: i32) -> i32 {
     check
 }
 
+/// [`PROGRAM`]'s `Item`.
+struct Item {
+    name: String,
+    count: i32,
+    ratio: f32,
+    ok: bool,
+    tags: Vec<i32>,
+}
+
+/// [`PROGRAM`]'s `score`.
+#[allow(clippy::cast_possible_truncation)]
+fn score(item: &Item) -> i32 {
+    let len = |n: usize| i32::try_from(n).unwrap_or(0);
+    let mut total = len(item.name.len()) * 1000
+        + item.count
+        + (item.ratio * 4.0) as i32
+        + len(item.tags.len()) * 7;
+    for t in &item.tags {
+        total = total.wrapping_add(*t);
+    }
+    if item.ok {
+        total += 3;
+    }
+    total
+}
+
+/// An ordered map: a vector in insertion order, a key set again keeping its
+/// place.
+fn put<K: PartialEq, V>(table: &mut Vec<(K, V)>, key: K, value: V) {
+    match table.iter_mut().find(|(k, _)| *k == key) {
+        Some(slot) => slot.1 = value,
+        None => table.push((key, value)),
+    }
+}
+
+fn take<K: PartialEq, V>(table: &mut Vec<(K, V)>, key: &K) -> bool {
+    let before = table.len();
+    table.retain(|(k, _)| k != key);
+    table.len() < before
+}
+
+/// [`PROGRAM`]'s `records`.
+#[allow(clippy::cast_precision_loss)]
+fn records(n: i32, range: i32) -> i32 {
+    let len = |n: usize| i32::try_from(n).unwrap_or(0);
+    let mut table: Vec<(i64, Item)> = Vec::new();
+    let mut names: Vec<(String, String)> = Vec::new();
+    let (mut s, mut check) = (9_i32, 0_i32);
+    for i in 0..n {
+        s = step(s);
+        let k = (s / 65536) % range;
+        let op = ((s / 7) % 6).abs();
+        if op <= 1 {
+            let item = Item {
+                name: format!("n{i}"),
+                count: i,
+                ratio: i as f32 * 0.25,
+                ok: i % 3 == 0,
+                tags: vec![i, k],
+            };
+            put(&mut table, i64::from(k), item);
+            put(&mut names, format!("k{k}"), format!("v{i}é"));
+        } else if op == 2 {
+            let got = table
+                .iter()
+                .find(|(key, _)| *key == i64::from(k))
+                .map_or(-1, |(_, item)| score(item));
+            let name = names
+                .iter()
+                .find(|(key, _)| *key == format!("k{k}"))
+                .map_or(0, |(_, v)| len(v.len()));
+            check = check.wrapping_add(got).wrapping_add(name);
+        } else if op == 3 {
+            if take(&mut table, &i64::from(k)) {
+                check = check.wrapping_add(1000);
+            }
+            take(&mut names, &format!("k{k}"));
+        } else if op == 4 && i % 40 == 0 {
+            for (key, item) in &table {
+                let key = i32::try_from(*key).unwrap_or(0);
+                check = check
+                    .wrapping_mul(31)
+                    .wrapping_add(score(item))
+                    .wrapping_add(key);
+            }
+            for (key, value) in &names {
+                check = check
+                    .wrapping_mul(7)
+                    .wrapping_add(len(key.len() + value.len()));
+            }
+        } else if i % 211 == 7 {
+            table.clear();
+        }
+        check = check
+            .wrapping_mul(3)
+            .wrapping_add(len(table.len() + names.len()));
+    }
+    check
+}
+
 pub type Model = fn(i32) -> i32;
 
-pub const CASES: [(&str, Model); 7] = [
+pub const CASES: [(&str, Model); 9] = [
     ("intsFew", |n| ints(n, 16)),
     ("intsMany", |n| ints(n, 5000)),
     ("textsFew", |n| texts(n, 24)),
@@ -292,4 +449,6 @@ pub const CASES: [(&str, Model); 7] = [
     ("membersFew", |n| members(n, 40)),
     ("walksFew", |n| walks(n, 30)),
     ("walksMany", |n| walks(n, 2000)),
+    ("recordsFew", |n| records(n, 12)),
+    ("recordsMany", |n| records(n, 900)),
 ];

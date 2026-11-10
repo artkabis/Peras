@@ -13,6 +13,7 @@ interface Maps {
   frequency(text: string, word: string): number;
   operations(ops: number[], keys: number[], values: number[]): number;
   order(ops: number[], keys: number[]): string;
+  positions(text: string): string;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -120,6 +121,28 @@ describe("maps and sets", () => {
         want += "|";
         for (const k of seen) want += `${k},`;
         expect(m.order(ops, keys), `${String(count)} operations`).toBe(want);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`keep arrays as values, as Map does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const next = random(17);
+      for (const length of [1, 5, 3000]) {
+        const text = Array.from(
+          { length },
+          () => VOCABULARY[Math.floor(next() * VOCABULARY.length)] ?? "",
+        ).join(" ");
+        const at = new Map<string, number[]>();
+        text.split(" ").forEach((w, i) => {
+          const list = at.get(w) ?? [];
+          list.push(i);
+          at.set(w, list);
+        });
+        let want = "";
+        for (const [w, list] of at) want += `${w}:${list.map((p) => `${String(p)},`).join("")};`;
+        expect(m.positions(text), `${String(length)} words`).toBe(want);
       }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);

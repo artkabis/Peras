@@ -499,7 +499,7 @@ impl Lowering<'_> {
             return self.array_method(state, base, method, args, mode, span);
         }
         if self.is_map(base) {
-            return self.map_method(state, base, method, args, span);
+            return self.map_method(state, base, method, args, mode, span);
         }
         if !self.is_aggregate(base) {
             if method == "toString" {

@@ -521,8 +521,10 @@ pub enum RuntimeFn {
     FmtInt,
     /// `(b: bool) -> owned`: `true` or `false`.
     FmtBool,
-    /// `(strings: i32) -> owned`: a new, empty map or set ([decision
-    /// 0005]); `strings` when its keys are strings it owns.
+    /// `(strings: i32, shape: i32) -> owned`: a new, empty map or set
+    /// ([decision 0005]); `strings` when its keys are strings it owns;
+    /// `shape` the number of value slots in its low byte, and above it one
+    /// bit per slot that holds a buffer the map owns.
     ///
     /// [decision 0005]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0005-maps-and-sets.md
     MapNew,
@@ -530,20 +532,27 @@ pub enum RuntimeFn {
     MapFindI,
     /// `(map, key) -> i32`: the entry of a string key, lent, or -1.
     MapFindS,
-    /// `(map, key: i64, value: i64)`: sets an integer key's value.
+    /// `(map, key: i64) -> i32`: the entry of an integer key, made when it
+    /// is not there; the buffers its old value owned are released, for
+    /// [`Self::MapStore`] to store the new one.
     MapPutI,
-    /// `(map, key: owned, value: i64)`: sets a string key's value; the map
-    /// takes the key, and releases it when the key was already there.
+    /// `(map, key: owned) -> i32`: [`Self::MapPutI`] for a string key; the
+    /// map takes the key, and releases it when the key was already there.
     MapPutS,
-    /// `(map, key: i64, value: f64)`: [`Self::MapPutI`] for a float value.
-    MapPutIF,
-    /// `(map, key: owned, value: f64)`: [`Self::MapPutS`] for a float value.
-    MapPutSF,
-    /// `(map, entry) -> i64`: the value of an entry [`Self::MapFindI`] or
-    /// [`Self::MapFindS`] gave.
+    /// `(map, entry, slot, value: i64)`: stores a scalar of an entry's value.
+    MapStore,
+    /// `(map, entry, slot, value: f64)`: [`Self::MapStore`] for a float.
+    MapStoreF,
+    /// `(map, entry, slot, value: owned)`: [`Self::MapStore`] for a buffer,
+    /// which the map then owns.
+    MapStoreH,
+    /// `(map, entry, slot) -> i64`: a scalar of the value of an entry
+    /// [`Self::MapFindI`] or [`Self::MapFindS`] gave.
     MapValue,
-    /// `(map, entry) -> f64`: [`Self::MapValue`] for a float value.
+    /// `(map, entry, slot) -> f64`: [`Self::MapValue`] for a float.
     MapValueF,
+    /// `(map, entry, slot) -> borrowed`: [`Self::MapValue`] for a buffer, lent.
+    MapValueH,
     /// `(map, key: i64) -> bool`: removes an integer key, whether it was there.
     MapDeleteI,
     /// `(map, key) -> bool`: removes a string key, lent; the map's own copy
@@ -581,7 +590,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 41] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -611,10 +620,12 @@ impl RuntimeFn {
         Self::MapFindS,
         Self::MapPutI,
         Self::MapPutS,
-        Self::MapPutIF,
-        Self::MapPutSF,
+        Self::MapStore,
+        Self::MapStoreF,
+        Self::MapStoreH,
         Self::MapValue,
         Self::MapValueF,
+        Self::MapValueH,
         Self::MapDeleteI,
         Self::MapDeleteS,
         Self::MapClear,
@@ -656,10 +667,12 @@ impl RuntimeFn {
             Self::MapFindS => "map_find_s",
             Self::MapPutI => "map_put_i",
             Self::MapPutS => "map_put_s",
-            Self::MapPutIF => "map_put_if",
-            Self::MapPutSF => "map_put_sf",
+            Self::MapStore => "map_store",
+            Self::MapStoreF => "map_store_f",
+            Self::MapStoreH => "map_store_h",
             Self::MapValue => "map_value",
             Self::MapValueF => "map_value_f",
+            Self::MapValueH => "map_value_h",
             Self::MapDeleteI => "map_delete_i",
             Self::MapDeleteS => "map_delete_s",
             Self::MapClear => "map_clear",
@@ -697,7 +710,9 @@ impl RuntimeFn {
             | Self::ArrKeep
             | Self::MapFindS
             | Self::MapDeleteS => &[Ty::Borrowed],
-            Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
+            Self::Slice | Self::ArrSlice | Self::MapValue | Self::MapValueF | Self::MapValueH => {
+                &[Ty::I32, Ty::I32]
+            }
             Self::Trim
             | Self::Upper
             | Self::Lower
@@ -705,23 +720,21 @@ impl RuntimeFn {
             | Self::FmtInt
             | Self::FmtBool
             | Self::ParseInt
-            | Self::MapNew
             | Self::MapClear => &[],
             Self::Repeat
             | Self::ArrSort
             | Self::IsInt
             | Self::FmtFloat
-            | Self::MapValue
-            | Self::MapValueF
+            | Self::MapNew
             | Self::MapNext
             | Self::MapKeyI
             | Self::MapKeyS => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
-            Self::MapFindI | Self::MapDeleteI => &[Ty::I64],
-            Self::MapPutI => &[Ty::I64, Ty::I64],
-            Self::MapPutS => &[Ty::Owned, Ty::I64],
-            Self::MapPutIF => &[Ty::I64, Ty::F64],
-            Self::MapPutSF => &[Ty::Owned, Ty::F64],
+            Self::MapFindI | Self::MapDeleteI | Self::MapPutI => &[Ty::I64],
+            Self::MapPutS => &[Ty::Owned],
+            Self::MapStore => &[Ty::I32, Ty::I32, Ty::I64],
+            Self::MapStoreF => &[Ty::I32, Ty::I32, Ty::F64],
+            Self::MapStoreH => &[Ty::I32, Ty::I32, Ty::Owned],
         }
     }
 
@@ -733,22 +746,23 @@ impl RuntimeFn {
             | Self::ArrIndexOfStr
             | Self::MapFindI
             | Self::MapFindS
-            | Self::MapNext => Ty::I32,
+            | Self::MapNext
+            | Self::MapPutI
+            | Self::MapPutS => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt
             | Self::MapDeleteI
             | Self::MapDeleteS => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
-            Self::MapKeyS => Ty::Borrowed,
+            Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
             Self::MapValueF => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
             | Self::ArrKeep
-            | Self::MapPutI
-            | Self::MapPutS
-            | Self::MapPutIF
-            | Self::MapPutSF
+            | Self::MapStore
+            | Self::MapStoreF
+            | Self::MapStoreH
             | Self::MapClear => Ty::Void,
             _ => Ty::Owned,
         }
