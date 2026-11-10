@@ -99,7 +99,7 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 
 ## Before using Peras in production
 
-An outside review of the project, in November 2026, advised against using it in production yet. Its facts that hold, checked in this repository, are kept here; each is work for the phases above, not a verdict on where the language is going.
+An outside review of the project, in November 2026, advised against using it in production yet. Its facts that hold, checked in this repository, are kept here; each is work for the phases above, not a verdict on where the language is going. The published research on adopting a new language, which bears on several of them, is in [the research behind Peras](../research.md#adoption-and-its-risks).
 
 - **Version 0.0.1, no stability promise**: until 1.0, any version may break the language. A written policy, saying what may change and how a change is announced, comes before any outside user.
 - **Half of the design was missing**: `.apeiron` modules now compile to JavaScript and call owned modules ([managed modules](../guide/managed.md)), but the browser is not typed yet (phase 4), and `std/` holds only its README.

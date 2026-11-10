@@ -49,6 +49,7 @@ export const sections: Section[] = [
     pages: [
       "spec",
       "architecture",
+      "research",
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
       "decisions/0002-tlsf-allocator",

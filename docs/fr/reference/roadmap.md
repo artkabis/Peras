@@ -99,7 +99,7 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 
 ## Avant d’utiliser Peras en production
 
-Une revue extérieure du projet, en novembre 2026, a déconseillé de l’utiliser en production pour l’instant. Ses faits qui tiennent, vérifiés dans ce dépôt, sont gardés ici ; chacun est du travail pour les phases ci-dessus, pas un verdict sur la direction du langage.
+Une revue extérieure du projet, en novembre 2026, a déconseillé de l’utiliser en production pour l’instant. Ses faits qui tiennent, vérifiés dans ce dépôt, sont gardés ici ; chacun est du travail pour les phases ci-dessus, pas un verdict sur la direction du langage. Les travaux publiés sur l’adoption d’un nouveau langage, qui touchent plusieurs d’entre eux, sont dans [la recherche derrière Peras](../research.md#ladoption-et-ses-risques).
 
 - **Version 0.0.1, sans promesse de stabilité** : jusqu’à la 1.0, toute version peut casser le langage. Une politique écrite, qui dit ce qui peut changer et comment un changement est annoncé, vient avant tout utilisateur extérieur.
 - **La moitié de la conception manquait** : les modules `.apeiron` se compilent désormais en JavaScript et appellent les modules possédés ([modules managed](../guide/managed.md)), mais le navigateur n’est pas encore typé (phase 4), et `std/` ne contient que son README.
