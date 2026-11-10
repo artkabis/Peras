@@ -2,6 +2,11 @@
 // module. It takes a part of the data, copies it into the module's memory,
 // runs the kernel, copies the result back and sends it, transferred. Its
 // arrays are kept between calls, made again when a part has another size.
+//
+// The ceiling of shared memory: `load` keeps a part in the module's memory,
+// `reset` puts it back as it was, `go` runs the kernel on it and answers
+// with nothing, `fetch` sends the result to check it. Only `go` is timed:
+// the data never crosses, as with memory every worker shares.
 import * as peras from "./kernels.js";
 
 /** @typedef {import("./workers.js").Task} Task */
@@ -53,7 +58,53 @@ function i32(name, n) {
  */
 const scope = /** @type {never} */ (globalThis);
 
+/** The part `load` keeps, as it came, for `reset`. */
+/** @type {{ xs: Float64Array, vs: Float64Array, pixels: Int32Array, steps: number }} */
+const kept = {
+  xs: new Float64Array(0),
+  vs: new Float64Array(0),
+  pixels: new Int32Array(0),
+  steps: 0,
+};
+let checksum = 0;
+
+/**
+ * The ceiling's messages; false for another.
+ * @param {Task} data
+ */
+function resident(data) {
+  if (data.kind === "load") {
+    kept.xs = data.xs;
+    kept.vs = data.vs;
+    kept.pixels = data.pixels;
+    kept.steps = data.steps;
+    f64("rxs", data.xs.length);
+    f64("rvs", data.vs.length);
+    i32("rpixels", data.pixels.length);
+  } else if (data.kind === "reset") {
+    f64("rxs", kept.xs.length).view().set(kept.xs);
+    f64("rvs", kept.vs.length).view().set(kept.vs);
+    i32("rpixels", kept.pixels.length).view().set(kept.pixels);
+  } else if (data.kind === "go") {
+    if (data.kernel === "grayscale") checksum = peras.grayscale(i32("rpixels", kept.pixels.length));
+    else peras.particles(f64("rxs", kept.xs.length), f64("rvs", kept.vs.length), kept.steps);
+  } else if (data.kind === "fetch") {
+    scope.postMessage({
+      kind: "fetched",
+      xs: Float64Array.from(f64("rxs", kept.xs.length).view()),
+      pixels: Int32Array.from(i32("rpixels", kept.pixels.length).view()),
+      checksum,
+    });
+    return true;
+  } else {
+    return false;
+  }
+  scope.postMessage({ kind: "done" });
+  return true;
+}
+
 scope.onmessage = ({ data }) => {
+  if (resident(data)) return;
   if (data.kind === "particles") {
     const xs = f64("xs", data.xs.length);
     const vs = f64("vs", data.vs.length);
@@ -69,7 +120,7 @@ scope.onmessage = ({ data }) => {
     const checksum = peras.grayscale(pixels);
     data.pixels.set(pixels.view());
     scope.postMessage({ ...data, checksum }, { transfer: [data.pixels.buffer] });
-  } else {
+  } else if (data.kind === "words") {
     scope.postMessage({ ...data, count: peras.words(data.text) });
   }
 };

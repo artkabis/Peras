@@ -102,4 +102,4 @@ Les énumérations ont leur page : [énumérations et match](../guide/enums.md).
 
 Les fonctions, structures et énumérations génériques ont leur page : [génériques](../guide/generics.md) ; les méthodes et les interfaces aussi : [méthodes et interfaces](../guide/methods.md). <span class="status compiled">compilé</span>
 
-Unions, `Map`, `Set`, types de fonctions : voir la [feuille de route](roadmap.md).
+`Map<K, V>` et `Set<T>` : voir [le guide](../guide/collections.md#mapk-v-et-sett). Unions et types de fonctions : voir la [feuille de route](roadmap.md).

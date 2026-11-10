@@ -76,6 +76,16 @@ export fn counts(text: String): Map<String, i32> {
 - **Un hachage multiplicatif par défaut.** Il est 40 % plus rapide, mais de tels hachages ont eu des collisions qu’aucune graine n’empêche ; les clés viennent du réseau aussi souvent que du programme. Un hachage plus rapide pour les clés dont le compilateur prouve qu’elles viennent du programme lui-même pourra suivre, mesuré.
 - **FxHash, et tout hachage sans clé.** Mesuré : cent fois plus lent sur des identifiants ordinaires.
 
+## Statut
+
+**La première partie est faite.** `Map<K, V>` et `Set<T>` sont compilés pour des clés entières, booléennes et chaînes, et des valeurs nombres et booléens :
+
+- La table est celle du runtime, en WebAssembly, écrite une fois pour les deux allocateurs : un en-tête de 32 octets, des entrées de 24 octets dans l’ordre d’insertion, et un index de cases qui vaut 0 pour vide, −1 pour une entrée retirée, `e + 1` sinon. SipHash-1-3 est vérifié sur le vecteur de son article.
+- Le chargeur tire la clé de 128 bits avec `crypto.getRandomValues` pour un module qui a des tables, et seulement alors.
+- Les tests font les mêmes opérations aléatoires de trois façons, contre `HashMap` et `HashSet` de Rust : compilées en WebAssembly sur l’allocateur de débogage, dans l’interpréteur de l’IR, et dans Chromium contre `Map` et `Set` de JavaScript sur les deux allocateurs, sans bloc laissé vivant. Retirer l’écriture d’une entrée retirée, ou mal élargir une clé `bool`, les fait échouer.
+
+Restent à venir, dans cet ordre : `for…of` dans l’ordre d’insertion, les valeurs qui possèdent des tampons, les tables dans les structures, puis la copie à la frontière JavaScript.
+
 ## Conséquences
 
 - La ligne des collections de la [feuille de route](../reference/roadmap.md#phase-3--une-bibliothèque-standard) renvoie ici ; `Map` et `Set` viennent ensuite, pour les clés entières, booléennes et chaînes, puis `Deque`.

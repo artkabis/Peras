@@ -1,0 +1,8 @@
+// E0240: a map's key or a set's element is an integer, a boolean or a string, for now.
+export fn distinct(xs: Array<f64>): i32 {
+  let seen: Set<f64> = Set.new();
+  for (const x of xs) {
+    seen.add(x);
+  }
+  return seen.size;
+}

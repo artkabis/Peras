@@ -500,6 +500,9 @@ impl Checker<'_> {
                     span,
                     expected,
                 };
+                if let Some(ty) = self.collection_new(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.static_method(&site, *base, name) {
                     return ty;
                 }
@@ -510,11 +513,18 @@ impl Checker<'_> {
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
-                // `push` and `pop` change the array: it must be one that can change.
-                if matches!(receiver, Ty::Array(_))
-                    && matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
-                    && let Some(root) = self.root(*base)
-                {
+                // `push` and `pop` change the array, `set` and `delete` the map: it must
+                // be one that can change.
+                let changes = match receiver {
+                    Ty::Array(_) => {
+                        matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
+                    }
+                    Ty::Map(..) | Ty::Set(_) => {
+                        matches!(self.name(name.symbol), "set" | "add" | "delete" | "clear")
+                    }
+                    _ => false,
+                };
+                if changes && let Some(root) = self.root(*base) {
                     let base_span = self.ast.expr(*base).span;
                     self.check_mutable(root, base_span);
                 }

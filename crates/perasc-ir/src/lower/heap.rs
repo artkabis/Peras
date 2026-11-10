@@ -498,8 +498,11 @@ impl Lowering<'_> {
             .collect()
     }
 
-    /// `xs.length`: the length of the first column.
+    /// `xs.length`: the length of the first column; `m.size` for a map.
     pub(super) fn array_length(&mut self, state: &mut FnState, base: ExprId) -> Expr {
+        if self.is_map(base) {
+            return self.map_size(state, base);
+        }
         // `xs.filter((x) => …).length`: the elements kept are counted, with
         // no array between. One function runs, as written, element by
         // element: the order of its calls is that of the program.
@@ -752,6 +755,10 @@ impl Lowering<'_> {
         out: &mut Vec<Stmt>,
     ) {
         let span = self.ast.expr(iterable).span;
+        if self.is_map(iterable) {
+            self.unsupported(span, "map-iteration");
+            return;
+        }
         let Some(columns) = self.columns_of(iterable, span) else {
             return;
         };

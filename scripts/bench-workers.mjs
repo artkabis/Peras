@@ -90,7 +90,7 @@ try {
       "",
       `Machine: ${cpus()[0]?.model ?? "?"}, ${String(cpus().length)} cores (the page sees ${String(measured.cores)}). Chromium ${browser.version()}, headless. Medians of ${String(config.runs)} runs after 2 of warm-up, every way alternating.`,
       "",
-      "_Direct_: the kernel called on the main thread, its arrays already in the module's memory: the work alone. _N workers_: the data split in N parts, transferred to N workers, each with its own instance of the module, copied into it and back, the parts gathered: everything counted. Speed-up: the direct time divided by this one.",
+      "_Direct_: the kernel called on the main thread, its arrays already in the module's memory: the work alone. _N workers_: the data split in N parts, transferred to N workers, each with its own instance of the module, copied into it and back, the parts gathered: everything counted. Speed-up: the direct time divided by this one. _Data resident_: the ceiling of memory shared by every worker. Each worker keeps its part in its module's memory, put back untimed before each run; only running the kernel on 4 workers and hearing back from each is timed. No copy is counted, as with WebAssembly threads over one `SharedArrayBuffer`.",
       "",
       "| Kernel | Way | Median (ms) | Speed-up |",
       "| --- | --- | --: | --: |",
@@ -99,7 +99,12 @@ try {
       const rows = measured.rows.filter((r) => r.kernel === kernel);
       const directTime = rows.find((r) => r.way === "direct")?.median ?? 0;
       rows.forEach((r, i) => {
-        const way = r.way === "direct" ? "direct" : `${r.way} worker${r.way === "1" ? "" : "s"}`;
+        const way =
+          r.way === "direct"
+            ? "direct"
+            : r.way === "4 resident"
+              ? "4 workers, data resident (ceiling)"
+              : `${r.way} worker${r.way === "1" ? "" : "s"}`;
         lines.push(
           `| ${i === 0 ? kernel : ""} | ${way} | ${ms(r.median)} | ${(directTime / r.median).toFixed(2)} |`,
         );

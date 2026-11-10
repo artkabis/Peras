@@ -51,8 +51,6 @@ const RUNTIME_FIRST: u32 = 7;
 /// Added to an element size: the elements are buffers the buffer owns
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
-/// The function types of the imports, which come first in the type section.
-const IMPORT_TYPES: u32 = 9;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -108,17 +106,21 @@ pub fn compile_module(module: &Module) -> Compiled {
 }
 
 /// Declares the runtime's types and imports: the heap, buffers and memory.
-fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection, runtime: &[RuntimeFn]) {
+/// Gives how many types it declared, which come first.
+fn heap_imports_into(
+    types: &mut TypeSection,
+    imports: &mut ImportSection,
+    runtime: &[RuntimeFn],
+) -> u32 {
     use ValType::I32 as T;
-    types.ty().function([T, T], [T]);
-    types.ty().function([T, T], []);
-    types.ty().function([T, T, T], [T]);
-    types.ty().function([T, T, T, T], []);
-    types.ty().function([T], [T]);
-    types.ty().function([T], []);
-    types.ty().function([ValType::I64], [T]);
-    types.ty().function([T], [ValType::I64]);
-    types.ty().function([ValType::F64, T], [T]);
+    // The types of the allocation and buffer functions, then each function
+    // of the runtime's, from its signature, shared when two are the same.
+    let mut declared: Vec<(Vec<ValType>, Vec<ValType>)> = vec![
+        (vec![T, T], vec![T]),
+        (vec![T, T], vec![]),
+        (vec![T, T, T], vec![T]),
+        (vec![T, T, T, T], vec![]),
+    ];
     for (name, ty) in [
         ("alloc", 0),
         ("release", 1),
@@ -130,20 +132,29 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection, runti
     ] {
         imports.import(RUNTIME_MODULE, name, EntityType::Function(ty));
     }
+    let mut runtime_types = Vec::new();
     for &f in runtime {
-        // `fmt_int` takes an `i64`, `fmt_float` an `f64`, and `str_parse_int`
-        // gives an `i64`; the others take and give `i32` only: their type by
-        // count.
-        let ty = match (f.operands().len(), f.result() == Ty::Void) {
-            _ if f.receiver() == Ty::I64 => 6,
-            _ if f.receiver() == Ty::F64 => 8,
-            _ if f.result() == Ty::I64 => 7,
-            (0, false) => 4,
-            (1, false) => 0,
-            (_, false) => 2,
-            (0, true) => 5,
-            (_, true) => 1,
+        let params: Vec<ValType> = std::iter::once(f.receiver())
+            .chain(f.operands().iter().copied())
+            .filter_map(val_type)
+            .collect();
+        let results: Vec<ValType> = val_type(f.result()).into_iter().collect();
+        let signature = (params, results);
+        let ty = if let Some(at) = declared.iter().position(|d| *d == signature) {
+            at
+        } else {
+            declared.push(signature);
+            declared.len() - 1
         };
+        runtime_types.push((f, ty));
+    }
+    for (params, results) in &declared {
+        types
+            .ty()
+            .function(params.iter().copied(), results.iter().copied());
+    }
+    for (f, ty) in runtime_types {
+        let ty = u32::try_from(ty).unwrap_or(0);
         imports.import(RUNTIME_MODULE, f.name(), EntityType::Function(ty));
     }
     // The allocator's memory, which buffers live in.
@@ -158,17 +169,18 @@ fn heap_imports_into(types: &mut TypeSection, imports: &mut ImportSection, runti
             page_size_log2: None,
         }),
     );
+    u32::try_from(declared.len()).unwrap_or(0)
 }
 
-/// Declares the host's `Math` functions the module calls, after the heap's types.
+/// Declares the host's `Math` functions the module calls, after the heap's
+/// types, the first `first`.
 fn math_imports_into(
     types: &mut TypeSection,
     imports: &mut ImportSection,
     math: &[HostMath],
-    heap: bool,
+    first: u32,
 ) {
     // `(f64) -> f64` and `(f64, f64) -> f64`, after the heap's types.
-    let first = if heap { IMPORT_TYPES } else { 0 };
     types.ty().function([ValType::F64], [ValType::F64]);
     types
         .ty()
@@ -202,14 +214,15 @@ pub fn compile_for(module: &Module, simd: bool) -> Compiled {
         0
     };
     let offset = heap_imports + u32::try_from(math.len()).unwrap_or(0);
-    let type_offset =
-        if heap { IMPORT_TYPES } else { 0 } + if math.is_empty() { 0 } else { HOST_TYPES };
-    if heap {
-        heap_imports_into(&mut types, &mut imports, &runtime);
-    }
+    let heap_types = if heap {
+        heap_imports_into(&mut types, &mut imports, &runtime)
+    } else {
+        0
+    };
     if !math.is_empty() {
-        math_imports_into(&mut types, &mut imports, &math, heap);
+        math_imports_into(&mut types, &mut imports, &math, heap_types);
     }
+    let type_offset = heap_types + if math.is_empty() { 0 } else { HOST_TYPES };
     let host = Host {
         first: heap_imports,
         runtime: &runtime,
@@ -1745,6 +1758,7 @@ fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn]) -> String {
          }};\n\
          const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
          const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }} }})).instance.exports;\n\
+         {seed}\
          const $bounds = (index, length) => {{\n  \
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
@@ -1754,6 +1768,16 @@ fn runtime_imports(runtime: &Runtime<'_>, used: &[RuntimeFn]) -> String {
             let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
             out
         }),
+        // A map hashes its keys with a key of its own, drawn here: who
+        // chooses the keys of a map cannot choose their collisions.
+        seed = if used.contains(&RuntimeFn::MapNew) {
+            "if (globalThis.crypto?.getRandomValues) {\n  \
+             const k = globalThis.crypto.getRandomValues(new BigInt64Array(2));\n  \
+             $runtime.map_seed(k[0], k[1]);\n\
+             }\n"
+        } else {
+            ""
+        },
         bounds = js_string(runtime.bounds),
         faults = faults.join(", "),
         sites = sites.join(", "),

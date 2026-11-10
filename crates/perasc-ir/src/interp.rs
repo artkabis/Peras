@@ -81,6 +81,7 @@ pub fn run_with_heap(
                 heap: std::collections::BTreeMap::new(),
                 deep: std::collections::BTreeSet::new(),
                 allocated: 0,
+                maps: std::collections::BTreeMap::new(),
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
@@ -106,6 +107,16 @@ struct Machine<'a> {
     /// The buffers whose elements are buffers they own.
     deep: std::collections::BTreeSet<u32>,
     allocated: u32,
+    /// The entries of each map, in insertion order, by its block: its block's
+    /// elements, one per live entry, give its `size`.
+    maps: std::collections::BTreeMap<u32, Vec<Option<(MapKey, i64)>>>,
+}
+
+/// A key of a map: an integer, or a string's bytes, the map's own copy.
+#[derive(Clone, PartialEq, Eq)]
+enum MapKey {
+    Int(i64),
+    Text(Vec<u8>),
 }
 
 enum Flow {
@@ -410,6 +421,119 @@ impl Machine<'_> {
         Value::Handle(self.allocated)
     }
 
+    /// Gives `wanted` the value `stored` in map `table`, a new entry when the
+    /// key is not there.
+    fn map_put(&mut self, table: u32, wanted: MapKey, stored: i64) -> Result<(), Trap> {
+        let entries = self.maps.get_mut(&table).ok_or(Trap::UseAfterRelease)?;
+        let found = entries.iter_mut().flatten().find(|(key, _)| *key == wanted);
+        if let Some(slot) = found {
+            slot.1 = stored;
+        } else {
+            entries.push(Some((wanted, stored)));
+            self.heap
+                .get_mut(&table)
+                .ok_or(Trap::UseAfterRelease)?
+                .push(Value::I32(0));
+        }
+        Ok(())
+    }
+
+    /// The functions of the runtime on maps (decision 0005); `None` for
+    /// another function. A string key given to the map is copied as bytes,
+    /// and its handle released: the map owns its key, as the runtime's does.
+    fn map_runtime(
+        &mut self,
+        f: crate::RuntimeFn,
+        operands: &[Value],
+    ) -> Result<Option<Value>, Trap> {
+        use crate::RuntimeFn as F;
+        let operand = |i: usize| operands.get(i).copied().ok_or(Trap::Unreachable);
+        let block = || match operands.first() {
+            Some(Value::Handle(b)) => Ok(*b),
+            _ => Err(Trap::UseAfterRelease),
+        };
+        let bits = |v: Value| match v {
+            Value::I64(n) => Ok(n),
+            Value::F64(x) => Ok(x.to_bits().cast_signed()),
+            _ => Err(Trap::Unreachable),
+        };
+        let key = |this: &mut Self, v: Value| match v {
+            Value::I64(n) => Ok(MapKey::Int(n)),
+            Value::Handle(_) => Ok(MapKey::Text(this.bytes(v)?)),
+            _ => Err(Trap::Unreachable),
+        };
+        let find = |entries: &[Option<(MapKey, i64)>], wanted: &MapKey| {
+            entries
+                .iter()
+                .position(|e| e.as_ref().is_some_and(|(key, _)| key == wanted))
+        };
+        let entry =
+            |found: Option<usize>| Value::I32(found.map_or(-1, |e| i32::try_from(e).unwrap_or(-1)));
+        let value = match f {
+            F::MapNew => {
+                self.allocated += 1;
+                self.heap.insert(self.allocated, Vec::new());
+                self.maps.insert(self.allocated, Vec::new());
+                Value::Handle(self.allocated)
+            }
+            F::MapFindI | F::MapFindS => {
+                let wanted = key(self, operand(1)?)?;
+                let entries = self.maps.get(&block()?).ok_or(Trap::UseAfterRelease)?;
+                entry(find(entries, &wanted))
+            }
+            F::MapPutI | F::MapPutS | F::MapPutIF | F::MapPutSF => {
+                let given = operand(1)?;
+                let wanted = key(self, given)?;
+                if let Value::Handle(h) = given {
+                    self.free(h)?;
+                }
+                self.map_put(block()?, wanted, bits(operand(2)?)?)?;
+                Value::Void
+            }
+            F::MapValue | F::MapValueF => {
+                let Value::I32(e) = operand(1)? else {
+                    return Err(Trap::Unreachable);
+                };
+                let entries = self.maps.get(&block()?).ok_or(Trap::UseAfterRelease)?;
+                let at = usize::try_from(e).map_err(|_| Trap::Unchecked)?;
+                let stored = entries
+                    .get(at)
+                    .and_then(Option::as_ref)
+                    .ok_or(Trap::Unchecked)?
+                    .1;
+                if f == F::MapValueF {
+                    Value::F64(f64::from_bits(stored.cast_unsigned()))
+                } else {
+                    Value::I64(stored)
+                }
+            }
+            F::MapDeleteI | F::MapDeleteS => {
+                let wanted = key(self, operand(1)?)?;
+                let table = block()?;
+                let entries = self.maps.get_mut(&table).ok_or(Trap::UseAfterRelease)?;
+                let found = find(entries, &wanted);
+                if let Some(e) = found {
+                    if let Some(slot) = entries.get_mut(e) {
+                        *slot = None;
+                    }
+                    self.heap
+                        .get_mut(&table)
+                        .ok_or(Trap::UseAfterRelease)?
+                        .pop();
+                }
+                Value::Bool(found.is_some())
+            }
+            F::MapClear => {
+                let table = block()?;
+                self.maps.insert(table, Vec::new());
+                self.heap.insert(table, Vec::new());
+                Value::Void
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(value))
+    }
+
     /// A function of the runtime on strings.
     fn runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
         use crate::RuntimeFn as F;
@@ -424,6 +548,9 @@ impl Machine<'_> {
             this.bytes(value)
         };
         if let Some(value) = self.array_runtime(f, operands)? {
+            return Ok(value);
+        }
+        if let Some(value) = self.map_runtime(f, operands)? {
             return Ok(value);
         }
         match (f, operands.first()) {
@@ -502,6 +629,8 @@ impl Machine<'_> {
                 }
                 self.string(&out)
             }
+            // The maps' functions, answered by `map_runtime`.
+            _ => return Err(Trap::Unreachable),
         })
     }
 
@@ -618,6 +747,7 @@ impl Machine<'_> {
     /// Releases a buffer, and the buffers it owns.
     fn free(&mut self, block: u32) -> Result<(), Trap> {
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
+        self.maps.remove(&block);
         if self.deep.remove(&block) {
             for element in elements {
                 if let Value::Handle(inner) = element {

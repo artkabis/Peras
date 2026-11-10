@@ -589,13 +589,17 @@ impl<'c, 'a> Owner<'c, 'a> {
             ExprKind::Field { base, name } => {
                 self.expr(*base, Use::Read, path);
                 let method = self.checker.name(name.symbol);
-                if matches!(method, "push" | "pop" | "reverse" | "sort")
-                    && let Some(root) = self.root(*base)
+                if matches!(
+                    method,
+                    "push" | "pop" | "reverse" | "sort" | "set" | "add" | "delete" | "clear"
+                ) && let Some(root) = self.root(*base)
                 {
                     let span = self.checker.ast.expr(*base).span;
                     self.not_iterated(root, span);
                 }
-                let consume = matches!(method, "push" | "map" | "reduce");
+                // `set` and `add` take a map's or a set's key; `get`, `has` and
+                // `delete` only lend theirs.
+                let consume = matches!(method, "push" | "map" | "reduce" | "set" | "add");
                 // The array cannot change while a function goes through it.
                 let lambdas = args
                     .iter()
@@ -837,7 +841,7 @@ impl Checker<'_> {
     /// Whether values of a type live on the heap, so that they move.
     pub(crate) fn is_move_type(&self, ty: &Ty) -> bool {
         match ty {
-            Ty::Array(_) | Ty::String => true,
+            Ty::Array(_) | Ty::String | Ty::Map(..) | Ty::Set(_) => true,
             // Any type, unless its constraints say it is copied.
             Ty::Param(i, _) => self
                 .param_of(*i)

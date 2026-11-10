@@ -144,6 +144,8 @@ pub const INTERFACE_AS_TYPE: ErrorCode = ErrorCode::new(237);
 pub const ARROW_FUNCTION: ErrorCode = ErrorCode::new(238);
 /// A template literal is given a value it cannot write as text yet.
 pub const TEMPLATE_VALUE: ErrorCode = ErrorCode::new(239);
+/// A map's key or a set's element of a type that cannot be one yet.
+pub const MAP_KEY: ErrorCode = ErrorCode::new(240);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -268,6 +270,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(INTERFACE_AS_TYPE, "check-interface-as-type", "E0237"),
     active!(ARROW_FUNCTION, "check-arrow", "E0238"),
     active!(TEMPLATE_VALUE, "check-template", "E0239"),
+    active!(MAP_KEY, "check-map-key", "E0240"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

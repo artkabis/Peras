@@ -201,3 +201,40 @@ La déclaration TypeScript le dit : `half(n: number): number | undefined`.
 > Un ensemble complet de méthodes sur les chaînes et les tableaux (`split`, `slice`, `map`, `filter`…) est prévu : voir la [feuille de route](../reference/roadmap.md).
 
 Ensuite : [la mémoire](memory.md).
+
+## `Map<K, V>` et `Set<T>`
+
+Une table garde une valeur pour chaque clé ; un ensemble garde les clés seules. Elles sont hachées avec SipHash-1-3 sous une clé que le chargeur tire pour chaque instance du module, pour que des clés choisies pour se heurter ne coûtent pas plus que les autres ([décision 0005](../decisions/0005-maps-and-sets.md)). <span class="status compiled">compilé</span>, en partie
+
+```peras build
+export fn distinct_words(text: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  for (const word of text.split(" ")) {
+    counts.set(word.copy(), counts.get(word).unwrapOr(0) + 1);
+  }
+  let seen: Set<i64> = Set.new();
+  seen.add(42);
+  if (seen.has(42) && !counts.has("")) {
+    return counts.size;
+  }
+  return -1;
+}
+```
+
+Une table se crée avec `Map.new()`, ses types écrits sur sa variable. `m.set(k, v)` prend sa clé, comme `push` : une chaîne tenue ailleurs se donne en `word.copy()`. `m.get(k)` emprunte sa clé et donne une `Option<V>`.
+
+| Méthode                   | Donne                                |
+| ------------------------- | ------------------------------------ |
+| `m.set(k, v)`, `s.add(k)` | rien ; remplace la valeur d’une clé  |
+| `m.get(k)`                | `Some(valeur)`, ou `None`            |
+| `m.has(k)`                | si la clé y est                      |
+| `m.delete(k)`             | si la clé y était, retirée désormais |
+| `m.clear()`               | rien ; retire toutes les clés        |
+| `m.size`                  | combien de clés, un `i32`            |
+
+Ce qui est compilé aujourd’hui, et ce qui ne l’est pas encore :
+
+- Les clés sont des entiers, des booléens ou des chaînes ; toute autre clé est refusée ([E0240](../errors/E0240.md)).
+- Les valeurs sont des nombres ou des booléens. Une table dont les valeurs sont des chaînes, des tableaux ou des structures est [vérifiée](../reference/status.md), pas encore compilée.
+- Une table vit dans une variable locale ou un paramètre d’une fonction non exportée : pas dans une structure, un tableau ou une option, et pas encore à travers la frontière avec JavaScript.
+- `for…of` sur une table ou un ensemble viendra avec son parcours dans l’ordre d’insertion.

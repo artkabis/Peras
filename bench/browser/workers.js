@@ -8,12 +8,17 @@ import * as peras from "./kernels.js";
 /**
  * @typedef {{ kind: "particles", xs: Float64Array, vs: Float64Array, steps: number }
  *   | { kind: "grayscale", pixels: Int32Array }
- *   | { kind: "words", text: string }} Task What a worker is sent.
+ *   | { kind: "words", text: string }
+ *   | { kind: "load", xs: Float64Array, vs: Float64Array, pixels: Int32Array, steps: number }
+ *   | { kind: "reset" } | { kind: "fetch" }
+ *   | { kind: "go", kernel: string }} Task What a worker is sent.
  */
 /**
  * @typedef {{ kind: "particles", xs: Float64Array, vs: Float64Array, steps: number }
  *   | { kind: "grayscale", pixels: Int32Array, checksum: number }
- *   | { kind: "words", text: string, count: number }} Answer What a worker sends back.
+ *   | { kind: "words", text: string, count: number }
+ *   | { kind: "done" }
+ *   | { kind: "fetched", xs: Float64Array, pixels: Int32Array, checksum: number }} Answer What a worker sends back.
  */
 /** @typedef {{ kernel: string, way: string, median: number }} Row */
 
@@ -239,6 +244,62 @@ export async function measure({ scale, runs }) {
     return ms;
   };
 
+  /**
+   * The ceiling of shared memory: each worker keeps its part in its
+   * module's memory, put back untimed before each run; only running the
+   * kernel and hearing back from every worker is timed. Checked after.
+   * @param {string} kernel
+   * @param {Worker[]} workers
+   */
+  const resident = async (kernel, workers) => {
+    const k = workers.length;
+    const steps = particleKernels.find(([name]) => name === kernel)?.[1] ?? 0;
+    const b = bounds(count, k);
+    const p = bounds(pixelCount, k);
+    await Promise.all(
+      workers.map((w, i) =>
+        ask(
+          w,
+          {
+            kind: "load",
+            xs: x0.slice(b[i], b[i + 1]),
+            vs: v0.slice(b[i], b[i + 1]),
+            pixels: image.slice(p[i], p[i + 1]),
+            steps,
+          },
+          [],
+        ),
+      ),
+    );
+    await Promise.all(workers.map((w) => ask(w, { kind: "reset" }, [])));
+    const t0 = performance.now();
+    await Promise.all(workers.map((w) => ask(w, { kind: "go", kernel }, [])));
+    const ms = performance.now() - t0;
+    const back = await Promise.all(workers.map((w) => ask(w, { kind: "fetch" }, [])));
+    if (kernel === "grayscale") {
+      let xor = 0;
+      back.forEach((r, i) => {
+        if (r.kind !== "fetched") return;
+        xor ^= r.checksum;
+        for (let j = 0; j < r.pixels.length; j++) {
+          if (r.pixels[j] !== pixels[(p[i] ?? 0) + j])
+            throw new Error(`grayscale, ${String(k)} resident, differ at ${String(j)}`);
+        }
+      });
+      if (xor !== checksum) throw new Error(`grayscale, ${String(k)} resident: checksum`);
+    } else {
+      const want = positions.get(kernel) ?? new Float64Array(0);
+      back.forEach((r, i) => {
+        if (r.kind !== "fetched") return;
+        for (let j = 0; j < r.xs.length; j++) {
+          if (!Object.is(r.xs[j], want[(b[i] ?? 0) + j]))
+            throw new Error(`${kernel}, ${String(k)} resident, differ at ${String(j)}`);
+        }
+      });
+    }
+    return ms;
+  };
+
   const sizes = [1, 2, 4];
   /** @type {Map<number, Worker[]>} */
   const pools = new Map();
@@ -250,6 +311,10 @@ export async function measure({ scale, runs }) {
     const directTimes = [];
     /** @type {Map<number, number[]>} */
     const splitTimes = new Map(sizes.map((k) => [k, []]));
+    /** @type {number[]} */
+    const residentTimes = [];
+    // Text has no resident form: the loader takes a JavaScript string.
+    const ceiling = kernel !== "words";
     // Warm-up, then rounds alternating every way.
     for (let r = 0; r < runs + 2; r++) {
       const d = run();
@@ -258,10 +323,15 @@ export async function measure({ scale, runs }) {
         const ms = await split(kernel, pools.get(k) ?? []);
         if (r >= 2) splitTimes.get(k)?.push(ms);
       }
+      if (ceiling) {
+        const ms = await resident(kernel, pools.get(4) ?? []);
+        if (r >= 2) residentTimes.push(ms);
+      }
     }
     rows.push({ kernel, way: "direct", median: median(directTimes) });
     for (const k of sizes)
       rows.push({ kernel, way: String(k), median: median(splitTimes.get(k) ?? []) });
+    if (ceiling) rows.push({ kernel, way: "4 resident", median: median(residentTimes) });
   }
   for (const ws of pools.values()) for (const w of ws) w.terminate();
   px.release();

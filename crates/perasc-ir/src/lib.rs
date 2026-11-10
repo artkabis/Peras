@@ -521,6 +521,36 @@ pub enum RuntimeFn {
     FmtInt,
     /// `(b: bool) -> owned`: `true` or `false`.
     FmtBool,
+    /// `(strings: i32) -> owned`: a new, empty map or set ([decision
+    /// 0005]); `strings` when its keys are strings it owns.
+    ///
+    /// [decision 0005]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0005-maps-and-sets.md
+    MapNew,
+    /// `(map, key: i64) -> i32`: the entry of an integer key, or -1.
+    MapFindI,
+    /// `(map, key) -> i32`: the entry of a string key, lent, or -1.
+    MapFindS,
+    /// `(map, key: i64, value: i64)`: sets an integer key's value.
+    MapPutI,
+    /// `(map, key: owned, value: i64)`: sets a string key's value; the map
+    /// takes the key, and releases it when the key was already there.
+    MapPutS,
+    /// `(map, key: i64, value: f64)`: [`Self::MapPutI`] for a float value.
+    MapPutIF,
+    /// `(map, key: owned, value: f64)`: [`Self::MapPutS`] for a float value.
+    MapPutSF,
+    /// `(map, entry) -> i64`: the value of an entry [`Self::MapFindI`] or
+    /// [`Self::MapFindS`] gave.
+    MapValue,
+    /// `(map, entry) -> f64`: [`Self::MapValue`] for a float value.
+    MapValueF,
+    /// `(map, key: i64) -> bool`: removes an integer key, whether it was there.
+    MapDeleteI,
+    /// `(map, key) -> bool`: removes a string key, lent; the map's own copy
+    /// of it is released.
+    MapDeleteS,
+    /// `(map)`: removes every entry.
+    MapClear,
     /// `(x: f64, single) -> owned`: `x` as JavaScript's `String()` writes it;
     /// with `single` set, `x` is an `f32`, written with the fewest digits
     /// that read back as it ([`text::number_text`]).
@@ -545,7 +575,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 36] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -570,6 +600,18 @@ impl RuntimeFn {
         Self::ArrKeep,
         Self::SplitViews,
         Self::FmtFloat,
+        Self::MapNew,
+        Self::MapFindI,
+        Self::MapFindS,
+        Self::MapPutI,
+        Self::MapPutS,
+        Self::MapPutIF,
+        Self::MapPutSF,
+        Self::MapValue,
+        Self::MapValueF,
+        Self::MapDeleteI,
+        Self::MapDeleteS,
+        Self::MapClear,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -600,6 +642,18 @@ impl RuntimeFn {
             Self::ArrKeep => "arr_keep",
             Self::SplitViews => "str_split_views",
             Self::FmtFloat => "fmt_float",
+            Self::MapNew => "map_new",
+            Self::MapFindI => "map_find_i",
+            Self::MapFindS => "map_find_s",
+            Self::MapPutI => "map_put_i",
+            Self::MapPutS => "map_put_s",
+            Self::MapPutIF => "map_put_if",
+            Self::MapPutSF => "map_put_sf",
+            Self::MapValue => "map_value",
+            Self::MapValueF => "map_value_f",
+            Self::MapDeleteI => "map_delete_i",
+            Self::MapDeleteS => "map_delete_s",
+            Self::MapClear => "map_clear",
         }
     }
 
@@ -611,6 +665,7 @@ impl RuntimeFn {
             Self::FmtInt => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat => Ty::F64,
+            Self::MapNew => Ty::I32,
             _ => Ty::Borrowed,
         }
     }
@@ -627,7 +682,9 @@ impl RuntimeFn {
             | Self::Join
             | Self::ArrConcat
             | Self::ArrIndexOfStr
-            | Self::ArrKeep => &[Ty::Borrowed],
+            | Self::ArrKeep
+            | Self::MapFindS
+            | Self::MapDeleteS => &[Ty::Borrowed],
             Self::Slice | Self::ArrSlice => &[Ty::I32, Ty::I32],
             Self::Trim
             | Self::Upper
@@ -635,9 +692,21 @@ impl RuntimeFn {
             | Self::ArrReverse
             | Self::FmtInt
             | Self::FmtBool
-            | Self::ParseInt => &[],
-            Self::Repeat | Self::ArrSort | Self::IsInt | Self::FmtFloat => &[Ty::I32],
+            | Self::ParseInt
+            | Self::MapNew
+            | Self::MapClear => &[],
+            Self::Repeat
+            | Self::ArrSort
+            | Self::IsInt
+            | Self::FmtFloat
+            | Self::MapValue
+            | Self::MapValueF => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
+            Self::MapFindI | Self::MapDeleteI => &[Ty::I64],
+            Self::MapPutI => &[Ty::I64, Ty::I64],
+            Self::MapPutS => &[Ty::Owned, Ty::I64],
+            Self::MapPutIF => &[Ty::I64, Ty::F64],
+            Self::MapPutSF => &[Ty::Owned, Ty::F64],
         }
     }
 
@@ -645,10 +714,22 @@ impl RuntimeFn {
     #[must_use]
     pub const fn result(self) -> Ty {
         match self {
-            Self::IndexOf | Self::ArrIndexOfStr => Ty::I32,
-            Self::StartsWith | Self::EndsWith | Self::IsInt => Ty::Bool,
-            Self::ParseInt => Ty::I64,
-            Self::ArrReverse | Self::ArrSort | Self::ArrKeep => Ty::Void,
+            Self::IndexOf | Self::ArrIndexOfStr | Self::MapFindI | Self::MapFindS => Ty::I32,
+            Self::StartsWith
+            | Self::EndsWith
+            | Self::IsInt
+            | Self::MapDeleteI
+            | Self::MapDeleteS => Ty::Bool,
+            Self::ParseInt | Self::MapValue => Ty::I64,
+            Self::MapValueF => Ty::F64,
+            Self::ArrReverse
+            | Self::ArrSort
+            | Self::ArrKeep
+            | Self::MapPutI
+            | Self::MapPutS
+            | Self::MapPutIF
+            | Self::MapPutSF
+            | Self::MapClear => Ty::Void,
             _ => Ty::Owned,
         }
     }
@@ -1180,6 +1261,8 @@ mod array_tests;
 mod functional_tests;
 #[cfg(test)]
 mod generic_tests;
+#[cfg(test)]
+mod map_tests;
 #[cfg(test)]
 mod match_tests;
 #[cfg(test)]
