@@ -93,7 +93,7 @@ On 4 cores, Chromium 153, over 2 to 4 runs:
 What it says:
 
 - **Workers pay where the work outweighs moving the data.** 200 steps over a million particles, twenty times the work of 10 for the same bytes, run 2.6 to 2.9 times faster on 4 cores. One step of a filter over 16 MB of pixels runs 5 times slower: cutting, transferring, copying in and back out cost about 20 ms, the filter 4.
-- **What is missing is shared memory.** Each worker has its own memory, so data goes in and out by copy. WebAssembly threads over a `SharedArrayBuffer` would let the workers read the same arrays; Peras does not build them yet, and a page using them must be served with the COOP and COEP headers. [Decision 0003](../docs/en/decisions/0003-runtime-proved-at-compile-time.md) plans moving values between threads with `sink`.
+- **What is missing is shared memory, and its ceiling is measured.** Each worker has its own memory, so data goes in and out by copy. A last way, _4 workers, data resident_, keeps each part in its worker's memory and times only the kernel and the answers: the best that WebAssembly threads over one `SharedArrayBuffer` could do. Grayscale goes from 0.32–0.35 to 1.84–2.02 times the direct speed, 10 steps of particles from 0.80–0.83 to 2.08–2.22, 200 steps from 2.7–3.0 to 3.0–3.3 (3 runs, on a day this machine ran the direct kernels about twice slower). [Decision 0007](../docs/en/decisions/0007-threads-over-shared-memory.md) builds them, split by ownership; a page using them must be served with the COOP and COEP headers.
 - **None of this is particular to Peras**: JavaScript, Rust or AssemblyScript in workers pay the same copies.
 
 ### What an independent review would still ask
