@@ -135,6 +135,8 @@ jobs:
       - run: pnpm run e2e
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
+      - name: Split across Web Workers, the kernels give what they give directly
+        run: node scripts/bench-workers.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

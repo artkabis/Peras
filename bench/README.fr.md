@@ -77,6 +77,25 @@ Ce que cela dit :
 - **C’est du Rust idiomatique, pas celui d’un expert.** Un expert utiliserait les intrinsèques de `std::arch`, une crate de tri par base comme `radsort`, et passerait le texte en octets : ce Rust n’a pas été mesuré, et comblerait probablement les écarts ci-dessus. La lecture juste est « aussi rapide que Rust, à partir de code écrit comme du TypeScript », pas « plus rapide que Rust ».
 - **AssemblyScript** est 2,4 à 7,3 fois plus lent là où il alloue ou parcourt des tableaux : son optimiseur ne vectorise pas, ses tableaux typés vérifient chaque indice, ses objets et ses chaînes passent par son ramasse-miettes. C’est le plus petit téléchargement. Un expert écrirait `unchecked()` et `StaticArray` ; pas mesuré non plus.
 
+### Web Workers
+
+`node scripts/bench-workers.mjs` mesure ce que rapporte le découpage d’un noyau entre des Web Workers ([résultats](browser/WORKERS.md)). Un module compilé par `perasc` tourne tel quel dans un worker de module : chaque worker charge sa propre instance, avec sa propre mémoire. La page coupe les données en N parts, les transfère à N workers, chacun copie sa part dans la mémoire de son module, exécute le noyau, recopie le résultat et le transfère ; la page rassemble les parts. Tout est compté, face au noyau appelé directement sur le fil principal, ses tableaux déjà dans la mémoire du module. Chaque résultat découpé est vérifié égal au résultat direct, élément par élément ; la CI exécute la vérification.
+
+Sur 4 cœurs, Chromium 153, sur 2 à 4 exécutions :
+
+| Noyau              | Direct     | 4 workers  |  Accélération |
+| ------------------ | ---------- | ---------- | ------------: |
+| particles, 200 pas | 243–263 ms | 86–100 ms  | **2,6 – 2,9** |
+| words              | 2,9–3,8 ms | 2,5–3,2 ms |     1,1 – 1,2 |
+| particles, 10 pas  | 13–18 ms   | 18–27 ms   |   0,64 – 0,73 |
+| grayscale          | 4,0–4,9 ms | 21–29 ms   |   0,17 – 0,19 |
+
+Ce que cela dit :
+
+- **Les workers paient là où le travail l’emporte sur le déplacement des données.** 200 pas sur un million de particules, vingt fois le travail de 10 pour les mêmes octets, vont 2,6 à 2,9 fois plus vite sur 4 cœurs. Un seul passage d’un filtre sur 16 Mo de pixels va 5 fois moins vite : couper, transférer, copier à l’aller et au retour coûtent environ 20 ms, le filtre 4.
+- **Ce qui manque, c’est la mémoire partagée.** Chaque worker a sa propre mémoire, les données entrent et sortent donc par copie. Les threads WebAssembly sur un `SharedArrayBuffer` laisseraient les workers lire les mêmes tableaux ; Peras ne les produit pas encore, et une page qui les utilise doit être servie avec les en-têtes COOP et COEP. La [décision 0003](../docs/fr/decisions/0003-runtime-proved-at-compile-time.md) prévoit de déplacer des valeurs entre fils avec `sink`.
+- **Rien de cela n’est propre à Peras** : JavaScript, Rust ou AssemblyScript dans des workers paient les mêmes copies.
+
 ### Ce qu’une revue indépendante demanderait encore
 
 Ces points sont connus et pas encore faits ; chacun est une raison de lire les chiffres ci-dessus avec prudence.

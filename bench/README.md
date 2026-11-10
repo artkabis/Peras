@@ -77,6 +77,25 @@ What it says:
 - **This is idiomatic Rust, not an expert's.** An expert would use `std::arch` intrinsics, a radix sort crate such as `radsort`, and pass the text as bytes: that Rust has not been measured, and would likely close the gaps above. The fair reading is "as fast as Rust, from code written as TypeScript is", not "faster than Rust".
 - **AssemblyScript** is 2.4 to 7.3 times slower where it allocates or loops over arrays: its optimizer does not vectorize, its typed arrays check every index, its objects and strings go through its garbage collector. It is the smallest download. An expert would write `unchecked()` and `StaticArray`; not measured either.
 
+### Web Workers
+
+`node scripts/bench-workers.mjs` measures what splitting a kernel across Web Workers brings ([results](browser/WORKERS.md)). A module built by `perasc` runs in a module worker as it is: each worker loads its own instance, with its own memory. The page cuts the data into N parts, transfers them to N workers, each copies its part into its module's memory, runs the kernel, copies the result back and transfers it; the page gathers the parts. Everything is counted, against the kernel called directly on the main thread, its arrays already in the module's memory. Every split result is checked equal to the direct one, element by element; CI runs the check.
+
+On 4 cores, Chromium 153, over 2 to 4 runs:
+
+| Kernel               | Direct     | 4 workers  |      Speed-up |
+| -------------------- | ---------- | ---------- | ------------: |
+| particles, 200 steps | 243–263 ms | 86–100 ms  | **2.6 – 2.9** |
+| words                | 2.9–3.8 ms | 2.5–3.2 ms |     1.1 – 1.2 |
+| particles, 10 steps  | 13–18 ms   | 18–27 ms   |   0.64 – 0.73 |
+| grayscale            | 4.0–4.9 ms | 21–29 ms   |   0.17 – 0.19 |
+
+What it says:
+
+- **Workers pay where the work outweighs moving the data.** 200 steps over a million particles, twenty times the work of 10 for the same bytes, run 2.6 to 2.9 times faster on 4 cores. One step of a filter over 16 MB of pixels runs 5 times slower: cutting, transferring, copying in and back out cost about 20 ms, the filter 4.
+- **What is missing is shared memory.** Each worker has its own memory, so data goes in and out by copy. WebAssembly threads over a `SharedArrayBuffer` would let the workers read the same arrays; Peras does not build them yet, and a page using them must be served with the COOP and COEP headers. [Decision 0003](../docs/en/decisions/0003-runtime-proved-at-compile-time.md) plans moving values between threads with `sink`.
+- **None of this is particular to Peras**: JavaScript, Rust or AssemblyScript in workers pay the same copies.
+
 ### What an independent review would still ask
 
 These are known and not done yet; each is a reason to read the figures above with care.
