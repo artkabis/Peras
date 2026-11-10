@@ -664,7 +664,6 @@ gen-unsupported = code generation does not support { $feature ->
     [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
     [map-value] maps whose values are not numbers or booleans
-    [map-place] maps and sets inside structures, arrays or options
     [map-export] maps and sets in the signature of an exported function: JavaScript sees them through functions of the module
     [map-iteration] `for…of` over a map or a set
    *[other] this construct

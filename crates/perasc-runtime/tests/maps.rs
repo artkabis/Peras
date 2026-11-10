@@ -67,6 +67,7 @@ struct Runtime {
     memory: Memory,
     new: TypedFunc<(i32, i32, i32), i32>,
     release: TypedFunc<(i32, i32), ()>,
+    clone: TypedFunc<(i32, i32), i32>,
     live: TypedFunc<(), i32>,
     sip: TypedFunc<(i32, i32), i64>,
     seed: TypedFunc<(i64, i64), ()>,
@@ -121,6 +122,7 @@ fn runtime(wasm: &[u8]) -> Runtime {
             .unwrap_or_else(|| unreachable!("memory")),
         new: f!("buf_new"),
         release: f!("buf_release"),
+        clone: f!("buf_clone"),
         live: f!("live_count"),
         sip: f!("map_sip"),
         seed: f!("map_seed"),
@@ -513,6 +515,91 @@ fn values_that_own_buffers_are_released_with_their_entries() {
         }
         rt.release
             .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// A copy of a map owns copies of its string keys and of the buffers of its
+/// values: changing or releasing the original leaves it as it was.
+#[test]
+fn a_copied_map_owns_its_keys_and_values() {
+    const SHAPE: i32 = 2 | (1 << 8);
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let m = rt
+            .map_new
+            .call(&mut rt.store, (1, SHAPE))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let mut model: Vec<(Vec<u8>, Vec<u8>, i64)> = Vec::new();
+        for i in 0..300_i64 {
+            let key = format!("k{}", i % 120).into_bytes();
+            let text = format!("v{i}é").into_bytes();
+            let (k, h) = (rt.string(&key), rt.string(&text));
+            let e = rt
+                .put_s
+                .call(&mut rt.store, (m, k))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.store_h
+                .call(&mut rt.store, (m, e, 0, h))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.store_value
+                .call(&mut rt.store, (m, e, 1, i))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            match model.iter_mut().find(|(k, _, _)| *k == key) {
+                Some(entry) => {
+                    entry.1 = text;
+                    entry.2 = i;
+                }
+                None => model.push((key, text, i)),
+            }
+            if i % 7 == 3 {
+                let gone = format!("k{}", (i * 13) % 120).into_bytes();
+                let k = rt.string(&gone);
+                rt.delete_s
+                    .call(&mut rt.store, (m, k))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+                rt.release
+                    .call(&mut rt.store, (k, 0))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+                model.retain(|(k, _, _)| *k != gone);
+            }
+        }
+        let copy = rt
+            .clone
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        rt.clear
+            .call(&mut rt.store, m)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        rt.release
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let (keys, size) = rt.keys(copy);
+        assert_eq!(usize::try_from(size).unwrap_or(0), model.len());
+        for (h, (key, text, number)) in keys.iter().zip(&model) {
+            assert_eq!(rt.text(i32::try_from(*h).unwrap_or(0)), *key);
+            let k = rt.string(key);
+            let e = rt
+                .find_s
+                .call(&mut rt.store, (copy, k))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.release
+                .call(&mut rt.store, (k, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let held = rt
+                .value_h
+                .call(&mut rt.store, (copy, e, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(rt.text(held), *text);
+            let number_read = rt
+                .value
+                .call(&mut rt.store, (copy, e, 1))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(number_read, *number);
+        }
+        rt.release
+            .call(&mut rt.store, (copy, 0))
             .unwrap_or_else(|e| unreachable!("{e}"));
         assert_eq!(rt.live_count(), 0, "blocks left alive");
     }

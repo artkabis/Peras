@@ -156,12 +156,14 @@ fn collection_method(me: &Ty, name: &str) -> Option<Method> {
             "get" => (vec![(**key).clone()], Ty::Option(value.clone())),
             "has" | "delete" => (vec![(**key).clone()], Ty::Bool),
             "clear" => (Vec::new(), Ty::Void),
+            "copy" => (Vec::new(), me.clone()),
             _ => return None,
         },
         Ty::Set(element) => match name {
             "add" => (vec![(**element).clone()], Ty::Void),
             "has" | "delete" => (vec![(**element).clone()], Ty::Bool),
             "clear" => (Vec::new(), Ty::Void),
+            "copy" => (Vec::new(), me.clone()),
             _ => return None,
         },
         _ => return None,
@@ -257,8 +259,8 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             names.extend(STRING_METHODS);
         }
         Ty::Bool => names.push("toString"),
-        Ty::Map(..) => names.extend(["size", "set", "get", "has", "delete", "clear"]),
-        Ty::Set(_) => names.extend(["size", "add", "has", "delete", "clear"]),
+        Ty::Map(..) => names.extend(["size", "set", "get", "has", "delete", "clear", "copy"]),
+        Ty::Set(_) => names.extend(["size", "add", "has", "delete", "clear", "copy"]),
         Ty::Option(_) => names.extend(["isSome", "isNone", "unwrapOr"]),
         Ty::Result(..) => names.extend(["isOk", "isErr", "unwrapOr"]),
         _ => {}

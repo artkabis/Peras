@@ -130,6 +130,7 @@ struct Table {
 /// A live entry of a map: its key, the string the map owns as its key, lent
 /// to `for…of`, and its value's slots, as the runtime keeps them: an `I64`,
 /// an `F64`, or a `Handle` the map owns.
+#[derive(Clone)]
 struct Entry {
     key: MapKey,
     handle: Option<u32>,
@@ -887,6 +888,9 @@ impl Machine<'_> {
         let Value::Handle(block) = buf else {
             return Err(Trap::UseAfterRelease);
         };
+        if self.maps.contains_key(&block) {
+            return self.clone_map(block, elements);
+        }
         let deep = self.deep.contains(&block);
         if deep {
             for element in &mut elements {
@@ -898,6 +902,46 @@ impl Machine<'_> {
         if deep {
             self.deep.insert(self.allocated);
         }
+        Ok(Value::Handle(self.allocated))
+    }
+
+    /// A copy of map `block`, with copies of its string keys and of the
+    /// buffers its values own.
+    fn clone_map(&mut self, block: u32, elements: Vec<Value>) -> Result<Value, Trap> {
+        let (width, live) = {
+            let map = self.maps.get(&block).ok_or(Trap::UseAfterRelease)?;
+            (map.width, map.entries.clone())
+        };
+        let mut entries = Vec::with_capacity(live.len());
+        for entry in live {
+            entries.push(match entry {
+                Some(Entry { key, handle, slots }) => {
+                    let handle = match handle {
+                        Some(h) => match self.clone_buffer(Value::Handle(h))? {
+                            Value::Handle(copy) => Some(copy),
+                            _ => return Err(Trap::Unreachable),
+                        },
+                        None => None,
+                    };
+                    let mut copied = Vec::with_capacity(slots.len());
+                    for slot in slots {
+                        copied.push(match slot {
+                            Value::Handle(_) => self.clone_buffer(slot)?,
+                            other => other,
+                        });
+                    }
+                    Some(Entry {
+                        key,
+                        handle,
+                        slots: copied,
+                    })
+                }
+                None => None,
+            });
+        }
+        self.allocated += 1;
+        self.heap.insert(self.allocated, elements);
+        self.maps.insert(self.allocated, Table { width, entries });
         Ok(Value::Handle(self.allocated))
     }
 

@@ -14,6 +14,7 @@ interface Maps {
   operations(ops: number[], keys: number[], values: number[]): number;
   order(ops: number[], keys: number[]): string;
   positions(text: string): string;
+  nested(n: number): string;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -143,6 +144,27 @@ describe("maps and sets", () => {
         let want = "";
         for (const [w, list] of at) want += `${w}:${list.map((p) => `${String(p)},`).join("")};`;
         expect(m.positions(text), `${String(length)} words`).toBe(want);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`hold maps in structures, arrays, options and maps, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      for (const n of [0, 1, 2, 3, 5, 40]) {
+        const groups = new Map<string, Map<number, number>>();
+        for (let i = 0; i < n; i++) {
+          const inner = groups.get(`g${String(i % 2)}`) ?? new Map<number, number>();
+          inner.set(i, i * i);
+          groups.set(`g${String(i % 2)}`, inner);
+        }
+        let want = `main:${String(n)}/${String(Math.min(n, 3))};`;
+        for (const [g, inner] of groups) {
+          want += `${g}=${String(inner.size)}`;
+          for (const [k, v] of inner) want += `(${String(k)},${String(v)})`;
+        }
+        want += `;1/2:nine;${n > 2 ? "1" : "-1"};${String(n)}/0`;
+        expect(m.nested(n), `nested(${String(n)})`).toBe(want);
       }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);

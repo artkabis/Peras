@@ -145,12 +145,7 @@ impl Lowering<'_> {
         };
         let key_ty = self.leaves(key)?.first().map_or(Ty::I64, |(_, t)| *t);
         let slots: Vec<Ty> = match value {
-            Some(value) => {
-                if matches!(**value, CheckTy::Map(..) | CheckTy::Set(_)) {
-                    return Err("map-place");
-                }
-                self.leaves(value)?.into_iter().map(|(_, t)| t).collect()
-            }
+            Some(value) => self.leaves(value)?.into_iter().map(|(_, t)| t).collect(),
             None => Vec::new(),
         };
         if slots.len() > MOST_SLOTS {
@@ -176,6 +171,18 @@ impl Lowering<'_> {
         }
     }
 
+    /// A new, empty map of type `ty`.
+    pub(super) fn empty_map(&self, ty: &CheckTy) -> Option<Expr> {
+        let table = self.table(ty).ok()?;
+        Some(runtime(
+            F::MapNew,
+            vec![
+                int(i64::from(table.strings), Ty::I32),
+                int(table.shape(), Ty::I32),
+            ],
+        ))
+    }
+
     /// `Map.new()` or `Set.new()`, if `call` is one: a new, empty table.
     pub(super) fn map_new(
         &mut self,
@@ -192,16 +199,9 @@ impl Lowering<'_> {
             return None;
         }
         let span = self.ast.expr(call).span;
-        let Some(table) = self.table_of(call, span) else {
-            return Some(Vec::new());
-        };
-        let empty = runtime(
-            F::MapNew,
-            vec![
-                int(i64::from(table.strings), Ty::I32),
-                int(table.shape(), Ty::I32),
-            ],
-        );
+        self.table_of(call, span)?;
+        let ty = self.check_type(call)?;
+        let empty = self.empty_map(&ty)?;
         Some(Self::fresh(state, vec![empty], mode))
     }
 
@@ -315,6 +315,14 @@ impl Lowering<'_> {
                     .pre
                     .push(Stmt::Expr(runtime(F::MapClear, vec![handle])));
                 Vec::new()
+            }
+            // A map of its own: keys and values copied.
+            ("copy", []) => {
+                let copy = Expr {
+                    kind: ExprKind::Buf(BufOp::Clone, vec![handle]),
+                    ty: Ty::Owned,
+                };
+                Self::fresh(state, vec![copy], mode)
             }
             _ => {
                 self.unsupported(span, "method");

@@ -664,7 +664,6 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
     [map-value] les tables dont les valeurs ne sont pas des nombres ou des booléens
-    [map-place] les tables et ensembles dans des structures, des tableaux ou des options
     [map-export] les tables et ensembles dans la signature d’une fonction exportée : JavaScript les voit au travers des fonctions du module
     [map-iteration] `for…of` sur une table ou un ensemble
    *[other] cette construction

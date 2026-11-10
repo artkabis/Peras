@@ -74,13 +74,10 @@ impl Lowering<'_> {
                     .map(|(path, _)| (path, Ty::Owned))
                     .collect())
             }
-            CheckTy::String => Ok(vec![(String::new(), Ty::Owned)]),
-            // A map or a set is one handle, held by a local or a parameter,
-            // not yet by a structure, an array or an option.
-            CheckTy::Map(..) | CheckTy::Set(_) if depth == 0 => {
+            // A string, a map or a set is one handle, wherever it is held.
+            CheckTy::String | CheckTy::Map(..) | CheckTy::Set(_) => {
                 Ok(vec![(String::new(), Ty::Owned)])
             }
-            CheckTy::Map(..) | CheckTy::Set(_) => Err("map-place"),
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -442,6 +439,7 @@ impl Lowering<'_> {
                     ty: Ty::Owned,
                 })
                 .collect(),
+            CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
             CheckTy::Struct(id, _) => self
                 .analysis
                 .structs
@@ -1092,11 +1090,6 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Enum(..)
         | CheckTy::Map(..)
         | CheckTy::Set(_) => Ok(()),
-        CheckTy::Array(inner) | CheckTy::Option(inner)
-            if matches!(**inner, CheckTy::Map(..) | CheckTy::Set(_)) =>
-        {
-            Err("map-place")
-        }
         CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         CheckTy::Int(_) => Err("integer-type"),
