@@ -12,9 +12,11 @@
 //    is its version's time so far, the flame its time for this frame.
 // The processor's time is what is measured; it drives the energy spent, but
 // this machine has no counter of energy, and the animation says so.
-// Usage: node scripts/candle.mjs [--check]
+// Usage: node scripts/candle.mjs [--check | --draw]
 //        --check: the three versions give the same pixels on a few frames,
 //        in Node; nothing else is measured or written.
+//        --draw: draws the animation again from bench/candle/results.json,
+//        without measuring.
 // Writes bench/candle/results.json, bench/candle/RESULTS.md and
 // docs/assets/candle.gif and candle.fr.gif, unless --check.
 import { spawnSync } from "node:child_process";
@@ -30,6 +32,7 @@ import ts from "typescript";
 
 const root = join(import.meta.dirname, "..");
 const check = process.argv.includes("--check");
+const drawOnly = process.argv.includes("--draw");
 const work = join(root, "target", "candle");
 const commit = spawnSync("git", ["rev-parse", "--short=7", "HEAD"], {
   cwd: root,
@@ -164,55 +167,82 @@ const setup = `
   const pixelsOf = (name, v) => name === "peras" ? new Uint32Array(perasPixels.view().slice().buffer) : draw[name](v);
 `;
 
-/** @type {unknown} */
-const measured = await page.evaluate(
-  `(async () => {
-    ${setup}
-    const names = Object.keys(draw);
-    const hex = async (p) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", p.buffer))].map((b) => b.toString(16).padStart(2, "0")).join("");
-    // Same pixels, frame by frame, before any time is taken.
-    const same = [];
-    for (const v of views) {
-      const hashes = [];
-      for (const name of names) {
-        if (name === "peras") { draw.peras(v); hashes.push(await hex(pixelsOf("peras", v))); }
-        else hashes.push(await hex(draw[name](v)));
+/** @typedef {{ commit: string, frameMs: Record<string, number[]>, totals: Record<string, number>, heapSpread: Record<string, number> }} Measured */
+/** Measures in Chromium; refuses if the versions give different pixels. @returns {Promise<Measured>} */
+async function measure() {
+  /** @type {unknown} */
+  const measured = await page.evaluate(
+    `(async () => {
+      ${setup}
+      const names = Object.keys(draw);
+      const hex = async (p) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", p.buffer))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      // Same pixels, frame by frame, before any time is taken.
+      const same = [];
+      for (const v of views) {
+        const hashes = [];
+        for (const name of names) {
+          if (name === "peras") { draw.peras(v); hashes.push(await hex(pixelsOf("peras", v))); }
+          else hashes.push(await hex(draw[name](v)));
+        }
+        same.push(new Set(hashes).size === 1);
       }
-      same.push(new Set(hashes).size === 1);
-    }
-    const times = Object.fromEntries(names.map((n) => [n, views.map(() => [])]));
-    const heap = Object.fromEntries(names.map((n) => [n, []]));
-    for (let round = 0; round < ${String(ROUNDS)}; round++) {
-      const order = names.map((_, i) => names[(i + round) % names.length]);
-      for (const name of order) {
-        for (let i = 0; i < views.length; i++) {
-          const t0 = performance.now();
-          draw[name](views[i]);
-          times[name][i].push(performance.now() - t0);
-          heap[name].push(performance.memory ? performance.memory.usedJSHeapSize : 0);
+      const times = Object.fromEntries(names.map((n) => [n, views.map(() => [])]));
+      const heap = Object.fromEntries(names.map((n) => [n, []]));
+      for (let round = 0; round < ${String(ROUNDS)}; round++) {
+        const order = names.map((_, i) => names[(i + round) % names.length]);
+        for (const name of order) {
+          for (let i = 0; i < views.length; i++) {
+            const t0 = performance.now();
+            draw[name](views[i]);
+            times[name][i].push(performance.now() - t0);
+            heap[name].push(performance.memory ? performance.memory.usedJSHeapSize : 0);
+          }
         }
       }
-    }
-    return { same, times, heap };
-  })()`,
-);
-const { same, times, heap } =
-  /** @type {{ same: boolean[], times: Record<string, number[][]>, heap: Record<string, number[]> }} */ (
-    measured
+      return { same, times, heap };
+    })()`,
   );
-if (!same.every(Boolean)) throw new Error("the versions give different pixels; nothing is drawn");
-/** @param {number[]} xs */
-const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
-/** @type {Record<string, number[]>} */
-const frameMs = Object.fromEntries(
-  Object.entries(times).map(([name, frames]) => [name, frames.map((f) => median(f))]),
-);
-const totals = Object.fromEntries(
-  Object.entries(frameMs).map(([name, f]) => [name, f.reduce((a, b) => a + b, 0)]),
-);
-const heapSpread = Object.fromEntries(
-  Object.entries(heap).map(([name, h]) => [name, Math.max(...h) - Math.min(...h)]),
-);
+  const { same, times, heap } =
+    /** @type {{ same: boolean[], times: Record<string, number[][]>, heap: Record<string, number[]> }} */ (
+      measured
+    );
+  if (!same.every(Boolean)) throw new Error("the versions give different pixels; nothing is drawn");
+  /** @param {number[]} xs */
+  const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
+  /** @type {Record<string, number[]>} */
+  const frameMs = Object.fromEntries(
+    Object.entries(times).map(([name, frames]) => [name, frames.map((f) => median(f))]),
+  );
+  const totals = Object.fromEntries(
+    Object.entries(frameMs).map(([name, f]) => [name, f.reduce((a, b) => a + b, 0)]),
+  );
+  const heapSpread = Object.fromEntries(
+    Object.entries(heap).map(([name, h]) => [name, Math.max(...h) - Math.min(...h)]),
+  );
+  return { commit, frameMs, totals, heapSpread };
+}
+
+/** The numbers of the last measure, to draw again (`--draw`). @returns {Measured} */
+function saved() {
+  /** @type {unknown} */
+  const parsed = JSON.parse(readFileSync(join(root, "bench", "candle", "results.json"), "utf8"));
+  const json =
+    /** @type {{ commit: string, same: boolean, frameMs: Record<string, number[]>, totalMs: Record<string, number>, heapSpreadBytes: Record<string, number> }} */ (
+      parsed
+    );
+  if (!json.same)
+    throw new Error("the saved measure did not find the same pixels; nothing is drawn");
+  return {
+    commit: json.commit,
+    frameMs: json.frameMs,
+    totals: json.totalMs,
+    heapSpread: json.heapSpreadBytes,
+  };
+}
+
+// The commit the numbers were measured at: kept when they are drawn again.
+const { commit: measuredAt, frameMs, totals, heapSpread } = drawOnly ? saved() : await measure();
+writeResults();
 
 // Draw the animation from the numbers, in English and in French.
 const words = {
@@ -224,6 +254,7 @@ const words = {
     total: "so far",
     note: "Wax: processor time measured for each frame, median of 5 rounds, Chromium. Same pixels in all three, checked.",
     end: "Processor time for the whole zoom",
+    whole: "the whole zoom",
   },
   fr: {
     title: "La bougie et le jardin",
@@ -233,6 +264,7 @@ const words = {
     total: "jusqu’ici",
     note: "Cire : temps de calcul mesuré pour chaque image, médiane de 5 tours, Chromium. Mêmes pixels dans les trois, vérifiés.",
     end: "Temps de calcul pour tout le zoom",
+    whole: "tout le zoom",
   },
 };
 const HOLD = 24;
@@ -250,8 +282,8 @@ for (const [lang, w] of Object.entries(words)) {
       const names = ["objects", "hand", "peras"];
       const most = Math.max(...Object.values(totals));
       const longest = Math.max(...names.flatMap((n) => frameMs[n]));
-      const GAP = 24, HEAD = 52, WAX = 120, FOOT = 64;
-      const W = GAP + names.length * (SIDE + GAP), H = HEAD + SIDE + 22 + 40 + WAX + FOOT;
+      const GAP = 24, HEAD = 52, LABEL = 40, WAX = 120, FOOT = 88;
+      const W = GAP + names.length * (SIDE + GAP), H = HEAD + SIDE + LABEL + 70 + WAX + FOOT;
       const canvas = document.createElement("canvas");
       canvas.width = W; canvas.height = H;
       const ctx = canvas.getContext("2d");
@@ -277,11 +309,18 @@ for (const [lang, w] of Object.entries(words)) {
           image.data.set(new Uint8ClampedArray(pixelsOf(name, v).buffer));
           ctx.putImageData(image, x0, HEAD);
           ctx.fillStyle = name === "peras" ? "#efe7d4" : "#cfc6b0"; ctx.font = (name === "peras" ? "600 " : "") + "13px DejaVu Sans, sans-serif";
-          ctx.fillText(w.names[k], x0, HEAD + SIDE + 18);
+          // A name wider than its panel goes on two lines, cut at a space.
+          const label = w.names[k];
+          if (ctx.measureText(label).width <= SIDE) ctx.fillText(label, x0, HEAD + SIDE + 18);
+          else {
+            const at = label.lastIndexOf(" ", Math.ceil(label.length / 2) + 4);
+            ctx.fillText(label.slice(0, at), x0, HEAD + SIDE + 18);
+            ctx.fillText(label.slice(at + 1), x0, HEAD + SIDE + 34);
+          }
           // The candle: its wax is the time not yet spent, its flame this frame's.
           const spent = frameMs[name].slice(0, i + 1).reduce((a, b) => a + b, 0);
           const left = 1 - 0.92 * (spent / most);
-          const cx = x0 + SIDE / 2, base = HEAD + SIDE + 40 + WAX;
+          const cx = x0 + SIDE / 2, base = HEAD + SIDE + LABEL + 70 + WAX;
           const top = base - WAX * left;
           const grd = ctx.createLinearGradient(cx - 22, 0, cx + 22, 0);
           grd.addColorStop(0, "#d9cdb0"); grd.addColorStop(0.5, "#f4ecd8"); grd.addColorStop(1, "#cbbf9f");
@@ -300,14 +339,14 @@ for (const [lang, w] of Object.entries(words)) {
           ctx.fill();
           ctx.fillStyle = "#fff2c9"; ctx.beginPath(); ctx.ellipse(cx, top - 7 - fh * 0.3, fw * 0.35, fh * 0.28, 0, 0, Math.PI * 2); ctx.fill();
           ctx.font = "12px DejaVu Sans, sans-serif"; ctx.fillStyle = "#a59d88";
-          const line1 = end ? w.end : w.frame + " " + msText(frameMs[name][i]);
+          const line1 = end ? w.whole : w.frame + " " + msText(frameMs[name][i]);
           const line2 = (end ? "" : w.total + " ") + sec(spent);
-          ctx.fillText(end ? "" : line1, x0, base + 24);
+          ctx.fillText(line1, x0, base + 22);
           ctx.fillStyle = name === "peras" ? "#efe7d4" : "#cfc6b0"; ctx.font = (end ? "600 18px" : "13px") + " DejaVu Sans, sans-serif";
-          ctx.fillText(line2, x0, base + (end ? 30 : 42));
+          ctx.fillText(line2, x0, base + (end ? 46 : 42));
         });
         ctx.fillStyle = "#857e6c"; ctx.font = "11px DejaVu Sans, sans-serif";
-        ctx.fillText(end ? w.end + ". " + w.note : w.note, GAP, H - 10);
+        ctx.fillText(w.note, GAP, H - 10);
         out.push(canvas.toDataURL("image/png"));
       }
       return out;
@@ -340,43 +379,45 @@ for (const [lang, w] of Object.entries(words)) {
 await browser.close();
 server.close();
 
-const results = {
-  commit,
-  machine: cpus()[0]?.model ?? "unknown",
-  frames: FRAMES,
-  side: SIDE,
-  rounds: ROUNDS,
-  views,
-  same: same.every(Boolean),
-  frameMs,
-  totalMs: totals,
-  heapSpreadBytes: heapSpread,
-};
-mkdirSync(join(root, "bench", "candle"), { recursive: true });
-writeFileSync(
-  join(root, "bench", "candle", "results.json"),
-  `${JSON.stringify(results, null, 2)}\n`,
-);
-const f1 = (/** @type {number} */ x) => x.toFixed(1);
-const names = {
-  objects: "A. TypeScript, as often written",
-  hand: "B. TypeScript, by hand",
-  peras: "C. Peras",
-};
-const report = [
-  "# The candle and the garden — results",
-  "",
-  `Generated by \`node scripts/candle.mjs\` at commit \`${commit}\`, on ${results.machine}. The same zoom into the garden of Apeiron, ${String(FRAMES)} frames of ${String(SIDE)} × ${String(SIDE)} pixels from zoom 1 to 64, drawn by three versions that give the same pixels, checked by SHA-256 frame by frame. Every number is also in [results.json](results.json).`,
-  "",
-  "| Version | Processor time for the zoom | Against C | JavaScript heap, most minus least over the run |",
-  "| --- | --: | --: | --: |",
-  ...Object.entries(names).map(
-    ([key, name]) =>
-      `| ${name} | ${f1(totals[key] ?? 0)} ms | ${((totals[key] ?? 0) / (totals.peras ?? 1)).toFixed(2)} × | ${((heapSpread[key] ?? 0) / 1048576).toFixed(1)} MiB |`,
-  ),
-  "",
-  `A frame's time is the median of ${String(ROUNDS)} rounds, the versions in a new order each round, in Chromium; the zoom's time is the sum of its frames'. What is measured is the processor's time, which drives the energy spent; this machine has no counter of energy, and the animation says what it shows. The heap is the one JavaScript reports: Peras's own memory lives in its WebAssembly module, outside it.`,
-  "",
-];
-writeFileSync(join(root, "bench", "candle", "RESULTS.md"), report.join("\n"));
-console.log(report.join("\n"));
+function writeResults() {
+  const results = {
+    commit: measuredAt,
+    machine: cpus()[0]?.model ?? "unknown",
+    frames: FRAMES,
+    side: SIDE,
+    rounds: ROUNDS,
+    views,
+    same: true,
+    frameMs,
+    totalMs: totals,
+    heapSpreadBytes: heapSpread,
+  };
+  mkdirSync(join(root, "bench", "candle"), { recursive: true });
+  writeFileSync(
+    join(root, "bench", "candle", "results.json"),
+    `${JSON.stringify(results, null, 2)}\n`,
+  );
+  const f1 = (/** @type {number} */ x) => x.toFixed(1);
+  const names = {
+    objects: "A. TypeScript, as often written",
+    hand: "B. TypeScript, by hand",
+    peras: "C. Peras",
+  };
+  const report = [
+    "# The candle and the garden — results",
+    "",
+    `Generated by \`node scripts/candle.mjs\` at commit \`${measuredAt}\`, on ${results.machine}. The same zoom into the garden of Apeiron, ${String(FRAMES)} frames of ${String(SIDE)} × ${String(SIDE)} pixels from zoom 1 to 64, drawn by three versions that give the same pixels, checked by SHA-256 frame by frame. Every number is also in [results.json](results.json).`,
+    "",
+    "| Version | Processor time for the zoom | Against C |",
+    "| --- | --: | --: |",
+    ...Object.entries(names).map(
+      ([key, name]) =>
+        `| ${name} | ${f1(totals[key] ?? 0)} ms | ${((totals[key] ?? 0) / (totals.peras ?? 1)).toFixed(2)} × |`,
+    ),
+    "",
+    `A frame's time is the median of ${String(ROUNDS)} rounds, the versions in a new order each round, in Chromium; the zoom's time is the sum of its frames'. What is measured is the processor's time, which drives the energy spent; this machine has no counter of energy, and the animation says what it shows. No memory is reported: the three versions run in one page and share one JavaScript heap, where what one leaves is collected while another runs, so its size belongs to none of them.`,
+    "",
+  ];
+  writeFileSync(join(root, "bench", "candle", "RESULTS.md"), report.join("\n"));
+  console.log(report.join("\n"));
+}
