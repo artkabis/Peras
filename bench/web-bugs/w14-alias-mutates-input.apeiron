@@ -1,0 +1,12 @@
+// A "sorted copy" that sorts the caller's array.
+fn sortedCopy(items: Array<number>): Array<number> {
+  let sorted = items;
+  sorted.sort();
+  return sorted;
+}
+
+export fn main(): String {
+  const xs = [3.0, 1.0, 2.0];
+  sortedCopy(xs);
+  return xs.map((x) => x.toString()).join(",");
+}

@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0242-extern.peras
+---
+diagnostics:
+  error[E0242] check-managed-only { what: "extern" }
+    primary 2:1-4:2: check-managed-only-label { what: "extern" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "extern" }

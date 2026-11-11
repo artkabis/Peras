@@ -50,6 +50,7 @@ export async fn status(url: String): Promise<String> {
 | `removeClass(name)`     | `void`                  | removes a class                                           |
 | `toggleClass(name)`     | `bool`                  | adds or removes a class; whether it is there after        |
 | `focus()`               | `void`                  | gives it the focus                                        |
+| `click()`               | `void`                  | clicks it, as a user would                                |
 | `asInput()`             | `Option<InputElement>`  | itself, when it is an `<input>`                           |
 | `asCanvas()`            | `Option<CanvasElement>` | itself, when it is a `<canvas>`                           |
 | `on(event, (e) => …)`   | `Listener`, a resource  | runs the arrow function on each `event`, given an `Event` |

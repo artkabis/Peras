@@ -59,6 +59,7 @@ Chaque méthode intégrée, avec son état, est dans la [référence des méthod
 | `async`, `await`, `number`, en mode géré                                                           | <span class="status compiled">compilé</span>                                     |
 | le DOM, les évènements, un canvas, les minuteurs, `fetch`, le stockage ([navigateur](browser.md))  | <span class="status compiled">compilé</span>, en mode géré                       |
 | écouteurs et minuteurs comme ressources, libérés avec leur propriétaire, fuites signalées en debug | <span class="status compiled">compilé</span>, en mode géré                       |
+| blocs `extern` : JavaScript et npm appelés avec des types déclarés, chaque valeur vérifiée         | <span class="status compiled">compilé</span>, en mode géré                       |
 | prise en charge des éditeurs (LSP), formateur, lanceur de tests                                    | <span class="status planned">prévu</span>                                        |
 
 Ce qui vient ensuite, et dans quel ordre : [vers un langage complet](roadmap.md).

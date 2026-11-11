@@ -18,6 +18,12 @@ use crate::{Checker, builtins};
 impl Checker<'_> {
     /// Checks an expression against an expected type, reporting a mismatch.
     pub(crate) fn expect(&mut self, id: ExprId, expected: &Ty) {
+        // A callback is written in place, as an arrow function.
+        if let Ty::Callback(params, ret) = expected {
+            let wanted = (**ret != Ty::Void).then_some(&**ret);
+            self.arrow(id, params, wanted);
+            return;
+        }
         let actual = self.infer(id, Some(expected));
         self.coerce(id, &actual, expected);
     }
@@ -388,7 +394,7 @@ impl Checker<'_> {
                     self.report(errors::managed_only(span, "await"));
                     return Ty::Error;
                 }
-                if !self.in_async {
+                if !self.flags.in_async {
                     self.report(errors::managed_only(span, "await-sync"));
                 }
                 match ty {

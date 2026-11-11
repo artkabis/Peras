@@ -35,7 +35,12 @@ impl Checker<'_> {
             }
             StmtKind::Return(value) => self.return_stmt(stmt.span, *value),
             StmtKind::Expr(e) => {
-                self.infer(*e, None);
+                // A promise nobody awaits: the work it stands for runs later, and
+                // whatever follows does not wait for it.
+                if let Ty::Promise(_) = self.infer(*e, None) {
+                    let span = self.ast.expr(*e).span;
+                    self.report(errors::floating_promise(span));
+                }
             }
             StmtKind::Assign { target, op, value } => self.assign(*target, *op, *value),
             StmtKind::Step { target, .. } => {
@@ -264,7 +269,11 @@ impl Checker<'_> {
                 // A property of the browser belongs to the page, not to the
                 // variable: `const button = …; button.textContent = …` is fine.
                 let host = matches!(self.expr_types.get(base), Some(Ty::Host(_)));
-                if !host && let Some(root) = self.root(*base) {
+                // A member that does not exist is reported once, as such.
+                if !host
+                    && ty != Ty::Error
+                    && let Some(root) = self.root(*base)
+                {
                     let span = self.ast.expr(*base).span;
                     self.check_mutable(root, span);
                 }

@@ -21,6 +21,22 @@ What it measures, and what it does not:
 
 `bench/bugs` holds deliberately wrong code: the repository's ESLint and Prettier ignore it.
 
+## Web application bugs (`bench/web-bugs`)
+
+`node scripts/bench-web-bugs.mjs` takes seventeen bugs of web applications, each written as it is naturally written in TypeScript and in a managed Peras module, and finds the earliest point where the toolchain stops each: at compile time (`tsc` at its strictest, then typescript-eslint's strict type-checked preset; `perasc check`), at run time by an error, in Chromium, or not at all ([results](web-bugs/RESULTS.md), [decision 0011](../docs/en/decisions/0011-what-to-build-next.md)). CI checks that Peras lets no more through than decision 0011 recorded.
+
+| Stopped                     | TypeScript | Peras |
+| --------------------------- | ---------: | ----: |
+| at compile time             |          7 |     9 |
+| at run time, with a message |          1 |     5 |
+| silent                      |          8 |     2 |
+
+Peras alone stops the listeners and timers left running and the libraries that lie about their types; TypeScript alone stops an index past the end at compile time, and keeps a total above 2³¹ exact where an `i32` wraps. The corpus was written by the Peras authors, both versions as naturally as they could: it covers the bugs of web applications they know, not every bug.
+
+## Case study (`bench/case-study`)
+
+`node scripts/bench-case-study.mjs` runs a table of orders, searched after a delay, sorted, with a summary, written in TypeScript ([orders.ts](case-study/orders.ts)) and in a managed Peras module ([orders.apeiron](case-study/orders.apeiron)), in Chromium: the same rows shown, the time to mount and to sort, nothing reacting once removed ([results](case-study/RESULTS.md)). A third version sorts through an `extern` block, to measure what a comparison sort in Peras would change. Decision 0011 lists what writing it in Peras ran into.
+
 ## Backend benchmark (`bench/backends`)
 
 `bench/backends/kernels.peras` holds four kernels: recursion, integer loops, float loops and 64-bit arithmetic. `node scripts/bench-backends.mjs` builds them with both code generators (direct WebAssembly, and Rust through `cargo` and `wasm-bindgen`), checks that every build returns the same results as a JavaScript reference, then measures build time, module size (raw, gzip, after `wasm-opt -O3`) and run time in Node. A direct build with `--no-optimize` shows what the IR optimizations bring; `--check` only compares results, for CI. It needs `rustup` and `wasm-bindgen` 0.2.130 for the Rust backend, and writes [`backends/RESULTS.md`](backends/RESULTS.md). Decision [0001](../docs/en/decisions/0001-webassembly-backend.md) discusses the results.

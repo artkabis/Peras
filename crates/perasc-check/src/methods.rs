@@ -34,6 +34,8 @@ const SELF: u32 = u32::MAX;
 pub(crate) enum TypeKey {
     Struct(StructId),
     Enum(EnumId),
+    /// A type of an `extern` block.
+    Opaque(u32),
 }
 
 /// A type alias, resolved when first used.
@@ -300,6 +302,7 @@ impl<'a> Checker<'a> {
     /// The template a type's methods belong to.
     pub(crate) fn type_key(&self, ty: &Ty) -> Option<TypeKey> {
         match ty {
+            Ty::Opaque(id, _) => Some(TypeKey::Opaque(*id)),
             Ty::Struct(id, _) => {
                 let template = self
                     .structs

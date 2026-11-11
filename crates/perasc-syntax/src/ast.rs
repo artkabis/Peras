@@ -149,6 +149,9 @@ pub enum ItemKind {
     Interface(InterfaceDecl),
     /// `import { a, b } from "./module.peras";`
     Import(ImportDecl),
+    /// `extern from "lib" { fn …; type …; }`: JavaScript a managed module
+    /// calls, declared with Peras types.
+    Extern(ExternDecl),
 }
 
 /// `import { a, b } from "./dsp.peras";`: the functions of another module a
@@ -161,6 +164,36 @@ pub struct ImportDecl {
     pub from: String,
     /// Where the module's path is written.
     pub from_span: Span,
+}
+
+/// `extern from "lib" { … }`: functions and types of a JavaScript module or
+/// an npm package, declared with Peras types and checked at the boundary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternDecl {
+    /// The module, as JavaScript imports it: `"date-fns"`, `"./chart.js"`.
+    pub from: String,
+    /// The string's span.
+    pub from_span: Span,
+    /// `type Chart;`: types whose values JavaScript makes and Peras only passes.
+    pub types: Vec<Ident>,
+    /// `fn format(…): String;`
+    pub fns: Vec<ExternFn>,
+}
+
+/// A function of an `extern` block. One whose first parameter is `self: T`,
+/// `T` a type of the block, is a method of `T`'s values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternFn {
+    /// Written `async fn`: its result is `Promise<T>`.
+    pub is_async: bool,
+    /// Its name, as JavaScript exports it.
+    pub name: Ident,
+    /// Its parameters.
+    pub params: Vec<Param>,
+    /// Its result; `void` when not written.
+    pub ret: Option<Type>,
+    /// The whole declaration.
+    pub span: Span,
 }
 
 /// `type Meters = f64;`: another name for a type, interchangeable with it.
@@ -395,6 +428,14 @@ pub enum TypeKind {
     },
     /// `(i32, String)`: two types or more.
     Tuple(Vec<Type>),
+    /// `(Event, i32) => void`: a function JavaScript calls back, the type of
+    /// a parameter of an `extern` function.
+    Fn {
+        /// Its parameters' types.
+        params: Vec<Type>,
+        /// Its result.
+        ret: Box<Type>,
+    },
     /// A type that failed to parse, already reported.
     Error,
 }
@@ -801,6 +842,7 @@ impl Ast {
                         self.ty(&alias.ty)
                     );
                 }
+                ItemKind::Extern(decl) => self.dump_extern(decl, &mut out),
                 ItemKind::Import(import) => {
                     let names: Vec<&str> =
                         import.names.iter().map(|n| self.name(n.symbol)).collect();
@@ -933,6 +975,28 @@ impl Ast {
         )
     }
 
+    fn dump_extern(&self, decl: &ExternDecl, out: &mut String) {
+        let _ = writeln!(out, "(extern {:?}", decl.from);
+        for t in &decl.types {
+            let _ = writeln!(out, "  (type {})", self.name(t.symbol));
+        }
+        for f in &decl.fns {
+            let params: Vec<String> = f.params.iter().map(|p| self.param(p)).collect();
+            let ret = f
+                .ret
+                .as_ref()
+                .map_or_else(|| "void".to_owned(), |t| self.ty(t));
+            let kw = if f.is_async { "async-fn" } else { "fn" };
+            let _ = writeln!(
+                out,
+                "  ({kw} {} ({}) {ret})",
+                self.name(f.name.symbol),
+                params.join(" ")
+            );
+        }
+        let _ = writeln!(out, ")");
+    }
+
     fn ty(&self, ty: &Type) -> String {
         match &ty.kind {
             TypeKind::Named { name, args } if args.is_empty() => self.name(name.symbol).to_owned(),
@@ -943,6 +1007,10 @@ impl Ast {
             TypeKind::Tuple(items) => {
                 let items: Vec<String> = items.iter().map(|a| self.ty(a)).collect();
                 format!("({})", items.join(", "))
+            }
+            TypeKind::Fn { params, ret } => {
+                let params: Vec<String> = params.iter().map(|a| self.ty(a)).collect();
+                format!("(({}) => {})", params.join(", "), self.ty(ret))
             }
             TypeKind::Error => "<error>".to_owned(),
         }

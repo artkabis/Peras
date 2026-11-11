@@ -152,6 +152,28 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $as = (x, name) => (typeof globalThis[name] === \"function\" && x instanceof globalThis[name] ? x : undefined);",
     ),
+    // Values from JavaScript (decision 0010): each checked against the type
+    // declared, and rebuilt, so that JavaScript keeps no hold on them.
+    (
+        "$describe",
+        &[],
+        "const $describe = (v) => { switch (typeof v) { case \"undefined\": return \"undefined\"; case \"string\": return `the string ${JSON.stringify(v.slice(0, 40))}`; case \"number\": case \"boolean\": return `the ${typeof v} ${String(v)}`; case \"bigint\": return `the bigint ${String(v)}n`; case \"function\": return \"a function\"; default: return v === null ? \"null\" : Array.isArray(v) ? \"an array\" : `an object (${v.constructor?.name ?? \"Object\"})`; } };",
+    ),
+    (
+        "$shape",
+        &[],
+        "const $ranges = { i8: [-128, 127], i16: [-32768, 32767], i32: [-2147483648, 2147483647], u8: [0, 255], u16: [0, 65535], u32: [0, 4294967295] };\nconst $shape = (s) => { if (typeof s === \"string\") { if (s in $ranges) { const [lo, hi] = $ranges[s]; return (v, bad) => (Number.isInteger(v) && v >= lo && v <= hi ? v + 0 : bad(v)); } switch (s) { case \"f64\": return (v, bad) => (typeof v === \"number\" ? v : bad(v)); case \"f32\": return (v, bad) => (typeof v === \"number\" && (v !== v || Math.fround(v) === v) ? v : bad(v)); case \"i64\": return (v, bad) => (typeof v === \"bigint\" && BigInt.asIntN(64, v) === v ? v : bad(v)); case \"u64\": return (v, bad) => (typeof v === \"bigint\" && BigInt.asUintN(64, v) === v ? v : bad(v)); case \"bool\": return (v, bad) => (typeof v === \"boolean\" ? v : bad(v)); case \"string\": return (v, bad) => (typeof v === \"string\" ? v : bad(v)); case \"void\": return () => undefined; case \"opaque\": return (v, bad) => (v === null || v === undefined ? bad(v) : v); default: return (v) => v; } } switch (s[0]) { case \"array\": { const e = $shape(s[1]); return (v, bad) => { if (!Array.isArray(v)) return bad(v); const n = v.length; const out = new Array(n); for (let i = 0; i < n; i++) out[i] = e(v[i], bad); return out; }; } case \"option\": { const e = $shape(s[1]); return (v, bad) => (v === null || v === undefined ? undefined : e(v, bad)); } case \"set\": { const e = $shape(s[1]); return (v, bad) => { if (!(v instanceof Set)) return bad(v); const out = new Set(); for (const x of v) out.add(e(x, bad)); return out; }; } case \"map\": { const k = $shape(s[1]); const e = $shape(s[2]); return (v, bad) => { if (!(v instanceof Map)) return bad(v); const out = new Map(); for (const [a, b] of v) out.set(k(a, bad), e(b, bad)); return out; }; } case \"tuple\": { const es = s[1].map($shape); return (v, bad) => (Array.isArray(v) && v.length === es.length ? es.map((e, i) => e(v[i], bad)) : bad(v)); } case \"struct\": { const ks = Object.keys(s[1]); const es = ks.map((k) => $shape(s[1][k])); return (v, bad) => { if (typeof v !== \"object\" || v === null) return bad(v); const o = {}; for (let i = 0; i < ks.length; i++) o[ks[i]] = es[i](v[ks[i]], bad); return o; }; } case \"enum\": { const vs = {}; for (const k of Object.keys(s[1])) vs[k] = s[1][k].map($shape); return (v, bad) => (typeof v === \"object\" && v !== null && typeof v.kind === \"string\" && Object.hasOwn(vs, v.kind) && Array.isArray(v.values) && v.values.length === vs[v.kind].length ? { kind: v.kind, values: vs[v.kind].map((e, i) => e(v.values[i], bad)) } : bad(v)); } case \"host\": return (v, bad) => (typeof globalThis[s[1]] === \"function\" && v instanceof globalThis[s[1]] ? v : bad(v)); default: return (v) => v; } };",
+    ),
+    (
+        "$valid",
+        &["$shape", "$describe"],
+        "const $valid = (s, at, decl) => { const check = $shape(s); const bad = (v) => { throw new TypeError(`peras: ${at} ${$describe(v)} where its declaration says ${decl}`); }; return (v) => check(v, bad); };",
+    ),
+    (
+        "$callback",
+        &[],
+        "const $callback = (f, checks) => (...xs) => f(...checks.map((c, i) => c(xs[i])));",
+    ),
     (
         "$parseI64",
         &[],

@@ -1,0 +1,4 @@
+// A setting read from storage that was never written.
+export fn main(): String {
+  return storage.get("theme").toUpperCase();
+}

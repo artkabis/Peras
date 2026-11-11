@@ -1,0 +1,9 @@
+// A property the browser sets, assigned.
+fn retype(e: Event): String {
+  e.kind = "submit";
+  return e.kind;
+}
+
+export fn main(): String {
+  return "unused";
+}

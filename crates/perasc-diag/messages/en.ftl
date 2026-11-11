@@ -662,6 +662,7 @@ check-managed-only = { $what ->
     [promise] the type `Promise`
     [import] an `import`
     [browser] the browser's API
+    [extern] an `extern` block
    *[other] this
 } { $what ->
     [await-sync] cannot wait
@@ -725,6 +726,7 @@ check-resource = { $reason ->
     [holder] a resource cannot be kept in a structure, an array, an option or a map
     [lent] `{ $name }` is lent to this function, which cannot give it away
     [reassign] `{ $name }` holds a resource, which cannot be replaced
+    [global] `{ $name }` is a module variable: nothing would release the resource it holds
    *[other] this resource cannot be used here
 }
 check-resource-label = { $reason ->
@@ -735,6 +737,7 @@ check-resource-label = { $reason ->
     [holder] kept here
     [lent] given away here
     [reassign] replaced here
+    [global] kept for as long as the page
    *[other] here
 }
 check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, or released with `release()`; after that, its variable holds nothing. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
@@ -746,6 +749,7 @@ check-resource-fix = { $reason ->
     [holder] keep it in a variable or a `Group`
     [lent] return it from the function that made it, or add it to a `Group` there
     [reassign] declare a new `const` for the new resource
+    [global] keep it in a function that returns it, or in a `Group` that one returns
    *[other] keep the resource in a variable
 }
 
@@ -754,6 +758,36 @@ check-read-only = `{ $member }` of `{ $type }` can only be read
 check-read-only-label = assigned here
 check-read-only-why = The browser sets this property itself: an event's type and key, the status of a response, the body of a page. A page cannot change it.
 check-read-only-fix = read it into a variable of your own, and change that one
+
+# E0247
+check-extern = { $reason ->
+    [resource] `{ $name }` would give a resource to JavaScript, which cannot release it
+    [callback] a function type is only allowed for a parameter of an `extern` function
+    [self] `self` must be of a type this `extern` block declares
+    [async] `{ $name }` is `async`: its result must be a `Promise`
+   *[other] this `extern` declaration cannot be kept
+}
+check-extern-label = { $reason ->
+    [resource] a resource here
+    [callback] a function type here
+    [self] not a type of this block
+    [async] not a `Promise`
+   *[other] here
+}
+check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type is a callback, written as an arrow function where the `extern` function is called: elsewhere there is nothing to call it with. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
+check-extern-fix = { $reason ->
+    [resource] give JavaScript the data instead, and keep the resource in Peras
+    [callback] declare the callback as a parameter of an `extern` function, and pass an arrow function there
+    [self] declare the type in this block, `type Chart;`, and write `self: Chart`
+    [async] declare its result as `Promise<T>`
+   *[other] check the declaration
+}
+
+# E0248
+check-floating-promise = this promise is never awaited
+check-floating-promise-label = runs later, and nothing waits for it
+check-floating-promise-why = Calling an `async` function starts its work and gives a promise of its result. Without `await`, the statements after the call run before that work is done, and an error it throws is lost. Forgetting `await` is one of the commonest bugs of asynchronous code.
+check-floating-promise-fix = write `await` before the call, in an `async` function; to let it run on purpose, keep it: `const _saving = save();`
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

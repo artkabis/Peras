@@ -1,0 +1,8 @@
+// An owned module cannot call JavaScript.
+extern from "./lib.js" {
+  fn now(): f64;
+}
+
+export fn one(): i32 {
+  return 1;
+}

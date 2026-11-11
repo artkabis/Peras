@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0248-floating-promise.apeiron
+---
+diagnostics:
+  error[E0248] check-floating-promise
+    primary 7:3-7:9: check-floating-promise-label
+    cause: check-floating-promise-why
+    fix: check-floating-promise-fix

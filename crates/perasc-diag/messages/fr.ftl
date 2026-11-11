@@ -662,6 +662,7 @@ check-managed-only = { $what ->
     [promise] le type `Promise`
     [import] un `import`
     [browser] l’API du navigateur
+    [extern] un bloc `extern`
    *[other] ceci
 } { $what ->
     [await-sync] ne peut pas attendre
@@ -725,6 +726,7 @@ check-resource = { $reason ->
     [holder] une ressource ne peut pas être gardée dans une structure, un tableau, une option ou une table
     [lent] `{ $name }` est prêté à cette fonction, qui ne peut pas le donner
     [reassign] `{ $name }` tient une ressource, qui ne peut pas être remplacée
+    [global] `{ $name }` est une variable de module : rien ne libérerait la ressource qu’elle tient
    *[other] cette ressource ne peut pas être utilisée ici
 }
 check-resource-label = { $reason ->
@@ -735,6 +737,7 @@ check-resource-label = { $reason ->
     [holder] gardée ici
     [lent] donné ici
     [reassign] remplacé ici
+    [global] gardée aussi longtemps que la page
    *[other] ici
 }
 check-resource-why = Un écouteur, un minuteur et un groupe sont des ressources : chacun appartient à une variable, et est libéré quand cette variable sort de sa portée, pour que rien ne continue d’écouter ou de battre une fois son propriétaire parti. Une ressource peut être donnée une fois : rendue, ajoutée à un `Group`, ou libérée par `release()` ; ensuite, sa variable ne tient plus rien. Une ressource que rien ne garde serait libérée aussitôt, et une ressource gardée par une structure, un tableau ou une fonction fléchée n’aurait pas de propriétaire pour la libérer.
@@ -746,6 +749,7 @@ check-resource-fix = { $reason ->
     [holder] gardez-la dans une variable ou un `Group`
     [lent] rendez-la depuis la fonction qui l’a créée, ou ajoutez-la à un `Group` là-bas
     [reassign] déclarez une nouvelle `const` pour la nouvelle ressource
+    [global] gardez-la dans une fonction qui la rend, ou dans un `Group` que l’une rend
    *[other] gardez la ressource dans une variable
 }
 
@@ -754,6 +758,36 @@ check-read-only = `{ $member }` de `{ $type }` ne peut qu’être lu
 check-read-only-label = affecté ici
 check-read-only-why = Le navigateur fixe lui-même cette propriété : le type et la touche d’un évènement, le statut d’une réponse, le corps d’une page. Une page ne peut pas la changer.
 check-read-only-fix = lisez-la dans une variable à vous, et changez celle-ci
+
+# E0247
+check-extern = { $reason ->
+    [resource] `{ $name }` donnerait une ressource à JavaScript, qui ne peut pas la libérer
+    [callback] un type fonction n’est permis que pour un paramètre d’une fonction `extern`
+    [self] `self` doit être d’un type que déclare ce bloc `extern`
+    [async] `{ $name }` est `async` : son résultat doit être une `Promise`
+   *[other] cette déclaration `extern` ne peut pas être gardée
+}
+check-extern-label = { $reason ->
+    [resource] une ressource ici
+    [callback] un type fonction ici
+    [self] pas un type de ce bloc
+    [async] pas une `Promise`
+   *[other] ici
+}
+check-extern-why = Un bloc `extern` déclare le JavaScript qu’appelle un module managed, avec des types Peras : à chaque appel, chaque valeur que JavaScript rend est vérifiée contre eux. Une ressource appartient à une variable de Peras, qui la libère : JavaScript la garderait sans la libérer. Un type fonction est un rappel, écrit comme une fonction fléchée là où la fonction `extern` est appelée : ailleurs, il n’y a rien pour l’appeler. Une méthode se déclare avec un `self` d’un type du bloc, les valeurs que crée JavaScript. Une fonction `async` rend une promesse.
+check-extern-fix = { $reason ->
+    [resource] donnez plutôt les données à JavaScript, et gardez la ressource en Peras
+    [callback] déclarez le rappel comme paramètre d’une fonction `extern`, et passez-y une fonction fléchée
+    [self] déclarez le type dans ce bloc, `type Chart;`, et écrivez `self: Chart`
+    [async] déclarez son résultat comme `Promise<T>`
+   *[other] vérifiez la déclaration
+}
+
+# E0248
+check-floating-promise = cette promesse n’est jamais attendue
+check-floating-promise-label = s’exécute plus tard, et rien ne l’attend
+check-floating-promise-why = Appeler une fonction `async` lance son travail et rend une promesse de son résultat. Sans `await`, les instructions qui suivent l’appel s’exécutent avant que ce travail soit fini, et une erreur qu’il lève est perdue. Oublier `await` est l’un des bugs les plus courants du code asynchrone.
+check-floating-promise-fix = écrivez `await` devant l’appel, dans une fonction `async` ; pour la laisser tourner exprès, gardez-la : `const _saving = save();`
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

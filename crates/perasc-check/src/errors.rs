@@ -93,6 +93,8 @@ const fn why(code: ErrorCode) -> &'static str {
         244 => "check-import-why",
         245 => "check-resource-why",
         246 => "check-read-only-why",
+        247 => "check-extern-why",
+        248 => "check-floating-promise-why",
         _ => "check-operator-why",
     }
 }
@@ -1146,5 +1148,29 @@ pub fn read_only(span: Span, ty: &str, member: &str) -> Diagnostic {
         span,
         Message::new("check-read-only-label"),
         Message::new("check-read-only-fix"),
+    )
+}
+
+/// `E0247`: a declaration of an `extern` block that cannot be kept.
+pub fn extern_decl(span: Span, reason: &str, name: &str) -> Diagnostic {
+    simple(
+        codes::EXTERN,
+        Message::new("check-extern")
+            .text("reason", reason)
+            .text("name", name),
+        span,
+        Message::new("check-extern-label").text("reason", reason),
+        Message::new("check-extern-fix").text("reason", reason),
+    )
+}
+
+/// `E0248`: a promise nobody awaits.
+pub fn floating_promise(span: Span) -> Diagnostic {
+    simple(
+        codes::FLOATING_PROMISE,
+        Message::new("check-floating-promise"),
+        span,
+        Message::new("check-floating-promise-label"),
+        Message::new("check-floating-promise-fix"),
     )
 }

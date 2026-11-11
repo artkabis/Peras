@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0245-global.apeiron
+---
+diagnostics:
+  error[E0245] check-resource { reason: "global", name: "timer" }
+    primary 6:5-6:10: check-resource-label { reason: "global" }
+    cause: check-resource-why
+    fix: check-resource-fix { reason: "global" }

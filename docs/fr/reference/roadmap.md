@@ -60,7 +60,8 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 - ~~`async` et `await`~~ : fait.
 - ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci ; les structures et les énumérations ensuite.
 - ~~Le DOM, les événements, `fetch`, les minuteries, le stockage, avec des API typées~~ : fait pour un sous-ensemble, la [référence du navigateur](browser.md) ([décision 0009](../decisions/0009-browser-and-resources.md)) ; les WebSockets, les Web Workers, les formulaires et `requestAnimationFrame` ensuite.
-- ~~Des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas~~ : fait. Les fermetures comme valeurs, et les fonctions fléchées à instructions, ensuite.
+- ~~Des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas~~ : fait.
+- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : des fonctions fléchées à instructions qui capturent ce qu’elles utilisent ; remplacer une ressource libère la précédente ; `sortBy(clé)` ; `toFixed` ; le débordement d’entier arrêté en debug, une fois son coût mesuré ; les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";
@@ -75,7 +76,7 @@ export async fn render(canvas: HTMLCanvasElement): Promise<void> {
 ## Phase 5 : modules et paquets
 
 - `import` et `export` entre modules Peras.
-- L’utilisation typée des bibliothèques JavaScript, à partir de leurs déclarations `.d.ts`.
+- ~~L’utilisation typée des bibliothèques JavaScript~~ : fait avec les blocs `extern`, chaque valeur venue de JavaScript vérifiée contre les types déclarés ([décision 0010](../decisions/0010-calling-javascript.md)) ; des blocs `extern` proposés à partir des déclarations `.d.ts` ensuite.
 - Des paquets : un manifeste, des versions, un registre.
 
 ## Phase 6 : graphisme et performance
@@ -104,7 +105,7 @@ Une revue extérieure du projet, en novembre 2026, a déconseillé de l’utilis
 - **Version 0.0.1, sans promesse de stabilité** : jusqu’à la 1.0, toute version peut casser le langage. Une politique écrite, qui dit ce qui peut changer et comment un changement est annoncé, vient avant tout utilisateur extérieur.
 - **La moitié de la conception manquait** : les modules `.apeiron` se compilent désormais en JavaScript et appellent les modules possédés ([modules managed](../guide/managed.md)), mais le navigateur n’est pas encore typé (phase 4), et `std/` ne contient que son README.
 - **Un seul mainteneur** : le projet dépend d’une personne, aidée d’un assistant d’IA ; il n’a pas encore de communauté.
-- **Pas de bibliothèques à lui** : le plan est d’utiliser celles de npm à travers leurs déclarations (phase 5), pas de les réécrire ; d’ici là, un module Peras fait un travail précis au sein d’une application TypeScript.
+- **Pas de bibliothèques à lui** : le plan est d’utiliser celles de npm, pas de les réécrire ; un module managed les appelle par des blocs `extern`, chacun déclaré à la main ([décision 0010](../decisions/0010-calling-javascript.md)).
 - **Des workers, mais pas de mémoire partagée ; pas de GPU** : un module tourne tel quel dans des Web Workers, une instance chacun, mesuré 2,6 à 2,9 fois plus rapide sur 4 cœurs là où le travail l’emporte sur la copie des données, et plus lent sinon ([Web Workers](../../../bench/README.fr.md#web-workers)) ; la mémoire partagée entre workers n’est pas encore produite (la décision [0003](../decisions/0003-runtime-proved-at-compile-time.md) prévoit des déplacements entre fils), ni WebGPU (phase 6).
 - **La possession s’apprend** : les diagnostics expliquent chaque refus, avec l’historique de la valeur et la correction, mais il n’existe pas encore de savoir communautaire sur lequel s’appuyer.
 - **Comparé à Rust et AssemblyScript tels qu’on les écrit habituellement, pas encore à leurs experts** : Peras va à la vitesse du Rust idiomatique, devant là où son compilateur en fait plus (boucles SIMD avec conditions, tri par base, passage du texte), et 2,4 à 7,3 fois plus vite qu’AssemblyScript là où il alloue ou parcourt des tableaux ([face à Rust et AssemblyScript](../../../bench/README.fr.md#face-à-rust-et-assemblyscript)).

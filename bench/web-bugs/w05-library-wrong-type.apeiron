@@ -1,0 +1,8 @@
+// A library says it returns a number, and returns a string.
+extern from "./lib.js" {
+  fn score(): i32;
+}
+
+export fn main(): String {
+  return `${score() + 1}`;
+}

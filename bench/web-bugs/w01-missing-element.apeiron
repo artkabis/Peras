@@ -1,0 +1,6 @@
+// A typo in an id: the element does not exist.
+export fn main(): String {
+  const total = document.getElementById("totl");
+  total.textContent = "3";
+  return "shown";
+}

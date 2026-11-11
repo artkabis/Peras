@@ -1,0 +1,102 @@
+// The case study, with the sort done by JavaScript through `extern`: what
+// a comparison sort in Peras would change (decision 0011).
+extern from "./sort.js" {
+  fn sortByAmount(orders: Array<Order>, up: bool): Array<Order>;
+}
+
+struct Order {
+  id: i32,
+  customer: String,
+  amount: number,
+  paid: bool,
+}
+
+struct Summary {
+  count: i32,
+  total: number,
+  unpaid: i32,
+  top: String,
+}
+
+export fn summarize(orders: Array<Order>): Summary {
+  let byCustomer: Map<String, number> = Map.new();
+  let total = 0.0;
+  let unpaid = 0;
+  for (const o of orders) {
+    total += o.amount;
+    if (!o.paid) {
+      unpaid += 1;
+    }
+    byCustomer.set(o.customer, byCustomer.get(o.customer).unwrapOr(0.0) + o.amount);
+  }
+  let top = "";
+  let best = -1.0;
+  for (const entry of byCustomer) {
+    if (entry.1 > best) {
+      best = entry.1;
+      top = entry.0;
+    }
+  }
+  return Summary(orders.length, total, unpaid, top);
+}
+
+export fn visible(orders: Array<Order>, text: String, up: bool): Array<Order> {
+  const q = text.trim().toLowerCase();
+  const kept = orders.filter((o) => o.customer.toLowerCase().includes(q));
+  return sortByAmount(kept, up);
+}
+
+let query = "";
+let ascending = false;
+
+fn render(orders: Array<Order>, list: Element, summary: Element): void {
+  const rows = visible(orders, query, ascending);
+  list.textContent = "";
+  for (const o of rows) {
+    const li = document.createElement("li");
+    let label = `#${o.id} ${o.customer} ${o.amount}`;
+    if (!o.paid) {
+      label += " (unpaid)";
+    }
+    li.textContent = label;
+    list.append(li);
+  }
+  const s = summarize(rows);
+  summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
+}
+
+// No delay before searching: a timer kept between two keystrokes, and
+// replaced at each, cannot be written (E0245).
+fn typed(input: InputElement, orders: Array<Order>, list: Element, summary: Element): void {
+  query = input.value;
+  render(orders, list, summary);
+}
+
+fn flip(orders: Array<Order>, list: Element, summary: Element): void {
+  ascending = !ascending;
+  render(orders, list, summary);
+}
+
+export fn mount(root: Element, orders: Array<Order>): Group {
+  let group = Group.new();
+  const input = document.createElement("input");
+  const sortButton = document.createElement("button");
+  sortButton.textContent = "Sort by amount";
+  const summary = document.createElement("p");
+  const list = document.createElement("ul");
+  root.append(input);
+  root.append(sortButton);
+  root.append(summary);
+  root.append(list);
+  match (input.asInput()) {
+    Some(field) => {
+      const typing = field.on("input", (e) => typed(field, orders, list, summary));
+      group.add(typing);
+    }
+    None => {}
+  }
+  const sorting = sortButton.on("click", (e) => flip(orders, list, summary));
+  group.add(sorting);
+  render(orders, list, summary);
+  return group;
+}

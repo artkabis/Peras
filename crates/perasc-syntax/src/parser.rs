@@ -13,9 +13,9 @@ mod expr;
 use perasc_diag::{Diagnostic, Span};
 
 use crate::ast::{
-    AliasDecl, Ast, Block, Convention, EnumDecl, ExprKind, Field, FnDecl, Ident, ImplDecl,
-    ImportDecl, InterfaceDecl, Item, ItemKind, Local, MethodSig, Param, Stmt, StmtKind, StructDecl,
-    Type, TypeKind, TypeParam, Variant,
+    AliasDecl, Ast, Block, Convention, EnumDecl, ExprKind, ExternDecl, ExternFn, Field, FnDecl,
+    Ident, ImplDecl, ImportDecl, InterfaceDecl, Item, ItemKind, Local, MethodSig, Param, Stmt,
+    StmtKind, StructDecl, Type, TypeKind, TypeParam, Variant,
 };
 
 /// What comes before `fn`: attributes, `export`, `async`.
@@ -423,13 +423,38 @@ impl<'src> Parser<'src> {
         }
         let token = self.peek();
         let kind = if token.kind == TokenKind::LParen {
-            // `(A, B)`: a tuple type.
+            // `(A, B)`: a tuple type; `(A, B) => R`: a function type.
             self.bump();
-            let mut items = vec![self.ty()];
-            while self.eat(TokenKind::Comma).is_some() && !self.at(TokenKind::RParen) {
+            let mut items = Vec::new();
+            if !self.at(TokenKind::RParen) {
                 items.push(self.ty());
+                while self.eat(TokenKind::Comma).is_some() && !self.at(TokenKind::RParen) {
+                    items.push(self.ty());
+                }
             }
             self.expect_close(token, TokenKind::RParen, ")");
+            if self.eat(TokenKind::FatArrow).is_some() {
+                let ret = self.ty();
+                self.leave();
+                return Type {
+                    kind: TypeKind::Fn {
+                        params: items,
+                        ret: Box::new(ret),
+                    },
+                    span: self.since(start),
+                };
+            }
+            if items.is_empty() {
+                // `()` is no type: only `() => R` is.
+                let found = self.peek();
+                let d = errors::expected_type(found, self.text(found));
+                self.error(d);
+                self.leave();
+                return Type {
+                    kind: TypeKind::Error,
+                    span: self.since(start),
+                };
+            }
             if items.len() == 1 {
                 // `(T)` is `T`.
                 let only = items.pop();
@@ -492,6 +517,69 @@ impl<'src> Parser<'src> {
     }
 
     /// `import { a, b } from "./module.peras";`
+    /// `extern from "lib" { type Chart; [async] fn name(params): Type; … }`
+    fn extern_decl(&mut self, start: u32) -> Option<Item> {
+        self.bump(); // `extern`
+        if self.at_word("from") {
+            self.bump();
+        } else {
+            let found = self.peek();
+            self.unexpected(found, errors::expected_token("from"));
+            return None;
+        }
+        let path = self.expect(TokenKind::String, "\"")?;
+        let from = crate::string_value(self.text(path));
+        let open = self.expect(TokenKind::LBrace, "{")?;
+        let mut types = Vec::new();
+        let mut fns = Vec::new();
+        while !self.at(TokenKind::RBrace) && !self.at_eof() {
+            self.recovering = false;
+            let member = self.peek().span.start;
+            if self.eat(TokenKind::Type).is_some() {
+                if let Some(name) = self.ident(NameOf::Type) {
+                    types.push(name);
+                }
+                self.expect_semicolon();
+                continue;
+            }
+            let is_async = self.eat(TokenKind::Async).is_some();
+            if self.expect(TokenKind::Fn, "fn").is_none() {
+                self.recover_field();
+                continue;
+            }
+            let Some(name) = self.ident(NameOf::Function) else {
+                self.recover_field();
+                continue;
+            };
+            let Some(params) = self.params(None) else {
+                self.recover_field();
+                continue;
+            };
+            let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
+            self.expect_semicolon();
+            fns.push(ExternFn {
+                is_async,
+                name,
+                params,
+                ret,
+                span: self.since(member),
+            });
+        }
+        if self.at_eof() {
+            self.recovering = false;
+        }
+        self.expect_close(open, TokenKind::RBrace, "}");
+        Some(Item {
+            kind: ItemKind::Extern(ExternDecl {
+                from,
+                from_span: path.span,
+                types,
+                fns,
+            }),
+            span: self.since(start),
+        })
+    }
+
     fn import_decl(&mut self, start: u32) -> Option<Item> {
         self.bump();
         let open = self.expect(TokenKind::LBrace, "{")?;
@@ -529,6 +617,9 @@ impl<'src> Parser<'src> {
         let start = self.peek().span.start;
         if self.at(TokenKind::Import) {
             return self.import_decl(start);
+        }
+        if self.at_word("extern") {
+            return self.extern_decl(start);
         }
         let mut attributes = Vec::new();
         while self.eat(TokenKind::At).is_some() {

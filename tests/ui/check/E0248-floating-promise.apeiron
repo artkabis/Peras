@@ -1,0 +1,11 @@
+// A promise nobody awaits.
+async fn save(): Promise<void> {
+  await sleep(5);
+}
+
+export async fn submit(): Promise<String> {
+  save();
+  const _saving = save();
+  await save();
+  return "saved";
+}

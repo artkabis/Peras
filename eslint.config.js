@@ -12,6 +12,10 @@ export default defineConfig(
       "**/dist/**",
       "**/node_modules/**",
       "bench/bugs/**",
+      // Deliberately buggy too, with its own config in scripts/bench-web-bugs.mjs.
+      "bench/web-bugs/**",
+      // The case study's TypeScript, measured as written (scripts/bench-case-study.mjs).
+      "bench/case-study/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",

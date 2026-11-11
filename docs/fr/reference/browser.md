@@ -50,6 +50,7 @@ export async fn status(url: String): Promise<String> {
 | `removeClass(name)`     | `void`                    | retire une classe                                             |
 | `toggleClass(name)`     | `bool`                    | ajoute ou retire une classe ; si elle y est ensuite           |
 | `focus()`               | `void`                    | lui donne le focus                                            |
+| `click()`               | `void`                    | le clique, comme le ferait un utilisateur                     |
 | `asInput()`             | `Option<InputElement>`    | lui-même, quand c’est un `<input>`                            |
 | `asCanvas()`            | `Option<CanvasElement>`   | lui-même, quand c’est un `<canvas>`                           |
 | `on(event, (e) => …)`   | `Listener`, une ressource | exécute la fonction fléchée à chaque `event`, avec un `Event` |

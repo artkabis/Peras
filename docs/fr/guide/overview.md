@@ -41,11 +41,11 @@ average([1, 2, 3, 4]); // 2,5, calculé en WebAssembly
 
 ## Où il convient, et où pas encore
 
-| Convient                                                                     | Ne convient pas encore                                                                                           |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| une fonction ou un module de calcul appelé depuis TypeScript                 | une application entière : seul un [sous-ensemble du navigateur](../reference/browser.md) est typé pour l’instant |
-| des données volumineuses, numériques, ou traitées de nombreuses fois         | du code qui repose sur des bibliothèques npm : Peras ne peut pas encore les importer                             |
-| une équipe avec une ou deux personnes prêtes à apprendre des règles strictes | une équipe qui a besoin dès aujourd’hui de l’outillage de TypeScript : pas encore d’extension d’éditeur          |
+| Convient                                                                     | Ne convient pas encore                                                                                                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| une fonction ou un module de calcul appelé depuis TypeScript                 | une application entière : seul un [sous-ensemble du navigateur](../reference/browser.md) est typé pour l’instant                           |
+| des données volumineuses, numériques, ou traitées de nombreuses fois         | du code qui repose sur beaucoup de bibliothèques npm : chacune se déclare à la main dans un [bloc `extern`](managed.md#appeler-javascript) |
+| une équipe avec une ou deux personnes prêtes à apprendre des règles strictes | une équipe qui a besoin dès aujourd’hui de l’outillage de TypeScript : pas encore d’extension d’éditeur                                    |
 
 ## La maturité, dite simplement
 

@@ -160,6 +160,7 @@ pub fn members(of: Host) -> Vec<(&'static str, Member)> {
             ("removeClass", Method(vec![s()], Ty::Void)),
             ("toggleClass", Method(vec![s()], Ty::Bool)),
             ("focus", Method(Vec::new(), Ty::Void)),
+            ("click", Method(Vec::new(), Ty::Void)),
             ("asInput", Method(Vec::new(), option(host(Host::Input)))),
             ("asCanvas", Method(Vec::new(), option(host(Host::Canvas)))),
         ],

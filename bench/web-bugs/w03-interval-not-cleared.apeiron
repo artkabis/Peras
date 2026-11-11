@@ -1,0 +1,21 @@
+// A view starts a timer and nothing stops it when the view closes.
+let ticks = 0;
+
+fn tick(): void {
+  ticks += 1;
+}
+
+fn start(): void {
+  setInterval(5, () => tick());
+}
+
+export async fn main(): Promise<String> {
+  start();
+  await sleep(30);
+  const seen = ticks;
+  await sleep(30);
+  if (ticks == seen) {
+    return "stopped";
+  }
+  return "still ticking";
+}

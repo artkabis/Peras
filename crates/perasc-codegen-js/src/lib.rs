@@ -25,6 +25,7 @@ mod bounds;
 mod browser;
 mod dts;
 mod expr;
+mod foreign;
 mod methods;
 mod runtime;
 mod stmt;
@@ -107,6 +108,8 @@ pub fn generate(
     let mut module = Module::new(ast, analysis, options);
     module.nested_options();
     let body = module.items();
+    // Before the helpers are written: the wrappers use some.
+    let (extern_imports, wrappers) = module.externs_code();
     if !module.diagnostics.is_empty() {
         let mut diagnostics = module.diagnostics;
         diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
@@ -131,6 +134,7 @@ pub fn generate(
             );
         }
     }
+    out.push_str(&extern_imports);
     for helper in runtime::closure(&module.helpers) {
         out.push_str(&runtime::source(
             helper,
@@ -139,6 +143,7 @@ pub fn generate(
         ));
         out.push('\n');
     }
+    out.push_str(&wrappers);
     out.push_str(&body);
     Ok(out)
 }
@@ -328,6 +333,8 @@ impl<'a> Module<'a> {
                 _ => {}
             }
         }
+        // `extern` functions are called through their wrappers.
+        self.extern_names();
         let mut out = String::new();
         for item in &self.ast.items {
             match &item.kind {

@@ -1,0 +1,12 @@
+// A total of file sizes, in bytes, above 2 GiB.
+fn total(sizes: Array<i32>): i32 {
+  let sum = 0;
+  for (const s of sizes) {
+    sum += s;
+  }
+  return sum;
+}
+
+export fn main(): String {
+  return `${total([1500000000, 1500000000])}`;
+}

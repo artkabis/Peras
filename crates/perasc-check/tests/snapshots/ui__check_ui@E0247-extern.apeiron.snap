@@ -1,0 +1,26 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0247-extern.apeiron
+---
+diagnostics:
+  error[E0247] check-extern { reason: "resource", name: "listener" }
+    primary 4:21-4:29: check-extern-label { reason: "resource" }
+    cause: check-extern-why
+    fix: check-extern-fix { reason: "resource" }
+  error[E0247] check-extern { reason: "callback", name: "" }
+    primary 5:21-5:31: check-extern-label { reason: "callback" }
+    cause: check-extern-why
+    fix: check-extern-fix { reason: "callback" }
+  error[E0247] check-extern { reason: "self", name: "grow" }
+    primary 6:17-6:23: check-extern-label { reason: "self" }
+    cause: check-extern-why
+    fix: check-extern-fix { reason: "self" }
+  error[E0247] check-extern { reason: "async", name: "slow" }
+    primary 7:20-7:26: check-extern-label { reason: "async" }
+    cause: check-extern-why
+    fix: check-extern-fix { reason: "async" }
+  error[E0247] check-extern { reason: "callback", name: "" }
+    primary 10:21-10:33: check-extern-label { reason: "callback" }
+    cause: check-extern-why
+    fix: check-extern-fix { reason: "callback" }
