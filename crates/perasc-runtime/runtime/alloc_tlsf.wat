@@ -36,6 +36,9 @@
   ;; JavaScript's `String()`, or for an `f32` (`single`), the fewest digits
   ;; that read back as it. At most 25 ASCII bytes.
   (import "peras" "float_text" (func $float_text (param f64 i32 i32) (result i32)))
+  ;; The number the `len` bytes at `at` write, by JavaScript's `Number`: what
+  ;; `str_parse_float` cannot read exactly by itself.
+  (import "peras" "float_parse" (func $float_parse (param i32 i32) (result f64)))
 
   (memory (export "memory") 1)
 

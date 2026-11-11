@@ -661,6 +661,102 @@
     (i32.store offset=8 (local.get $c) (i32.add (local.get $data) (local.get $from)))
     (local.get $next))
 
+  ;; The decimal number `h` writes, as `parseF64` reads it: a sign or none,
+  ;; digits with at most one point and at least one digit, then `e` or `E`, a
+  ;; sign or none and digits; NaN for any other text, which no text accepted
+  ;; can write. Correctly rounded, as JavaScript's `Number`: exactly here
+  ;; when the digits fit in 53 bits and the power of ten is at most 22, one
+  ;; operation on two exact values (Clinger, 1990); by the host's `Number`
+  ;; otherwise, on the text this has checked.
+  (func (export "str_parse_float") (param $h i32) (result f64)
+    (local $len i32) (local $data i32) (local $i i32) (local $c i32) (local $d i32)
+    (local $negative i32) (local $m i64) (local $seen i32) (local $dropped i32)
+    (local $point i32) (local $exp i32) (local $e i32) (local $eneg i32) (local $edigits i32)
+    (local $x f64) (local $p f64) (local $k i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (if (i32.lt_u (local.get $i) (local.get $len))
+      (then
+        (local.set $c (i32.load8_u (local.get $data)))
+        (if (i32.or (i32.eq (local.get $c) (i32.const 43)) (i32.eq (local.get $c) (i32.const 45)))
+          (then
+            (local.set $negative (i32.eq (local.get $c) (i32.const 45)))
+            (local.set $i (i32.const 1))))))
+    ;; The mantissa: up to 18 significant digits kept exactly, the others
+    ;; only noted, as a change of the exponent before the point.
+    (block $mantissa
+      (loop $next
+        (br_if $mantissa (i32.ge_u (local.get $i) (local.get $len)))
+        (local.set $c (i32.load8_u (i32.add (local.get $data) (local.get $i))))
+        (if (i32.eq (local.get $c) (i32.const 46))
+          (then
+            (if (local.get $point) (then (return (f64.const nan))))
+            (local.set $point (i32.const 1))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next)))
+        (local.set $d (i32.sub (local.get $c) (i32.const 48)))
+        (br_if $mantissa (i32.gt_u (local.get $d) (i32.const 9)))
+        (local.set $seen (i32.const 1))
+        (if (i64.lt_u (local.get $m) (i64.const 100000000000000000))
+          (then
+            (local.set $m (i64.add (i64.mul (local.get $m) (i64.const 10)) (i64.extend_i32_u (local.get $d))))
+            (if (local.get $point) (then (local.set $exp (i32.sub (local.get $exp) (i32.const 1))))))
+          (else
+            (if (local.get $d) (then (local.set $dropped (i32.const 1))))
+            (if (i32.eqz (local.get $point)) (then (local.set $exp (i32.add (local.get $exp) (i32.const 1)))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (if (i32.eqz (local.get $seen)) (then (return (f64.const nan))))
+    ;; The exponent.
+    (if (i32.lt_u (local.get $i) (local.get $len))
+      (then
+        (local.set $c (i32.load8_u (i32.add (local.get $data) (local.get $i))))
+        (if (i32.eqz (i32.or (i32.eq (local.get $c) (i32.const 101)) (i32.eq (local.get $c) (i32.const 69))))
+          (then (return (f64.const nan))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (if (i32.lt_u (local.get $i) (local.get $len))
+          (then
+            (local.set $c (i32.load8_u (i32.add (local.get $data) (local.get $i))))
+            (if (i32.or (i32.eq (local.get $c) (i32.const 43)) (i32.eq (local.get $c) (i32.const 45)))
+              (then
+                (local.set $eneg (i32.eq (local.get $c) (i32.const 45)))
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))))))
+        (block $exponent
+          (loop $next
+            (br_if $exponent (i32.ge_u (local.get $i) (local.get $len)))
+            (local.set $d (i32.sub (i32.load8_u (i32.add (local.get $data) (local.get $i))) (i32.const 48)))
+            (if (i32.gt_u (local.get $d) (i32.const 9)) (then (return (f64.const nan))))
+            (if (i32.lt_u (local.get $e) (i32.const 100000))
+              (then (local.set $e (i32.add (i32.mul (local.get $e) (i32.const 10)) (local.get $d)))))
+            (local.set $edigits (i32.const 1))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next)))
+        (if (i32.eqz (local.get $edigits)) (then (return (f64.const nan))))
+        (local.set $exp (i32.add (local.get $exp)
+          (select (i32.sub (i32.const 0) (local.get $e)) (local.get $e) (local.get $eneg))))))
+    (if (i64.eqz (local.get $m))
+      (then (return (select (f64.const -0) (f64.const 0) (local.get $negative)))))
+    ;; Exact here: the digits and the power of ten are both exact, and one
+    ;; operation on them rounds once, as IEEE 754 does.
+    (if (i32.and
+          (i32.and (i32.eqz (local.get $dropped)) (i64.le_u (local.get $m) (i64.const 9007199254740992)))
+          (i32.and (i32.ge_s (local.get $exp) (i32.const -22)) (i32.le_s (local.get $exp) (i32.const 22))))
+      (then
+        (local.set $x (f64.convert_i64_u (local.get $m)))
+        (local.set $p (f64.const 1))
+        (local.set $k (select (i32.sub (i32.const 0) (local.get $exp)) (local.get $exp)
+          (i32.lt_s (local.get $exp) (i32.const 0))))
+        (block $done
+          (loop $next
+            (br_if $done (i32.eqz (local.get $k)))
+            (local.set $p (f64.mul (local.get $p) (f64.const 10)))
+            (local.set $k (i32.sub (local.get $k) (i32.const 1)))
+            (br $next)))
+        (local.set $x (select (f64.div (local.get $x) (local.get $p)) (f64.mul (local.get $x) (local.get $p))
+          (i32.lt_s (local.get $exp) (i32.const 0))))
+        (return (select (f64.neg (local.get $x)) (local.get $x) (local.get $negative)))))
+    (call $float_parse (local.get $data) (local.get $len)))
+
   ;; Part `c` of an array of views: a header for the `len` bytes at `at`,
   ;; and its handle.
   (func $view (param $block i32) (param $headers i32) (param $c i32) (param $at i32) (param $len i32)

@@ -2050,9 +2050,16 @@ fn runtime_imports(
          for (let i = 0; i < text.length; i++) $memoryBytes[at + i] = text.charCodeAt(i);\n  \
          return text.length;\n\
          }};\n\
+         // A decimal number the runtime has checked but cannot read exactly by itself.\n\
+         const $floatParse = (at, len) => {{\n  \
+         if ($memoryBytes.buffer !== $runtime.memory.buffer) $memoryBytes = new Uint8Array($runtime.memory.buffer);\n  \
+         let text = \"\";\n  \
+         for (let i = 0; i < len; i++) text += String.fromCharCode($memoryBytes[at + i]);\n  \
+         return Number(text);\n\
+         }};\n\
          const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
          {memory}\
-         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText }}{env} }})).instance.exports;\n\
+         const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText, float_parse: $floatParse }}{env} }})).instance.exports;\n\
          {seed}\
          const $bounds = (index, length) => {{\n  \
          if (length === -1) throw new RangeError({overflow});\n  \

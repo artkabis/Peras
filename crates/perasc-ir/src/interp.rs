@@ -437,6 +437,18 @@ impl Machine<'_> {
     /// `separator`, or to the end, written into `cursor`, a copy here of
     /// what the runtime's view shows; where the next part starts, or -1 when
     /// this one is the last.
+    /// The parts of `s` between each `separator`, as a new array of strings.
+    fn split(&mut self, s: &[u8], separator: &[u8]) -> Value {
+        let parts: Vec<Value> = crate::text::split(s, separator)
+            .iter()
+            .map(|p| self.string(p))
+            .collect();
+        self.allocated += 1;
+        self.heap.insert(self.allocated, parts);
+        self.deep.insert(self.allocated);
+        Value::Handle(self.allocated)
+    }
+
     fn next_part(
         &mut self,
         s: &[u8],
@@ -754,20 +766,14 @@ impl Machine<'_> {
             // parts as `split`.
             F::Split | F::SplitViews => {
                 let separator = text(self, 1)?;
-                let parts: Vec<Value> = crate::text::split(&s, &separator)
-                    .iter()
-                    .map(|p| self.string(p))
-                    .collect();
-                self.allocated += 1;
-                self.heap.insert(self.allocated, parts);
-                self.deep.insert(self.allocated);
-                Value::Handle(self.allocated)
+                self.split(&s, &separator)
             }
             F::StrCursor => self.string(&[]),
             F::NextPart => {
                 let separator = text(self, 1)?;
                 self.next_part(&s, &separator, operands.get(2).copied(), int(3)?)?
             }
+            F::ParseFloat => Value::F64(crate::text::parse_decimal(&s).unwrap_or(f64::NAN)),
             F::IsInt => Value::Bool(crate::text::parse_int(&s, int(1)?).is_some()),
             F::ParseInt => Value::I64(crate::text::parse_int(&s, 64).unwrap_or(0)),
             F::ArrSlice

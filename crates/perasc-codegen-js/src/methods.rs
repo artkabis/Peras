@@ -275,7 +275,7 @@ impl Module<'_> {
             }
             "slice" => format!("{me}.slice({}, {})", arg(0), arg(1)),
             "trim" | "toUpperCase" | "toLowerCase" | "split" | "parseI32" | "parseI64"
-            | "repeat" => {
+            | "parseF64" | "repeat" => {
                 let helper = self.helper(match name {
                     "trim" => "$trim",
                     "toUpperCase" => "$upper",
@@ -283,6 +283,7 @@ impl Module<'_> {
                     "split" => "$split",
                     "parseI32" => "$parseI32",
                     "parseI64" => "$parseI64",
+                    "parseF64" => "$parseF64",
                     _ => "$repeat",
                 });
                 let args: Vec<String> = std::iter::once(me.to_owned())

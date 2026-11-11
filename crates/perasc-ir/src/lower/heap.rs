@@ -1019,6 +1019,9 @@ impl Lowering<'_> {
         views: bool,
     ) -> Option<Vec<Expr>> {
         let (id, buffer) = text;
+        if method == "parseF64" {
+            return Some(Self::parse_float(state, buffer.clone()));
+        }
         if matches!(method, "parseI32" | "parseI64") {
             return Some(Self::parse_int(state, buffer.clone(), method == "parseI32"));
         }

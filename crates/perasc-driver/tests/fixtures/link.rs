@@ -49,6 +49,25 @@ pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, 
             i32::try_from(text.len()).map_err(|_| wasmi::Error::new("length"))
         },
     )?;
+    // A decimal number the runtime cannot read exactly by itself, read as
+    // the loader's `Number` reads it: correctly rounded.
+    runtime.func_wrap(
+        "peras",
+        "float_parse",
+        |caller: Caller<'_, Reported>, at: i32, len: i32| {
+            let memory = caller
+                .get_export("memory")
+                .and_then(Extern::into_memory)
+                .ok_or_else(|| wasmi::Error::new("memory"))?;
+            let at = usize::try_from(at).map_err(|_| wasmi::Error::new("address"))?;
+            let len = usize::try_from(len).map_err(|_| wasmi::Error::new("length"))?;
+            let mut bytes = vec![0; len];
+            memory
+                .read(&caller, at, &mut bytes)
+                .map_err(|_| wasmi::Error::new("read"))?;
+            Ok(perasc_ir::text::parse_decimal(&bytes).unwrap_or(f64::NAN))
+        },
+    )?;
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, allocator_module)?)?;
     let mut linker = Linker::new(&engine);

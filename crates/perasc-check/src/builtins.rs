@@ -194,7 +194,7 @@ fn searchable(element: &Ty) -> bool {
 }
 
 /// The methods of strings beyond `copy`.
-const STRING_METHODS: [&str; 14] = [
+const STRING_METHODS: [&str; 15] = [
     "indexOf",
     "includes",
     "startsWith",
@@ -209,6 +209,7 @@ const STRING_METHODS: [&str; 14] = [
     "split",
     "parseI32",
     "parseI64",
+    "parseF64",
 ];
 
 /// A method of `String`.
@@ -224,6 +225,7 @@ fn string_method(name: &str) -> Option<Method> {
         "split" => (vec![Ty::String], Ty::Array(Box::new(Ty::String))),
         "parseI32" => (Vec::new(), Ty::Option(Box::new(int))),
         "parseI64" => (Vec::new(), Ty::Option(Box::new(Ty::Int(IntTy::I64)))),
+        "parseF64" => (Vec::new(), Ty::Option(Box::new(Ty::Float(FloatTy::F64)))),
         _ => return None,
     };
     Some(Method { params, ret })

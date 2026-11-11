@@ -656,11 +656,15 @@ pub enum RuntimeFn {
     /// the next part starts, or -1 when this one was the last. The parts are
     /// those of `Split`, the last empty one included.
     NextPart,
+    /// `(s) -> f64`: the decimal number `s` writes, correctly rounded, as
+    /// `parseF64` reads it ([`text::is_decimal`]); NaN when it is not one,
+    /// which no text it accepts can write.
+    ParseFloat,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 46] = [
+    pub const ALL: [Self; 47] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -707,6 +711,7 @@ impl RuntimeFn {
         Self::ArrPermute,
         Self::StrCursor,
         Self::NextPart,
+        Self::ParseFloat,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -740,6 +745,7 @@ impl RuntimeFn {
             Self::SplitViews => "str_split_views",
             Self::StrCursor => "str_cursor",
             Self::NextPart => "str_next_part",
+            Self::ParseFloat => "str_parse_float",
             Self::FmtFloat => "fmt_float",
             Self::MapNew => "map_new",
             Self::MapFindI => "map_find_i",
@@ -801,6 +807,7 @@ impl RuntimeFn {
             | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
             | Self::StrCursor
+            | Self::ParseFloat
             | Self::Upper
             | Self::Lower
             | Self::ArrReverse
@@ -845,7 +852,7 @@ impl RuntimeFn {
             | Self::MapDeleteS => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
-            Self::MapValueF => Ty::F64,
+            Self::MapValueF | Self::ParseFloat => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
             | Self::ArrPermute

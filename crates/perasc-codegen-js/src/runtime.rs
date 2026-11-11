@@ -150,6 +150,11 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         "const $repeat = (s, n) => (n > 0 ? s.repeat(n) : \"\");",
     ),
     (
+        "$parseF64",
+        &[],
+        "const $parseF64 = (s) => (/^[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$/.test(s) ? Number(s) : undefined);",
+    ),
+    (
         "$parseI32",
         &[],
         "const $parseI32 = (s) => { if (!/^[+-]?[0-9]+$/.test(s)) return undefined; const n = Number(s); return n >= -2147483648 && n <= 2147483647 ? n : undefined; };",
