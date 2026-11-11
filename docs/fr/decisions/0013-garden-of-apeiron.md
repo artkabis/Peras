@@ -147,7 +147,7 @@ Une observation que les hypothèses n’avaient pas prévue, et qui doit accompa
 
 ### Ce que cela signifie
 
-- **Le programme comme compression tient.** Une scène de 6 Ko de code donne ce que donne une image de 10 Ko à un zoom, et ce que donneraient 42 Mo d’AVIF au zoom 64. Étirée, elle ne floute pas : elle ajoute des détails, ce qu’aucune image stockée ne peut.
+- **Le programme comme compression tient.** Une scène de 6 Ko de code donne ce que donne une image de 10 Ko à un zoom, et ce que donneraient 41,5 Mo d’AVIF au zoom 64. Étirée, elle ne floute pas : elle ajoute des détails, ce qu’aucune image stockée ne peut.
 - **L’œil pardonne de loin**, selon le modèle de SSIM : chaque format avec perte gagne réduit 4 fois, de 0,01 à 0,03. L’intuition du propriétaire tient ; les modèles plus proches de l’œil, Butteraugli et SSIMULACRA2, sont laissés à une exécution ultérieure.
 - **La sûreté ne coûte rien ici** : les vérifications de débordement de la décision 0011 coûtent 2 % d’une image en debug, et rien en production.
 - **Peras n’est pas beaucoup plus rapide que TypeScript sur des boucles flottantes.** Il rend la scène 1,2 fois plus vite, et 1,1 fois plus vite que Rust ; c’est la marge honnête, plus petite qu’espéré.

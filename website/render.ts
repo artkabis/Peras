@@ -138,6 +138,8 @@ export async function render(): Promise<string[]> {
   // Every heading id of every page, and the anchors links point to.
   const ids = new Map<string, Set<string>>();
   const anchors: { from: string; to: string; anchor: string }[] = [];
+  /** The images the pages show, under docs/: copied next to the pages. */
+  const images = new Set<string>();
   const sources = new Map<string, string>();
   for (const lang of langs) {
     for (const file of markdownFiles(join(docs, lang))) {
@@ -266,6 +268,28 @@ export async function render(): Promise<string[]> {
       return defaultLink(tokens, i, options, env, self);
     };
 
+    // Images: one under docs/ is copied with the site, at the same path from
+    // the page; a missing one is an error, as a broken link is.
+    const defaultImage =
+      md.renderer.rules.image ??
+      ((tokens, i, options, _env, self) => self.renderToken(tokens, i, options));
+    md.renderer.rules.image = (tokens, i, options, env, self) => {
+      const token = tokens[i];
+      const src = String(token?.attrGet("src") ?? "");
+      if (token !== undefined && !/^[a-z]+:/.test(src)) {
+        const absolute = resolve(dirname(join(docs, lang, path)), src);
+        const inDocs = relative(docs, absolute);
+        if (!existsSync(absolute)) {
+          problems.push(`${key}.md: missing image ${src}`);
+        } else if (inDocs.startsWith("..")) {
+          token.attrSet("src", `${repository}/raw/main/${relative(root, absolute)}`);
+        } else {
+          images.add(inDocs);
+        }
+      }
+      return defaultImage(tokens, i, options, env, self);
+    };
+
     const html = md.render(source);
     const first = /<p>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
     const description = first
@@ -292,6 +316,10 @@ export async function render(): Promise<string[]> {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, "public"), { recursive: true });
   cpSync(join(website, "src"), join(out, "_assets"), { recursive: true });
+  for (const image of images) {
+    mkdirSync(dirname(join(out, image)), { recursive: true });
+    cpSync(join(docs, image), join(out, image));
+  }
   const inputs: string[] = [];
   const search: Record<Lang, SearchDoc[]> = { en: [], fr: [] };
   for (const page of pages.values()) {

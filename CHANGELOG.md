@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **The garden, shown before and after** ([page](docs/en/garden.md), `node scripts/garden-showcase.mjs`): the README and the site open on the same zoomed meadow twice, as the smallest AVIF that keeps SSIM 0.95 at zoom 1 (9,774 bytes) shows it and as the 5,872-byte program draws it; the figures are read from the measured results, not typed. The site now copies the images a page shows, and a missing one fails its build.
 - **The garden of Apeiron, a procedural scene measured under a registered protocol** ([decision 0013](docs/en/decisions/0013-garden-of-apeiron.md), `node scripts/bench-garden.mjs`, [results](bench/garden/RESULTS.md)). A sky, mountains and a meadow are drawn pixel by pixel, with detail that grows as the scene is zoomed. The scene is written in TypeScript, Peras and Rust; the three give the same pixels, bit for bit, using only the operations IEEE 754 defines exactly and an integer hash. Five hypotheses were registered before any measure:
   - H1 holds: the 6 KB program is smaller than its smallest AVIF at SSIM 0.95 (10 KB);
   - H2 holds: zoomed 64 times, a stored image needs 4,452 times more bytes;

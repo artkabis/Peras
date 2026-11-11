@@ -8,6 +8,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- **Le jardin, montré avant et après** ([page](docs/fr/garden.md), `node scripts/garden-showcase.mjs`) : le README et le site s’ouvrent sur la même prairie zoomée deux fois, telle que la montre le plus petit AVIF qui garde un SSIM de 0,95 au zoom 1 (9 774 octets) et telle que la dessine le programme de 5 872 octets ; les chiffres sont lus dans les résultats mesurés, pas recopiés. Le site copie désormais les images qu’une page montre, et une image absente fait échouer son build.
 - **Le jardin d’Apeiron, une scène procédurale mesurée sous un protocole enregistré** ([décision 0013](docs/fr/decisions/0013-garden-of-apeiron.md), `node scripts/bench-garden.mjs`, [résultats](bench/garden/RESULTS.md)). Un ciel, des montagnes et une prairie sont dessinés pixel par pixel, avec des détails qui croissent à mesure qu’on zoome. La scène est écrite en TypeScript, Peras et Rust ; les trois donnent les mêmes pixels, bit pour bit, avec les seules opérations qu’IEEE 754 définit exactement et une empreinte entière. Cinq hypothèses ont été enregistrées avant toute mesure :
   - H1 tient : le programme de 6 Ko est plus petit que son plus petit AVIF à SSIM 0,95 (10 Ko) ;
   - H2 tient : zoomée 64 fois, une image stockée demande 4 452 fois plus d’octets ;

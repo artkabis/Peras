@@ -147,7 +147,7 @@ One observation the hypotheses did not foresee, and which must go with H1: the s
 
 ### What it means
 
-- **The program as compression holds.** A scene of 6 KB of code gives what an image of 10 KB gives at one zoom, and what 42 MB of AVIF would give at zoom 64. Stretched, it does not blur: it adds detail, as no stored image can.
+- **The program as compression holds.** A scene of 6 KB of code gives what an image of 10 KB gives at one zoom, and what 41.5 MB of AVIF would give at zoom 64. Stretched, it does not blur: it adds detail, as no stored image can.
 - **The eye forgives from afar**, with the model of SSIM: each lossy format scores higher reduced 4 times, by 0.01 to 0.03. The owner's intuition holds; models closer to the eye, Butteraugli and SSIMULACRA2, are left to a later run.
 - **Safety costs nothing here**: the overflow checks of decision 0011 cost 2 % of a frame in debug, and nothing in production.
 - **Peras is not much faster than TypeScript on floating-point loops.** It renders the scene 1.2 times as fast, and 1.1 times as fast as Rust; that is the honest margin, smaller than hoped.
