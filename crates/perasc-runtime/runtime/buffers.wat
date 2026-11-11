@@ -1409,10 +1409,13 @@
 
   ;; Whether `h` is a sign or none, then at least one decimal digit, and
   ;; nothing else, in the range of a signed integer of `bits` bits: up to
-  ;; 2^(bits-1) - 1, or 2^(bits-1) after `-`.
+  ;; 2^(bits-1) - 1, or 2^(bits-1) after `-`. The value it read is kept in
+  ;; `$int_value` for `str_parse_int`, which the lowering calls right after:
+  ;; the digits are read once (decision 0014, finding F201).
+  (global $int_value (mut i64) (i64.const 0))
   (func (export "str_is_int") (param $h i32) (param $bits i32) (result i32)
     (local $len i32) (local $at i32) (local $i i32) (local $c i32)
-    (local $limit i64) (local $mag i64) (local $d i64)
+    (local $limit i64) (local $tenth i64) (local $last i64) (local $mag i64) (local $d i64)
     (local.set $len (i32.load (local.get $h)))
     (local.set $at (i32.load offset=8 (local.get $h)))
     (local.set $i (call $digits_from (local.get $h)))
@@ -1422,6 +1425,10 @@
         (i64.shl (i64.const 1) (i64.extend_i32_u (i32.sub (local.get $bits) (i32.const 1))))
         (i64.const 1))
       (i64.extend_i32_u (global.get $negative))))
+    ;; `mag * 10 + d` is above the limit exactly when `mag` is above a tenth of
+    ;; it, or equal and `d` above its last digit: one division, not one per digit.
+    (local.set $tenth (i64.div_u (local.get $limit) (i64.const 10)))
+    (local.set $last (i64.rem_u (local.get $limit) (i64.const 10)))
     (block $done
       (loop $next
         (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
@@ -1429,31 +1436,23 @@
           (i32.load8_u (i32.add (local.get $at) (local.get $i))) (i32.const 48)))
         (if (i32.gt_u (local.get $c) (i32.const 9)) (then (return (i32.const 0))))
         (local.set $d (i64.extend_i32_u (local.get $c)))
-        ;; `mag * 10 + d` above the limit is refused before it is computed.
-        (if (i64.gt_u (local.get $mag)
-              (i64.div_u (i64.sub (local.get $limit) (local.get $d)) (i64.const 10)))
-          (then (return (i32.const 0))))
+        (if (i64.ge_u (local.get $mag) (local.get $tenth))
+          (then
+            (if (i32.or
+                  (i64.gt_u (local.get $mag) (local.get $tenth))
+                  (i64.gt_u (local.get $d) (local.get $last)))
+              (then (return (i32.const 0))))))
         (local.set $mag (i64.add (i64.mul (local.get $mag) (i64.const 10)) (local.get $d)))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
+    (global.set $int_value
+      (select (i64.sub (i64.const 0) (local.get $mag)) (local.get $mag) (global.get $negative)))
     (i32.const 1))
 
-  ;; The integer `h` writes, which `str_is_int` accepted.
+  ;; The integer `h` writes, which `str_is_int` accepted just before: the value
+  ;; it read.
   (func (export "str_parse_int") (param $h i32) (result i64)
-    (local $len i32) (local $at i32) (local $i i32) (local $mag i64)
-    (local.set $len (i32.load (local.get $h)))
-    (local.set $at (i32.load offset=8 (local.get $h)))
-    (local.set $i (call $digits_from (local.get $h)))
-    (block $done
-      (loop $next
-        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
-        (local.set $mag (i64.add
-          (i64.mul (local.get $mag) (i64.const 10))
-          (i64.extend_i32_u (i32.sub
-            (i32.load8_u (i32.add (local.get $at) (local.get $i))) (i32.const 48)))))
-        (local.set $i (i32.add (local.get $i) (i32.const 1)))
-        (br $next)))
-    (select (i64.sub (i64.const 0) (local.get $mag)) (local.get $mag) (global.get $negative)))
+    (global.get $int_value))
 
   ;; Maps and sets (decision 0005): in insertion order, CPython's compact
   ;; layout, hashed with SipHash-1-3 under a secret key. A map is a 32-byte

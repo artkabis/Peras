@@ -60,6 +60,10 @@ const INPUTS = [
   "-9223372036854775808",
   "-9223372036854775809",
   "99999999999999999999999",
+  // Past the limit by a digit before the last, and the limit after zeros.
+  "2147483650",
+  "-2147483650",
+  "0000000000002147483647",
 ];
 
 describe("numbers as text", () => {

@@ -69,6 +69,7 @@ pub fn lower_with(
         data: Vec::new(),
         diagnostics: Vec::new(),
         current: String::new(),
+        body_span: Span::new(0, 0),
         jobs: Vec::new(),
         job_base: 0,
     };
@@ -159,6 +160,8 @@ struct Lowering<'a> {
     analysis: &'a Analysis,
     /// The name of the function being lowered, which its jobs carry.
     current: String,
+    /// The span of its body.
+    body_span: Span,
     /// The jobs of the `parallel for` loops lowered so far.
     jobs: Vec<Function>,
     /// The id of the first job: the number of other functions.
@@ -228,6 +231,12 @@ struct FnState {
     /// The text whose `split`, lowered next, may give views: set by the
     /// consumer that reads the array at once.
     views_for: Option<ExprId>,
+    /// `const f = t.split(…)` is being lowered with `t` unable to change and
+    /// `f` only read: its `split` gives views it owns ([`Lowering::local`]).
+    views_owned: bool,
+    /// The locals that cannot change while they live: parameters lent, not
+    /// `inout`, and `const` variables.
+    fixed: std::collections::HashSet<LocalId>,
     /// The array whose `filter`, lowered next, only counts the elements it
     /// keeps: set by `.length` read on it at once ([decision 0004], fusion).
     ///
@@ -250,6 +259,8 @@ impl FnState {
             loops: Vec::new(),
             views: HashMap::new(),
             views_for: None,
+            views_owned: false,
+            fixed: std::collections::HashSet::new(),
             counted: None,
         }
     }
@@ -493,6 +504,9 @@ impl Lowering<'_> {
                     })
                     .collect();
                 let ids = state.add_struct(param.name.symbol, name, &leaves);
+                if param.convention == Convention::Let {
+                    state.fixed.extend(ids.iter().copied());
+                }
                 for id in ids {
                     if state.is_owned(id) {
                         state.live.insert(id.0);
@@ -508,6 +522,9 @@ impl Lowering<'_> {
                 }
                 let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
                 let id = state.add(param.name.symbol, name, leaf);
+                if param.convention == Convention::Let {
+                    state.fixed.insert(id);
+                }
                 if param.convention == Convention::Inout {
                     state.writeback.push(id);
                 }
@@ -518,6 +535,7 @@ impl Lowering<'_> {
 
     fn function(&mut self, decl: &FnDecl) -> Function {
         self.current = self.function_name(decl);
+        self.body_span = decl.body.span;
         let mut state = FnState::new();
         let errors_before = self.diagnostics.len();
         let mut shapes = Vec::new();
@@ -912,6 +930,17 @@ impl Lowering<'_> {
             (None, Some(init)) => self.check_type(init),
             (None, None) => None,
         };
+        // `const f = t.split(",")`, `t` unable to change and `f` only read:
+        // `f` owns an array of views of `t`, not a copy of every part
+        // (decision 0014, finding F201).
+        if !local.mutable
+            && local
+                .init
+                .is_some_and(|init| self.split_views_local(state, local.name.symbol, init))
+        {
+            state.views_for = local.init.and_then(|init| self.split_source(init));
+            state.views_owned = true;
+        }
         if let Some(ty) = ty.filter(values::is_aggregate) {
             let Ok(leaves) = self.leaves(&ty) else {
                 self.unsupported(local.name.span, "struct");
@@ -921,8 +950,13 @@ impl Lowering<'_> {
                 Some(init) => self.value(state, init),
                 None => leaves.iter().map(|(_, t)| zero(*t)).collect(),
             };
+            state.views_for = None;
+            state.views_owned = false;
             state.flush(out);
             let ids = state.add_struct(local.name.symbol, name, &leaves);
+            if !local.mutable {
+                state.fixed.extend(ids.iter().copied());
+            }
             Self::assign(state, &ids, values, out);
             state.end_statement(out);
             return;
@@ -936,10 +970,59 @@ impl Lowering<'_> {
             Some(init) => self.expr(state, init),
             None => zero(ty),
         };
+        state.views_for = None;
+        state.views_owned = false;
         state.flush(out);
         let id = state.add(local.name.symbol, name, ty);
+        if !local.mutable {
+            state.fixed.insert(id);
+        }
         out.push(Stmt::Set(id, value));
         state.end_statement(out);
+    }
+
+    /// Whether `const name = init` may hold views: `init` is `t.split(…)`
+    /// with `t` a variable that cannot change while `name` lives, and every
+    /// use of `name` in the function is `name.length` or `name[i]`, which the
+    /// checker lets neither change the array nor move an element out of it.
+    fn split_views_local(&self, state: &FnState, name: Symbol, init: ExprId) -> bool {
+        let Some(text) = self.split_source(init) else {
+            return false;
+        };
+        let fixed = self
+            .root(text)
+            .is_some_and(|root| match state.lookup(root) {
+                Some(Binding::Lent(_)) => true,
+                Some(Binding::Scalar(id)) => state.fixed.contains(&id),
+                Some(Binding::Struct(ids)) => ids.iter().all(|id| state.fixed.contains(id)),
+                None => false,
+            });
+        if !fixed {
+            return false;
+        }
+        let body = self.body_span;
+        let inside = |span: Span| body.start <= span.start && span.end <= body.end;
+        let is_name = |id: ExprId| matches!(self.ast.expr(id).kind, AstExpr::Name(s) if s == name);
+        let uses = self
+            .ast
+            .exprs
+            .iter()
+            .filter(|e| inside(e.span) && matches!(e.kind, AstExpr::Name(s) if s == name))
+            .count();
+        let reads = self
+            .ast
+            .exprs
+            .iter()
+            .filter(|e| inside(e.span))
+            .filter(|e| match &e.kind {
+                AstExpr::Field { base, name: field } => {
+                    is_name(*base) && self.ast.name(field.symbol) == "length"
+                }
+                AstExpr::Index { base, .. } => is_name(*base),
+                _ => false,
+            })
+            .count();
+        uses > 0 && uses == reads
     }
 
     /// `target = value`, or `target op= value`, on a variable or a field.

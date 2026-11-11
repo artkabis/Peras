@@ -912,7 +912,7 @@ impl Lowering<'_> {
     /// read at once, by the consumer that asked (`views_for`).
     fn gives_views(state: &mut FnState, text: ExprId, method: &str, mode: Mode) -> bool {
         let asked = state.views_for.take() == Some(text);
-        asked && method == "split" && mode == Mode::Borrow
+        asked && method == "split" && (mode == Mode::Borrow || state.views_owned)
     }
 
     /// Notes the temporary `split` just filled with views of `text`.
