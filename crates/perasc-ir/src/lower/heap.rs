@@ -858,7 +858,7 @@ impl Lowering<'_> {
 
     /// The text and the separator of `for (const x of text.split(sep))`
     /// when its parts can be walked one at a time, with no array: `sep` is a
-    /// string written in the source, not empty, and the body does not name
+    /// string written in the source, empty for its characters (F207), and the body does not name
     /// `text`, so that it cannot change while a part is read.
     fn streamed_split(&self, iterable: ExprId, body: Span) -> Option<(ExprId, ExprId)> {
         let AstExpr::Call { callee, args, .. } = &self.ast.expr(iterable).kind else {
@@ -870,8 +870,7 @@ impl Lowering<'_> {
         let [separator] = args.as_slice() else {
             return None;
         };
-        let literal =
-            matches!(&self.ast.expr(*separator).kind, AstExpr::String(s) if !s.is_empty());
+        let literal = matches!(&self.ast.expr(*separator).kind, AstExpr::String(_));
         let text = matches!(self.check_type(*base), Some(CheckTy::String));
         let named = self
             .root(*base)
@@ -894,6 +893,8 @@ impl Lowering<'_> {
         body: &perasc_syntax::ast::Stmt,
         out: &mut Vec<Stmt>,
     ) {
+        let characters =
+            matches!(&self.ast.expr(separator).kind, AstExpr::String(s) if s.is_empty());
         let Some(source) = self.value_as(state, text, Mode::Borrow).into_iter().next() else {
             return;
         };
@@ -914,6 +915,14 @@ impl Lowering<'_> {
         state.drops.push(cursor);
         let at = state.temp(Ty::I32);
         state.pre.push(Stmt::Set(at, int(0)));
+        // The characters of an empty text are none: `"".split("")` is `[]`.
+        if characters {
+            state.pre.push(Stmt::If {
+                cond: super::binary(BinOp::Eq, len(&source), int(0)),
+                then: vec![Stmt::Set(at, int(-1))],
+                otherwise: Vec::new(),
+            });
+        }
         state.flush(out);
         let at_expr = super::local_expr(state, at);
         state.open();

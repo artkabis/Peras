@@ -461,11 +461,27 @@ impl Machine<'_> {
         };
         let from = usize::try_from(from).map_err(|_| Trap::Unreachable)?;
         let rest = s.get(from..).ok_or(Trap::Unreachable)?;
-        let at = if separator.is_empty() {
-            None
-        } else {
-            rest.windows(separator.len()).position(|w| w == separator)
-        };
+        if separator.is_empty() {
+            // One character: its lead byte and its continuation bytes.
+            let mut end = from + 1;
+            while end < s.len() && crate::text::continues(s, end) {
+                end += 1;
+            }
+            let bytes = s
+                .get(from..end)
+                .unwrap_or_default()
+                .iter()
+                .map(|&b| Value::I32(i32::from(b)))
+                .collect();
+            self.heap.insert(cursor, bytes);
+            let next = if end < s.len() {
+                i32::try_from(end).unwrap_or(-1)
+            } else {
+                -1
+            };
+            return Ok(Value::I32(next));
+        }
+        let at = rest.windows(separator.len()).position(|w| w == separator);
         let (part, next) = match at {
             Some(i) => (
                 rest.get(..i).unwrap_or_default(),

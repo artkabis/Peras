@@ -28,6 +28,8 @@ interface Words {
   firstLong(text: string, min: number): string;
   countUntil(text: string, stop: string): number;
   nestedLengths(text: string): number;
+  charsOf(text: string): string;
+  upperCount(text: string, stop: string): number;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -125,6 +127,29 @@ describe("strings in JavaScript", () => {
           expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
           expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
         }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`walks the characters of split("") one at a time, as split gives them, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      // Peras's split("") cuts at characters, code points, not UTF-16 units.
+      const chars = (t: string) => Array.from(t);
+      for (const t of ["", "a", "abc", "héllo", "日本語", "a😀b", "𝄞x", " ,\n", "ÉtÉ"]) {
+        expect(m.charsOf(t), JSON.stringify(t)).toBe(
+          chars(t)
+            .map((c) => `${c}|`)
+            .join(""),
+        );
+        for (const stop of ["", "x", "b", "語"]) {
+          let n = 0;
+          for (const c of chars(t)) {
+            if (c === stop) break;
+            if (c.toLowerCase() !== c && /^[A-Z]$/.test(c)) n++;
+          }
+          expect(m.upperCount(t, stop), `${t} / ${stop}`).toBe(n);
+        }
+      }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

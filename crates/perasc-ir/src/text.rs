@@ -3,7 +3,7 @@
 //! count bytes; one that falls inside a character moves back to its start.
 
 /// Whether byte `i` continues a character.
-fn continues(s: &[u8], i: usize) -> bool {
+pub(crate) fn continues(s: &[u8], i: usize) -> bool {
     s.get(i).is_some_and(|b| b & 0xC0 == 0x80)
 }
 

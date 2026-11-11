@@ -627,9 +627,10 @@
     (local.get $c))
 
   ;; Points the view `c` at the part of `h` from `from` to the next
-  ;; `separator`, not empty, or to the end; gives where the next part starts,
-  ;; or -1 when this one is the last. A separator of one byte is looked for
-  ;; byte by byte, the usual case.
+  ;; `separator`, or to the end; gives where the next part starts, or -1 when
+  ;; this one is the last. A separator of one byte is looked for byte by byte,
+  ;; the usual case. An empty separator gives the characters one by one, as
+  ;; `split("")` does: a lead byte and its continuation bytes (F207).
   (func (export "str_next_part") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
     (local $len i32) (local $data i32) (local $k i32) (local $at i32) (local $end i32) (local $next i32)
     (local $byte i32)
@@ -637,6 +638,22 @@
     (local.set $data (i32.load offset=8 (local.get $h)))
     (local.set $k (i32.load (local.get $separator)))
     (local.set $at (i32.const -1))
+    (if (i32.eqz (local.get $k))
+      (then
+        (local.set $end (i32.add (local.get $from) (i32.const 1)))
+        (block $whole
+          (loop $more
+            (br_if $whole (i32.ge_u (local.get $end) (local.get $len)))
+            (br_if $whole
+              (i32.ne
+                (i32.and (i32.load8_u (i32.add (local.get $data) (local.get $end))) (i32.const 192))
+                (i32.const 128)))
+            (local.set $end (i32.add (local.get $end) (i32.const 1)))
+            (br $more)))
+        (i32.store (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+        (i32.store offset=4 (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+        (i32.store offset=8 (local.get $c) (i32.add (local.get $data) (local.get $from)))
+        (return (select (local.get $end) (i32.const -1) (i32.lt_u (local.get $end) (local.get $len))))))
     (if (i32.eq (local.get $k) (i32.const 1))
       (then
         (local.set $byte (i32.load8_u (i32.load offset=8 (local.get $separator))))

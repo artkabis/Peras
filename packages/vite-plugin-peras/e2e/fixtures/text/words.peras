@@ -126,3 +126,26 @@ export fn nestedLengths(text: String): i32 {
   }
   return n;
 }
+
+// The characters of a text walked one at a time, without an array of them
+// (decision 0016, finding F207): each joined with "|", and their count.
+export fn charsOf(text: String): String {
+  let out = "";
+  for (const c of text.split("")) {
+    out += `${c}|`;
+  }
+  return out;
+}
+
+export fn upperCount(text: String, stop: String): i32 {
+  let n = 0;
+  for (const c of text.split("")) {
+    if (c == stop) {
+      break;
+    }
+    if (c.toLowerCase() != c) {
+      n += 1;
+    }
+  }
+  return n;
+}
