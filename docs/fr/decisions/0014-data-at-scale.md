@@ -123,7 +123,7 @@ Aucune mesure n’ayant été prise, l’amendement ne peut pas avoir été guid
 
 ### Exécution 1, au commit `b06da25` : les résultats
 
-Mesuré le 2026-11-11 de 06:54 à 07:02 UTC, sur un Intel Xeon à 2,10 GHz à 4 cœurs, Chromium sans écran ; le rapport complet est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) et chaque nombre dans son `results.json`. Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+Mesuré le 2026-11-11 de 06:54 à 07:02 UTC, sur un Intel Xeon à 2,10 GHz à 4 cœurs, Chromium sans écran ; le rapport complet est dans [bench/data/run-1/RESULTS.md](../../../bench/data/run-1/RESULTS.md) et chaque nombre dans son `results.json`. Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
 
 | Hypothèse                                        | Verdict     | Mesuré                                                                |
 | ------------------------------------------------ | ----------- | --------------------------------------------------------------------- |

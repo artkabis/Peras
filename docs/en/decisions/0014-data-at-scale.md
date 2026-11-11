@@ -123,7 +123,7 @@ Written with the versions and the script, in commit `b06da25`, before run 1 star
 
 ### Run 1, at commit `b06da25`: the results
 
-Measured on 2026-11-11 from 06:54 to 07:02 UTC, on an Intel Xeon at 2.10 GHz with 4 cores, Chromium headless; the whole report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) and every number in its `results.json`. The three versions give the same summary, byte for byte, at every size.
+Measured on 2026-11-11 from 06:54 to 07:02 UTC, on an Intel Xeon at 2.10 GHz with 4 cores, Chromium headless; the whole report is in [bench/data/run-1/RESULTS.md](../../../bench/data/run-1/RESULTS.md) and every number in its `results.json`. The three versions give the same summary, byte for byte, at every size.
 
 | Hypothesis                                          | Verdict     | Measured                                                       |
 | --------------------------------------------------- | ----------- | -------------------------------------------------------------- |
