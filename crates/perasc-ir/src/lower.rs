@@ -942,9 +942,14 @@ impl Lowering<'_> {
             state.views_owned = true;
         }
         if let Some(ty) = ty.filter(values::is_aggregate) {
-            let Ok(leaves) = self.leaves(&ty) else {
-                self.unsupported(local.name.span, "struct");
-                return;
+            let leaves = match self.leaves(&ty) {
+                Ok(leaves) => leaves,
+                // The reason itself: a type that contains itself, an element
+                // not compiled yet…
+                Err(feature) => {
+                    self.unsupported(local.name.span, feature);
+                    return;
+                }
             };
             let values = match local.init {
                 Some(init) => self.value(state, init),

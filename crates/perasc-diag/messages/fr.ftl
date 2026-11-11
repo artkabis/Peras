@@ -836,7 +836,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé
-gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite `i32`, `i64`, `f32`, `f64` et `bool`, les structures, les options, et les tableaux de nombres et de booléens, avec toutes les instructions, les appels et les conversions.
+gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes, et cette construction n’est pas encore prise en charge ; la page « Ce qui fonctionne aujourd’hui » de la documentation dit, fonctionnalité par fonctionnalité, ce qui est compilé.
 gen-unsupported-fix = n’utilise pour l’instant que les constructions prises en charge dans ce module, ou limite-le à `perasc check`
 
 ## Rendu des diagnostics

@@ -836,7 +836,7 @@ gen-unsupported = code generation does not support { $feature ->
    *[other] this construct
 } yet
 gen-unsupported-label = valid Peras, not compiled yet
-gen-unsupported-why = The program is correct: the checks accepted it. Code generation is built step by step and, for now, handles `i32`, `i64`, `f32`, `f64` and `bool`, structures, options, and arrays of numbers and booleans, with every statement, calls and conversions.
+gen-unsupported-why = The program is correct: the checks accepted it. Code generation is built step by step, and this construct is not handled yet; the page "What works today" of the documentation lists, feature by feature, what is compiled.
 gen-unsupported-fix = use only the supported constructs in this module for now, or keep it to `perasc check`
 
 ## Diagnostic rendering
