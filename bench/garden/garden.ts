@@ -185,7 +185,8 @@ export function render(
       const x = cx + ((px + 0.5) / width - 0.5) / zoom;
       point(x, y, octaves, levels, out);
       pixels[py * width + px] =
-        (byte(out[0] ?? 0) | (byte(out[1] ?? 0) << 8) | (byte(out[2] ?? 0) << 16) | 0xff000000) >>> 0;
+        (byte(out[0] ?? 0) | (byte(out[1] ?? 0) << 8) | (byte(out[2] ?? 0) << 16) | 0xff000000) >>>
+        0;
     }
   }
   return width * height;
