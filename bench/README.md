@@ -41,6 +41,10 @@ Peras alone stops the listeners and timers left running and the libraries that l
 
 `node scripts/demo.mjs` runs the same animation of particles in three versions, alone in Chromium for 10 s each, and puts their recordings side by side, the GIF at the top of the README ([results](demo/RESULTS.md)): TypeScript as it is often written, a new object per particle at each frame; TypeScript written for speed, typed arrays by hand; and Peras compiled to WebAssembly. Each draws its frame rate and the memory the page holds, on one scale. At 1,500,000 particles: 8, 47 and 58 frames a second; the first one's heap climbs past 1 GB and falls at each collection, the other two stay flat at the same 50 MB. The gap between the TypeScript versions is the garbage collector's, the gap to Peras WebAssembly's; a managed module runs at TypeScript's speed. CI checks that the three run and draw.
 
+## The candle and the garden (`bench/candle`)
+
+`node scripts/candle.mjs` draws the same zoom into the garden of Apeiron with TypeScript as often written (`bench/candle/garden-objects.ts`, a new object for each colour, cell and petal), TypeScript by hand and Peras, which give the same pixels, checked frame by frame; it measures the processor time of each frame in Chromium, in five rounds, and draws the animation of the README from those numbers only ([results](candle/RESULTS.md)). `--draw` draws it again from the saved numbers. CI checks that the versions give the same pixels.
+
 ## Data at scale (`bench/data`)
 
 `node scripts/bench-data.mjs` measures a sales dashboard under a protocol registered before any measure ([decision 0014](../docs/en/decisions/0014-data-at-scale.md), [results](data/RESULTS.md)): a generated CSV of 100,000 to 4,000,000 rows, in idiomatic TypeScript, TypeScript optimized by hand and Peras, which give the same summary byte for byte; the time to the summary warm, to the first chart cold, the peak memory of the renderer, the bytes shipped and the lines of code. Two hypotheses held, five were refuted: plain Peras is slower than plain TypeScript. CI checks that the versions give the same summary.
