@@ -45,6 +45,18 @@ export const origin = 1793491200;
 /** One reading every 5 s per sensor: a row's time, from its index. */
 const step = 5 / sensors;
 
+/** Whether row `i` is broken on purpose: about one in 400. */
+export function isBroken(i: number, seed = 7): boolean {
+  return (hash(i, 7, seed) >>> 0) % 400 === 0;
+}
+
+/** How many of rows `first` to `first + rows - 1` are broken on purpose. */
+export function injected(first: number, rows: number, seed = 7): number {
+  let n = 0;
+  for (let i = first; i < first + rows; i++) if (isBroken(i, seed)) n++;
+  return n;
+}
+
 /**
  * Rows `first` to `first + rows - 1` of the stream as CSV lines, each ended
  * by "\n". About one row in 400 is broken, of five kinds in turn.
@@ -64,7 +76,7 @@ export function batch(first: number, rows: number, seed = 7): string {
     const watts = zone === 10 ? 800 + 400 * unit(i, 6, seed) : 20 * unit(i, 6, seed);
     const name = zones[zone] ?? "hall";
     let line = `${String(ts)},${String(sensor)},${name},${temp.toFixed(2)},${humidity.toFixed(1)},${watts.toFixed(3)}`;
-    if ((hash(i, 7, seed) >>> 0) % 400 === 0) {
+    if (isBroken(i, seed)) {
       const kind = (hash(i, 8, seed) >>> 0) % 5;
       if (kind === 0) line = line.slice(0, line.lastIndexOf(","));
       else if (kind === 1) line = line.replace(temp.toFixed(2), "NaN");

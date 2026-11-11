@@ -19,6 +19,10 @@ export interface Sample {
   agree: boolean | null;
   /** Blocks of Peras's heap alive after the call: 0, or a leak. */
   live: number;
+  /** Lines Peras refused as broken. */
+  broken: number;
+  /** Lines the generator broke on purpose: Peras must refuse exactly these. */
+  injected: number;
   /** Milliseconds since the stream started, when the batch ended. */
   at: number;
 }
@@ -104,6 +108,10 @@ export interface Summary {
   disagreed: number;
   /** The largest number of Peras blocks alive after a call. */
   maxLive: number;
+  /** Lines refused, lines broken on purpose, and batches where the two differ. */
+  broken: number;
+  injected: number;
+  brokenMismatches: number;
 }
 
 export function summarize(samples: readonly Sample[]): Summary {
@@ -132,6 +140,9 @@ export function summarize(samples: readonly Sample[]): Summary {
     compared: both.length,
     disagreed: both.filter((s) => s.agree === false).length,
     maxLive: samples.reduce((n, s) => Math.max(n, s.live), 0),
+    broken: samples.reduce((n, s) => n + s.broken, 0),
+    injected: samples.reduce((n, s) => n + s.injected, 0),
+    brokenMismatches: samples.filter((s) => s.broken !== s.injected).length,
   };
 }
 
@@ -145,6 +156,8 @@ const columns = [
   "first",
   "agree",
   "live",
+  "broken",
+  "injected",
   "at",
 ] as const;
 

@@ -28,11 +28,19 @@ Chaque lot donne un échantillon :
 | `first`        | lequel a tourné en premier, `peras` ou `typescript`                                 |
 | `agree`        | si les deux ont donné les mêmes nombres, ou vide quand ils ne sont pas comparés     |
 | `live`         | les blocs de la mémoire de Peras encore vivants après l’appel : 0, ou une fuite     |
+| `broken`       | les lignes que Peras a refusées                                                     |
+| `injected`     | les lignes que le générateur a cassées exprès : `broken` doit l’égaler              |
 | `at`           | les millisecondes depuis le début du flux, à la fin du lot                          |
 
 La page en tire : les lignes lues ; les lignes par seconde de chaque calcul seul ; combien de fois Peras est plus rapide, sur les lots où les deux ont tourné ; le temps de Peras par lot aux 50e, 95e et 99e centiles ; combien de lots ont donné les mêmes nombres ; les blocs restants ; les lignes cassées ; et le texte lu par seconde.
 
 **Exporter en JSON** donne le rapport entier : l’environnement (navigateur, cœurs, mémoire quand le navigateur la donne, le build), les réglages (lignes par lot, comparaison, graine), le résumé et chaque échantillon. **Exporter en CSV** donne les échantillons, une ligne par lot. La taille d’un lot et la comparaison sont figées dès que le flux a démarré, pour que chaque échantillon d’un export ait été pris sous les réglages qu’il nomme ; **Recommencer** repart de zéro.
+
+## Les lignes cassées
+
+Les lignes refusées ne sont pas perdues à cause de la vitesse. Le générateur casse environ une ligne sur 400 exprès, et sait lesquelles : la page compte, lot par lot, les lignes que Peras a refusées et celles cassées exprès, et n’affiche la tuile en vert que si les deux sont égales. Un test le vérifie ligne par ligne : sur 40 000 lignes, Peras refuse chaque ligne cassée et garde chaque ligne saine, avec les deux allocateurs ; le TypeScript refuse les mêmes, puisque les deux calculs donnent les mêmes comptes.
+
+Refuser est un choix. `parseF64` et `parseI32` ne prennent un nombre que si tout le texte en est un : une lecture tolérante ferait de `21,37` un 21 et de `45.3%` un 45,3, des nombres faux sans bruit dans les moyennes. Peras compte plutôt la ligne comme cassée, et la part de lignes cassées est elle-même une mesure de la qualité des données. Mettre les lignes cassées de côté pour les examiner, plutôt que seulement les compter, n’est pas encore fait.
 
 ## Ce qu’elle n’est pas
 

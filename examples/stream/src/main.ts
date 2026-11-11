@@ -32,7 +32,8 @@ const texts = {
     latency: "Peras per batch",
     agreement: "Same numbers",
     leaks: "Peras blocks left",
-    broken: "Broken lines",
+    broken: "Broken lines refused",
+    onPurpose: "broken on purpose",
     throughput: "Text read by Peras",
     batches: "batches",
     colon: ":",
@@ -74,7 +75,8 @@ const texts = {
     latency: "Peras par lot",
     agreement: "Mêmes nombres",
     leaks: "Blocs Peras restants",
-    broken: "Lignes cassées",
+    broken: "Lignes cassées refusées",
+    onPurpose: "cassées exprès",
     throughput: "Texte lu par Peras",
     batches: "lots",
     colon: " :",
@@ -298,7 +300,10 @@ function drawTiles(): void {
     tile(
       t.broken,
       numbers.format(totals.broken),
-      totals.lines > 0 ? `${two.format((totals.broken / totals.lines) * 100)} %` : "",
+      totals.lines > 0
+        ? `${two.format((totals.broken / totals.lines) * 100)} % · ${numbers.format(s.injected)} ${t.onPurpose}`
+        : "",
+      samples.length === 0 ? "" : s.brokenMismatches === 0 ? "good" : "critical",
     ),
     tile(
       t.throughput,

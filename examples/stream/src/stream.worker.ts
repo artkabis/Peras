@@ -2,7 +2,7 @@
 // when asked, with TypeScript, and says how long each took. The page only
 // draws.
 import { __perasHeap, digest } from "./telemetry.peras";
-import { batch } from "./generate.ts";
+import { batch, injected } from "./generate.ts";
 import { canonical, digest as reference } from "./digest.ts";
 import type { Sample } from "./metrics.ts";
 import type { Digest } from "./telemetry.peras";
@@ -57,6 +57,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
     first: r.compare ? first : "peras",
     agree: want === undefined ? null : canonical(got) === canonical(want),
     live: __perasHeap.live(),
+    broken: got.broken,
+    injected: injected(r.batch * r.rows, r.rows, r.seed),
     at: performance.timeOrigin + performance.now() - r.started,
   };
   const reply: Reply = { sample, digest: got };

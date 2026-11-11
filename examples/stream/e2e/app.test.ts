@@ -59,6 +59,9 @@ describe("the stream app", { timeout: 120_000 }, () => {
     expect(report.summary.compared).toBe(report.samples.length);
     expect(report.summary.disagreed).toBe(0);
     expect(report.summary.maxLive).toBe(0);
+    // Peras refused exactly the lines the generator broke, in every batch.
+    expect(report.summary.brokenMismatches).toBe(0);
+    expect(report.summary.broken).toBeGreaterThan(0);
     expect(report.summary.rows).toBe(report.samples.length * 10000);
     expect(report.settings).toEqual({ rowsPerBatch: 10000, compare: true, seed: 7 });
     expect(report.environment.build).toMatch(/^development/);
@@ -71,7 +74,9 @@ describe("the stream app", { timeout: 120_000 }, () => {
     const [download] = await Promise.all([page.waitForEvent("download"), page.click("#csv")]);
     const csv = await readFile(await download.path(), "utf8");
     const lines = csv.trimEnd().split("\n");
-    expect(lines[0]).toBe("batch,rows,bytes,generateMs,perasMs,typescriptMs,first,agree,live,at");
+    expect(lines[0]).toBe(
+      "batch,rows,bytes,generateMs,perasMs,typescriptMs,first,agree,live,broken,injected,at",
+    );
     expect(lines.length).toBe(report.samples.length + 1);
     expect(errors).toEqual([]);
   });

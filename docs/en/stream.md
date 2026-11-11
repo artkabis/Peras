@@ -28,11 +28,19 @@ Each batch gives one sample:
 | `first`        | which ran first, `peras` or `typescript`                                          |
 | `agree`        | whether both gave the same numbers, or empty when not compared                    |
 | `live`         | the blocks of Peras's memory still alive after the call: 0, or a leak             |
+| `broken`       | the lines Peras refused                                                           |
+| `injected`     | the lines the generator broke on purpose: `broken` must equal it                  |
 | `at`           | the milliseconds since the stream started, when the batch ended                   |
 
 The page shows, from them: the rows read; the rows per second of each digest alone; how many times faster Peras is, over the batches where both ran; Peras's time per batch at the 50th, 95th and 99th percentiles; how many batches gave the same numbers; the blocks left; the broken lines; and the text read per second.
 
 **Export JSON** gives the whole report: the environment (browser, cores, memory where the browser says it, the build), the settings (rows per batch, comparison, seed), the summary and every sample. **Export CSV** gives the samples, one line per batch. A batch's size and the comparison are fixed once the stream has started, so that every sample of an export was taken under the settings it names; **Reset** starts again.
+
+## Broken lines
+
+The lines refused are not lost to speed. The generator breaks about one line in 400 on purpose, and knows which: the page counts, batch by batch, the lines Peras refused and the lines broken on purpose, and shows the tile in green only when the two are equal. A test checks it line by line: on 40,000 lines, Peras refuses each broken line and keeps each sound one, on both allocators; the TypeScript refuses the same, since the two digests give the same counts.
+
+Refusing is the choice. `parseF64` and `parseI32` take a number only when the whole text is one: a lenient reading would make `21,37` into 21 and `45.3%` into 45.3, numbers silently wrong in the averages. Peras counts the line as broken instead, and the share of broken lines is itself a measure of the data's quality. Keeping the broken lines aside for inspection, rather than only counting them, is not done yet.
 
 ## What it is not
 

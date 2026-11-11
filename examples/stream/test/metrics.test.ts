@@ -11,6 +11,8 @@ const sample = (over: Partial<Sample>): Sample => ({
   first: "peras",
   agree: true,
   live: 0,
+  broken: 2,
+  injected: 2,
   at: 0,
   ...over,
 });
@@ -84,7 +86,7 @@ describe("the stream's metrics", () => {
   it("writes one CSV line per batch, an empty cell for what was not measured", () => {
     const csv = toCsv([sample({ typescriptMs: null, agree: null })]);
     expect(csv).toBe(
-      "batch,rows,bytes,generateMs,perasMs,typescriptMs,first,agree,live,at\n0,1000,38000,1,10,,peras,,0,0\n",
+      "batch,rows,bytes,generateMs,perasMs,typescriptMs,first,agree,live,broken,injected,at\n0,1000,38000,1,10,,peras,,0,2,2,0\n",
     );
   });
 });
