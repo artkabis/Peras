@@ -127,6 +127,60 @@ pub fn parse_int(s: &[u8], bits: i32) -> Option<i64> {
     })
 }
 
+/// What the loader's `float_text` writes for `mode`: 0 `String(x)`, 1 the
+/// same for an `f32`, `2 + d` `x.toFixed(d)`.
+#[must_use]
+pub fn float_text(x: f64, mode: i32) -> String {
+    match u32::try_from(mode - 2) {
+        Ok(digits) => fixed_text(x, digits),
+        Err(_) => number_text(x, mode == 1),
+    }
+}
+
+/// `x.toFixed(digits)`, as JavaScript writes it: the exact value of `x`
+/// rounded to `digits` decimals, a tie away from zero; `String(x)` from
+/// 1e21 up, and for NaN and the infinities; `0` for `-0`, `-0.00` for a
+/// negative number that rounds to zero.
+#[must_use]
+pub fn fixed_text(x: f64, digits: u32) -> String {
+    if !x.is_finite() || x.abs() >= 1e21 {
+        return number_text(x, false);
+    }
+    let digits = usize::try_from(digits).unwrap_or(0);
+    // Every digit of the exact value: a float is a fraction of a power of
+    // two, whose decimals end before the 1,075th.
+    let exact = format!("{:.1100}", x.abs());
+    let (whole, decimals) = exact.split_once('.').unwrap_or((&exact, ""));
+    let mut kept: Vec<u8> = whole.bytes().chain(decimals.bytes().take(digits)).collect();
+    // A tie or more rounds away from zero, as JavaScript picks the larger n.
+    if decimals.as_bytes().get(digits).is_some_and(|&d| d >= b'5') {
+        let mut i = kept.len();
+        loop {
+            if i == 0 {
+                kept.insert(0, b'1');
+                break;
+            }
+            i -= 1;
+            if let Some(d) = kept.get_mut(i) {
+                if *d == b'9' {
+                    *d = b'0';
+                } else {
+                    *d += 1;
+                    break;
+                }
+            }
+        }
+    }
+    let split = kept.len() - digits;
+    let mut out = String::from(if x < 0.0 { "-" } else { "" });
+    out.push_str(std::str::from_utf8(kept.get(..split).unwrap_or_default()).unwrap_or("0"));
+    if digits > 0 {
+        out.push('.');
+        out.push_str(std::str::from_utf8(kept.get(split..).unwrap_or_default()).unwrap_or(""));
+    }
+    out
+}
+
 /// A float as text, as JavaScript's `String()` writes it: the fewest
 /// significant digits that read back as the same number, in plain notation
 /// from 1e-6 up to 1e21 and in exponent notation outside; `NaN`,

@@ -521,6 +521,9 @@ impl Lowering<'_> {
             if method == "toString" {
                 return self.stringified(state, base, mode);
             }
+            if method == "toFixed" {
+                return self.fixed(state, base, args, mode);
+            }
             let op = match method {
                 "checkedAdd" => BinOp::Add,
                 "checkedSub" => BinOp::Sub,

@@ -685,8 +685,8 @@ impl Machine<'_> {
                 return Ok(self.string(b.to_string().as_bytes()));
             }
             (F::FmtFloat, Some(Value::F64(x))) => {
-                let single = matches!(operands.get(1), Some(Value::I32(1)));
-                return Ok(self.string(crate::text::number_text(*x, single).as_bytes()));
+                let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
+                return Ok(self.string(text?.as_bytes()));
             }
             (F::FmtInt | F::FmtBool | F::FmtFloat, _) => return Err(Trap::Unreachable),
             _ => {}
@@ -1245,4 +1245,18 @@ fn math(op: MathOp, v: Value) -> Value {
 fn js_round(x: f64) -> f64 {
     let down = x.floor();
     if x - down >= 0.5 { down + 1.0 } else { down }
+}
+
+/// The mode of `fmt_float`: 0, 1, or `2 + d` for `toFixed(d)`, whose `d` is
+/// from 0 to 100, as JavaScript's.
+fn float_mode(operand: Option<&Value>) -> Result<i32, Trap> {
+    let mode = match operand {
+        Some(Value::I32(m)) => *m,
+        _ => 0,
+    };
+    if (0..=102).contains(&mode) {
+        Ok(mode)
+    } else {
+        Err(Trap::Unreachable)
+    }
 }

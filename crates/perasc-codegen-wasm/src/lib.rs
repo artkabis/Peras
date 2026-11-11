@@ -2020,8 +2020,8 @@ fn runtime_imports(
          }};\n\
          let $memoryBytes = new Uint8Array(0);\n\
          const $floatText = (x, single, at) => {{\n  \
-         let text = String(x);\n  \
-         if (single && Number.isFinite(x))\n    \
+         let text = single > 1 ? x.toFixed(single - 2) : String(x);\n  \
+         if (single === 1 && Number.isFinite(x))\n    \
          for (let p = 1; p < 10; p++) {{\n      \
          const t = x.toPrecision(p);\n      \
          if (Math.fround(Number(t)) === x) {{\n        \

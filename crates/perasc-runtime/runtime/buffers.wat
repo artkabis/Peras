@@ -1383,10 +1383,15 @@
     (local.get $h))
 
   ;; `x` as text, written by the host into a new string: `-1.2345678901234567e-308`,
-  ;; 24 bytes, and `-0.0000012345678901234567`, 25, are the longest.
+  ;; 24 bytes, and `-0.0000012345678901234567`, 25, are the longest. `single`
+  ;; is 0 for an `f64`, 1 for an `f32`, `2 + d` for `x.toFixed(d)`: at most a
+  ;; sign, 21 digits, a point and `d` decimals, below 1e21, where it stops.
   (func (export "fmt_float") (param $x f64) (param $single i32) (result i32)
     (local $h i32)
-    (local.set $h (call $buf_new (i32.const 32) (i32.const 1) (i32.const 0)))
+    (local.set $h (call $buf_new
+      (i32.add (i32.const 32) (select (i32.sub (local.get $single) (i32.const 2)) (i32.const 0)
+        (i32.ge_s (local.get $single) (i32.const 2))))
+      (i32.const 1) (i32.const 0)))
     (i32.store (local.get $h)
       (call $float_text (local.get $x) (local.get $single) (i32.load offset=8 (local.get $h))))
     (local.get $h))

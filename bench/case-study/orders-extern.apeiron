@@ -68,7 +68,7 @@ export fn mount(root: Element, orders: Array<Order>): Group {
     list.textContent = "";
     for (const o of rows) {
       const li = document.createElement("li");
-      let label = `#${o.id} ${o.customer} ${o.amount}`;
+      let label = `#${o.id} ${o.customer} ${o.amount.toFixed(2)}`;
       if (!o.paid) {
         label += " (unpaid)";
       }
@@ -76,7 +76,7 @@ export fn mount(root: Element, orders: Array<Order>): Group {
       list.append(li);
     }
     const s = summarize(rows);
-    summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
+    summary.textContent = `${s.count} orders, ${s.total.toFixed(2)} total, ${s.unpaid} unpaid, top: ${s.top}`;
   };
 
   // The search waits for the user to stop typing: the slot holds one timer,

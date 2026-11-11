@@ -64,6 +64,7 @@ export const sections: Section[] = [
       "decisions/0009-browser-and-resources",
       "decisions/0010-calling-javascript",
       "decisions/0011-what-to-build-next",
+      "decisions/0012-cost-on-the-machine",
     ],
   },
 ];

@@ -136,12 +136,11 @@ pub fn generate(
     }
     out.push_str(&extern_imports);
     for helper in runtime::closure(&module.helpers) {
-        out.push_str(&runtime::source(
-            helper,
-            &options.bounds,
-            options.debug.is_some(),
-        ));
-        out.push('\n');
+        let source = runtime::source(helper, &options.bounds, options.debug.is_some());
+        if !source.is_empty() {
+            out.push_str(&source);
+            out.push('\n');
+        }
     }
     out.push_str(&wrappers);
     out.push_str(&body);

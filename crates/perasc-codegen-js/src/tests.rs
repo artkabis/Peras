@@ -668,3 +668,23 @@ fn sort_by_gives_what_a_stable_sort_gives() {
         .collect();
     gives(&source, &format!("[{}]", expected.join(",")));
 }
+
+#[test]
+fn to_fixed_is_javascripts() {
+    gives(
+        "export fn main(): Array<String> {
+           const n = -7;
+           const y: f32 = 0.1;
+           const half = 2.5;
+           return [half.toFixed(0), (1.005).toFixed(2), (-0.0001).toFixed(2), n.toFixed(1), y.toFixed(10), (60016.28000000002).toFixed(2)];
+         }",
+        "[\"3\",\"1.00\",\"-0.00\",\"-7.0\",\"0.1000000015\",\"60016.28\"]",
+    );
+    gives(
+        "export fn main(): String {
+           const d = 101;
+           return (1.5).toFixed(d);
+         }",
+        "throws: toFixed() digits argument must be between 0 and 100",
+    );
+}

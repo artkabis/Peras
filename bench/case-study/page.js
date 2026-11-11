@@ -22,10 +22,17 @@ export async function measure(url, count) {
     f();
     return performance.now() - t0;
   };
+  // The JavaScript heap after a collection, when the script measuring the
+  // page offers it (scripts/bench-case-study.mjs): before mounting, while
+  // shown, and once removed.
+  const heap = async () =>
+    typeof globalThis.__heap === "function" ? await globalThis.__heap() : 0;
+  const heapBefore = await heap();
   let handle;
   const mount = time(() => {
     handle = m.mount(app, orders);
   });
+  const heapShown = (await heap()) - heapBefore;
   const input = app.querySelector("input");
   const button = app.querySelector("button");
   input.value = "ada";
@@ -40,6 +47,7 @@ export async function measure(url, count) {
   if (typeof handle === "function") handle();
   else handle.release();
   const left = items();
+  const heapLeft = (await heap()) - heapBefore;
   input.value = "zzz";
   input.dispatchEvent(new Event("input"));
   button.click();
@@ -63,5 +71,5 @@ export async function measure(url, count) {
     if (typeof h === "function") h();
     else h.release();
   }
-  return { mount, sort, shown, firstSorted, summary, left, reacts, twice };
+  return { mount, sort, shown, firstSorted, summary, left, reacts, twice, heapShown, heapLeft };
 }

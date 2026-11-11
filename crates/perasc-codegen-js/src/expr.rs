@@ -383,7 +383,12 @@ impl Module<'_> {
                 }
             }
             if let (Some(value), Some(&id)) = (values.get(i), exprs.get(i)) {
-                let text = self.text_of(id, value);
+                // `${x}` converts as `String(x)` does: only an `f32` needs more.
+                let text = if self.ty(id) == Ty::Float(FloatTy::F32) {
+                    self.text_of(id, value)
+                } else {
+                    value.clone()
+                };
                 out.push_str("${");
                 out.push_str(&text);
                 out.push('}');

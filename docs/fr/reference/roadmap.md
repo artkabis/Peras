@@ -64,7 +64,8 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 - ~~Des fonctions fléchées à instructions qui capturent ce qu’elles utilisent, et les fonctions comme valeurs~~ : fait ([guide](../guide/managed.md#fonctions-fléchées)) ; l’étude de cas garde son état dans le tableau qu’elle monte, affiché deux fois dans une page.
 - ~~Remplacer une ressource libère la précédente~~ : fait, avec un `Slot` de groupe pour une fonction fléchée qui en remplace une ([référence du navigateur](browser.md)) ; l’étude de cas cherche après un délai.
 - ~~`sortBy(clé)`~~ : fait, `sortBy` et `sortByDescending` dans les deux modes ([méthodes](methods.md#trier-par-une-clé)), 3 à 7 fois la vitesse de TypeScript par un nombre.
-- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : `toFixed` ; le débordement d’entier arrêté en debug, une fois son coût mesuré ; les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
+- ~~`toFixed`~~ : fait, dans les deux modes, le texte de JavaScript par construction ([méthodes](methods.md#en-texte)) ; le coût sur la machine est mesuré à chaque étape désormais ([décision 0012](../decisions/0012-cost-on-the-machine.md)).
+- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : le débordement d’entier arrêté en debug, une fois son coût mesuré ; les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

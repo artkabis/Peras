@@ -45,6 +45,18 @@ export fn label(count: i64, done: bool): String {
 }
 ```
 
+| Méthode      | Sur                                                  | Donne                                                  | Statut                                       |
+| ------------ | ---------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------- |
+| `toFixed(d)` | flottants, et entiers de 32 bits ou moins (`number`) | la valeur avec `d` décimales, de 0 à 100, une `String` | <span class="status compiled">compilé</span> |
+
+`x.toFixed(2)` écrit ce qu’écrit le `toFixed` de JavaScript, dans les deux modes : la valeur exacte du flottant arrondie à `d` décimales, une égalité loin de zéro, donc `(2.5).toFixed(0)` vaut `"3"`, `(1.005).toFixed(2)` vaut `"1.00"` puisque `1.005` est un peu en dessous, et `(-0.0001).toFixed(2)` vaut `"-0.00"` ; à partir de `1e21`, le même texte que `toString()`. Hors de 0 à 100 décimales, elle lève une `RangeError`, comme celle de JavaScript. Un module managed appelle celle de JavaScript, sans rien ajouter à la page ; un module owned la demande à l’hôte, comme pour `toString()`, avec de la place pour 100 décimales au plus. Un `i64` est un `bigint` en JavaScript, qui n’a pas de `toFixed` : convertissez-le d’abord avec `toF64()`. Les autres formats, un séparateur de milliers ou une devise, passent par un bloc `extern` vers `Intl.NumberFormat`.
+
+```peras build
+export fn price(amount: f64, count: i32): String {
+  return `${count} × ${amount.toFixed(2)} € = ${(amount * count.toF64()).toFixed(2)} €`;
+}
+```
+
 ### Flottants
 
 | Méthode                   | Donne                                                                | État                                         |

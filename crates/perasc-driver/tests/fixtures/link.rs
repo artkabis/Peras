@@ -37,7 +37,7 @@ pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, 
         "peras",
         "float_text",
         |mut caller: Caller<'_, Reported>, x: f64, single: i32, at: i32| {
-            let text = perasc_ir::text::number_text(x, single != 0);
+            let text = perasc_ir::text::float_text(x, single);
             let memory = caller
                 .get_export("memory")
                 .and_then(Extern::into_memory)

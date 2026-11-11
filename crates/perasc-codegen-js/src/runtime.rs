@@ -80,14 +80,24 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         "const $sort = (xs, Typed) => { const t = Typed.from(xs).sort(); for (let i = 0; i < t.length; i++) xs[i] = t[i]; };",
     ),
     (
-        "$sortBy",
-        &["$cmpKey", "$radixBy"],
-        "const $sortBy = (xs, f, desc, kind) => { const n = xs.length; if (n < 2) return; const s = desc ? -1 : 1; if (kind === 0 && n >= 256) { const ix = new Uint32Array(n); for (let i = 0; i < n; i++) ix[i] = i; $radixBy(xs, f, desc, ix); const c = xs.slice(); for (let i = 0; i < n; i++) xs[i] = c[ix[i]]; return; } if (kind === 2) { let wide = false; for (let i = 0; i < n && !wide; i++) { const k = f(xs[i]); for (let j = 0; j < k.length; j++) if (k.charCodeAt(j) >= 0xd800) { wide = true; break; } } if (!wide) { xs.sort((a, b) => { const x = f(a), y = f(b); return s * (x < y ? -1 : x > y ? 1 : 0); }); return; } } const d = new Array(n); for (let i = 0; i < n; i++) d[i] = { k: f(xs[i]), v: xs[i] }; d.sort((p, q) => s * $cmpKey(p.k, q.k, kind)); for (let i = 0; i < n; i++) xs[i] = d[i].v; };",
+        "$sortNum",
+        &["$radixBy", "$cmpNum"],
+        "const $sortNum = (xs, f, desc) => { const n = xs.length; if (n < 2) return; if (n >= 256) { const ix = new Uint32Array(n); for (let i = 0; i < n; i++) ix[i] = i; $radixBy(xs, f, desc, ix); const c = xs.slice(); for (let i = 0; i < n; i++) xs[i] = c[ix[i]]; return; } const s = desc ? -1 : 1, d = new Array(n); for (let i = 0; i < n; i++) d[i] = { k: f(xs[i]), v: xs[i] }; d.sort((p, q) => s * $cmpNum(p.k, q.k)); for (let i = 0; i < n; i++) xs[i] = d[i].v; };",
     ),
     (
-        "$cmpKey",
+        "$cmpNum",
         &[],
-        "const $cmpKey = (a, b, kind) => { if (kind === 2) { if (a === b) return 0; const n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) { let x = a.charCodeAt(i), y = b.charCodeAt(i); if (x !== y) { if (x >= 0xd800 && y >= 0xd800) { x = x >= 0xe000 ? x - 0x800 : x + 0x2000; y = y >= 0xe000 ? y - 0x800 : y + 0x2000; } return x - y; } } return a.length - b.length; } if (a < b) return -1; if (a > b) return 1; if (a === b) return a === 0 && kind === 0 ? (Object.is(a, -0) ? 0 : 1) - (Object.is(b, -0) ? 0 : 1) : 0; return (a !== a ? 1 : 0) - (b !== b ? 1 : 0); };",
+        "const $cmpNum = (a, b) => a < b ? -1 : a > b ? 1 : a === b ? (Object.is(a, -0) ? 0 : 1) - (Object.is(b, -0) ? 0 : 1) : (a !== a ? 1 : 0) - (b !== b ? 1 : 0);",
+    ),
+    (
+        "$sortStr",
+        &[],
+        "const $sortStr = (xs, f, desc) => { const n = xs.length, s = desc ? -1 : 1; let wide = false; for (let i = 0; i < n && !wide; i++) { const k = f(xs[i]); for (let j = 0; j < k.length; j++) if (k.charCodeAt(j) >= 0xd800) { wide = true; break; } } if (!wide) { xs.sort((a, b) => { const x = f(a), y = f(b); return s * (x < y ? -1 : x > y ? 1 : 0); }); return; } const fix = (u) => (u >= 0xe000 ? u - 0x800 : u >= 0xd800 ? u + 0x2000 : u); const cmp = (a, b) => { const m = Math.min(a.length, b.length); for (let i = 0; i < m; i++) { const x = a.charCodeAt(i), y = b.charCodeAt(i); if (x !== y) return fix(x) - fix(y); } return a.length - b.length; }; const d = new Array(n); for (let i = 0; i < n; i++) d[i] = { k: f(xs[i]), v: xs[i] }; d.sort((p, q) => s * cmp(p.k, q.k)); for (let i = 0; i < n; i++) xs[i] = d[i].v; };",
+    ),
+    (
+        "$sortBig",
+        &[],
+        "const $sortBig = (xs, f, desc) => { const n = xs.length, s = desc ? -1 : 1, d = new Array(n); for (let i = 0; i < n; i++) d[i] = { k: f(xs[i]), v: xs[i] }; d.sort((p, q) => s * (p.k < q.k ? -1 : p.k > q.k ? 1 : 0)); for (let i = 0; i < n; i++) xs[i] = d[i].v; };",
     ),
     (
         "$radixBy",
@@ -107,12 +117,12 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
     (
         "$upper",
         &[],
-        "const $upper = (s) => s.replace(/[a-z]+/g, (m) => m.toUpperCase());",
+        "const $upper = (s) => (/[^\\x00-\\x7f]/.test(s) ? s.replace(/[a-z]+/g, (m) => m.toUpperCase()) : s.toUpperCase());",
     ),
     (
         "$lower",
         &[],
-        "const $lower = (s) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());",
+        "const $lower = (s) => (/[^\\x00-\\x7f]/.test(s) ? s.replace(/[A-Z]+/g, (m) => m.toLowerCase()) : s.toLowerCase());",
     ),
     (
         "$split",
@@ -218,9 +228,20 @@ pub fn closure(used: &BTreeSet<&'static str>) -> Vec<&'static str> {
         .collect()
 }
 
+/// `$Resource` without the leak detector, as a production build has it.
+const RESOURCE: &str = "class $Resource { #release; constructor(release) { this.#release = release; } release() { const release = this.#release; if (release === undefined) return; this.#release = undefined; release(); } [Symbol.dispose ?? Symbol.for(\"Symbol.dispose\")]() { this.release(); } }";
+
 /// A helper's source; `bounds` is the text of an index out of bounds, with
 /// `{index}` and `{length}` in it.
 pub fn source(name: &str, bounds: &str, debug: bool) -> String {
+    // In production, no leak detector: nothing registers a resource.
+    if !debug {
+        match name {
+            "$leaks" => return String::new(),
+            "$Resource" => return RESOURCE.to_owned(),
+            _ => {}
+        }
+    }
     let source = HELPERS
         .iter()
         .find(|(n, _, _)| *n == name)

@@ -43,15 +43,15 @@ impl Module<'_> {
                     Some(Ty::Callback(_, key)) => *key,
                     _ => Ty::Error,
                 };
-                // 0: numbers, sorted by their bits; 1: `i64`, as `bigint`s; 2: strings.
-                let kind = match key {
-                    Ty::Int(IntTy::I64) => 1,
-                    Ty::String => 2,
-                    _ => 0,
-                };
-                let helper = self.helper("$sortBy");
+                // Only the sort the key needs: numbers by their bits, `i64`
+                // as `bigint`s, strings by their code points.
+                let helper = self.helper(match key {
+                    Ty::Int(IntTy::I64 | IntTy::U64) => "$sortBig",
+                    Ty::String => "$sortStr",
+                    _ => "$sortNum",
+                });
                 let desc = name == "sortByDescending";
-                Some(format!("{helper}({me}, {}, {desc}, {kind})", arg(0)))
+                Some(format!("{helper}({me}, {}, {desc})", arg(0)))
             }
             Ty::Array(element) => self.array_method(element, name, &me, rest),
             Ty::String => self.string_method(name, &me, rest),
@@ -114,6 +114,8 @@ impl Module<'_> {
         let ty = Ty::Int(int);
         Some(match name {
             "toString" => self.text_of(base, me),
+            // JavaScript's own: no helper, and the same text as in an owned module.
+            "toFixed" => format!("({me}).toFixed({})", arg(0)),
             "abs" if big => {
                 let me = self.spill(me.to_owned());
                 wrap(int, &format!("{me} < 0n ? -{me} : {me}"))
@@ -169,6 +171,8 @@ impl Module<'_> {
         let ty = Ty::Float(float);
         Some(match name {
             "toString" => self.text_of(base, me),
+            // JavaScript's own: no helper, and the same text as in an owned module.
+            "toFixed" => format!("({me}).toFixed({})", arg(0)),
             "abs" | "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan" | "exp" | "log" => {
                 round(&ty, format!("Math.{name}({me})"))
             }

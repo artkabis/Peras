@@ -45,6 +45,18 @@ export fn label(count: i64, done: bool): String {
 }
 ```
 
+| Method       | On                                                  | Gives                                                  | Status                                        |
+| ------------ | --------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `toFixed(d)` | floats, and integers of 32 bits or fewer (`number`) | the value with `d` decimals, from 0 to 100, a `String` | <span class="status compiled">compiled</span> |
+
+`x.toFixed(2)` writes what JavaScript's `toFixed` writes, in both modes: the exact value of the float rounded to `d` decimals, a tie away from zero, so `(2.5).toFixed(0)` is `"3"`, `(1.005).toFixed(2)` is `"1.00"` since `1.005` is a little below it, and `(-0.0001).toFixed(2)` is `"-0.00"`; from `1e21` up, the same text as `toString()`. Outside 0 to 100 decimals, it throws a `RangeError`, as JavaScript's does. A managed module calls JavaScript's own, with nothing added to the page; an owned one asks the host, as for `toString()`, with room for 100 decimals at most. An `i64` is a `bigint` in JavaScript, which has no `toFixed`: convert it with `toF64()` first. Other formats, a thousands separator or a currency, go through an `extern` block to `Intl.NumberFormat`.
+
+```peras build
+export fn price(amount: f64, count: i32): String {
+  return `${count} × ${amount.toFixed(2)} € = ${(amount * count.toF64()).toFixed(2)} €`;
+}
+```
+
 ### Floats
 
 | Method                    | Gives                                                | Status                                        |
