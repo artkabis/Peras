@@ -37,6 +37,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 
 - **Edit by exact, unique replacements.** Never replace a slice between two markers: one script deleted every function between `keep_before` and the end of a file. After a scripted edit, `git diff --stat` and a build.
 - **The release verifier is right until proven otherwise.** When it refuses code, reduce the case to a few lines, add it as a test that fails, then fix the lowering (F001, F002).
+- **A test that passes here and fails in CI is a race until proven otherwise.** Reproduce it by changing the timing (a smaller or larger workload), trace the messages, and make the code wait for an explicit signal rather than raising a timeout (F106).
 - **Write Peras as a user would before claiming what it can do.** The frictions found that way go to the findings, with the diagnostic as evidence.
 
 ## Peras as it is today

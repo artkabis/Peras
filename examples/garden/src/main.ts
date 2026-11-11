@@ -137,13 +137,29 @@ let shown: { id: number; side: number; view: View; ms: number } | undefined;
 /** A worker that draws one frame at a time; a request made while it draws replaces the waiting one. */
 interface Slot {
   worker: Worker;
+  /** Whether the worker has said it listens: a request sent before is lost. */
+  ready: boolean;
   busy: boolean;
   waiting: Request | undefined;
 }
 function slot(): Slot {
   const worker = new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" });
-  const s: Slot = { worker, busy: false, waiting: undefined };
-  worker.addEventListener("message", (event: MessageEvent<Frame>) => {
+  const s: Slot = { worker, ready: false, busy: false, waiting: undefined };
+  // A worker that fails says so: its errors do not reach the page otherwise.
+  worker.addEventListener("error", (event) => {
+    console.error(`renderer: ${event.message}`);
+  });
+  worker.addEventListener("messageerror", () => {
+    console.error("renderer: a frame could not be read");
+  });
+  worker.addEventListener("message", (event: MessageEvent<Frame | "ready">) => {
+    if (event.data === "ready") {
+      s.ready = true;
+      const first = s.waiting;
+      s.waiting = undefined;
+      if (first !== undefined) ask(s, first);
+      return;
+    }
     s.busy = false;
     const next = s.waiting;
     s.waiting = undefined;
@@ -153,7 +169,7 @@ function slot(): Slot {
   return s;
 }
 function ask(s: Slot, request: Request): void {
-  if (s.busy) {
+  if (s.busy || !s.ready) {
     s.waiting = request;
     return;
   }

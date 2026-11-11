@@ -37,3 +37,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
   const frame: Frame = { ...event.data, pixels: copy, ms };
   self.postMessage(frame, [copy]);
 };
+
+// The module above loads its WebAssembly with a top-level await: a message
+// sent before this handler exists would be lost. The page waits for this one.
+self.postMessage("ready");

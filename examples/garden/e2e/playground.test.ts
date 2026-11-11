@@ -16,7 +16,7 @@ interface Shown {
   cy: number;
 }
 
-describe("the garden playground", () => {
+describe("the garden playground", { timeout: 120_000 }, () => {
   let browser: Browser;
   let server: ViteDevServer;
   let page: Page;
@@ -32,12 +32,32 @@ describe("the garden playground", () => {
     await server.listen();
     const executablePath = process.env.PERAS_CHROMIUM;
     browser = await chromium.launch(executablePath === undefined ? {} : { executablePath });
-    // A small panel keeps the reference render quick.
-    page = await browser.newPage({ viewport: { width: 520, height: 900 }, deviceScaleFactor: 1 });
+    // A small panel keeps the renders quick: the dev server builds the
+    // module for debug, its integer overflow checked, and CI machines are slow.
+    page = await browser.newPage({ viewport: { width: 320, height: 900 }, deviceScaleFactor: 1 });
     page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
     await page.goto(`${server.resolvedUrls?.local[0] ?? ""}?lang=en`);
-    await page.waitForSelector("body[data-ready=true]", { state: "attached" });
-  });
+    try {
+      await page.waitForSelector("body[data-ready=true]", { state: "attached", timeout: 90_000 });
+    } catch (cause) {
+      // Say what the page said, not only that it never got ready.
+      errors.push(
+        await page.evaluate(
+          () =>
+            `${document.getElementById("readout")?.textContent ?? ""} / ${String(document.body.dataset.frame)} / ${location.href}`,
+        ),
+      );
+      throw new Error(
+        `the playground never drew a full frame; the page said: ${JSON.stringify(errors)}`,
+        {
+          cause,
+        },
+      );
+    }
+  }, 150_000);
 
   afterAll(async () => {
     await browser.close();
@@ -55,7 +75,7 @@ describe("the garden playground", () => {
           shown = parsed;
           return parsed.side > 0 && accept(parsed);
         },
-        { timeout: 30_000 },
+        { timeout: 90_000 },
       )
       .toBe(true);
     if (shown === undefined) throw new Error("no frame");
