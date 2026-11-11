@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0015-stream-measured.md](../../fr/decisions/0015-stream-measured.md)._
 
-_Status: protocol registered on 2026-11-11, before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol will not change after the first measure, and any departure from it will be listed as such._
+_Status: protocol registered on 2026-11-11 (commit `13921e6`), before any measure. Run 1 at the same commit: four hypotheses hold, one is undetermined; Peras is 1.5 to 1.7 times as fast as TypeScript as written, and 0.87 to 0.96 times as fast as TypeScript written for speed. The results will be added below it, whether they confirm the hypotheses or not; the protocol will not change after the first measure, and any departure from it will be listed as such._
 
 ## Context
 
@@ -89,3 +89,27 @@ node scripts/bench-stream.mjs           # the measure: about 5 minutes
 ```
 
 The script writes `bench/stream/RESULTS.md`, `bench/stream/results.json`, with every call's time, and the four figures in `docs/assets/stream-*.svg`.
+
+## Run 1: results
+
+Measured at commit `13921e6`, the protocol's own, with nothing else running; the [report](../../../bench/stream/RESULTS.md) and every call's time in [results.json](../../../bench/stream/results.json). Every batch of every pool gave the same digest in A, B and C, and C refused exactly the lines broken on purpose.
+
+| Hypothesis                                           | Measured, 95 % interval                                        | Verdict      |
+| ---------------------------------------------------- | -------------------------------------------------------------- | ------------ |
+| H1, C at least 1.5 times as fast as A                | 1.53 [1.52, 1.54] at 10,000 rows; 1.70 [1.68, 1.71] at 100,000 | holds        |
+| H2, C at least 0.8 times as fast as B                | 0.89 [0.88, 0.90] at 10,000 rows; 0.96 [0.93, 0.97] at 100,000 | holds        |
+| H3, small batches cost little more                   | 0.94 [0.93, 0.96]                                              | holds        |
+| H4, the boundary at most 15 %                        | 5 % [5 %, 5 %]                                                 | holds        |
+| H5, C's 99th percentile at most 1.5 times its median | 1.61 [1.48, 1.70]                                              | undetermined |
+
+**What it says.** Peras digests the stream 1.5 to 1.7 times as fast as the TypeScript as written, and the boundary costs it 5 %. It does not beat TypeScript written for speed: it runs at 0.87 to 0.96 times its speed, 4 to 13 % slower. H2 holds because its threshold was 0.8, not because Peras wins: between the two TypeScripts, Peras sits closer to the fast one, and below it. Its slow calls are not settled: the interval of its tail crosses its threshold.
+
+![Rows per second by batch size: B highest, C close below it, A lowest](../../assets/stream-throughput.svg)
+
+![The speed ratios with their 95 % intervals: C over A between 1.48 and 1.70, C over B between 0.87 and 0.96](../../assets/stream-ratios.svg)
+
+![The share of calls done within a time per row at 100,000 rows: B and C close, A to the right](../../assets/stream-latency.svg)
+
+![C's time per row split into the boundary, about 20 ns, and the digest, about 420 ns](../../assets/stream-breakdown.svg)
+
+Why Peras is not faster is the next question; it is profiled in [the findings](../findings.md), one step removed at a time.

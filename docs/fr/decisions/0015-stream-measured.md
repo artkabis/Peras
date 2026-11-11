@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0015-stream-measured.md](../../en/decisions/0015-stream-measured.md)._
 
-_Statut : protocole enregistré le 2026-11-11, avant toute mesure. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
+_Statut : protocole enregistré le 2026-11-11 (commit `13921e6`), avant toute mesure. Exécution 1 au même commit : quatre hypothèses tiennent, une est indéterminée ; Peras est 1,5 à 1,7 fois plus rapide que le TypeScript tel qu’on l’écrit, et 0,87 à 0,96 fois aussi rapide que le TypeScript écrit pour la vitesse. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
 
 ## Contexte
 
@@ -89,3 +89,27 @@ node scripts/bench-stream.mjs           # la mesure : environ 5 minutes
 ```
 
 Le script écrit `bench/stream/RESULTS.md`, `bench/stream/results.json`, avec le temps de chaque appel, et les quatre figures dans `docs/assets/stream-*.svg`.
+
+## Exécution 1 : résultats
+
+Mesurée au commit `13921e6`, celui du protocole, sans rien d’autre en marche ; le [rapport](../../../bench/stream/RESULTS.md) et le temps de chaque appel dans [results.json](../../../bench/stream/results.json). Chaque lot de chaque réserve a donné le même résultat dans A, B et C, et C a refusé exactement les lignes cassées exprès.
+
+| Hypothèse                                           | Mesuré, intervalle à 95 %                                       | Verdict      |
+| --------------------------------------------------- | --------------------------------------------------------------- | ------------ |
+| H1, C au moins 1,5 fois plus rapide que A           | 1,53 [1,52, 1,54] à 10 000 lignes ; 1,70 [1,68, 1,71] à 100 000 | tient        |
+| H2, C au moins 0,8 fois aussi rapide que B          | 0,89 [0,88, 0,90] à 10 000 lignes ; 0,96 [0,93, 0,97] à 100 000 | tient        |
+| H3, les petits lots coûtent peu de plus             | 0,94 [0,93, 0,96]                                               | tient        |
+| H4, la frontière au plus 15 %                       | 5 % [5 %, 5 %]                                                  | tient        |
+| H5, le 99e centile de C au plus 1,5 fois sa médiane | 1,61 [1,48, 1,70]                                               | indéterminée |
+
+**Ce que cela dit.** Peras traite le flux 1,5 à 1,7 fois plus vite que le TypeScript tel qu’on l’écrit, et la frontière lui coûte 5 %. Il ne bat pas le TypeScript écrit pour la vitesse : il tourne à 0,87 à 0,96 fois sa vitesse, 4 à 13 % plus lent. H2 tient parce que son seuil était 0,8, pas parce que Peras gagne : entre les deux TypeScript, Peras se place plus près du rapide, et en dessous. Ses appels lents ne sont pas tranchés : l’intervalle de sa queue traverse son seuil.
+
+![Lignes par seconde par taille de lot : B le plus haut, C juste en dessous, A le plus bas](../../assets/stream-throughput.svg)
+
+![Les rapports de vitesse avec leur intervalle à 95 % : C sur A entre 1,48 et 1,70, C sur B entre 0,87 et 0,96](../../assets/stream-ratios.svg)
+
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes : B et C proches, A à droite](../../assets/stream-latency.svg)
+
+![Le temps par ligne de C séparé entre la frontière, environ 20 ns, et le calcul, environ 420 ns](../../assets/stream-breakdown.svg)
+
+Pourquoi Peras n’est pas plus rapide est la question suivante ; elle est profilée dans [les constats](../findings.md), une étape retirée à la fois.
