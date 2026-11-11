@@ -647,11 +647,20 @@ pub enum RuntimeFn {
     ///
     /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
     SplitViews,
+    /// `(s) -> owned`: a view of `s` to walk its parts one at a time, empty
+    /// at first: one header whose bytes are `s`'s own, released alone
+    /// (decision 0014, `for (const x of s.split(sep))` without an array).
+    StrCursor,
+    /// `(s, separator, cursor, from) -> i32`: points `cursor` at the part of
+    /// `s` from `from` to the next `separator`, or to its end; gives where
+    /// the next part starts, or -1 when this one was the last. The parts are
+    /// those of `Split`, the last empty one included.
+    NextPart,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 46] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -696,6 +705,8 @@ impl RuntimeFn {
         Self::MapKeyS,
         Self::ArrSortIndex,
         Self::ArrPermute,
+        Self::StrCursor,
+        Self::NextPart,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -727,6 +738,8 @@ impl RuntimeFn {
             Self::ParseInt => "str_parse_int",
             Self::ArrKeep => "arr_keep",
             Self::SplitViews => "str_split_views",
+            Self::StrCursor => "str_cursor",
+            Self::NextPart => "str_next_part",
             Self::FmtFloat => "fmt_float",
             Self::MapNew => "map_new",
             Self::MapFindI => "map_find_i",
@@ -766,6 +779,7 @@ impl RuntimeFn {
     #[must_use]
     pub const fn operands(self) -> &'static [Ty] {
         match self {
+            Self::NextPart => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
             Self::IndexOf => &[Ty::Borrowed, Ty::I32],
             Self::StartsWith
             | Self::EndsWith
@@ -786,6 +800,7 @@ impl RuntimeFn {
             | Self::MapValueF
             | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
+            | Self::StrCursor
             | Self::Upper
             | Self::Lower
             | Self::ArrReverse
@@ -815,6 +830,7 @@ impl RuntimeFn {
     pub const fn result(self) -> Ty {
         match self {
             Self::IndexOf
+            | Self::NextPart
             | Self::ArrIndexOfStr
             | Self::MapFindI
             | Self::MapFindS

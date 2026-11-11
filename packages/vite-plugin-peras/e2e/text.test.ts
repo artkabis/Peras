@@ -23,6 +23,11 @@ interface Words {
   sameLower(a: string, b: string): boolean;
   sameUpper(a: string, b: string): boolean;
   notLower(a: string, b: string): boolean;
+  partsComma(text: string): string;
+  partsDash(text: string): string;
+  firstLong(text: string, min: number): string;
+  countUntil(text: string, stop: string): number;
+  nestedLengths(text: string): number;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -35,6 +40,58 @@ async function load(allocator: "debug" | "tlsf"): Promise<Words> {
 
 describe("strings in JavaScript", () => {
   for (const allocator of ["debug", "tlsf"] as const) {
+    it(`walk the parts of a split one by one as JavaScript's split gives them, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const parts = (text: string, sep: string) => {
+        const p = text.split(sep);
+        return `${String(p.length)}:${p.map((x) => `${x}|`).join("")}`;
+      };
+      const texts = [
+        "",
+        ",",
+        ",,",
+        "a",
+        "a,",
+        ",a",
+        "a,,b",
+        "é,ü,🌿",
+        "x -- y",
+        " -- ",
+        "a -- -- b",
+        "a - - b",
+      ];
+      for (const t of texts) {
+        expect(m.partsComma(t), JSON.stringify(t)).toBe(parts(t, ","));
+        expect(m.partsDash(t), JSON.stringify(t)).toBe(parts(t, " -- "));
+      }
+      expect(m.firstLong("ab;abcd;abcdef", 4)).toBe("abcd");
+      expect(m.firstLong("ab;cd", 9)).toBe("");
+      const until = (t: string, stop: string) => {
+        let n = 0;
+        for (const p of t.split(",")) {
+          if (p === stop) break;
+          if (p.length === 0) continue;
+          n++;
+        }
+        return n;
+      };
+      for (const [t, stop] of [
+        ["a,,b,STOP,c", "STOP"],
+        ["a,b", "z"],
+        ["", ""],
+        [",,", "x"],
+      ] as const)
+        expect(m.countUntil(t, stop), t).toBe(until(t, stop));
+      const nested = (t: string) =>
+        t
+          .split("\n")
+          .reduce((n, line) => n + line.split(",").reduce((k, f) => k + f.length * 10 + 1, 0), 0);
+      for (const t of ["a,bb\nccc", "", "\n", "x,\n,y\n"])
+        expect(m.nestedLengths(t), JSON.stringify(t)).toBe(nested(t));
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
     it(`compare a string whose case changes as JavaScript's ASCII rule does, on ${allocator}`, async () => {
       const m = await load(allocator);
       const words = [

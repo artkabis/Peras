@@ -790,6 +790,10 @@ impl Lowering<'_> {
             self.map_for_of(state, name, iterable, body, out);
             return;
         }
+        if let Some((text, separator)) = self.streamed_split(iterable, body.span) {
+            self.split_for_of(state, name, text, separator, body, out);
+            return;
+        }
         let Some(columns) = self.columns_of(iterable, span) else {
             return;
         };
@@ -847,6 +851,92 @@ impl Lowering<'_> {
         let cond = super::binary(BinOp::Lt, i_expr.clone(), len(&first));
         let step = vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))];
         let lowered = self.loop_body(state, Some(cond), Vec::new(), body, step, &mut turn);
+        out.extend(lowered);
+        state.close(out);
+        state.end_statement(out);
+    }
+
+    /// The text and the separator of `for (const x of text.split(sep))`
+    /// when its parts can be walked one at a time, with no array: `sep` is a
+    /// string written in the source, not empty, and the body does not name
+    /// `text`, so that it cannot change while a part is read.
+    fn streamed_split(&self, iterable: ExprId, body: Span) -> Option<(ExprId, ExprId)> {
+        let AstExpr::Call { callee, args, .. } = &self.ast.expr(iterable).kind else {
+            return None;
+        };
+        let AstExpr::Field { base, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        let [separator] = args.as_slice() else {
+            return None;
+        };
+        let literal =
+            matches!(&self.ast.expr(*separator).kind, AstExpr::String(s) if !s.is_empty());
+        let text = matches!(self.check_type(*base), Some(CheckTy::String));
+        let named = self
+            .root(*base)
+            .is_some_and(|root| self.mentions(&[body], root));
+        (self.ast.name(name.symbol) == "split" && literal && text && !named)
+            .then_some((*base, *separator))
+    }
+
+    /// `for (const x of text.split(sep))` walked part by part: one view of
+    /// `text`, pointed at each part in turn by the runtime, and no array of
+    /// them (decision 0014). The parts are those `split` gives, the last
+    /// empty one included; the view is released after the loop, or on a
+    /// `return` from it.
+    fn split_for_of(
+        &mut self,
+        state: &mut FnState,
+        name: &perasc_syntax::ast::Ident,
+        text: ExprId,
+        separator: ExprId,
+        body: &perasc_syntax::ast::Stmt,
+        out: &mut Vec<Stmt>,
+    ) {
+        let Some(source) = self.value_as(state, text, Mode::Borrow).into_iter().next() else {
+            return;
+        };
+        let Some(sep) = self
+            .value_as(state, separator, Mode::Borrow)
+            .into_iter()
+            .next()
+        else {
+            return;
+        };
+        let cursor = state.owned_temp(Expr {
+            kind: ExprKind::Buf(
+                BufOp::Runtime(crate::RuntimeFn::StrCursor),
+                vec![source.clone()],
+            ),
+            ty: Ty::Owned,
+        });
+        state.drops.push(cursor);
+        let at = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(at, int(0)));
+        state.flush(out);
+        let at_expr = super::local_expr(state, at);
+        state.open();
+        // The text, the separator and the view live through every turn.
+        let temporaries = std::mem::take(&mut state.drops);
+        if let Some(scope) = state.owned.last_mut() {
+            scope.extend(temporaries);
+        }
+        if let Some(scope) = state.scopes.last_mut() {
+            scope.insert(name.symbol, super::Binding::Lent(vec![borrowed(cursor)]));
+        }
+        let mut turn = vec![Stmt::Set(
+            at,
+            Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(crate::RuntimeFn::NextPart),
+                    vec![source, sep, borrowed(cursor), at_expr.clone()],
+                ),
+                ty: Ty::I32,
+            },
+        )];
+        let cond = super::binary(BinOp::Ge, at_expr, int(0));
+        let lowered = self.loop_body(state, Some(cond), Vec::new(), body, Vec::new(), &mut turn);
         out.extend(lowered);
         state.close(out);
         state.end_statement(out);

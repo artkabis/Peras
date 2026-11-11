@@ -70,3 +70,59 @@ export fn sameUpper(a: String, b: String): bool {
 export fn notLower(a: String, b: String): bool {
   return a.toLowerCase() != b;
 }
+
+// `for (const p of text.split(sep))` walked part by part, with no array
+// (decision 0014): the parts of `split`, the last empty one included.
+export fn partsComma(text: String): String {
+  let out = "";
+  let n = 0;
+  for (const p of text.split(",")) {
+    out += `${p}|`;
+    n += 1;
+  }
+  return `${n}:${out}`;
+}
+
+export fn partsDash(text: String): String {
+  let out = "";
+  let n = 0;
+  for (const p of text.split(" -- ")) {
+    out += `${p}|`;
+    n += 1;
+  }
+  return `${n}:${out}`;
+}
+
+// A part kept past the loop is a copy; the walk stops at the return.
+export fn firstLong(text: String, min: i32): String {
+  for (const p of text.split(";")) {
+    if (p.length >= min) {
+      return p.copy();
+    }
+  }
+  return "";
+}
+
+export fn countUntil(text: String, stop: String): i32 {
+  let n = 0;
+  for (const p of text.split(",")) {
+    if (p == stop) {
+      break;
+    }
+    if (p.length == 0) {
+      continue;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+export fn nestedLengths(text: String): i32 {
+  let n = 0;
+  for (const line of text.split("\n")) {
+    for (const f of line.split(",")) {
+      n += f.length * 10 + 1;
+    }
+  }
+  return n;
+}

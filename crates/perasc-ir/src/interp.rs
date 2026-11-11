@@ -433,6 +433,39 @@ impl Machine<'_> {
             .collect())
     }
 
+    /// The runtime's `str_next_part`: the part of `s` from `from` to the next
+    /// `separator`, or to the end, written into `cursor`, a copy here of
+    /// what the runtime's view shows; where the next part starts, or -1 when
+    /// this one is the last.
+    fn next_part(
+        &mut self,
+        s: &[u8],
+        separator: &[u8],
+        cursor: Option<Value>,
+        from: i32,
+    ) -> Result<Value, Trap> {
+        let Some(Value::Handle(cursor)) = cursor else {
+            return Err(Trap::Unreachable);
+        };
+        let from = usize::try_from(from).map_err(|_| Trap::Unreachable)?;
+        let rest = s.get(from..).ok_or(Trap::Unreachable)?;
+        let at = if separator.is_empty() {
+            None
+        } else {
+            rest.windows(separator.len()).position(|w| w == separator)
+        };
+        let (part, next) = match at {
+            Some(i) => (
+                rest.get(..i).unwrap_or_default(),
+                i32::try_from(from + i + separator.len()).unwrap_or(-1),
+            ),
+            None => (rest, -1),
+        };
+        let bytes = part.iter().map(|&b| Value::I32(i32::from(b))).collect();
+        self.heap.insert(cursor, bytes);
+        Ok(Value::I32(next))
+    }
+
     /// A new string of these bytes.
     fn string(&mut self, bytes: &[u8]) -> Value {
         self.allocated += 1;
@@ -729,6 +762,11 @@ impl Machine<'_> {
                 self.heap.insert(self.allocated, parts);
                 self.deep.insert(self.allocated);
                 Value::Handle(self.allocated)
+            }
+            F::StrCursor => self.string(&[]),
+            F::NextPart => {
+                let separator = text(self, 1)?;
+                self.next_part(&s, &separator, operands.get(2).copied(), int(3)?)?
             }
             F::IsInt => Value::Bool(crate::text::parse_int(&s, int(1)?).is_some()),
             F::ParseInt => Value::I64(crate::text::parse_int(&s, 64).unwrap_or(0)),

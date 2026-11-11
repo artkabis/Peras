@@ -614,6 +614,53 @@
 
   ;; @end
 
+  ;; A view to walk the parts of `h` one at a time, without an array of them
+  ;; (decision 0014): one 16-byte header whose bytes are `h`'s own, flagged
+  ;; INLINE so that releasing it releases the header alone. Empty at first.
+  (func (export "str_cursor") (param $h i32) (result i32)
+    (local $c i32)
+    (local.set $c (call $alloc (i32.const 16) (i32.const 0)))
+    (i32.store (local.get $c) (i32.const 0))
+    (i32.store offset=4 (local.get $c) (i32.const 0))
+    (i32.store offset=8 (local.get $c) (i32.load offset=8 (local.get $h)))
+    (i32.store offset=12 (local.get $c) (i32.or (i32.const 1) (global.get $INLINE)))
+    (local.get $c))
+
+  ;; Points the view `c` at the part of `h` from `from` to the next
+  ;; `separator`, not empty, or to the end; gives where the next part starts,
+  ;; or -1 when this one is the last. A separator of one byte is looked for
+  ;; byte by byte, the usual case.
+  (func (export "str_next_part") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
+    (local $len i32) (local $data i32) (local $k i32) (local $at i32) (local $end i32) (local $next i32)
+    (local $byte i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $k (i32.load (local.get $separator)))
+    (local.set $at (i32.const -1))
+    (if (i32.eq (local.get $k) (i32.const 1))
+      (then
+        (local.set $byte (i32.load8_u (i32.load offset=8 (local.get $separator))))
+        (local.set $end (local.get $from))
+        (block $found
+          (loop $next
+            (br_if $found (i32.ge_u (local.get $end) (local.get $len)))
+            (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $end))) (local.get $byte))
+              (then (local.set $at (local.get $end)) (br $found)))
+            (local.set $end (i32.add (local.get $end) (i32.const 1)))
+            (br $next))))
+      (else (local.set $at (call $str_index_of (local.get $h) (local.get $separator) (local.get $from)))))
+    (if (i32.lt_s (local.get $at) (i32.const 0))
+      (then
+        (local.set $end (local.get $len))
+        (local.set $next (i32.const -1)))
+      (else
+        (local.set $end (local.get $at))
+        (local.set $next (i32.add (local.get $at) (local.get $k)))))
+    (i32.store (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=4 (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=8 (local.get $c) (i32.add (local.get $data) (local.get $from)))
+    (local.get $next))
+
   ;; Part `c` of an array of views: a header for the `len` bytes at `at`,
   ;; and its handle.
   (func $view (param $block i32) (param $headers i32) (param $c i32) (param $at i32) (param $len i32)
