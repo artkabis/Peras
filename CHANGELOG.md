@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **`unwrapOr` makes a quiet fallback only when it is needed**: a fallback that only makes literals and reads values, as `opt.unwrapOr(Reading(0, "", 0.0))`, is made only when the option is empty, since nothing can tell when it was made; any other fallback runs first, as before (decision 0016, finding F209). The stream's digest in Node: 278 to 248 ms per 1,000,000 rows.
 - **The runtime is linked into the module** (`--link on`, the default; decision 0016, finding F212): one `.wasm`, whose calls into the runtime are calls inside the module, which the engine inlines, instead of calls into another instance, which it does not. Not with threads. `--link off` keeps the runtime beside the module, inlined in the loader.
 - **A string literal only read is no longer copied**: `text.split(",")`, `s == "hall"`, `m.get("b")` lend it from a static header, written below the heap when the module is instantiated, instead of copying it into a new block and releasing it at each use (decision 0016, finding F211). The stream's digest goes from about 363 to about 300 ms per 1,000,000 rows.
 - **`for (const c of text.split(""))` walks the characters one at a time**, with no array of them, as other separators already were; tested against JavaScript on UTF-8 text, with `break`, on both allocators. It saves memory, not time: the profile of decision 0016 found the cost is a call into the runtime for each character (finding M013).

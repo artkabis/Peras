@@ -378,3 +378,33 @@ export fn literalKey(text: String): i32 {
   }
   return counts.get("b").unwrapOr(0) * 10 + counts.get("zz").unwrapOr(0);
 }
+
+// unwrapOr whose fallback only makes literals: made only when the option is
+// empty (decision 0016, finding F209); any other fallback runs first.
+struct Tag {
+  name: String;
+  weight: i32;
+}
+
+fn findTag(s: String): Option<Tag> {
+  if (s.length > 2) {
+    return Some(Tag(s.copy(), s.length));
+  }
+  return None;
+}
+
+export fn tagOr(s: String): String {
+  const t = findTag(s);
+  const r = t.unwrapOr(Tag("none", -1));
+  return `${r.name}:${r.weight}`;
+}
+
+export fn tagOrGiven(s: String, fallback: String): String {
+  const t = findTag(s);
+  const r = t.unwrapOr(Tag(fallback.copy(), 0));
+  return `${r.name}:${r.weight}`;
+}
+
+export fn intOr(s: String): i32 {
+  return s.parseI32().unwrapOr(-7);
+}

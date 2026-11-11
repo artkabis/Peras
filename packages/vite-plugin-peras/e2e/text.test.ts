@@ -29,6 +29,9 @@ interface Words {
   countUntil(text: string, stop: string): number;
   nestedLengths(text: string): number;
   charsOf(text: string): string;
+  tagOr(s: string): string;
+  tagOrGiven(s: string, fallback: string): string;
+  intOr(s: string): number;
   literalLength(): number;
   whichLiteral(s: string): number;
   literalKey(text: string): number;
@@ -130,6 +133,19 @@ describe("strings in JavaScript", () => {
           expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
           expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
         }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`makes a quiet fallback of unwrapOr only when the option is empty, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.tagOr("abcd")).toBe("abcd:4");
+      expect(m.tagOr("ab")).toBe("none:-1");
+      expect(m.tagOrGiven("abcde", "x")).toBe("abcde:5");
+      expect(m.tagOrGiven("a", "given")).toBe("given:0");
+      expect(m.intOr("42")).toBe(42);
+      expect(m.intOr("4x")).toBe(-7);
+      for (let i = 0; i < 500; i++) m.tagOr(i % 2 === 0 ? "abc" : "z");
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });
