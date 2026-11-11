@@ -19,9 +19,9 @@ Compté à partir des entrées ci-dessous, le 2026-11-11.
 | -------------------------------- | ------: | -----: |
 | Bogue du compilateur             |       0 |      4 |
 | Friction à l’écriture            |       5 |      0 |
-| Lenteur                          |       3 |      0 |
+| Lenteur                          |       4 |      0 |
 | Capacité manquante               |       3 |      0 |
-| Erreur de méthode dans une étude |       1 |      6 |
+| Erreur de méthode dans une étude |       1 |      7 |
 
 Les bogues trouvés l’ont été avant de pouvoir être livrés : le vérificateur de libération a refusé le code (F001, F002), un test a échoué (F003), un banc s’est arrêté (F004). Ce qui reste ouvert, c’est ce que le langage coûte à écrire et à exécuter dans un vrai programme, trouvé en en écrivant un : le tableau de bord de la décision 0014.
 
@@ -48,13 +48,14 @@ Trouvées en écrivant le tableau de bord de la décision 0014 aussi simplement 
 
 ## Lenteurs
 
-| Id   | Trouvé     | Constat                                                           | Preuve                                                                                                     | Statut  |
-| ---- | ---------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
-| F201 | 2026-11-11 | `parseI32` coûte environ 150 ns par entier.                       | 1 000 000 de lignes dans Node : découpage en champs 126 ms, avec deux `parseI32` par ligne 434 ms.         | Ouvert. |
-| F202 | 2026-11-11 | Une table à clés textuelles construites à chaque ligne est lente. | Le même profil : avec une clé gabarit et un `get` et un `set` par ligne, 793 ms.                           | Ouvert. |
-| F203 | 2026-11-11 | Le runtime pèse sur ce qu’un programme livre.                     | Le jardin : Peras 5 872 octets, TypeScript 1 119. Le tableau de bord, première mesure : 12 169 contre 788. | Ouvert. |
+| Id   | Trouvé     | Constat                                                                                              | Preuve                                                                                                                          | Statut  |
+| ---- | ---------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| F201 | 2026-11-11 | `parseI32` coûte environ 150 ns par entier.                                                          | 1 000 000 de lignes dans Node : découpage en champs 126 ms, avec deux `parseI32` par ligne 434 ms.                              | Ouvert. |
+| F202 | 2026-11-11 | Une table à clés textuelles construites à chaque ligne est lente.                                    | Le même profil : avec une clé gabarit et un `get` et un `set` par ligne, 793 ms.                                                | Ouvert. |
+| F203 | 2026-11-11 | Le runtime pèse sur ce qu’un programme livre.                                                        | Le jardin : Peras 5 872 octets, TypeScript 1 119. Le tableau de bord, première mesure : 12 169 contre 788.                      | Ouvert. |
+| F204 | 2026-11-11 | Le texte passé à un module owned est copié dans sa mémoire linéaire, que WebAssembly ne rend jamais. | Décision 0014, exécution 1 : 122 Mio à 4 000 000 lignes ; le maximum de mémoire de C vaut 1,12 fois celui de TypeScript simple. | Ouvert. |
 
-Le découpage d’une chaîne n’en fait pas partie : 126 ms contre 586 ms pour le `split` de JavaScript, sur le même million de lignes.
+Leur somme, mesurée : dans l’exécution 1 de la décision 0014, Peras simple lit un CSV de ventes à 0,85 à 0,88 fois la vitesse de TypeScript simple. Le découpage d’une chaîne n’en fait pas partie : 126 ms contre 586 ms pour le `split` de JavaScript, sur le même million de lignes.
 
 ## Capacités manquantes
 
@@ -75,3 +76,4 @@ Le découpage d’une chaîne n’en fait pas partie : 126 ms contre 586 ms pour
 | M005 | 2026-11-11 | Le playground et le site ont été annoncés en ligne alors que GitHub Pages n’avait jamais publié : son workflow échouait à `configure-pages` à ses deux exécutions, Pages n’étant pas activé.                                                                                                                                                                                             | Les journaux du workflow « Documentation site ».           | Fermé comme constat ; activer Pages revient au propriétaire.                                                                                                     |
 | M006 | 2026-11-11 | Le compte de lignes de la décision 0014 comptait les types du résultat pour Peras et pas pour TypeScript, où ils sont dans un autre fichier.                                                                                                                                                                                                                                             | Trouvé lors d’un essai, avant toute mesure.                | Fermé : exclus de la même façon, avant la première mesure.                                                                                                       |
 | M007 | 2026-11-11 | La pull request disait « tous les contrôles passent » à partir du commit `ff57e25`, alors que son CI échouait à chaque commit depuis : `bench-backends --check` n’avait pas été lancé en local, et les résultats du CI n’avaient pas été lus. Son module, un build debug, importe le contrôle de débordement depuis la décision 0011, étape 5, et le script ne lui donnait aucun import. | Les exécutions du workflow CI, à partir de l’exécution 77. | Ouvert : le script compile pour la production (`--allocator tlsf`) ; fermé quand le CI passe sur GitHub.                                                         |
+| M008 | 2026-11-11 | La mesure de mémoire de la décision 0014, `VmHWM`, ne voit pas une requête qui reste sous le pic du chargement des données : le TypeScript optimisé se lit 0 à 1 000 000 et 4 000 000 lignes.                                                                                                                                                                                            | [Exécution 1](../../bench/data/RESULTS.md).                | Fermé comme limite, écrite dans la décision ; une mesure qui la voit, le tas et la mémoire WebAssembly échantillonnés, est pour une exécution suivante.          |

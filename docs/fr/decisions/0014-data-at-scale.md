@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)) ; aucune version encore écrite._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Résultats et journal ci-dessous._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
@@ -120,3 +120,52 @@ Aucune mesure n’ayant été prise, l’amendement ne peut pas avoir été guid
 - **Mémoire.** Le plus grand `VmHWM` parmi les processus de rendu d’un navigateur lancé pour l’exécution, la page étant la seule ouverte.
 - **Le réseau bridé**, exploratoire : 9 Mb/s en réception, 1,5 en émission, 170 ms de latence, à 100 000 lignes seulement, 3 chargements : à cette vitesse, 140 Mo prendraient deux minutes par chargement.
 - **Deux bogues du compilateur** ont été trouvés en écrivant C, tous deux refusés par son vérificateur de libération plutôt que livrés, et corrigés avec un test chacun avant la mesure (commit `e1f58b4` ; [constats](../findings.md), F001 et F002).
+
+### Exécution 1, au commit `b06da25` : les résultats
+
+Mesuré le 2026-11-11 de 06:54 à 07:02 UTC, sur un Intel Xeon à 2,10 GHz à 4 cœurs, Chromium sans écran ; le rapport complet est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) et chaque nombre dans son `results.json`. Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+| Hypothèse                                        | Verdict     | Mesuré                                                                |
+| ------------------------------------------------ | ----------- | --------------------------------------------------------------------- |
+| H1, Peras simple bat TypeScript simple           | **réfutée** | C à 0,85 fois la vitesse de A à 1 000 000 lignes, 0,88 à 4 000 000    |
+| H2, Peras simple approche le TypeScript optimisé | **réfutée** | C à 0,10 fois la vitesse de B à 1 000 000 lignes, 0,09 à 4 000 000    |
+| H3, moins de mémoire                             | **réfutée** | le maximum de C vaut 1,12 fois celui de A à 4 000 000 lignes          |
+| H4, un petit programme                           | **réfutée** | C livre 12 169 octets, 15,4 fois les 788 de A                         |
+| H5, les cœurs aident                             | **réfutée** | D ne peut pas être écrite (E0241)                                     |
+| H6, linéaire                                     | tient       | le temps de C à 4 000 000 lignes vaut 4,17 fois son temps à 1 000 000 |
+| H7, pas plus de code                             | tient       | C compte 99 lignes, 1,08 fois les 92 de A                             |
+
+À chaud, en millisecondes, médianes de 15 exécutions :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |    75,7 |   1 015,4 |   4 360,4 |
+| B. TypeScript, optimisé    |    12,8 |     121,5 |     469,1 |
+| C. Peras                   |   105,6 |   1 193,0 |   4 976,5 |
+
+Les exécutions ne se chevauchent pas là où cela compte : à 4 000 000 lignes, les quinze temps de C vont de 4 776 à 5 507 ms, tous au-dessus de la médiane de A. À froid, le premier graphique arrive dans le même ordre, 5,5 s pour C, 4,8 pour A et 0,9 pour B à 4 000 000 lignes ; sous le réseau bridé, à 100 000 lignes, le téléchargement en prend presque tout, 3,7 à 3,8 s pour chaque version.
+
+### Analyse
+
+- **Où C perd son temps.** Un profil fait en écrivant C, à 1 000 000 lignes dans Node, hors protocole : passer le texte au module coûte 7 ms, le découper en lignes 20 ms, en champs 126 ms, contre 586 ms pour le `split` de JavaScript ; lire deux entiers par ligne avec `parseI32` le porte à 434 ms, environ 150 ns par entier, et les tables à clés textuelles construites à chaque ligne à 793 ms. Peras découpe le texte plus vite que JavaScript ; il perd sur la lecture des entiers et sur les tables à clés textuelles ([constats](../findings.md) F201, F202).
+- **La marge existe.** B montre ce que la machine permet pour le même travail : 8,4 à 9,3 fois la vitesse de A, et 9,8 à 10,6 fois celle de C, à 1 000 000 et 4 000 000 lignes. Rien dans les données ni dans la requête n’empêche un langage compilé de l’atteindre ; ce qui en empêche Peras, c’est la lecture d’entiers de son runtime, ses tables à clés textuelles, et la copie du texte dans le module.
+- **La mémoire.** C tient le texte une seconde fois, copié dans sa mémoire linéaire, que WebAssembly ne rend pas ; à 4 000 000 lignes, cette copie seule fait 122 Mio. C’est pourquoi le maximum de C dépasse celui de A, où le texte est partagé avec la chaîne décodée.
+- **Le programme.** C livre son runtime, les tables, les chaînes, le tri : 12 169 octets, contre 788 pour A, qui utilise ceux de JavaScript. À 100 000 lignes sous un réseau bridé, l’écart se perd dans le téléchargement des données, 3,7 à 3,8 s pour chaque version.
+- **Ce qui tient.** Le coût de C croît linéairement avec les lignes, et il s’écrit en autant de lignes que le TypeScript, 99 contre 92, avec la même structure : Peras simple n’est pas plus difficile à écrire pour ce travail, il est plus lent.
+
+### Ce que cela veut dire
+
+Sur l’ingestion de données textuelles, l’affirmation que cette étude testait, Peras ne tient pas aujourd’hui : Peras simple est plus lent que TypeScript simple, tient plus de mémoire, livre quinze fois plus de code et ne peut pas utiliser les cœurs. L’étude le dit, et dit pourquoi, en des termes sur lesquels le compilateur peut agir. Dans l’ordre que donnent les mesures, comme la décision 0011 ordonne ses étapes :
+
+1. **Lire les entiers vite** : `parseI32` à la vitesse d’une boucle sur des octets (F201).
+2. **Des tables à clés textuelles sans une chaîne par ligne** : une clé cherchée depuis la tranche d’où elle vient, copiée seulement quand elle est nouvelle (F202).
+3. **Pas de copie du texte** : lire les octets là où ils sont, ce qui demande `u8` compilé (F302), la prochaine étape déjà décidée.
+4. **Agréger sur les cœurs** : `parallel for` avec une réduction par thread et l’allocation dans un tour (F301).
+5. **Un runtime plus léger** pour ce qu’un module n’utilise pas (F203).
+
+Chacune sera mesurée de nouveau sous ce protocole, inchangé, comme exécution 2 et suivantes, et rapportée quoi qu’elle donne.
+
+### Limites
+
+- **La mémoire sous le pic du chargement n’est pas vue.** `VmHWM` ne monte qu’au-delà de son point le plus haut ; charger le fichier, comme réponse puis tampon, atteint déjà un pic. La requête de B reste en dessous à 1 000 000 et 4 000 000 lignes, et sa mémoire se lit 0 : pas rien, mais moins que le chargement des données. A et C le dépassent tous deux, ce qui garde H3 lisible.
+- Les autres limites sont celles enregistrées : données générées sans guillemets, versions écrites par les auteurs, une machine.

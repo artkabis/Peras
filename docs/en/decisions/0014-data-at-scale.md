@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0014-data-at-scale.md](../../fr/decisions/0014-data-at-scale.md)._
 
-_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)); no version written yet._
+_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Results and record below._
 
 _Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
@@ -120,3 +120,52 @@ Written with the versions and the script, in commit `b06da25`, before run 1 star
 - **Memory.** The largest `VmHWM` among the renderer processes of a browser launched for the run, the page being the only one open.
 - **The throttled network**, exploratory: 9 Mb/s down, 1.5 up, 170 ms of latency, at 100,000 rows only, 3 loads: at that speed, 140 MB would take two minutes a load.
 - **Two bugs of the compiler** were found by writing C, both refused by its release verifier rather than shipped, and fixed with a test each before the measure (commit `e1f58b4`; [findings](../findings.md), F001 and F002).
+
+### Run 1, at commit `b06da25`: the results
+
+Measured on 2026-11-11 from 06:54 to 07:02 UTC, on an Intel Xeon at 2.10 GHz with 4 cores, Chromium headless; the whole report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) and every number in its `results.json`. The three versions give the same summary, byte for byte, at every size.
+
+| Hypothesis                                          | Verdict     | Measured                                                       |
+| --------------------------------------------------- | ----------- | -------------------------------------------------------------- |
+| H1, plain Peras beats plain TypeScript              | **refuted** | C at 0.85 times A's speed at 1,000,000 rows, 0.88 at 4,000,000 |
+| H2, plain Peras comes close to optimized TypeScript | **refuted** | C at 0.10 times B's speed at 1,000,000 rows, 0.09 at 4,000,000 |
+| H3, less memory                                     | **refuted** | C's peak 1.12 times A's at 4,000,000 rows                      |
+| H4, a small program                                 | **refuted** | C ships 12,169 bytes, 15.4 times A's 788                       |
+| H5, the cores help                                  | **refuted** | D cannot be written (E0241)                                    |
+| H6, linear                                          | holds       | C's time at 4,000,000 rows is 4.17 times its time at 1,000,000 |
+| H7, no more code                                    | holds       | C counts 99 lines, 1.08 times A's 92                           |
+
+Warm, in milliseconds, medians of 15 runs:
+
+| Version                  | 100,000 | 1,000,000 | 4,000,000 |
+| ------------------------ | ------: | --------: | --------: |
+| A. TypeScript, idiomatic |    75.7 |   1,015.4 |   4,360.4 |
+| B. TypeScript, optimized |    12.8 |     121.5 |     469.1 |
+| C. Peras                 |   105.6 |   1,193.0 |   4,976.5 |
+
+The runs do not overlap where it matters: at 4,000,000 rows, C's fifteen times lie between 4,776 and 5,507 ms, all above A's median. Cold, the first chart comes in the same order, 5.5 s for C, 4.8 for A and 0.9 for B at 4,000,000 rows; under the throttled network, at 100,000 rows, the download takes nearly all of it, 3.7 to 3.8 s for every version.
+
+### Analysis
+
+- **Where C loses its time.** A profile made while writing C, at 1,000,000 rows in Node, outside the protocol: handing the text to the module costs 7 ms, splitting it into lines 20 ms, into fields 126 ms, against 586 ms for JavaScript's `split`; reading two integers per row with `parseI32` brings it to 434 ms, about 150 ns per integer, and the maps keyed by strings built per row to 793 ms. Peras splits text faster than JavaScript; it loses on reading integers and on maps keyed by strings ([findings](../findings.md) F201, F202).
+- **The headroom is there.** B shows what the machine allows for the same work: 8.4 to 9.3 times A's speed, and 9.8 to 10.6 times C's, at 1,000,000 and 4,000,000 rows. Nothing in the data or the query prevents a compiled language from reaching it; what prevents Peras is its runtime's integer parsing, its string-keyed maps, and the copy of the text into the module.
+- **Memory.** C holds the text a second time, copied into its linear memory, which WebAssembly does not give back; at 4,000,000 rows that copy alone is 122 MiB. That is why C's peak exceeds A's, where the text is shared with the decoded string.
+- **The program.** C ships its runtime, the maps, the strings, the sort: 12,169 bytes, against 788 for A, which uses JavaScript's own. At 100,000 rows under a throttled network, the difference is lost in the download of the data, 3.7 to 3.8 s for every version.
+- **What holds.** C's cost grows linearly with the rows, and it is written in as many lines as the TypeScript, 99 against 92, with the same structure: plain Peras is no harder to write for this job, it is slower.
+
+### What it means
+
+On ingesting text data, the claim this study tested, Peras does not deliver today: plain Peras is slower than plain TypeScript, holds more memory and ships fifteen times more code, and cannot use the cores. The study says so, and says why, in terms the compiler can act on. In the order the measures give, as decision 0011 orders its steps:
+
+1. **Read integers fast**: `parseI32` at the speed of a loop over bytes (F201).
+2. **Maps keyed by strings without a string per row**: a key looked up from the slice it comes from, copied only when new (F202).
+3. **No copy of the text**: read the bytes where they are, which needs `u8` compiled (F302), the next step already decided.
+4. **Aggregate on the cores**: `parallel for` with a reduction per thread and allocation in a turn (F301).
+5. **A lighter runtime** for what a module does not use (F203).
+
+Each will be measured again under this protocol, unchanged, as a run 2 and further, and reported whatever it gives.
+
+### Limits
+
+- **Memory below the loading peak is not seen.** `VmHWM` rises only past its highest point; loading the file, as the response and its array buffer, already reaches a peak. B's query stays below it at 1,000,000 and 4,000,000 rows, and its memory reads 0: not nothing, but less than loading the data. A and C both go past it, which keeps H3 readable.
+- The other limits are those registered: generated data without quotes, versions written by the authors, one machine.
