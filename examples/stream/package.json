@@ -1,0 +1,17 @@
+{
+  "name": "peras-example-stream",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A stream of sensor readings digested by Peras in a Web Worker, beside the same digest in TypeScript, with its performance measured live and exported.",
+  "license": "0BSD",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5",
+    "vite-plugin-peras": "workspace:*"
+  }
+}

@@ -221,6 +221,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/vite-plugin-peras
 
+  examples/stream:
+    devDependencies:
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)
+      vite-plugin-peras:
+        specifier: workspace:*
+        version: link:../../packages/vite-plugin-peras
+
   packages/create-peras: {}
 
   packages/vite-plugin-peras:

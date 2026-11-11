@@ -10,6 +10,8 @@ _**Before, after.** The same corner of the garden of Apeiron, zoomed 8 then 64 t
 
 **[Zoom into it yourself in the playground](https://artkabis.github.io/Peras/playground/)**: the stored image and the program side by side, down to 65,536 times ([source](examples/garden)).
 
+**[Watch a stream of data read live](https://artkabis.github.io/Peras/stream/)**: sensor readings as CSV text, read by Peras in a Web Worker beside the same code in plain TypeScript, the same numbers checked in every batch, the speed, percentiles and leaks measured as it runs, and exported as JSON or CSV ([how it works](docs/en/stream.md), [source](examples/stream)).
+
 ![The garden of Apeiron at three zooms: the whole landscape, a sky at dawn, three ranges of mountains and a meadow; the meadow zoomed 8 times, full of flowers; zoomed 64 times, single flowers with their petals and hearts, and smaller ones between them](docs/assets/garden.webp)
 
 _The garden of Apeiron, zoomed 1, 8 and 64 times: a scene drawn pixel by pixel from a few rules, that gains detail as it is zoomed ([decision 0013](docs/en/decisions/0013-garden-of-apeiron.md)). Its hypotheses were registered before any measure, and its three versions, TypeScript, Peras and Rust, give the same pixels, bit for bit. Four held: the 6 KB program is smaller than the smallest AVIF of its image at SSIM 0.95, 10 KB; zoomed 64 times, a stored image would need 4,452 times more; every lossy format scores higher seen from afar; the overflow checks cost 2 % of a frame. One was refuted: Peras renders it 1.19 times as fast as TypeScript, and 1.11 times as fast as Rust, short of the 1.3 times registered. And the same program in TypeScript ships five times smaller than Peras's, whose runtime weighs ([results](bench/garden/RESULTS.md))._

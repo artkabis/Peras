@@ -53,6 +53,7 @@ export const sections: Section[] = [
       "architecture",
       "research",
       "garden",
+      "stream",
       "findings",
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
