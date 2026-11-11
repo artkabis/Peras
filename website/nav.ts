@@ -65,6 +65,7 @@ export const sections: Section[] = [
       "decisions/0010-calling-javascript",
       "decisions/0011-what-to-build-next",
       "decisions/0012-cost-on-the-machine",
+      "decisions/0013-garden-of-apeiron",
     ],
   },
 ];
