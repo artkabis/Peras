@@ -29,6 +29,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **Count alike**: what is left out of one version's count is left out of every version's (M006).
 - **Format, lint and commit before a measure**, so that the run is at a known commit; a run started on code that changes afterwards is stopped and run again (M002).
 - **Nothing that uses the processor during a measure**: no build, no test. Write, read, plan.
+- **A build that reuses a cache must prove it rebuilt what changed.** Old sources extracted with their commit dates look older than the cache and are not recompiled; extract them dated now, or give each its own target (M009).
 - **A flawed run is kept with its flaw**, archived, and its correction listed as a departure from the protocol.
 - **Never say a thing is online, deployed or passing before seeing it**: read the workflow's run, not the workflow's file (M005).
 - **"All checks pass" means the CI of the last commit, read on GitHub**, and locally every `--check` script of `scripts/`, not only those of the files touched: a change of defaults breaks the scripts that relied on them (M007).

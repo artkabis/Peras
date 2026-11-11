@@ -71,7 +71,12 @@ for (const [ref, label] of milestones) {
     const src = join(work, "src", commit);
     rmSync(src, { recursive: true, force: true });
     mkdirSync(src, { recursive: true });
-    const archive = sh("sh", ["-c", `git archive ${commit} | tar -x -C "${src}"`], { cwd: root });
+    // \`-m\` dates the files now: with the commit's dates, older than what the
+    // shared target holds, cargo would link the crates built for another
+    // version (finding M009).
+    const archive = sh("sh", ["-c", `git archive ${commit} | tar -x -m -C "${src}"`], {
+      cwd: root,
+    });
     if (archive.status !== 0) throw new Error(archive.stderr);
     const built = sh("cargo", ["build", "--release", "--locked", "-q", "-p", "perasc"], {
       cwd: src,
