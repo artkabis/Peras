@@ -135,7 +135,10 @@ impl Types<'_> {
                 }
                 h.ts_name().to_owned()
             }
-            Ty::Fn(..) | Ty::Param(..) | Ty::Error => "unknown".to_owned(),
+            // A value JavaScript made: its type is the library's, unknown here.
+            Ty::Opaque(..) | Ty::Callback(..) | Ty::Fn(..) | Ty::Param(..) | Ty::Error => {
+                "unknown".to_owned()
+            }
         }
     }
 

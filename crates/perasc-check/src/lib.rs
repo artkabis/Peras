@@ -6,9 +6,11 @@
 //! The walk runs only on a tree without syntax errors.
 
 pub mod browser;
+pub use foreign::ExternInfo;
 pub mod builtins;
 mod errors;
 mod expr;
+mod foreign;
 mod generics;
 mod host;
 mod matching;
@@ -90,6 +92,8 @@ pub struct Analysis {
     pub dyn_targets: HashMap<(ExprId, Vec<Ty>), (FnId, Vec<Ty>)>,
     /// The module's exported functions, as another module imports them.
     pub exports: Vec<ImportedFn>,
+    /// The functions of its `extern` blocks.
+    pub externs: Vec<ExternInfo>,
     /// Every name declared, by its index: locals, parameters, functions,
     /// types and the names the language provides.
     pub bindings: Vec<Bound>,
@@ -157,6 +161,15 @@ pub type Variant = (String, Vec<Ty>);
 #[must_use]
 pub fn analyze(ast: &Ast, source: &str) -> Analysis {
     analyze_with(ast, source, &Context::default())
+}
+
+/// Where the checker is.
+#[derive(Debug, Clone, Copy, Default)]
+struct Flags {
+    /// In an `async` function.
+    in_async: bool,
+    /// A function type may be resolved: at the top of an `extern` parameter.
+    callback_ok: bool,
 }
 
 /// What a module is checked against: its mode, and the functions of the
@@ -314,6 +327,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
             .collect(),
         dyn_targets,
         exports,
+        externs: checker.externs,
         bindings,
         names: checker.resolved,
         moves: checker.moves,
@@ -338,7 +352,7 @@ struct StructDef {
 }
 
 /// A function's signature.
-struct FnSig {
+pub(crate) struct FnSig {
     name: String,
     name_span: Span,
     generics: Vec<GenericParam>,
@@ -361,7 +375,7 @@ enum Template {
 
 /// What a type name refers to.
 #[derive(Clone)]
-enum TypeDef {
+pub(crate) enum TypeDef {
     Plain(Ty),
     /// `number`, a managed module's `f64`.
     Number,
@@ -389,8 +403,12 @@ struct Checker<'a> {
     managed: bool,
     /// The functions of the modules it imports, as the driver read them.
     imports: &'a [ImportedModule],
-    /// Whether the function being checked is `async`.
-    in_async: bool,
+    /// Where the checker is: in an `async` function, in an `extern` parameter.
+    flags: Flags,
+    /// The types of `extern` blocks declared so far.
+    opaque_count: usize,
+    /// The functions of `extern` blocks.
+    externs: Vec<ExternInfo>,
     /// The module's exported functions, in order.
     exported: Vec<FnId>,
     diagnostics: Vec<Diagnostic>,
@@ -479,7 +497,9 @@ impl<'a> Checker<'a> {
             source,
             managed: context.managed,
             imports: &context.imports,
-            in_async: false,
+            flags: Flags::default(),
+            opaque_count: 0,
+            externs: Vec::new(),
             exported: Vec::new(),
             diagnostics: Vec::new(),
             scopes: Scopes::default(),
@@ -608,6 +628,7 @@ impl<'a> Checker<'a> {
                 ItemKind::Struct(decl) => self.register_struct(decl),
                 ItemKind::Enum(decl) => self.register_enum(decl),
                 ItemKind::Alias(decl) => self.register_alias(decl),
+                ItemKind::Extern(decl) => self.extern_types(decl),
                 _ => {}
             }
         }
@@ -644,8 +665,10 @@ impl<'a> Checker<'a> {
             }
         }
         for item in items {
-            if let ItemKind::Import(decl) = &item.kind {
-                self.import(decl, item.span);
+            match &item.kind {
+                ItemKind::Import(decl) => self.import(decl, item.span),
+                ItemKind::Extern(decl) => self.extern_fns(decl, item.span),
+                _ => {}
             }
         }
         for item in items {
@@ -910,7 +933,7 @@ impl<'a> Checker<'a> {
             (Some(ty), Some(sig)) => (Some(sig.ret.clone()), Some(ty.span)),
             _ => (None, None),
         };
-        self.in_async = decl.is_async;
+        self.flags.in_async = decl.is_async;
         let ret = self.async_result(decl, ret, ret_span);
         if self.managed {
             self.managed_conventions(decl, id);
@@ -977,7 +1000,7 @@ impl<'a> Checker<'a> {
             }
         }
         self.ret = None;
-        self.in_async = false;
+        self.flags.in_async = false;
         self.generics.clear();
         self.self_ty = None;
     }
@@ -1063,11 +1086,22 @@ impl<'a> Checker<'a> {
     }
 
     fn resolve_type_inner(&mut self, ty: &Type) -> Ty {
+        // A function type only at the top of an `extern` parameter.
+        let callback_ok = std::mem::take(&mut self.flags.callback_ok);
         let (name, args) = match &ty.kind {
             TypeKind::Named { name, args } => (name, args),
             TypeKind::Tuple(items) => {
                 let items: Vec<Ty> = items.iter().map(|t| self.resolve_type(t)).collect();
                 return self.tuple_type(items);
+            }
+            TypeKind::Fn { params, ret } => {
+                if !callback_ok {
+                    self.report(errors::extern_decl(ty.span, "callback", ""));
+                    return Ty::Error;
+                }
+                let params: Vec<Ty> = params.iter().map(|t| self.resolve_type(t)).collect();
+                let ret = self.resolve_type(ret);
+                return Ty::Callback(params, Box::new(ret));
             }
             TypeKind::Error => return Ty::Error,
         };

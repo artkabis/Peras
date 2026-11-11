@@ -662,6 +662,7 @@ check-managed-only = { $what ->
     [promise] le type `Promise`
     [import] un `import`
     [browser] l’API du navigateur
+    [extern] un bloc `extern`
    *[other] ceci
 } { $what ->
     [await-sync] ne peut pas attendre
@@ -754,6 +755,30 @@ check-read-only = `{ $member }` de `{ $type }` ne peut qu’être lu
 check-read-only-label = affecté ici
 check-read-only-why = Le navigateur fixe lui-même cette propriété : le type et la touche d’un évènement, le statut d’une réponse, le corps d’une page. Une page ne peut pas la changer.
 check-read-only-fix = lisez-la dans une variable à vous, et changez celle-ci
+
+# E0247
+check-extern = { $reason ->
+    [resource] `{ $name }` donnerait une ressource à JavaScript, qui ne peut pas la libérer
+    [callback] un type fonction n’est permis que pour un paramètre d’une fonction `extern`
+    [self] `self` doit être d’un type que déclare ce bloc `extern`
+    [async] `{ $name }` est `async` : son résultat doit être une `Promise`
+   *[other] cette déclaration `extern` ne peut pas être gardée
+}
+check-extern-label = { $reason ->
+    [resource] une ressource ici
+    [callback] un type fonction ici
+    [self] pas un type de ce bloc
+    [async] pas une `Promise`
+   *[other] ici
+}
+check-extern-why = Un bloc `extern` déclare le JavaScript qu’appelle un module managed, avec des types Peras : à chaque appel, chaque valeur que JavaScript rend est vérifiée contre eux. Une ressource appartient à une variable de Peras, qui la libère : JavaScript la garderait sans la libérer. Un type fonction est un rappel, écrit comme une fonction fléchée là où la fonction `extern` est appelée : ailleurs, il n’y a rien pour l’appeler. Une méthode se déclare avec un `self` d’un type du bloc, les valeurs que crée JavaScript. Une fonction `async` rend une promesse.
+check-extern-fix = { $reason ->
+    [resource] donnez plutôt les données à JavaScript, et gardez la ressource en Peras
+    [callback] déclarez le rappel comme paramètre d’une fonction `extern`, et passez-y une fonction fléchée
+    [self] déclarez le type dans ce bloc, `type Chart;`, et écrivez `self: Chart`
+    [async] déclarez son résultat comme `Promise<T>`
+   *[other] vérifiez la déclaration
+}
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

@@ -1,0 +1,25 @@
+// JavaScript declared with Peras types: functions, a type and its methods,
+// a promise and a callback.
+extern from "./chart.js" {
+  type Chart;
+  fn makeChart(name: String): Chart;
+  fn add(self: Chart, value: number): void;
+  fn total(self: Chart): number;
+  fn onPick(self: Chart, picked: (number, String) => void): void;
+  async fn loadValues(url: String): Promise<Array<number>>;
+  fn find(values: Array<i32>, wanted: i32): Option<i32>;
+}
+
+fn picked(value: number, label: String): void {
+  log(`${label}: ${value}`);
+}
+
+export async fn build(): Promise<number> {
+  const chart = makeChart("sales");
+  const values = await loadValues("/values.json");
+  for (const v of values) {
+    chart.add(v);
+  }
+  chart.onPick((value, label) => picked(value, label));
+  return chart.total() + find([1, 2], 2).unwrapOr(0).toF64();
+}

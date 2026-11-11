@@ -158,6 +158,8 @@ pub const IMPORT: ErrorCode = ErrorCode::new(244);
 pub const RESOURCE: ErrorCode = ErrorCode::new(245);
 /// A property of the browser that can only be read, assigned.
 pub const READ_ONLY: ErrorCode = ErrorCode::new(246);
+/// A declaration of an `extern` block that cannot be kept.
+pub const EXTERN: ErrorCode = ErrorCode::new(247);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -289,6 +291,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(IMPORT, "check-import", "E0244"),
     active!(RESOURCE, "check-resource", "E0245"),
     active!(READ_ONLY, "check-read-only", "E0246"),
+    active!(EXTERN, "check-extern", "E0247"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

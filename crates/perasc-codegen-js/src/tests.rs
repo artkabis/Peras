@@ -48,15 +48,21 @@ fn node() -> Option<PathBuf> {
 /// What `main()` returns, as JSON with `BigInt`s as text with an `n`, or
 /// the message of what it throws.
 fn run(source: &str) -> Option<String> {
+    run_with(source, None)
+}
+
+/// [`run`], with `lib`, when given, as `./lib.js` next to the module.
+fn run_with(source: &str, lib: Option<&str>) -> Option<String> {
     let node = node()?;
     let module = js(source);
-    let dir = std::env::temp_dir().join(format!("perasc-js-{}", std::process::id()));
+    let key = source.len() * 31 + source.bytes().map(usize::from).sum::<usize>();
+    let dir = std::env::temp_dir().join(format!("perasc-js-{}-{key}", std::process::id()));
     std::fs::create_dir_all(&dir).ok()?;
-    let file = dir.join(format!(
-        "m{}.mjs",
-        source.len() * 31 + source.bytes().map(usize::from).sum::<usize>()
-    ));
+    let file = dir.join("m.mjs");
     std::fs::write(&file, &module).ok()?;
+    if let Some(lib) = lib {
+        std::fs::write(dir.join("lib.js"), lib).ok()?;
+    }
     let script = "import(process.argv[1]).then(async (m) => { try { const r = await m.main(); \
          console.log(JSON.stringify(r, (k, v) => typeof v === 'bigint' ? v + 'n' : v instanceof Map ? [...v] : v instanceof Set ? [...v] : v === undefined ? null : v)); } \
          catch (e) { console.log('throws: ' + e.message); } });";
@@ -67,7 +73,7 @@ fn run(source: &str) -> Option<String> {
         .arg(&file)
         .output()
         .ok()?;
-    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir_all(&dir);
     assert!(
         output.status.success(),
         "{}\n{module}",
@@ -420,4 +426,102 @@ fn options_of_options_are_refused() {
         .unwrap_or_default();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_eq!(errors[0].code, perasc_diag::codes::NOT_SUPPORTED_YET);
+}
+
+/// A library for the tests of `extern`: honest functions, and liars.
+const LIB: &str = "export class Counter { constructor(start) { this.n = start; } add(k) { this.n += k; return this.n; } each(f) { for (let i = 0; i < 3; i++) f(i, `#${i}`); } }
+export const counter = (start) => new Counter(start);
+export const words = (text) => text.split(' ');
+export const later = async (x) => x * 2;
+export const lookup = (key) => (key === 'a' ? 1 : null);
+export const point = () => ({ x: 1, y: 2, extra: true });
+export const liar = () => '3';
+export const badArray = () => [1, 'two'];
+export const badInt = () => 2.5;
+export const badPoint = () => ({ x: 1 });
+export const badCallback = (f) => f('zero');";
+
+#[test]
+fn extern_functions_are_called_and_checked() {
+    let source = "struct Point { x: f64, y: f64 }
+         extern from \"./lib.js\" {
+           type Counter;
+           fn counter(start: i32): Counter;
+           fn add(self: Counter, k: i32): i32;
+           fn each(self: Counter, f: (i32, String) => void): void;
+           fn words(text: String): Array<String>;
+           async fn later(x: number): Promise<number>;
+           fn lookup(key: String): Option<i32>;
+           fn point(): Point;
+         }
+         let seen = \"\";
+         fn saw(i: i32, label: String): void {
+           seen += `${label}=${i} `;
+         }
+         export async fn main(): Promise<Array<String>> {
+           const c = counter(10);
+           c.add(5);
+           c.each((i, label) => saw(i, label));
+           const p = point();
+           return [
+             c.add(1).toString(), words(\"a b c\").join(\"|\"), (await later(2.5)).toString(),
+             lookup(\"a\").unwrapOr(0).toString(), lookup(\"b\").isNone().toString(),
+             `${p.x},${p.y}`, seen.trim(),
+           ];
+         }";
+    if let Some(found) = run_with(source, Some(LIB)) {
+        assert_eq!(
+            found,
+            "[\"16\",\"a|b|c\",\"5\",\"1\",\"true\",\"1,2\",\"#0=0 #1=1 #2=2\"]",
+            "{}",
+            js(source)
+        );
+    }
+}
+
+#[test]
+fn values_from_javascript_that_do_not_match_throw() {
+    for (decl, call, message) in [
+        (
+            "fn liar(): i32;",
+            "liar()",
+            "liar(…) returned the string \"3\" where its declaration says i32",
+        ),
+        (
+            "fn badArray(): Array<i32>;",
+            "badArray()[0]",
+            "badArray(…) returned the string \"two\" where its declaration says Array<i32>",
+        ),
+        (
+            "fn badInt(): i32;",
+            "badInt()",
+            "badInt(…) returned the number 2.5 where its declaration says i32",
+        ),
+        (
+            "fn badPoint(): Point;",
+            "badPoint().y.toI32()",
+            "badPoint(…) returned undefined where its declaration says Point",
+        ),
+        (
+            "fn badCallback(f: (i32) => i32): i32;",
+            "badCallback((x) => x + 1)",
+            "badCallback(…) gave its callback the string \"zero\" where its declaration says i32",
+        ),
+    ] {
+        let source = format!(
+            "struct Point {{ x: f64, y: f64 }}
+             extern from \"./lib.js\" {{ {decl} }}
+             export fn main(): i32 {{
+               return {call};
+             }}"
+        );
+        if let Some(found) = run_with(&source, Some(LIB)) {
+            assert_eq!(
+                found,
+                format!("throws: peras: {message}"),
+                "{}",
+                js(&source)
+            );
+        }
+    }
 }

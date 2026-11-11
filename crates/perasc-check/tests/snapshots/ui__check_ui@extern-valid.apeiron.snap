@@ -1,0 +1,7 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/extern-valid.apeiron
+---
+diagnostics:
+  none

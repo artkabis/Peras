@@ -1,0 +1,12 @@
+// What an extern block cannot declare.
+extern from "./lib.js" {
+  type Widget;
+  fn keep(listener: Listener): void;
+  fn later(f: Array<() => void>): void;
+  fn grow(self: String): void;
+  async fn slow(): number;
+}
+
+export fn local(_f: (i32) => i32): i32 {
+  return 0;
+}

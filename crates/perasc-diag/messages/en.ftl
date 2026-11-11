@@ -662,6 +662,7 @@ check-managed-only = { $what ->
     [promise] the type `Promise`
     [import] an `import`
     [browser] the browser's API
+    [extern] an `extern` block
    *[other] this
 } { $what ->
     [await-sync] cannot wait
@@ -754,6 +755,30 @@ check-read-only = `{ $member }` of `{ $type }` can only be read
 check-read-only-label = assigned here
 check-read-only-why = The browser sets this property itself: an event's type and key, the status of a response, the body of a page. A page cannot change it.
 check-read-only-fix = read it into a variable of your own, and change that one
+
+# E0247
+check-extern = { $reason ->
+    [resource] `{ $name }` would give a resource to JavaScript, which cannot release it
+    [callback] a function type is only allowed for a parameter of an `extern` function
+    [self] `self` must be of a type this `extern` block declares
+    [async] `{ $name }` is `async`: its result must be a `Promise`
+   *[other] this `extern` declaration cannot be kept
+}
+check-extern-label = { $reason ->
+    [resource] a resource here
+    [callback] a function type here
+    [self] not a type of this block
+    [async] not a `Promise`
+   *[other] here
+}
+check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type is a callback, written as an arrow function where the `extern` function is called: elsewhere there is nothing to call it with. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
+check-extern-fix = { $reason ->
+    [resource] give JavaScript the data instead, and keep the resource in Peras
+    [callback] declare the callback as a parameter of an `extern` function, and pass an arrow function there
+    [self] declare the type in this block, `type Chart;`, and write `self: Chart`
+    [async] declare its result as `Promise<T>`
+   *[other] check the declaration
+}
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

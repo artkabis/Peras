@@ -174,6 +174,12 @@ pub enum Ty {
     Fn(FnId, String),
     /// A type of the browser, in a managed module: `Element`, `Listener`…
     Host(crate::browser::Host),
+    /// `type Chart;` of an `extern` block: a value JavaScript makes, which
+    /// Peras only passes; its index among them, and its name.
+    Opaque(u32, String),
+    /// `(Event) => void`: a function JavaScript calls back, the type of a
+    /// parameter of an `extern` function.
+    Callback(Vec<Ty>, Box<Ty>),
     /// A type parameter of the function, structure or enumeration being
     /// checked: its index among them, and its name.
     Param(u32, String),
@@ -241,9 +247,16 @@ impl fmt::Display for Ty {
             Self::Promise(t) => write!(f, "Promise<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
-            Self::Struct(_, name) | Self::Enum(_, name) | Self::Param(_, name) => f.write_str(name),
+            Self::Struct(_, name)
+            | Self::Enum(_, name)
+            | Self::Param(_, name)
+            | Self::Opaque(_, name) => f.write_str(name),
             Self::Fn(_, name) => write!(f, "fn {name}"),
             Self::Host(h) => f.write_str(h.name()),
+            Self::Callback(params, ret) => {
+                let params: Vec<String> = params.iter().map(ToString::to_string).collect();
+                write!(f, "({}) => {ret}", params.join(", "))
+            }
             Self::Error => f.write_str("?"),
         }
     }
