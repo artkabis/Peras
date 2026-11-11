@@ -764,7 +764,9 @@ impl Lowering<'_> {
     }
 
     /// `len` scalars from `offset`. The others are dropped, so any of them that
-    /// could call or trap is evaluated first, with all the others, in order.
+    /// could call or trap is evaluated first, with all the others, in order;
+    /// a block among them, the field of a temporary, is released when the
+    /// statement ends.
     pub(super) fn pick(
         state: &mut FnState,
         fields: Vec<Expr>,
@@ -776,7 +778,15 @@ impl Lowering<'_> {
         } else {
             fields.into_iter().map(|e| state.spill(e)).collect()
         };
-        fields.into_iter().skip(offset).take(len).collect()
+        let mut picked = Vec::with_capacity(len);
+        for (i, field) in fields.into_iter().enumerate() {
+            if (offset..offset + len).contains(&i) {
+                picked.push(field);
+            } else if field.ty == Ty::Owned {
+                let _ = Self::fresh(state, vec![field], Mode::Borrow);
+            }
+        }
+        picked
     }
 
     /// Call arguments, flattened, in order (see the module documentation). A
@@ -985,9 +995,26 @@ impl FnState {
         for operand in operands.iter_mut() {
             if !heap::pure(operand) {
                 let temp = self.temp(operand.ty);
-                let value = std::mem::replace(operand, super::local_expr(self, temp));
+                // A block made before the statements that follow is moved
+                // into its place when the statement completes.
+                let read = if operand.ty == Ty::Owned {
+                    Expr {
+                        kind: ExprKind::Move(temp),
+                        ty: Ty::Owned,
+                    }
+                } else {
+                    super::local_expr(self, temp)
+                };
+                let value = std::mem::replace(operand, read);
                 self.pre.insert(at, Stmt::Set(temp, value));
                 at += 1;
+            }
+        }
+        // Until then, the blocks the operands hold are released on the exits
+        // of the statements that follow, as the return of a `?`.
+        for operand in operands.iter() {
+            if let ExprKind::Move(temp) = operand.kind {
+                release_before_returns(&mut self.pre, at, temp);
             }
         }
     }
@@ -1115,5 +1142,33 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         CheckTy::Int(_) => Err("integer-type"),
         _ => Err("struct"),
+    }
+}
+
+/// Releases `temp` before each `return` of `stmts` from `from` on, nested ones
+/// included: the early exits, as `?` makes, of a statement that holds a block
+/// it has not yet handed over.
+fn release_before_returns(stmts: &mut Vec<Stmt>, from: usize, temp: LocalId) {
+    let mut i = from;
+    while i < stmts.len() {
+        match &mut stmts[i] {
+            Stmt::Return(_) | Stmt::ReturnMany(_) => {
+                stmts.insert(i, heap::release_stmt(temp));
+                i += 1;
+            }
+            Stmt::If {
+                then, otherwise, ..
+            } => {
+                release_before_returns(then, 0, temp);
+                release_before_returns(otherwise, 0, temp);
+            }
+            Stmt::Loop { body, step, .. } => {
+                release_before_returns(body, 0, temp);
+                release_before_returns(step, 0, temp);
+            }
+            Stmt::Block(inner) => release_before_returns(inner, 0, temp),
+            _ => {}
+        }
+        i += 1;
     }
 }

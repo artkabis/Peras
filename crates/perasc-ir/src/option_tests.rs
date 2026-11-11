@@ -201,3 +201,19 @@ fn the_question_mark_needs_a_function_returning_an_option() {
         "accepted: {lowered:?}"
     );
 }
+
+/// `?` after an argument that made a block: the early return releases it.
+#[test]
+fn the_question_mark_releases_what_its_statement_made() {
+    let source = "export fn f(n: i32): i32 {\n  const r = parse(n).unwrapOr(R(\"\", -1));\n  return r.n * 100 + r.name.length;\n}\n\
+         struct R {\n  name: String;\n  n: i32;\n}\n\
+         fn half(n: i32): Option<i32> {\n  if (n % 2 != 0) {\n    return None;\n  }\n  return Some(n / 2);\n}\n\
+         fn parse(n: i32): Option<R> {\n  return Some(R(\"x\".repeat(n), half(n)?));\n}\n";
+    let inputs: Vec<Vec<Value>> = (0..=6).map(|n| vec![Value::I32(n)]).collect();
+    agrees(source, &inputs, |args| {
+        let Value::I32(n) = args[0] else {
+            unreachable!()
+        };
+        Ok(Value::I32(if n % 2 == 0 { n / 2 * 100 + n } else { -100 }))
+    });
+}
