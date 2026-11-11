@@ -57,6 +57,8 @@ fuzz_target!(|data: &[u8]| {
                 threads: optimize,
                 // The debug build checks integer overflow, as `perasc build` does.
                 overflow_checks: allocator == Allocator::Debug,
+                // Linked, as `perasc build` does, where there are no threads.
+                link: true,
             },
             &Localizer::new(Language::English),
         ) {

@@ -6,7 +6,7 @@ Read at the start of every session. It holds the rules of the project and the tr
 
 - **Report to the owner in French.** Docs are written in English first, then in French; `node scripts/check-i18n.mjs` checks that every page exists in both.
 - **No dependency on another language than Rust**, not even in a benchmark. A competitor that needs an npm package or a C library is cited from its published figures, never installed.
-- **A build fails on any error.** Before a commit: `cargo fmt`, `cargo clippy -D warnings`, `cargo test --workspace`, `pnpm run check` (format, lint, types, tests, translations, `pnpm audit` with no vulnerability), `pnpm run docs`, and the `--check` of each benchmark touched.
+- **A build fails on any error.** Before a commit: `cargo fmt`, `cargo clippy -D warnings`, the same two for `fuzz/` (`--manifest-path fuzz/Cargo.toml`, a workspace of its own, M014), `cargo test --workspace`, `pnpm run check` (format, lint, types, tests, translations, `pnpm audit` with no vulnerability), `pnpm run docs`, and the `--check` of each benchmark touched.
 - **pnpm installs nothing published less than 24 hours ago** (`minimumReleaseAge`); never add an exclusion.
 - **Commits** follow Conventional Commits, signed off (`git commit -s`), with the attribution lines the session gives. No model name in the repository.
 - **Commits are authored by the owner**, who decides and signs off: in this repository, `git config user.name "Artkabis"` and `git config user.email "8205827+artkabis@users.noreply.github.com"`, set before the first commit of a session. The `Co-Authored-By` line still names who wrote the code.
