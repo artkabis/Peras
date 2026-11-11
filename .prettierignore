@@ -18,6 +18,8 @@ bench/history/rows.json
 bench/garden/run-1/
 # Written by vite-plugin-peras when the playground (examples/garden) builds.
 bench/garden/garden.d.peras.ts
+# Written by vite-plugin-peras when the stream app (examples/stream) builds.
+examples/stream/src/telemetry.d.peras.ts
 bench/backends/RESULTS.md
 bench/browser/RESULTS.md
 bench/browser/WORKERS.md
