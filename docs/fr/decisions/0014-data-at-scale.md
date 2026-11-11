@@ -2,21 +2,21 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11, avant toute mesure ; aucune version encore écrite._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)) ; aucune version encore écrite._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
 ## Contexte
 
-Le jardin d’Apeiron (décision 0013) a montré qu’un programme peut être plus petit que son image ; il n’a pas montré que Peras aide une entreprise. Son propriétaire a dit ce que cela veut dire : absorber beaucoup de données et en faire quelque chose sur la page web, sans friction. C’est une autre affirmation, sur l’ingestion, pas la génération, et elle a de solides concurrents : TypeScript tout simple, que chaque équipe web écrit déjà, et DuckDB-wasm, une base analytique compilée en WebAssembly, faite pour cela précisément.
+Le jardin d’Apeiron (décision 0013) a montré qu’un programme peut être plus petit que son image ; il n’a pas montré que Peras aide une entreprise. Son propriétaire a dit ce que cela veut dire : absorber beaucoup de données et en faire quelque chose sur la page web, sans friction. C’est une autre affirmation, sur l’ingestion, pas la génération, et elle a un solide concurrent : TypeScript, que chaque équipe web écrit déjà, simplement ou optimisé à la main.
 
-Cette étude demande, avant d’en écrire une ligne, si Peras fait le travail d’un tableau de bord commercial plus vite, dans moins de mémoire et avec moins de friction qu’eux, de cent mille à quatre millions de lignes. Elle est enregistrée pour que sa réponse ne puisse pas être pliée vers une démo : les données, la requête, les versions, les mesures et les seuils sont fixés ici.
+Cette étude demande, avant d’en écrire une ligne, si Peras fait le travail d’un tableau de bord commercial plus vite, dans moins de mémoire et avec moins de friction que TypeScript, de cent mille à quatre millions de lignes. Elle est enregistrée pour que sa réponse ne puisse pas être pliée vers une démo : les données, la requête, les versions, les mesures et les seuils sont fixés ici.
 
 Les risques sont ceux que la décision 0013 a nommés, et un de plus :
 
 - **Une démo choisie pour gagner.** Les seuils sont fixés ici ; une hypothèse réfutée est annoncée réfutée, dans le README aussi.
 - **Des versions qui ne font pas le même travail.** Chaque version doit donner le même résumé, octet pour octet, vérifié par une empreinte.
-- **Un homme de paille.** Le TypeScript idiomatique est ce qu’un développeur web écrit sans optimiser ; un TypeScript optimisé à la main et un moteur industriel sont mesurés à côté, pour que Peras ne soit pas jugé face au plus faible seulement.
+- **Un homme de paille.** Le TypeScript idiomatique est ce qu’un développeur web écrit sans optimiser ; un TypeScript optimisé à la main est mesuré à côté, pour que Peras ne soit pas jugé face au plus faible seulement.
 - **Des données propres.** Les vrais exports portent des lignes cassées ; une ligne sur mille est cassée ici, et chaque version doit compter et écarter les mêmes.
 
 ## Les données
@@ -55,7 +55,6 @@ Puis la page **dessine un graphique** à partir du résumé : le chiffre d’aff
 - **B. TypeScript, optimisé** : les octets du `Uint8Array`, lus sans créer de chaînes ; les entiers lus à la main ; les clés tassées en entiers ; les comptes dans des tableaux typés ; les utilisateurs distincts dans une table de bits.
 - **C. Peras** : un module owned compilé en WebAssembly, écrit aussi simplement que A avec ce que le langage offre : `split`, `parseI32`, `Map`, `Set`, `sortByDescending`. Il reçoit le texte ou ses octets, ce que le langage passe avec le moins de copie, et ce choix est consigné.
 - **D. Peras, en parallèle** : C, ses lignes découpées en autant de morceaux que de threads aux frontières de lignes, chacun agrégé dans un `parallel for` (décision 0007), puis fusionnés ; construit avec `--threads`, mesuré dans une page isolée cross-origin. Si `parallel for` ne peut pas l’exprimer, D est déclaré non exprimable, et c’est un résultat.
-- **E. DuckDB-wasm**, version `1.33.1-dev57.0`, celle du tag `latest` de npm le 2026-11-11, épinglée exactement : le fichier enregistré comme tampon ; lu par `read_csv` avec chaque colonne en texte ; les lignes validées en SQL selon les règles ci-dessus ; le résumé calculé par des requêtes SQL et converti au résumé canonique en JavaScript.
 
 Chaque version est écrite d’après la spécification ci-dessus par les auteurs de Peras ; c’est une menace pour la validité, listée plus bas.
 
@@ -66,12 +65,12 @@ Chacune avec ce qui la réfute. La « vitesse » est l’inverse du temps média
 - **H1, Peras simple bat TypeScript simple.** C est au moins 2 fois plus rapide que A à 1 000 000 et à 4 000 000 lignes. _Réfutée_ si l’un des rapports est sous 2.
 - **H2, Peras simple approche le TypeScript optimisé.** C est au moins 0,8 fois aussi rapide que B à 1 000 000 et à 4 000 000 lignes. _Réfutée_ si l’un des rapports est sous 0,8. Elle teste l’affirmation d’absence de friction : la vitesse sans écrire la version optimisée.
 - **H3, moins de mémoire.** La mémoire résidente maximale de C vaut au plus la moitié de celle de A à 4 000 000 lignes. _Réfutée_ au-delà de la moitié.
-- **H4, le premier graphique avant la base de données.** À froid, C dessine le premier graphique avant E à chaque taille. _Réfutée_ si E le dessine d’abord à une taille.
-- **H5, aussi rapide que la base de données, à chaud.** C est au moins aussi rapide que E à 4 000 000 lignes. _Réfutée_ sous 1.
-- **H6, un petit programme.** C livre au plus un centième des octets de E, et au plus 3 fois ceux de A. _Réfutée_ par l’une des bornes.
-- **H7, les cœurs aident.** D est au moins 2 fois plus rapide que C à 4 000 000 lignes, sur les 4 cœurs de la machine. _Réfutée_ sous 2, ou si D ne peut pas être écrit.
-- **H8, linéaire.** Le temps de C à 4 000 000 lignes vaut au plus 4,4 fois son temps à 1 000 000. _Réfutée_ au-delà.
-- **H9, pas plus de code.** C compte au plus 1,25 fois les lignes de A. _Réfutée_ au-delà.
+- **H4, un petit programme.** C livre au plus 3 fois les octets de A. _Réfutée_ au-delà.
+- **H5, les cœurs aident.** D est au moins 2 fois plus rapide que C à 4 000 000 lignes, sur les 4 cœurs de la machine. _Réfutée_ sous 2, ou si D ne peut pas être écrit.
+- **H6, linéaire.** Le temps de C à 4 000 000 lignes vaut au plus 4,4 fois son temps à 1 000 000. _Réfutée_ au-delà.
+- **H7, pas plus de code.** C compte au plus 1,25 fois les lignes de A. _Réfutée_ au-delà.
+
+Le temps jusqu’au premier graphique, à froid, est mesuré et rapporté pour chaque version, et testé contre aucune hypothèse.
 
 ## Mesures
 
@@ -79,15 +78,15 @@ Chacune avec ce qui la réfute. La « vitesse » est l’inverse du temps média
 - **Temps jusqu’au résumé, à chaud** : des octets du fichier en mémoire, un `Uint8Array`, au résumé en objet JavaScript, décodage et copie éventuelle dans un module compris ; médiane de 15 exécutions après 2 d’échauffement, les versions en alternance, dans Chromium, à chaque taille.
 - **Temps jusqu’au premier graphique, à froid** : un nouveau contexte de navigateur, rien en cache, le programme et les données servis par un serveur local ; du début de la navigation au graphique peint, l’image qui suit son tracé ; médiane de 7 chargements, à chaque taille.
 - **Mémoire** : la mémoire résidente maximale du processus de rendu de la page, `VmHWM` dans `/proc/<pid>/status` de Linux, un nouveau processus par exécution, moins le maximum du même processus avec la version chargée et les données en mémoire avant que la requête tourne ; médiane de 5 exécutions, à chaque taille. Elle compte tout ce que la page tient : le tas JavaScript, les mémoires WebAssembly, les tampons.
-- **Octets livrés** : le JavaScript et le WebAssembly que chaque version charge, minifiés par Vite là où cela s’applique, puis gzip ; pour E, chaque fichier que la page récupère du paquet, ses workers compris.
+- **Octets livrés** : le JavaScript et le WebAssembly que chaque version charge, minifiés par Vite là où cela s’applique, puis gzip.
 - **Énergie** : celle du processeur, lue par RAPL là où la machine la donne ; déclarée non mesurée ailleurs, jamais estimée (décision 0012).
 - **Code** : les lignes sans commentaires ni lignes vides, du code qui calcule le résumé à partir des octets ; le graphique et la page partagés ne sont pas comptés.
 
 ## Menaces pour la validité
 
-- Les données sont générées ; les vrais exports ont d’autres distributions, d’autres largeurs, des champs entre guillemets. Le CSV ici n’a pas de guillemets, ce qui favorise chaque analyseur écrit à la main face à celui de DuckDB.
-- Les auteurs ont écrit chaque version ; un expert d’un langage, ou de DuckDB, peut l’écrire plus rapide.
-- DuckDB est un moteur général : il répond à n’importe quel SQL, la version de Peras répond à une requête. DuckDB lit Parquet et Arrow bien plus vite que CSV ; cette étude lit du CSV parce que c’est ce qu’une entreprise exporte d’abord. Un `read_csv` typé sur les lignes bien formées sera mesuré comme chiffre exploratoire, testé contre aucune hypothèse.
+- Les données sont générées ; les vrais exports ont d’autres distributions, d’autres largeurs, des champs entre guillemets. Le CSV ici n’a pas de guillemets, ce qui rend le travail de chaque analyseur plus simple que celui d’un vrai export.
+- Les auteurs ont écrit chaque version ; un expert d’un langage peut l’écrire plus rapide.
+- Les moteurs analytiques compilés en WebAssembly, comme DuckDB-wasm, ne sont pas mesurés : le projet ne prend aucune dépendance hors de Rust, pas même dans un banc (voir l’amendement). Toute comparaison avec eux citera leurs chiffres publiés, avec leur source et leurs conditions, et ne sera pas présentée comme une mesure de cette étude.
 - Une machine, sans écran, 4 cœurs ; un téléphone peut ordonner les versions autrement. Le serveur local cache le réseau : les temps à froid seront aussi mesurés sous un réseau bridé, comme chiffre exploratoire.
 - `VmHWM` compte ce qu’un processus a touché, pas ce dont il avait besoin ; une version qui rend sa mémoire plus tôt n’en est pas récompensée.
 
@@ -95,3 +94,14 @@ Chacune avec ce qui la réfute. La « vitesse » est l’inverse du temps média
 
 - `bench/data`, `node scripts/bench-data.mjs`, et ses résultats sous ce protocole ; une vérification en CI que les versions donnent le même résumé à 100 000 lignes.
 - Si les hypothèses tiennent, le README gagne une troisième démo : un tableau de bord commercial de millions de lignes, construit dans le navigateur, avec ses chiffres mesurés. Sinon, les résultats le disent, le README aussi, et celles réfutées nomment ce que le compilateur doit améliorer, ordonné comme la décision 0011 ordonne ses étapes : par la mesure.
+
+## Amendement, avant toute mesure
+
+Le 2026-11-11, après l’enregistrement (commit `96e6c43`) et avant qu’aucune version ne soit écrite ni aucune mesure prise, le propriétaire a fixé un principe : Peras ne prend aucune dépendance envers un autre langage que Rust, et un banc ne doit pas non plus en introduire dans le dépôt. Mesurer DuckDB-wasm aurait ajouté un paquet d’environ 149 Mo, en version de développement, à ce que surveille `pnpm audit`. Le protocole a été amendé en conséquence :
+
+- La version **E, DuckDB-wasm**, est retirée.
+- Les hypothèses qui comparaient Peras à elle sont retirées : **H4** enregistrée (le premier graphique avant la base, à froid) et **H5** (aussi rapide que la base, à chaud), et la première borne de **H6** enregistrée (un centième de ses octets) ; la seconde borne de H6 est gardée, comme **H4**.
+- Les autres hypothèses sont inchangées et renumérotées : H7, H8 et H9 enregistrées deviennent **H5**, **H6** et **H7**. Aucun seuil n’a changé.
+- Le temps jusqu’au premier graphique, à froid, reste une mesure, sans hypothèse.
+
+Aucune mesure n’ayant été prise, l’amendement ne peut pas avoir été guidé par un résultat.
