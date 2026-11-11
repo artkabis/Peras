@@ -116,7 +116,7 @@ Pourquoi Peras n’est pas plus rapide est la question suivante ; elle est profi
 
 ## Exécution 2 : après les littéraux statiques
 
-Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compilateur : les littéraux de chaîne seulement lus sont prêtés depuis un en-tête statique au lieu d’être copiés à chaque usage (décision 0016, constat F211). L’exécution 1 est gardée dans [bench/stream/run-1](../../../bench/stream/run-1/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 2 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont de nouveau concordé sur chaque lot.
+Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compilateur : les littéraux de chaîne seulement lus sont prêtés depuis un en-tête statique au lieu d’être copiés à chaque usage (décision 0016, constat F211). L’exécution 1 est gardée dans [bench/stream/run-1](../../../bench/stream/run-1/RESULTS.md) ; le [rapport](../../../bench/stream/run-2/RESULTS.md) de l’exécution 2 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-2/results.json). Les trois calculs ont de nouveau concordé sur chaque lot.
 
 | Hypothèse                                           | Exécution 1 | Exécution 2, intervalle à 95 %        | Verdict      |
 | --------------------------------------------------- | ----------- | ------------------------------------- | ------------ |
@@ -128,10 +128,10 @@ Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compi
 
 **Ce que cela dit.** Peras traite maintenant le flux plus vite que le TypeScript écrit pour la vitesse, à chaque taille de lot : 1,11 fois à 1 000 lignes, 1,15 à 10 000, 1,21 à 100 000, chaque intervalle entièrement au-dessus de 1. Son temps par ligne est passé d’environ 440 à environ 338 ns ; A et B n’ont pas changé, à 2 % près. Les verdicts sont ceux de l’exécution 1, les seuils n’ayant pas été franchis autrement ; ce qui a changé, c’est le côté de 1 où se tient le rapport sur B. Ses appels lents restent indéterminés.
 
-![Lignes par seconde par taille de lot, exécution 2 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+![Lignes par seconde par taille de lot, exécution 2 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-2-throughput.svg)
 
-![Les rapports de vitesse avec leur intervalle à 95 %, exécution 2 : C sur A entre 1,84 et 2,18, C sur B entre 1,11 et 1,21](../../assets/stream-ratios.svg)
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 2 : C sur A entre 1,84 et 2,18, C sur B entre 1,11 et 1,21](../../assets/stream-run-2-ratios.svg)
 
-![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 2 : C à gauche de B, A à droite](../../assets/stream-latency.svg)
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 2 : C à gauche de B, A à droite](../../assets/stream-run-2-latency.svg)
 
-![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 2](../../assets/stream-breakdown.svg)
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 2](../../assets/stream-run-2-breakdown.svg)

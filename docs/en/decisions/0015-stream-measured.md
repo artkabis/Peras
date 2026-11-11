@@ -116,7 +116,7 @@ Why Peras is not faster is the next question; it is profiled in [the findings](.
 
 ## Run 2: after static literals
 
-Measured at commit `9f9754b`, with the protocol unchanged, after one change to the compiler: string literals only read are lent from a static header instead of copied at each use (decision 0016, finding F211). Run 1 is kept in [bench/stream/run-1](../../../bench/stream/run-1/RESULTS.md); run 2's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch again.
+Measured at commit `9f9754b`, with the protocol unchanged, after one change to the compiler: string literals only read are lent from a static header instead of copied at each use (decision 0016, finding F211). Run 1 is kept in [bench/stream/run-1](../../../bench/stream/run-1/RESULTS.md); run 2's [report](../../../bench/stream/run-2/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-2/results.json). The three digests agreed on every batch again.
 
 | Hypothesis                                           | Run 1      | Run 2, 95 % interval                 | Verdict      |
 | ---------------------------------------------------- | ---------- | ------------------------------------ | ------------ |
@@ -128,10 +128,10 @@ Measured at commit `9f9754b`, with the protocol unchanged, after one change to t
 
 **What it says.** Peras now digests the stream faster than TypeScript written for speed, at every batch size: 1.11 times at 1,000 rows, 1.15 at 10,000, 1.21 at 100,000, each interval wholly above 1. Its time per row went from about 440 to about 338 ns; A and B did not change, within 2 %. The verdicts are the same as run 1's, since the thresholds were not crossed differently; what changed is which side of 1 the ratio over B stands. Its slow calls are still undetermined.
 
-![Rows per second by batch size, run 2: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size, run 2: C highest at every size, B below it, A lowest](../../assets/stream-run-2-throughput.svg)
 
-![The speed ratios with their 95 % intervals, run 2: C over A between 1.84 and 2.18, C over B between 1.11 and 1.21](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals, run 2: C over A between 1.84 and 2.18, C over B between 1.11 and 1.21](../../assets/stream-run-2-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows, run 2: C to the left of B, A to the right](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows, run 2: C to the left of B, A to the right](../../assets/stream-run-2-latency.svg)
 
-![C's time per row split into the boundary and the digest, run 2](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary and the digest, run 2](../../assets/stream-run-2-breakdown.svg)

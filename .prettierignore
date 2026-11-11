@@ -16,6 +16,7 @@ bench/candle/results.json
 bench/stream/RESULTS.md
 bench/stream/results.json
 bench/stream/run-1/
+bench/stream/run-2/
 bench/history/results.json
 bench/history/rows.json
 bench/garden/run-1/
