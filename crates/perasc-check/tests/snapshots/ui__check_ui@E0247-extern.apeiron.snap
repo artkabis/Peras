@@ -20,7 +20,3 @@ diagnostics:
     primary 7:20-7:26: check-extern-label { reason: "async" }
     cause: check-extern-why
     fix: check-extern-fix { reason: "async" }
-  error[E0247] check-extern { reason: "callback", name: "" }
-    primary 10:21-10:33: check-extern-label { reason: "callback" }
-    cause: check-extern-why
-    fix: check-extern-fix { reason: "callback" }

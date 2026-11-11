@@ -58,6 +58,12 @@ impl Checker<'_> {
     }
 
     fn extern_fn(&mut self, decl: &ExternDecl, f: &ExternFn) {
+        self.flags.in_extern = true;
+        self.extern_fn_inner(decl, f);
+        self.flags.in_extern = false;
+    }
+
+    fn extern_fn_inner(&mut self, decl: &ExternDecl, f: &ExternFn) {
         let mut params = Vec::with_capacity(f.params.len());
         for p in &f.params {
             // A function type is allowed here only, at the top of a parameter.

@@ -14,7 +14,9 @@
 use std::collections::{HashMap, HashSet};
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{ArmBody, ExprId, ExprKind, FnDecl, ItemKind, Stmt, StmtKind};
+use perasc_syntax::ast::{
+    ArmBody, Block, ExprId, ExprKind, FnDecl, ItemKind, LambdaBody, Stmt, StmtKind,
+};
 
 use crate::browser::{holds_resource, is_resource};
 use crate::ty::Ty;
@@ -54,8 +56,10 @@ pub struct Resources<'c, 'a> {
     reported: HashSet<usize>,
     /// The depth of loops around the statement being checked.
     loops: usize,
-    /// Inside an arrow function.
+    /// Inside an arrow function's value.
     in_arrow: bool,
+    /// Variables holding a resource outside the arrow function being checked.
+    captured: HashSet<usize>,
     /// Inside a value already reported for holding a resource.
     in_holder: bool,
     /// Module variables holding a resource, already reported.
@@ -79,6 +83,7 @@ impl<'c, 'a> Resources<'c, 'a> {
             reported: HashSet::new(),
             loops: 0,
             in_arrow: false,
+            captured: HashSet::new(),
             in_holder: false,
             globals: HashSet::new(),
         }
@@ -262,6 +267,27 @@ impl<'c, 'a> Resources<'c, 'a> {
         }
     }
 
+    /// The statements of an arrow function: its own variables own their
+    /// resources, released when it returns; one of the function around it
+    /// is captured, and refused, as in an arrow function's value.
+    fn arrow_block(&mut self, block: &Block) {
+        let held = std::mem::take(&mut self.held);
+        let lent = std::mem::take(&mut self.lent);
+        let loops = std::mem::replace(&mut self.loops, 0);
+        let in_arrow = std::mem::replace(&mut self.in_arrow, false);
+        let captured = self.captured.clone();
+        self.captured
+            .extend(held.keys().copied().chain(lent.iter().copied()));
+        for s in &block.stmts {
+            self.stmt(s);
+        }
+        self.captured = captured;
+        self.in_arrow = in_arrow;
+        self.loops = loops;
+        self.lent = lent;
+        self.held = held;
+    }
+
     /// A loop's body: run once, what it may give away given away maybe.
     fn in_loop(&mut self, body: &Stmt) {
         let before = self.held.clone();
@@ -325,11 +351,14 @@ impl<'c, 'a> Resources<'c, 'a> {
         match &expr.kind {
             ExprKind::Name(_) => self.name(id, position),
             ExprKind::Paren(inner) => self.expr(*inner, position),
-            ExprKind::Lambda { body, .. } => {
-                let outer = std::mem::replace(&mut self.in_arrow, true);
-                self.expr(*body, Position::Use);
-                self.in_arrow = outer;
-            }
+            ExprKind::Lambda { body, .. } => match body {
+                LambdaBody::Expr(body) => {
+                    let outer = std::mem::replace(&mut self.in_arrow, true);
+                    self.expr(*body, Position::Use);
+                    self.in_arrow = outer;
+                }
+                LambdaBody::Block(block) => self.arrow_block(block),
+            },
             ExprKind::Call { callee, args, .. } => {
                 if let ExprKind::Field { base, name } = &ast.expr(*callee).kind {
                     let method = ast.name(name.symbol);
@@ -392,7 +421,10 @@ impl<'c, 'a> Resources<'c, 'a> {
             ExprKind::Field { base, .. } => subs.push(*base),
             ExprKind::Index { base, index } => subs.extend([*base, *index]),
             ExprKind::Try(inner) | ExprKind::Paren(inner) => subs.push(*inner),
-            ExprKind::Lambda { body, .. } => subs.push(*body),
+            ExprKind::Lambda { body, .. } => match body {
+                LambdaBody::Expr(e) => subs.push(*e),
+                LambdaBody::Block(block) => self.arrow_block(block),
+            },
             ExprKind::Match { scrutinee, arms } => {
                 subs.push(*scrutinee);
                 for arm in arms {
@@ -419,6 +451,11 @@ impl<'c, 'a> Resources<'c, 'a> {
             return;
         };
         let span = self.checker.ast.expr(id).span;
+        if self.captured.contains(&binding) {
+            let name = self.binding_name(binding);
+            self.report(span, "capture", &name);
+            return;
+        }
         let lent = self.lent.contains(&binding);
         let Some(&(held, depth)) = self.held.get(&binding) else {
             // A parameter: lent by the caller.

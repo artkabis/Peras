@@ -61,7 +61,8 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 - ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci ; les structures et les énumérations ensuite.
 - ~~Le DOM, les événements, `fetch`, les minuteries, le stockage, avec des API typées~~ : fait pour un sous-ensemble, la [référence du navigateur](browser.md) ([décision 0009](../decisions/0009-browser-and-resources.md)) ; les WebSockets, les Web Workers, les formulaires et `requestAnimationFrame` ensuite.
 - ~~Des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas~~ : fait.
-- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : des fonctions fléchées à instructions qui capturent ce qu’elles utilisent ; remplacer une ressource libère la précédente ; `sortBy(clé)` ; `toFixed` ; le débordement d’entier arrêté en debug, une fois son coût mesuré ; les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
+- ~~Des fonctions fléchées à instructions qui capturent ce qu’elles utilisent, et les fonctions comme valeurs~~ : fait ([guide](../guide/managed.md#fonctions-fléchées)) ; l’étude de cas garde son état dans le tableau qu’elle monte, affiché deux fois dans une page.
+- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : remplacer une ressource libère la précédente ; `sortBy(clé)` ; `toFixed` ; le débordement d’entier arrêté en debug, une fois son coût mesuré ; les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

@@ -35,7 +35,7 @@ Peras alone stops the listeners and timers left running and the libraries that l
 
 ## Case study (`bench/case-study`)
 
-`node scripts/bench-case-study.mjs` runs a table of orders, searched after a delay, sorted, with a summary, written in TypeScript ([orders.ts](case-study/orders.ts)) and in a managed Peras module ([orders.apeiron](case-study/orders.apeiron)), in Chromium: the same rows shown, the time to mount and to sort, nothing reacting once removed ([results](case-study/RESULTS.md)). A third version sorts through an `extern` block, to measure what a comparison sort in Peras would change. Decision 0011 lists what writing it in Peras ran into.
+`node scripts/bench-case-study.mjs` runs a table of orders, searched after a delay, sorted, with a summary, written in TypeScript ([orders.ts](case-study/orders.ts)) and in a managed Peras module ([orders.apeiron](case-study/orders.apeiron)), in Chromium: the same rows shown, the time to mount and to sort, nothing reacting once removed, two tables in one page each with its own state ([results](case-study/RESULTS.md)). A third version sorts through an `extern` block, to measure what a comparison sort in Peras would change. Decision 0011 lists what writing it in Peras ran into.
 
 ## Backend benchmark (`bench/backends`)
 

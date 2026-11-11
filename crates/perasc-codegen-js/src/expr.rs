@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use perasc_check::ty::{FloatTy, IntTy, Ty};
 use perasc_check::{MethodCall, NameKind};
-use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Ident, UnaryOp};
+use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Ident, LambdaBody, UnaryOp};
 
 use crate::{Module, is_big, round, wrap};
 
@@ -81,7 +81,7 @@ impl Module<'_> {
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 format!("[{}]", self.exprs(items).join(", "))
             }
-            ExprKind::Lambda { params, body } => self.lambda(params, *body),
+            ExprKind::Lambda { params, body, .. } => self.lambda(params, body),
             ExprKind::Name(_) => self.name(id),
             ExprKind::Paren(inner) => self.expr(*inner),
             ExprKind::Unary { op, operand } => self.unary(id, *op, *operand),
@@ -162,6 +162,12 @@ impl Module<'_> {
                     "undefined".to_owned()
                 }
             }
+            // `render`, given where a function is expected.
+            Some((_, NameKind::Fn(f))) => self
+                .fns
+                .get(&f.0)
+                .cloned()
+                .unwrap_or_else(|| "$unnamed".to_owned()),
             _ => {
                 self.unsupported(span, "function-value");
                 "undefined".to_owned()
@@ -172,12 +178,31 @@ impl Module<'_> {
     fn lambda(
         &mut self,
         params: &[(Ident, Option<perasc_syntax::ast::Type>)],
-        body: ExprId,
+        body: &LambdaBody,
     ) -> String {
         let names: Vec<String> = params
             .iter()
             .map(|(ident, _)| self.declare(ident.span, self.ast.name(ident.symbol)))
             .collect();
+        let body = match body {
+            LambdaBody::Expr(body) => *body,
+            LambdaBody::Block(block) => {
+                // Its own `return`: `?` returns from it too.
+                let outer = std::mem::replace(&mut self.current.in_lambda, false);
+                let ((), lines) = self.apart(|m| m.block_stmts(block));
+                self.current.in_lambda = outer;
+                let close = "  ".repeat(self.current.depth);
+                return if lines.is_empty() {
+                    format!("({}) => {{}}", names.join(", "))
+                } else {
+                    format!(
+                        "({}) => {{\n{}\n{close}}}",
+                        names.join(", "),
+                        lines.join("\n")
+                    )
+                };
+            }
+        };
         let outer = std::mem::replace(&mut self.current.in_lambda, true);
         let (value, lines) = self.apart(|m| m.expr(body));
         self.current.in_lambda = outer;
@@ -453,12 +478,23 @@ impl Module<'_> {
                     let variant = if kind == NameKind::Ok { "Ok" } else { "Err" };
                     format!("{{ kind: \"{variant}\", values: [{}] }}", values.join(", "))
                 }
+                // A function kept in a variable or a parameter.
+                Some((binding, NameKind::Local | NameKind::Global)) => {
+                    let name = self.variable(binding);
+                    let values = self.exprs(args);
+                    format!("{name}({})", values.join(", "))
+                }
                 _ => {
                     self.unsupported(span, "function-value");
                     "undefined".to_owned()
                 }
             },
             ExprKind::Field { base, name } => self.call_field(id, *base, name, args),
+            _ if matches!(self.ty(callee), Ty::Callback(..)) => {
+                let function = self.expr(callee);
+                let values = self.exprs(args);
+                format!("({function})({})", values.join(", "))
+            }
             _ => {
                 self.unsupported(span, "function-value");
                 "undefined".to_owned()

@@ -168,8 +168,11 @@ pub fn analyze(ast: &Ast, source: &str) -> Analysis {
 struct Flags {
     /// In an `async` function.
     in_async: bool,
-    /// A function type may be resolved: at the top of an `extern` parameter.
+    /// A function type may be resolved: at the top of an `extern` parameter,
+    /// or of the type of a variable, a parameter or a result in a managed module.
     callback_ok: bool,
+    /// In an `extern` block.
+    in_extern: bool,
 }
 
 /// What a module is checked against: its mode, and the functions of the
@@ -821,19 +824,24 @@ impl<'a> Checker<'a> {
             let name = self.name(decl.name.symbol);
             self.report(errors::generic_export(decl.name.span, name));
         }
-        let params = decl
-            .params
-            .iter()
-            .map(|p| self.resolve_type(&p.ty))
-            .collect();
+        let params: Vec<Ty> = decl.params.iter().map(|p| self.value_type(&p.ty)).collect();
         let ret = match &decl.ret {
-            Some(ty) => self.resolve_type(ty),
+            Some(ty) => self.value_type(ty),
             // Unannotated: `void`, unless it returns a value (reported in the body).
             None if returns_value(&decl.body.stmts) => Ty::Error,
             None => Ty::Void,
         };
-        let id = FnId(self.fns.len());
         let name = self.name(decl.name.symbol).to_owned();
+        // JavaScript would call it with functions whose values go unchecked.
+        if decl.exported
+            && params
+                .iter()
+                .chain(std::iter::once(&ret))
+                .any(|t| matches!(t, Ty::Callback(..)))
+        {
+            self.report(errors::arrow_export(decl.name.span, &name));
+        }
+        let id = FnId(self.fns.len());
         self.fns.push(FnSig {
             name: name.clone(),
             name_span: decl.name.span,
@@ -1050,7 +1058,7 @@ impl<'a> Checker<'a> {
 
     /// The declared or inferred type of a `let` or `const`, its value checked.
     fn local_type(&mut self, local: &Local) -> Ty {
-        let annotated = local.ty.as_ref().map(|t| self.resolve_type(t));
+        let annotated = local.ty.as_ref().map(|t| self.value_type(t));
         match (annotated, local.init) {
             (Some(ty), Some(init)) => {
                 self.expect(init, &ty);
@@ -1064,11 +1072,38 @@ impl<'a> Checker<'a> {
 
     // --- Types written in source -------------------------------------------
 
+    /// The type of a variable, a parameter or a result: in a managed module,
+    /// a function type too.
+    pub(crate) fn value_type(&mut self, ty: &Type) -> Ty {
+        self.flags.callback_ok = self.managed;
+        let resolved = self.resolve_type(ty);
+        self.flags.callback_ok = false;
+        resolved
+    }
+
     pub(crate) fn resolve_type(&mut self, ty: &Type) -> Ty {
         let resolved = self.resolve_type_inner(ty);
         self.written
             .insert((ty.span.start, ty.span.end), resolved.clone());
         resolved
+    }
+
+    /// `(A, B) => R`, where `callback_ok` says one may be written.
+    fn function_type(&mut self, span: Span, params: &[Type], ret: &Type, callback_ok: bool) -> Ty {
+        if !callback_ok {
+            let d = if self.flags.in_extern {
+                errors::extern_decl(span, "callback", "")
+            } else if self.managed {
+                errors::arrow_type_place(span)
+            } else {
+                errors::managed_only(span, "function-type")
+            };
+            self.report(d);
+            return Ty::Error;
+        }
+        let params: Vec<Ty> = params.iter().map(|t| self.resolve_type(t)).collect();
+        let ret = self.resolve_type(ret);
+        Ty::Callback(params, Box::new(ret))
     }
 
     /// A type only a managed module has: `number`, `Promise<T>`, the
@@ -1095,13 +1130,7 @@ impl<'a> Checker<'a> {
                 return self.tuple_type(items);
             }
             TypeKind::Fn { params, ret } => {
-                if !callback_ok {
-                    self.report(errors::extern_decl(ty.span, "callback", ""));
-                    return Ty::Error;
-                }
-                let params: Vec<Ty> = params.iter().map(|t| self.resolve_type(t)).collect();
-                let ret = self.resolve_type(ret);
-                return Ty::Callback(params, Box::new(ret));
+                return self.function_type(ty.span, params, ret, callback_ok);
             }
             TypeKind::Error => return Ty::Error,
         };
@@ -1251,7 +1280,7 @@ fn returns_value(stmts: &[Stmt]) -> bool {
 }
 
 /// Whether every path through these statements ends with `return` or loops forever.
-fn always_returns(ast: &Ast, stmts: &[Stmt]) -> bool {
+pub(crate) fn always_returns(ast: &Ast, stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| stmt_always_returns(ast, s))
 }
 

@@ -35,7 +35,7 @@ Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les
 
 ## Étude de cas (`bench/case-study`)
 
-`node scripts/bench-case-study.mjs` exécute un tableau de commandes, cherché après un délai, trié, avec un résumé, écrit en TypeScript ([orders.ts](case-study/orders.ts)) et dans un module Peras managed ([orders.apeiron](case-study/orders.apeiron)), dans Chromium : les mêmes lignes affichées, le temps de montage et de tri, rien ne réagissant une fois retiré ([résultats](case-study/RESULTS.md)). Une troisième version trie par un bloc `extern`, pour mesurer ce que changerait un tri avec comparaison en Peras. La décision 0011 liste ce que l’écriture en Peras a rencontré.
+`node scripts/bench-case-study.mjs` exécute un tableau de commandes, cherché après un délai, trié, avec un résumé, écrit en TypeScript ([orders.ts](case-study/orders.ts)) et dans un module Peras managed ([orders.apeiron](case-study/orders.apeiron)), dans Chromium : les mêmes lignes affichées, le temps de montage et de tri, rien ne réagissant une fois retiré, deux tableaux dans une page avec chacun son état ([résultats](case-study/RESULTS.md)). Une troisième version trie par un bloc `extern`, pour mesurer ce que changerait un tri avec comparaison en Peras. La décision 0011 liste ce que l’écriture en Peras a rencontré.
 
 ## Comparaison des backends (`bench/backends`)
 

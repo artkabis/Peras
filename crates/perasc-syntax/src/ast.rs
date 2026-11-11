@@ -590,6 +590,15 @@ pub struct Expr {
     pub span: Span,
 }
 
+/// The body of an arrow function.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LambdaBody {
+    /// `=> value`
+    Expr(ExprId),
+    /// `=> { statements }`, which gives a value by `return`.
+    Block(Block),
+}
+
 /// The shapes of expression.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
@@ -605,12 +614,14 @@ pub enum ExprKind {
     Array(Vec<ExprId>),
     /// `(a, b)`: two values or more.
     Tuple(Vec<ExprId>),
-    /// `(x) => body` or `x => body`: an arrow function, its body a value.
+    /// `(x) => body`, `x => body` or `(x: T): R => { … }`: an arrow function.
     Lambda {
         /// Its parameters, their types when written.
         params: Vec<(Ident, Option<Type>)>,
-        /// Its value.
-        body: ExprId,
+        /// The type of its value, when written.
+        ret: Option<Type>,
+        /// Its value, or the statements it runs.
+        body: LambdaBody,
     },
     /// A variable or function name.
     Name(Symbol),
@@ -1158,7 +1169,7 @@ impl Ast {
                 let items: Vec<String> = items.iter().map(|i| self.sexpr(*i)).collect();
                 format!("(tuple {})", items.join(" "))
             }
-            ExprKind::Lambda { params, body } => {
+            ExprKind::Lambda { params, ret, body } => {
                 let params: Vec<String> = params
                     .iter()
                     .map(|(p, t)| match t {
@@ -1166,7 +1177,15 @@ impl Ast {
                         None => self.name(p.symbol).to_owned(),
                     })
                     .collect();
-                format!("(=> ({}) {})", params.join(" "), self.sexpr(*body))
+                let ret = ret
+                    .as_ref()
+                    .map(|t| format!(": {}", self.ty(t)))
+                    .unwrap_or_default();
+                let body = match body {
+                    LambdaBody::Expr(e) => self.sexpr(*e),
+                    LambdaBody::Block(b) => format!("(block {} stmts)", b.stmts.len()),
+                };
+                format!("(=> ({}){ret} {body})", params.join(" "))
             }
             ExprKind::Name(s) => self.name(*s).to_owned(),
             ExprKind::Paren(inner) => format!("(paren {})", self.sexpr(*inner)),

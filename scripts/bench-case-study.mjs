@@ -5,7 +5,8 @@
 // and that nothing reacts once it is removed. Also the size of each module.
 // Usage: node scripts/bench-case-study.mjs [--check] [--perasc <path>]
 //        --check: one run on 1,000 orders; fails if the two versions do not
-//        show the same rows, or if one still reacts once removed.
+//        show the same rows, if one still reacts once removed, or if two
+//        tables in one page share their state.
 // Writes bench/case-study/RESULTS.md, unless --check.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -91,7 +92,7 @@ async function measure(file, n) {
     `import("/page.js").then((p) => p.measure("/${file}", ${String(n)}))`,
   );
   const result =
-    /** @type {{ mount: number, sort: number, shown: number, firstSorted: string, summary: string, left: number, reacts: boolean }} */ (
+    /** @type {{ mount: number, sort: number, shown: number, firstSorted: string, summary: string, left: number, reacts: boolean, twice: boolean }} */ (
       outcome
     );
   await tab.close();
@@ -123,6 +124,7 @@ for (const n of sizes) {
     ])) {
       const o = await measure(file, n);
       if (o.reacts) problems.push(`${side}: still reacts once removed`);
+      if (!o.twice) problems.push(`${side}: two tables in one page share their state`);
       if (side !== "ts" && o.shown !== firstShown)
         problems.push(`${side}: ${String(o.shown)} rows, TypeScript ${String(firstShown)}`);
       if (side === "ts") firstShown = o.shown;
@@ -130,7 +132,7 @@ for (const n of sizes) {
       times[side]?.sort.push(o.sort);
       if (r === 0) {
         checks.push(
-          `- ${side}, ${String(n)} orders: ${String(o.shown)} rows for "ada", first sorted \`${o.firstSorted}\`, summary \`${o.summary}\`; once removed, ${o.left === 0 ? "the list is emptied" : `${String(o.left)} rows stay in the page`}, and ${o.reacts ? "it still reacts" : "nothing reacts"}.`,
+          `- ${side}, ${String(n)} orders: ${String(o.shown)} rows for "ada", first sorted \`${o.firstSorted}\`, summary \`${o.summary}\`; once removed, ${o.left === 0 ? "the list is emptied" : `${String(o.left)} rows stay in the page`}, and ${o.reacts ? "it still reacts" : "nothing reacts"}; two tables in one page ${o.twice ? "keep their own state" : "share their state"}.`,
         );
       }
     }
@@ -174,7 +176,7 @@ const report = [
 if (check) {
   if (problems.length > 0) throw new Error(problems.join("\n"));
   console.log(
-    "The case study shows the same rows in TypeScript and in Peras, and nothing reacts once removed.",
+    "The case study shows the same rows in TypeScript and in Peras, nothing reacts once removed, and two tables keep their own state.",
   );
 } else {
   writeFileSync(join(dir, "RESULTS.md"), report);

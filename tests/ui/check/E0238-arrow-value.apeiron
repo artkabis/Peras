@@ -1,0 +1,22 @@
+// An arrow function as a value, in a managed module.
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+fn untyped(): i32 {
+  // Nothing gives `x` its type.
+  const twice = (x) => x * 2;
+  return twice(1);
+}
+
+// A function type only for a variable, a parameter or a result.
+fn later(_fs: Array<() => void>): void {}
+
+// JavaScript would call it with functions nothing checks.
+export fn run(f: () => void): void {
+  f();
+}
+
+export fn fine(): i32 {
+  return apply((x) => x + 1, 1);
+}

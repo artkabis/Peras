@@ -11,7 +11,8 @@ use perasc_diag::Span;
 
 use super::{NameOf, Parser, errors};
 use crate::ast::{
-    Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, Pattern, PatternKind, Type, TypeKind, UnaryOp,
+    Arm, ArmBody, BinaryOp, ExprId, ExprKind, Ident, LambdaBody, Pattern, PatternKind, Type,
+    TypeKind, UnaryOp,
 };
 use crate::lexer::{string_value, template_value};
 use crate::token::{Token, TokenKind};
@@ -356,20 +357,31 @@ impl Parser<'_> {
     /// An arrow function, from its first token: `x => body` or
     /// `(a, b: T) => body`.
     fn lambda(&mut self, token: Token) -> ExprId {
-        let params = if token.kind == TokenKind::Ident {
+        let (params, ret) = if token.kind == TokenKind::Ident {
             self.bump();
             self.bump(); // `=>`
             let name = Ident {
                 symbol: self.ast.interner.intern(self.text(token)),
                 span: token.span,
             };
-            vec![(name, None)]
+            (vec![(name, None)], None)
         } else {
             self.lambda_params()
         };
-        let body = self.expr();
+        let body = if self.at(TokenKind::LBrace) {
+            // `break` in an arrow function cannot leave a loop around it.
+            let outer_loops = std::mem::take(&mut self.loop_depth);
+            let block = self.block();
+            self.loop_depth = outer_loops;
+            match block {
+                Some(block) => LambdaBody::Block(block),
+                None => LambdaBody::Expr(self.alloc(ExprKind::Error, self.peek().span)),
+            }
+        } else {
+            LambdaBody::Expr(self.expr())
+        };
         let span = self.since(token.span.start);
-        self.alloc(ExprKind::Lambda { params, body }, span)
+        self.alloc(ExprKind::Lambda { params, ret, body }, span)
     }
 
     /// Whether `(` starts an arrow function: `()`, or names with optional
@@ -401,11 +413,18 @@ impl Parser<'_> {
                 break;
             }
         }
-        self.eat(TokenKind::RParen).is_some() && self.at(TokenKind::FatArrow)
+        if self.eat(TokenKind::RParen).is_none() {
+            return false;
+        }
+        // `(x): R =>`: the type of its value.
+        if self.eat(TokenKind::Colon).is_some() && matches!(self.ty().kind, TypeKind::Error) {
+            return false;
+        }
+        self.at(TokenKind::FatArrow)
     }
 
-    /// `(a, b: T) =>`, known to be there.
-    fn lambda_params(&mut self) -> Vec<(Ident, Option<Type>)> {
+    /// `(a, b: T): R =>`, known to be there.
+    fn lambda_params(&mut self) -> (Vec<(Ident, Option<Type>)>, Option<Type>) {
         self.bump(); // `(`
         let mut params = Vec::new();
         while !self.at(TokenKind::RParen) {
@@ -421,8 +440,9 @@ impl Parser<'_> {
             }
         }
         self.bump(); // `)`
+        let ret = self.eat(TokenKind::Colon).map(|_| self.ty());
         self.bump(); // `=>`
-        params
+        (params, ret)
     }
 
     /// `<Type, …>` followed by `(`, read ahead: when what follows `<` is

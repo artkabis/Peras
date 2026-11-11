@@ -525,3 +525,83 @@ fn values_from_javascript_that_do_not_match_throw() {
         }
     }
 }
+
+#[test]
+fn arrow_functions_with_statements_capture_what_they_use() {
+    // Each counter keeps its own `n`: a component can be made twice.
+    gives(
+        "fn counter(step: i32): () => i32 {
+           let n = 0;
+           return () => {
+             n += step;
+             return n;
+           };
+         }
+         fn twice(f: (i32) => i32, x: i32): i32 {
+           return f(f(x));
+         }
+         fn inc(x: i32): i32 {
+           return x + 1;
+         }
+         export fn main(): Array<i32> {
+           const a = counter(1);
+           const b = counter(10);
+           a();
+           a();
+           b();
+           let total = 0;
+           const add = (x: i32) => {
+             total += x;
+           };
+           for (const x of [1, 2, 3]) {
+             add(x);
+           }
+           const square = (x: i32): i32 => {
+             const y = x * x;
+             return y;
+           };
+           return [a(), b(), total, twice(square, 3), twice(inc, 3), twice((x) => x * 10, 2)];
+         }",
+        "[3,20,6,81,5,200]",
+    );
+}
+
+#[test]
+fn arrow_functions_return_break_and_try_on_their_own() {
+    gives(
+        "fn first(xs: Array<i32>, keep: (i32) => bool): Option<i32> {
+           for (const x of xs) {
+             if (keep(x)) {
+               return Some(x);
+             }
+           }
+           return None;
+         }
+         export fn main(): Array<i32> {
+           const xs = [1, 4, 9, 16];
+           const big = (x: i32): bool => {
+             if (x > 5) {
+               return true;
+             }
+             return false;
+           };
+           // `?` and `return` leave the arrow function, not `main`.
+           const doubled = (x: i32): Option<i32> => {
+             const found = first(xs, (y) => y > x)?;
+             return Some(found * 2);
+           };
+           let seen = 0;
+           const count = () => {
+             for (const x of xs) {
+               if (x > 9) {
+                 break;
+               }
+               seen += 1;
+             }
+           };
+           count();
+           return [first(xs, big).unwrapOr(-1), doubled(2).unwrapOr(-1), doubled(99).unwrapOr(-1), seen];
+         }",
+        "[9,8,-1,3]",
+    );
+}

@@ -55,7 +55,13 @@ impl Lowering<'_> {
             return None;
         }
         let &lambda = args.first()?;
-        let AstExpr::Lambda { params, body } = &self.ast.expr(lambda).kind else {
+        // Statements in an arrow function are refused in an owned module.
+        let AstExpr::Lambda {
+            params,
+            body: perasc_syntax::ast::LambdaBody::Expr(body),
+            ..
+        } = &self.ast.expr(lambda).kind
+        else {
             return Some(Vec::new());
         };
         let (params, body) = (params.clone(), *body);

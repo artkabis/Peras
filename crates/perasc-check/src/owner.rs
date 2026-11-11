@@ -22,7 +22,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use perasc_diag::Span;
 use perasc_syntax::ast::{
-    ArmBody, AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, Stmt, StmtKind, UnaryOp,
+    ArmBody, AssignOp, BinaryOp, Convention, ExprId, ExprKind, FnDecl, LambdaBody, Stmt, StmtKind,
+    UnaryOp,
 };
 
 use crate::methods::Target;
@@ -450,9 +451,12 @@ impl<'c, 'a> Owner<'c, 'a> {
             }
             // An arrow function is the body of a loop: run twice, so that a
             // value it moves is seen used again on the next turn.
+            // Statements in an arrow function are refused in an owned module.
             ExprKind::Lambda { body, .. } => {
-                self.expr(*body, mode, path);
-                self.expr(*body, mode, path);
+                if let LambdaBody::Expr(body) = body {
+                    self.expr(*body, mode, path);
+                    self.expr(*body, mode, path);
+                }
             }
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 for &item in items {

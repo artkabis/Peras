@@ -1,0 +1,25 @@
+// Arrow functions with statements, in a managed module.
+fn each(f: (i32) => void): void {
+  f(1);
+}
+
+export fn run(): i32 {
+  // A block gives nothing unless its type is written.
+  const one = () => {
+    return 1;
+  };
+  one();
+  // Its type is written: every path must give it.
+  const sign = (x: i32): i32 => {
+    if (x > 0) {
+      return 1;
+    }
+  };
+  sign(1);
+  each((x) => {
+    log(`${x + 1}`);
+  });
+  // Called with the arguments its type gives.
+  const add = (a: i32, b: i32): i32 => a + b;
+  return add(1);
+}

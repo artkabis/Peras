@@ -59,37 +59,8 @@ fn before(a: Order, b: Order, up: bool): bool {
   return a.amount > b.amount;
 }
 
-let query = "";
-let ascending = false;
-
-fn render(orders: Array<Order>, list: Element, summary: Element): void {
-  const rows = visible(orders, query, ascending);
-  list.textContent = "";
-  for (const o of rows) {
-    const li = document.createElement("li");
-    let label = `#${o.id} ${o.customer} ${o.amount}`;
-    if (!o.paid) {
-      label += " (unpaid)";
-    }
-    li.textContent = label;
-    list.append(li);
-  }
-  const s = summarize(rows);
-  summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
-}
-
-// No delay before searching: a timer kept between two keystrokes, and
-// replaced at each, cannot be written (E0245).
-fn typed(input: InputElement, orders: Array<Order>, list: Element, summary: Element): void {
-  query = input.value;
-  render(orders, list, summary);
-}
-
-fn flip(orders: Array<Order>, list: Element, summary: Element): void {
-  ascending = !ascending;
-  render(orders, list, summary);
-}
-
+// The state belongs to each table: arrow functions capture it, so the
+// table can be shown more than once in a page.
 export fn mount(root: Element, orders: Array<Order>): Group {
   let group = Group.new();
   const input = document.createElement("input");
@@ -101,15 +72,41 @@ export fn mount(root: Element, orders: Array<Order>): Group {
   root.append(sortButton);
   root.append(summary);
   root.append(list);
+
+  let query = "";
+  let ascending = false;
+
+  const render = () => {
+    const rows = visible(orders, query, ascending);
+    list.textContent = "";
+    for (const o of rows) {
+      const li = document.createElement("li");
+      let label = `#${o.id} ${o.customer} ${o.amount}`;
+      if (!o.paid) {
+        label += " (unpaid)";
+      }
+      li.textContent = label;
+      list.append(li);
+    }
+    const s = summarize(rows);
+    summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
+  };
+
+  // No delay before searching yet: a timer replaced at each keystroke
+  // needs step 2 of decision 0011.
   match (input.asInput()) {
     Some(field) => {
-      const typing = field.on("input", (e) => typed(field, orders, list, summary));
-      group.add(typing);
+      group.add(field.on("input", (_e) => {
+        query = field.value;
+        render();
+      }));
     }
     None => {}
   }
-  const sorting = sortButton.on("click", (e) => flip(orders, list, summary));
-  group.add(sorting);
-  render(orders, list, summary);
+  group.add(sortButton.on("click", (_e) => {
+    ascending = !ascending;
+    render();
+  }));
+  render();
   return group;
 }

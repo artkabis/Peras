@@ -142,7 +142,7 @@ export fn greet(name: String): void {
 }
 ```
 
-An event handler is an arrow function, usually calling a function of the module: `button.on("click", (e) => clicked(e))`.
+An event handler is an arrow function, `button.on("click", (e) => { … })`, or a function of the module by its name, `button.on("click", clicked)`.
 
 ## Resources
 
@@ -166,6 +166,30 @@ export fn start(root: Element): Group {
 `start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
 
 In debug, the default of `perasc build` and Vite's dev server, a resource collected without being released is reported in the console with the file and line that made it.
+
+## Arrow functions
+
+An arrow function sees the variables around it, and changes those declared with `let`. Its body is a value, `(x) => x * 2`, or statements, `(e) => { … }`, which give a value by `return` when its type is written: `(x: i32): i32 => { … }`.
+
+```apeiron build
+export fn counter(button: Element, label: Element): Group {
+  let group = Group.new();
+  let count = 0;
+  const show = () => {
+    label.textContent = `${count} clicks`;
+  };
+  group.add(button.on("click", (_e) => {
+    count += 1;
+    show();
+  }));
+  show();
+  return group;
+}
+```
+
+Each call of `counter` keeps its own `count`: two buttons, two counters, as a component of a framework. In a managed module an arrow function is also a value: kept in a variable, passed to a function whose parameter has a function type, `(Event) => void`, returned, and called. A function of the module goes there by its name: `button.on("click", clicked)`.
+
+Where nothing gives the types of its parameters, they are written: `const show = (n: i32) => …`. A function type is written for a variable, a parameter or a result, not inside another type, and an exported function does not take or give one ([E0238](../errors/E0238.md)). A resource of the function around it cannot be captured, since the arrow function may run after it was released; one made inside the arrow function is its own, released when it returns ([E0245](../errors/E0245.md)). An owned module keeps arrow functions to the methods of arrays, written in place.
 
 ## Calling JavaScript
 
@@ -204,6 +228,6 @@ The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as
 - **More of the browser, typed**: forms, `requestAnimationFrame`, WebSockets and workers, until then declared in an `extern` block.
 - **Generic `extern` functions**, default exports, and reading `.d.ts` files to propose `extern` blocks.
 - **Arrays of resources**, and a request as a resource cancelled with its owner.
-- **Functions as values**, outside the arrow functions given to array methods and to `on`, `setTimeout` and `setInterval`; arrow functions with statements.
+- **`async` arrow functions**, an arrow function that calls itself, and functions given to or by JavaScript through an export.
 - **Structures and enumerations across an import.**
 - **Options of options**, refused with [E0900](../errors/E0900.md): in JavaScript, `Some(None)` and `None` are both `undefined`.

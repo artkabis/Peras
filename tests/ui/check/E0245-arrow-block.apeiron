@@ -1,0 +1,13 @@
+// An arrow function's own resources are its own; the ones around it are not.
+export fn mount(button: Element): Group {
+  let group = Group.new();
+  const listener = button.on("click", (_e) => {
+    // Its own: released when it returns.
+    const timer = setTimeout(10, () => log("tick"));
+    timer.release();
+    // Around it: captured, refused.
+    group.release();
+  });
+  group.add(listener);
+  return group;
+}

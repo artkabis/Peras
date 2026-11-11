@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0238-arrow-value.apeiron
+---
+diagnostics:
+  error[E0238] check-arrow-param { name: "x" }
+    primary 8:18-8:19: check-arrow-param-label
+    cause: check-arrow-why
+    fix: check-arrow-param-fix { name: "x" }
+  error[E0238] check-arrow-type
+    primary 13:21-13:31: check-arrow-type-label
+    cause: check-arrow-why
+    fix: check-arrow-type-fix
+  error[E0238] check-arrow-export { name: "run" }
+    primary 16:11-16:14: check-arrow-export-label
+    cause: check-arrow-why
+    fix: check-arrow-export-fix

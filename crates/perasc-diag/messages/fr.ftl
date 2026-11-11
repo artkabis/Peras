@@ -624,12 +624,21 @@ check-interface-as-type-why = Une interface est une contrainte : elle dit ce qu�
 check-interface-as-type-fix = utilise un paramètre de type : `fn f<T: { $name }>(x: T)`
 
 # E0238
-check-arrow = une fonction fléchée ne peut pas encore être une valeur
+check-arrow = une fonction fléchée n’est une valeur que dans un module managed
 check-arrow-label = pas l’argument d’une méthode qui prend une fonction
 check-arrow-expected = cette méthode prend une fonction fléchée
 check-arrow-expected-label = attendu `(x) => …`
-check-arrow-why = Une fonction fléchée est compilée sur place, comme le corps d’une boucle, par les méthodes de tableaux qui en prennent une : `map`, `filter`, `reduce`, `find`, `findIndex`, `some` et `every`. Les fonctions comme valeurs, stockées ou transmises, arriveront avec les fermetures.
+check-arrow-why = Dans un module owned, une fonction fléchée est compilée sur place, comme le corps d’une boucle, par les méthodes de tableaux qui en prennent une : `map`, `filter`, `reduce`, `find`, `findIndex`, `some` et `every`. Dans un module managed, une fonction fléchée est aussi une valeur : gardée dans une variable, passée à une fonction dont le paramètre a un type de fonction, `(Event) => void`, et appelée ; elle voit les variables autour d’elle, et change celles déclarées avec `let`. Ses paramètres ont alors leur type écrit, puisque rien d’autre ne le donne, et un type de fonction ne s’écrit que pour une variable, un paramètre ou un résultat, là où le vérificateur peut la suivre. Une fonction exportée ne peut pas encore en prendre ni en rendre : les valeurs que rendrait une fonction de JavaScript ne seraient pas vérifiées.
 check-arrow-fix = passe-la à `map`, `filter`, `reduce`, `find`, `findIndex`, `some` ou `every`, ou écris une fonction avec `fn`
+check-arrow-param = le type de `{ $name }` n’est pas écrit
+check-arrow-param-label = un paramètre d’une fonction fléchée utilisée comme valeur
+check-arrow-param-fix = écrivez son type : `({ $name }: Event) => …`
+check-arrow-type = un type de fonction ne peut pas s’écrire ici
+check-arrow-type-label = à l’intérieur d’un autre type
+check-arrow-type-fix = n’écrivez un type de fonction que pour une variable, un paramètre ou un résultat
+check-arrow-export = la fonction exportée `{ $name }` prend ou rend une fonction
+check-arrow-export-label = un type de fonction, dans une fonction exportée
+check-arrow-export-fix = gardez la fonction dans le module, et exportez-en une qui prend des données
 check-arrow-expected-fix = écris la fonction sur place : `xs.map((x) => x * 2)`
 check-template = un gabarit ne sait pas encore écrire un `{ $type }` en texte
 check-template-label = un `{ $type }`
@@ -663,6 +672,8 @@ check-managed-only = { $what ->
     [import] un `import`
     [browser] l’API du navigateur
     [extern] un bloc `extern`
+    [arrow-block] une fonction fléchée à instructions
+    [function-type] un type de fonction
    *[other] ceci
 } { $what ->
     [await-sync] ne peut pas attendre
@@ -774,7 +785,7 @@ check-extern-label = { $reason ->
     [async] pas une `Promise`
    *[other] ici
 }
-check-extern-why = Un bloc `extern` déclare le JavaScript qu’appelle un module managed, avec des types Peras : à chaque appel, chaque valeur que JavaScript rend est vérifiée contre eux. Une ressource appartient à une variable de Peras, qui la libère : JavaScript la garderait sans la libérer. Un type fonction est un rappel, écrit comme une fonction fléchée là où la fonction `extern` est appelée : ailleurs, il n’y a rien pour l’appeler. Une méthode se déclare avec un `self` d’un type du bloc, les valeurs que crée JavaScript. Une fonction `async` rend une promesse.
+check-extern-why = Un bloc `extern` déclare le JavaScript qu’appelle un module managed, avec des types Peras : à chaque appel, chaque valeur que JavaScript rend est vérifiée contre eux. Une ressource appartient à une variable de Peras, qui la libère : JavaScript la garderait sans la libérer. Un type fonction au premier niveau d’un paramètre est un rappel, que Peras donne et que JavaScript appelle ; dans un autre type, ou comme résultat, ce serait une fonction de JavaScript dont rien ne vérifie les valeurs. Une méthode se déclare avec un `self` d’un type du bloc, les valeurs que crée JavaScript. Une fonction `async` rend une promesse.
 check-extern-fix = { $reason ->
     [resource] donnez plutôt les données à JavaScript, et gardez la ressource en Peras
     [callback] déclarez le rappel comme paramètre d’une fonction `extern`, et passez-y une fonction fléchée

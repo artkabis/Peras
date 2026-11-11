@@ -624,12 +624,21 @@ check-interface-as-type-why = An interface is a constraint: it says what a type 
 check-interface-as-type-fix = use a type parameter: `fn f<T: { $name }>(x: T)`
 
 # E0238
-check-arrow = an arrow function cannot be a value yet
+check-arrow = an arrow function is a value only in a managed module
 check-arrow-label = not the argument of a method that takes a function
 check-arrow-expected = this method takes an arrow function
 check-arrow-expected-label = expected `(x) => …`
-check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
+check-arrow-why = In an owned module, an arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. In a managed module, an arrow function is also a value: kept in a variable, passed to a function whose parameter has a function type, `(Event) => void`, and called; it sees the variables around it, and changes those declared with `let`. Its parameters then have their types written, since nothing else gives them, and a function type is written only for a variable, a parameter or a result, where the checker can follow it. An exported function cannot take or give one yet: the values a function of JavaScript returns would go unchecked.
 check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
+check-arrow-param = the type of `{ $name }` is not written
+check-arrow-param-label = a parameter of an arrow function used as a value
+check-arrow-param-fix = write its type: `({ $name }: Event) => …`
+check-arrow-type = a function type cannot be written here
+check-arrow-type-label = inside another type
+check-arrow-type-fix = write a function type only for a variable, a parameter or a result
+check-arrow-export = exported function `{ $name }` takes or gives a function
+check-arrow-export-label = a function type, in an exported function
+check-arrow-export-fix = keep the function to the module, and export one that takes data
 check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
 check-template = a template literal cannot write a `{ $type }` as text yet
 check-template-label = a `{ $type }`
@@ -663,6 +672,8 @@ check-managed-only = { $what ->
     [import] an `import`
     [browser] the browser's API
     [extern] an `extern` block
+    [arrow-block] an arrow function with statements
+    [function-type] a function type
    *[other] this
 } { $what ->
     [await-sync] cannot wait
@@ -774,7 +785,7 @@ check-extern-label = { $reason ->
     [async] not a `Promise`
    *[other] here
 }
-check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type is a callback, written as an arrow function where the `extern` function is called: elsewhere there is nothing to call it with. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
+check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type at the top of a parameter is a callback, which Peras gives and JavaScript calls; inside another type, or as a result, it would be a function of JavaScript whose values nothing checks. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
 check-extern-fix = { $reason ->
     [resource] give JavaScript the data instead, and keep the resource in Peras
     [callback] declare the callback as a parameter of an `extern` function, and pass an arrow function there

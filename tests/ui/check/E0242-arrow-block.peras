@@ -1,0 +1,10 @@
+// Arrow functions with statements, and function types, are managed modules'.
+export fn total(xs: Array<i32>): Array<i32> {
+  return xs.map((x) => {
+    return x * 2;
+  });
+}
+
+fn apply(_f: (i32) => i32, x: i32): i32 {
+  return x;
+}

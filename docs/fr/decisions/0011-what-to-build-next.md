@@ -77,6 +77,10 @@ Construit avec cette décision, parce que chacun ferme un écart mesuré et coû
 - **Refuser les alias qui changent un paramètre** : les deux langages le manquent, et refuser `let sorted = items` changerait la façon dont les modules managed partagent les valeurs ([0008](0008-managed-mode.md)) ; à mesurer à nouveau quand les fonctions fléchées à instructions existeront.
 - **Une sortie plus petite** : la moitié des octets de l’étude de cas sont les fonctions du runtime, écrites seulement quand elles servent ; à mesurer quand les fonctionnalités ci-dessus existeront.
 
+## Avancement
+
+- **Étape 1, faite** : des fonctions fléchées à instructions, qui capturent ce qu’elles utilisent, et les fonctions comme valeurs dans les modules managed ([guide](../guide/managed.md#fonctions-fléchées)). L’étude de cas garde son état dans le tableau qu’elle monte : les points 1, 2 et 4 ont disparu, et le banc vérifie que deux tableaux dans une page gardent chacun leur état, ce que la version d’avant ne faisait pas. 97 lignes au lieu de 101, 1 687 octets gzip au lieu de 1 777 ; le banc de bugs ne bouge pas, 2 en silence.
+
 ## Conséquences
 
 - Chaque étape suivante a une mesure qui dit si elle a réussi : l’étude de cas est réécrite avec elle, et les bancs relancés. Une étape qui ne les fait pas bouger n’est pas faite.

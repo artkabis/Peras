@@ -77,6 +77,10 @@ Built with this decision, because each closes a measured gap and costs little: [
 - **Refusing aliases that change a parameter**: both languages miss it, and refusing `let sorted = items` would change how managed modules share values ([0008](0008-managed-mode.md)); to measure again once arrow functions with statements exist.
 - **Smaller output**: half the bytes of the case study are the runtime's helpers, written only when used; worth a measure once the features above exist.
 
+## Progress
+
+- **Step 1, done**: arrow functions with statements, capturing what they use, and functions as values in managed modules ([guide](../guide/managed.md#arrow-functions)). The case study keeps its state in the table it mounts: points 1, 2 and 4 are gone, and the benchmark checks that two tables in one page keep their own state, which the version before failed. 97 lines instead of 101, 1,687 bytes gzip instead of 1,777; the bugs benchmark is unchanged, 2 silent.
+
 ## Consequences
 
 - Each next step has a measure that says whether it worked: the case study is written again with it, and the benchmarks run again. A step that does not move them is not done.

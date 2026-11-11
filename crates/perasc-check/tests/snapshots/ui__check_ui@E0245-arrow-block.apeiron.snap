@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0245-arrow-block.apeiron
+---
+diagnostics:
+  error[E0245] check-resource { reason: "capture", name: "group" }
+    primary 9:5-9:10: check-resource-label { reason: "capture" }
+    cause: check-resource-why
+    fix: check-resource-fix { reason: "capture" }

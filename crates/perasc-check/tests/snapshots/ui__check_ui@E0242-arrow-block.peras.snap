@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0242-arrow-block.peras
+---
+diagnostics:
+  error[E0242] check-managed-only { what: "arrow-block" }
+    primary 3:24-5:4: check-managed-only-label { what: "arrow-block" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "arrow-block" }
+  error[E0242] check-managed-only { what: "function-type" }
+    primary 8:14-8:26: check-managed-only-label { what: "function-type" }
+    cause: check-managed-only-why
+    fix: check-managed-only-fix { what: "function-type" }
