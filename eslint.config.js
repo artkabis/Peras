@@ -16,6 +16,8 @@ export default defineConfig(
       "bench/web-bugs/**",
       // The case study's TypeScript, measured as written (scripts/bench-case-study.mjs).
       "bench/case-study/**",
+      // The demo's TypeScript, measured as written (scripts/demo.mjs).
+      "bench/demo/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",

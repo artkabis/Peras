@@ -5,6 +5,7 @@ crates/
 bench/bugs/
 bench/web-bugs/
 bench/case-study/RESULTS.md
+bench/demo/RESULTS.md
 bench/backends/RESULTS.md
 bench/browser/RESULTS.md
 bench/browser/WORKERS.md

@@ -147,6 +147,8 @@ jobs:
         run: node scripts/bench-case-study.mjs --check
       - name: sortBy gives what TypeScript's sort gives, and is not slower by a number
         run: node scripts/bench-sort.mjs --check
+      - name: The three versions of the demo run and draw
+        run: node scripts/demo.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 
