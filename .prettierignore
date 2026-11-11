@@ -10,6 +10,8 @@ bench/garden/RESULTS.md
 bench/garden/results.json
 bench/data/RESULTS.md
 bench/data/results.json
+bench/history/results.json
+bench/history/rows.json
 bench/garden/run-1/
 # Written by vite-plugin-peras when the playground (examples/garden) builds.
 bench/garden/garden.d.peras.ts

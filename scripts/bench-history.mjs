@@ -8,10 +8,13 @@
 //   2. What compiles runs in Chromium: the kernels fib, primes and mandel; the
 //      garden's frame; the dashboard of decision 0014. Each result is checked
 //      against TypeScript's (the same numbers, the same pixels, the same
-//      summary), then timed, median of 7 runs after 2 of warm-up.
+//      summary), then timed, median of 7 runs after 2 of warm-up, in each of
+//      5 rounds, the versions in a new order each round; a measure is the
+//      median of the rounds, kept with their least and most.
 //   3. Bytes shipped, gzip.
 // Usage: node scripts/bench-history.mjs
-// Writes bench/history/RESULTS.md and bench/history/results.json.
+// Writes bench/history/results.json, and bench/history/rows.json: one row per
+// version, program and measure, as the visual report reads them.
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -232,14 +235,19 @@ async function load(dir, name) {
 const hex = async (bytes) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
 `;
 
-/** @type {Record<string, Record<string, unknown>>} */
-const runs = {};
+/** Every round's results, by target: five rounds, the targets in a new order each time. */
+/** @type {Record<string, Record<string, Record<string, unknown>>[]>} */
+const rounds = {};
 const targets = [...versions.map((v) => v.commit), "typescript"];
-for (const target of targets) {
-  console.log(`running ${target}…`);
-  /** @type {unknown} */
-  const out = await page.evaluate(
-    `(async () => {
+const ROUNDS = 5;
+for (let round = 0; round < ROUNDS; round++) {
+  // Rotated, so that no version always runs first or last.
+  const order = targets.map((_, i) => targets[(i + round * 2) % targets.length] ?? "typescript");
+  for (const target of order) {
+    console.log(`round ${String(round + 1)}, ${target}…`);
+    /** @type {unknown} */
+    const out = await page.evaluate(
+      `(async () => {
       ${harness}
       const target = ${JSON.stringify(target)};
       const ts = target === "typescript";
@@ -261,9 +269,10 @@ for (const target of targets) {
           const ref = await import("/ts/garden.js");
           const frame = (side, zoom) => {
             if (ts) { const px = new Uint32Array(side * side); g.render(px, side, side, zoom, 0.37, 0.83); return px; }
-            const a = g.__perasHeap?.array ? g.__perasHeap.array("i32", side * side) : new Int32Array(side * side);
+            // Before arrays in the module's memory, an inout array was a plain one, copied back.
+            const a = g.__perasHeap?.array ? g.__perasHeap.array("i32", side * side) : new Array(side * side).fill(0);
             g.render(a, side, side, zoom, 0.37, 0.83);
-            const view = a.view ? a.view().slice() : a;
+            const view = a.view ? a.view().slice() : Int32Array.from(a);
             a.release?.();
             return new Uint32Array(view.buffer, view.byteOffset, side * side);
           };
@@ -288,10 +297,44 @@ for (const target of targets) {
       }
       return result;
     })()`,
-  );
-  runs[target] = /** @type {Record<string, unknown>} */ (out);
+    );
+    (rounds[target] ??= []).push(/** @type {Record<string, Record<string, unknown>>} */ (out));
+  }
 }
 await browser.close();
+
+// Each measure: the median of the rounds, with their least and most; "same"
+// only if every round gave TypeScript's result.
+/** @param {number[]} xs */
+const middle = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
+/** @type {Record<string, Record<string, unknown>>} */
+const runs = {};
+for (const [target, list] of Object.entries(rounds)) {
+  /** @type {Record<string, Record<string, unknown>>} */
+  const merged = {};
+  for (const program of ["kernels", "garden", "dashboard"]) {
+    const parts = list.map((r) => r[program]).filter((p) => p !== undefined);
+    const first = parts[0];
+    if (first === undefined) continue;
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    for (const key of Object.keys(first)) {
+      const values = parts.map((p) => p[key]);
+      if (values.every((x) => typeof x === "number")) {
+        const numbers = /** @type {number[]} */ (values);
+        out[key] = middle(numbers);
+        out[`${key}_min`] = Math.min(...numbers);
+        out[`${key}_max`] = Math.max(...numbers);
+      } else if (key === "same") {
+        out.same = values.every((x) => x === true);
+      } else {
+        out[key] = values[0];
+      }
+    }
+    merged[program] = out;
+  }
+  runs[target] = merged;
+}
 server.close();
 
 const results = {
@@ -306,4 +349,68 @@ writeFileSync(
   join(root, "bench", "history", "results.json"),
   `${JSON.stringify(results, null, 2)}\n`,
 );
-console.log(JSON.stringify(runs, null, 1).slice(0, 3000));
+// One row per version, program and measure; a program a version refuses is
+// one row with its reason. The speed is TypeScript's time over Peras's.
+/** @typedef {Record<string, number | boolean | string | undefined>} Run */
+const measures = {
+  kernels: ["fib", "primes", "mandel"],
+  garden: ["frame"],
+  dashboard: ["summary"],
+};
+const tsRuns = /** @type {Record<string, Run | undefined>} */ (runs.typescript ?? {});
+/** @param {unknown} top @param {unknown} bottom */
+const ratio = (top, bottom) =>
+  typeof top === "number" && typeof bottom === "number" && bottom > 0
+    ? Math.round((top / bottom) * 100) / 100
+    : null;
+const rows = versions.flatMap((v, order) =>
+  Object.entries(measures).flatMap(([program, names]) => {
+    const built = builds[v.commit]?.[program];
+    const forVersion = /** @type {Record<string, Run | undefined> | undefined} */ (runs[v.commit]);
+    const run = forVersion?.[program];
+    const base = { order: order + 1, commit: v.commit, date: v.date, version: v.label, program };
+    if (built?.ok !== true) {
+      return [
+        {
+          ...base,
+          measure: "",
+          compiles: false,
+          why: built?.why ?? "",
+          bytes: null,
+          peras_ms: null,
+          typescript_ms: null,
+          speed: null,
+          speed_low: null,
+          speed_high: null,
+          same: null,
+        },
+      ];
+    }
+    return names.map((measure) => {
+      const peras = run?.[measure];
+      const reference = tsRuns[program]?.[measure];
+      const perasMs = typeof peras === "number" ? Math.round(peras * 10) / 10 : null;
+      const tsMs = typeof reference === "number" ? Math.round(reference * 10) / 10 : null;
+      return {
+        ...base,
+        measure,
+        compiles: true,
+        why: typeof run?.error === "string" ? run.error : "",
+        bytes: built.bytes ?? null,
+        peras_ms: perasMs,
+        typescript_ms: tsMs,
+        speed:
+          perasMs === null || tsMs === null || perasMs === 0
+            ? null
+            : Math.round((tsMs / perasMs) * 100) / 100,
+        // The widest the speed could be over the rounds: TypeScript's least
+        // over Peras's most, and its most over Peras's least.
+        speed_low: ratio(tsRuns[program]?.[`${measure}_min`], run?.[`${measure}_max`]),
+        speed_high: ratio(tsRuns[program]?.[`${measure}_max`], run?.[`${measure}_min`]),
+        same: typeof run?.same === "boolean" ? run.same : null,
+      };
+    });
+  }),
+);
+writeFileSync(join(root, "bench", "history", "rows.json"), `${JSON.stringify(rows, null, 1)}\n`);
+console.log(`${String(rows.length)} rows written to bench/history/rows.json`);
