@@ -45,6 +45,63 @@ impl Lowering<'_> {
         Self::fresh(state, vec![text], mode)
     }
 
+    /// `x.toFixed(d)`: written by the host, as JavaScript writes it, after a
+    /// check that `d` is from 0 to 100, which throws the `RangeError` that
+    /// JavaScript's would.
+    pub(super) fn fixed(
+        &mut self,
+        state: &mut FnState,
+        base: ExprId,
+        args: &[ExprId],
+        mode: Mode,
+    ) -> Vec<Expr> {
+        let receiver = self.expr(state, base);
+        let x = state.temp(Ty::F64);
+        let value = if receiver.ty == Ty::F64 {
+            receiver
+        } else {
+            // Every integer of 32 bits and every `f32` is exact as an `f64`.
+            Expr {
+                kind: ExprKind::Convert(Box::new(receiver)),
+                ty: Ty::F64,
+            }
+        };
+        state.pre.push(Stmt::Set(x, value));
+        let digits = args.first().map_or(
+            Expr {
+                kind: ExprKind::Const(Const::Int(0)),
+                ty: Ty::I32,
+            },
+            |&a| self.expr(state, a),
+        );
+        let d = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(d, digits));
+        let d_expr = super::local_expr(state, d);
+        state.pre.push(Stmt::Buf(
+            BufStmt::CheckIndex,
+            vec![
+                d_expr.clone(),
+                Expr {
+                    kind: ExprKind::Const(Const::Int(101)),
+                    ty: Ty::I32,
+                },
+            ],
+        ));
+        let mode_value = super::binary(
+            BinOp::Add,
+            d_expr,
+            Expr {
+                kind: ExprKind::Const(Const::Int(2)),
+                ty: Ty::I32,
+            },
+        );
+        let text = runtime(
+            RuntimeFn::FmtFloat,
+            vec![super::local_expr(state, x), mode_value],
+        );
+        Self::fresh(state, vec![text], mode)
+    }
+
     /// `` `text${a}text` ``: each piece of text and each value as text, in
     /// order, lent; then one new string with room for them all, each
     /// appended.

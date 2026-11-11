@@ -16,6 +16,12 @@ export default defineConfig(
       "bench/web-bugs/**",
       // The case study's TypeScript, measured as written (scripts/bench-case-study.mjs).
       "bench/case-study/**",
+      // The demo's TypeScript, measured as written (scripts/demo.mjs).
+      "bench/demo/**",
+      // The garden's reference, measured as written (scripts/bench-garden.mjs).
+      "bench/garden/**",
+      // The versions of decision 0014, measured as written (scripts/bench-data.mjs).
+      "bench/data/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",
@@ -33,13 +39,9 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            "*.js",
-            "vitest.config.ts",
-            "vitest.e2e.config.ts",
-            "scripts/*.mjs",
-          ],
-          // The root configs and the scripts: more than the default of 8.
+          allowDefaultProject: ["*.js", "vitest.config.ts", "vitest.e2e.config.ts"],
+          // The scripts have a project of their own, scripts/tsconfig.json:
+          // here only the root configs.
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
         tsconfigRootDir: import.meta.dirname,

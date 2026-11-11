@@ -1,0 +1,17 @@
+{
+  "name": "peras-example-garden",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The garden of Apeiron to zoom into: the stored AVIF enlarged beside the Peras program drawing the scene.",
+  "license": "0BSD",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5",
+    "vite-plugin-peras": "workspace:*"
+  }
+}

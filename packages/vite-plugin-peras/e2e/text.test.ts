@@ -16,6 +16,10 @@ interface Words {
   middle(s: string, start: number, end: number): string;
   find(s: string, needle: string): number;
   characters(s: string): number;
+  csvSum(text: string): number;
+  firstKept(line: string): string;
+  afterChange(line: string): string;
+  partsOf(line: string): string[];
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -28,6 +32,16 @@ async function load(allocator: "debug" | "tlsf"): Promise<Words> {
 
 describe("strings in JavaScript", () => {
   for (const allocator of ["debug", "tlsf"] as const) {
+    it(`split into a constant only read gives views, and copies where it must, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.csvSum("1,ab,xyz\n2,c,de\nbad\n")).toBe(10);
+      expect(m.firstKept("ada,b")).toBe("ada");
+      expect(m.afterChange("x,y")).toBe("x|x,y!");
+      expect(m.partsOf("a,b")).toEqual(["a", "b"]);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
     it(`split, trim, change case, replace and join, on ${allocator}`, async () => {
       const m = await load(allocator);
       expect(m.shout("  hello big world ")).toBe("HELLO_BIG_WORLD");

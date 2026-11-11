@@ -23,19 +23,35 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 
 ## Bugs d’applications web (`bench/web-bugs`)
 
-`node scripts/bench-web-bugs.mjs` prend dix-sept bugs d’applications web, chacun écrit comme on l’écrit naturellement en TypeScript et dans un module Peras managed, et trouve le premier moment où la chaîne d’outils arrête chacun : à la compilation (`tsc` au plus strict, puis le preset strict typé de typescript-eslint ; `perasc check`), à l’exécution par une erreur, dans Chromium, ou pas du tout ([résultats](web-bugs/RESULTS.md), [décision 0011](../docs/fr/decisions/0011-what-to-build-next.md)). La CI vérifie que Peras n’en laisse pas passer plus que ne l’a relevé la décision 0011.
+`node scripts/bench-web-bugs.mjs` prend dix-sept bugs d’applications web, chacun écrit comme on l’écrit naturellement en TypeScript et dans un module Peras managed, et trouve le premier moment où la chaîne d’outils arrête chacun : à la compilation (`tsc` au plus strict, puis le preset strict typé de typescript-eslint ; `perasc check`), à l’exécution par une erreur, dans Chromium, ou pas du tout ([résultats](web-bugs/RESULTS.md), [décision 0011](../docs/fr/decisions/0011-what-to-build-next.md)). Peras tourne en build de debug, comme le code tourne pendant qu’on l’écrit et le teste. La CI vérifie que Peras n’en laisse pas passer plus que ne l’a relevé la décision 0011.
 
 | Arrêtés                        | TypeScript | Peras |
 | ------------------------------ | ---------: | ----: |
 | à la compilation               |          7 |     9 |
-| à l’exécution, avec un message |          1 |     5 |
-| en silence                     |          8 |     2 |
+| à l’exécution, avec un message |          1 |     6 |
+| en silence                     |          8 |     1 |
 
-Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les bibliothèques qui mentent sur leurs types ; TypeScript est seul à arrêter à la compilation un indice au-delà de la fin, et garde exact un total au-delà de 2³¹ là où un `i32` se replie. Le corpus a été écrit par les auteurs de Peras, les deux versions aussi naturellement qu’ils le pouvaient : il couvre les bugs d’applications web qu’ils connaissent, pas tous les bugs.
+Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les bibliothèques qui mentent sur leurs types ; TypeScript est seul à arrêter à la compilation un indice au-delà de la fin, et garde exact un total au-delà de 2³¹, qu’un build de debug de Peras arrête avec un message là où un `i32` ne peut pas le contenir, et qu’un build de production replie. Le corpus a été écrit par les auteurs de Peras, les deux versions aussi naturellement qu’ils le pouvaient : il couvre les bugs d’applications web qu’ils connaissent, pas tous les bugs.
 
 ## Étude de cas (`bench/case-study`)
 
-`node scripts/bench-case-study.mjs` exécute un tableau de commandes, cherché après un délai, trié, avec un résumé, écrit en TypeScript ([orders.ts](case-study/orders.ts)) et dans un module Peras managed ([orders.apeiron](case-study/orders.apeiron)), dans Chromium : les mêmes lignes affichées, le temps de montage et de tri, rien ne réagissant une fois retiré ([résultats](case-study/RESULTS.md)). Une troisième version trie par un bloc `extern`, pour mesurer ce que changerait un tri avec comparaison en Peras. La décision 0011 liste ce que l’écriture en Peras a rencontré.
+`node scripts/bench-case-study.mjs` exécute un tableau de commandes, cherché après un délai, trié, avec un résumé, écrit en TypeScript ([orders.ts](case-study/orders.ts)) et dans un module Peras managed ([orders.apeiron](case-study/orders.apeiron)), dans Chromium : les mêmes lignes affichées, le temps de montage et de tri, rien ne réagissant une fois retiré, deux tableaux dans une page avec chacun son état, et ce que chacun coûte à la machine : octets livrés, temps CPU, mémoire ([décision 0012](../docs/fr/decisions/0012-cost-on-the-machine.md)) ([résultats](case-study/RESULTS.md)). Une troisième version trie par un bloc `extern`, pour mesurer ce que changerait un tri avec comparaison en Peras. La décision 0011 liste ce que l’écriture en Peras a rencontré.
+
+## Démo (`bench/demo`)
+
+`node scripts/demo.mjs` exécute la même animation de particules en trois versions, seule dans Chromium pendant 10 s chacune, et met leurs enregistrements côte à côte, le GIF en tête du README ([résultats](demo/RESULTS.md)) : TypeScript tel qu’on l’écrit souvent, un nouvel objet par particule à chaque image ; TypeScript écrit pour la vitesse, des tableaux typés à la main ; et Peras compilé en WebAssembly. Chacune dessine sa cadence et la mémoire que tient la page, sur une même échelle. À 1 500 000 particules : 8, 47 et 58 images par seconde ; le tas de la première dépasse 1 Go et retombe à chaque ramassage, les deux autres restent plats aux mêmes 50 Mo. L’écart entre les deux versions TypeScript est celui du ramasse-miettes, l’écart avec Peras celui de WebAssembly ; un module managed va à la vitesse de TypeScript. La CI vérifie que les trois s’exécutent et dessinent.
+
+## La donnée à l’échelle (`bench/data`)
+
+`node scripts/bench-data.mjs` mesure un tableau de bord commercial sous un protocole enregistré avant toute mesure ([décision 0014](../docs/fr/decisions/0014-data-at-scale.md), [résultats](data/RESULTS.md)) : un CSV généré de 100 000 à 4 000 000 lignes, en TypeScript idiomatique, en TypeScript optimisé à la main et en Peras, qui donnent le même résumé octet pour octet ; le temps jusqu’au résumé à chaud, jusqu’au premier graphique à froid, la mémoire maximale du processus de rendu, les octets livrés et les lignes de code. Deux hypothèses ont tenu, cinq ont été réfutées : Peras simple est plus lent que TypeScript simple. Le CI vérifie que les versions donnent le même résumé.
+
+## Le jardin d’Apeiron (`bench/garden`)
+
+`node scripts/bench-garden.mjs` mesure une scène procédurale sous un protocole enregistré avant toute mesure ([décision 0013](../docs/fr/decisions/0013-garden-of-apeiron.md), [résultats](garden/RESULTS.md)) : un ciel, des montagnes et une prairie dessinés pixel par pixel, écrits en TypeScript, Peras et Rust, qui donnent les mêmes pixels bit pour bit ; les octets du programme contre le PNG, le WebP et l’AVIF de ses rendus, par le SSIM et le PSNR de FFmpeg ; le temps d’une image dans Chromium. Quatre hypothèses ont tenu, une a été réfutée : Peras la rend 1,19 fois plus vite que TypeScript, en deçà des 1,3 fois enregistrés. La [première exécution](garden/run-1/RESULTS.md) est conservée avec le défaut de sa méthode, et la correction est listée sous le protocole. La CI vérifie que les versions donnent les mêmes pixels.
+
+## Tri (`bench/sort`)
+
+`node scripts/bench-sort.mjs` trie des enregistrements par un nombre et par une chaîne avec `sortBy` et `sortByDescending`, dans un module managed et dans un module owned, contre ce qu’écrit TypeScript, `sort((a, b) => a.amount - b.amount)`, dans Node ([source](sort/kernels.apeiron), [résultats](sort/RESULTS.md)). Chaque côté construit les mêmes enregistrements et doit donner le même ordre ; le temps de les construire est soustrait. Par un nombre, Peras trie 3 à 7 fois plus vite que TypeScript dès 10 000 enregistrements, dans les deux modes : un tri par base des bits des clés, qui emporte les indices des éléments, là où TypeScript appelle une fonction à chaque comparaison. Par une chaîne, un module managed est aussi rapide que TypeScript, un module owned 1,1 à 1,4 fois. La CI vérifie que les trois concordent, sans fuite, et que le tri managed par un nombre n’est pas plus lent.
 
 ## Comparaison des backends (`bench/backends`)
 
@@ -148,7 +164,7 @@ Les premières tables compilées étaient plus lentes que celles de JavaScript :
 
 ## Modules managed (`bench/managed`)
 
-`node scripts/bench-managed.mjs` compile [bench/managed/kernels.apeiron](managed/kernels.apeiron) en JavaScript, et la même source en WebAssembly comme fichier `.peras` avec l’allocateur TLSF, et les exécute face au même travail écrit à la main en JavaScript, dans Node ([résultats](managed/RESULTS.md), [décision 0008](../docs/fr/decisions/0008-managed-mode.md)). Chaque cas est d’abord vérifié donner le même résultat des trois côtés ; la CI exécute la vérification. La vitesse est le temps du JavaScript écrit à la main divisé par celui du module, sur 6 exécutions :
+`node scripts/bench-managed.mjs` compile [bench/managed/kernels.apeiron](managed/kernels.apeiron) en JavaScript pour la production, et la même source en WebAssembly comme fichier `.peras` avec l’allocateur TLSF, et les exécute face au même travail écrit à la main en JavaScript, dans Node ([résultats](managed/RESULTS.md), [décision 0008](../docs/fr/decisions/0008-managed-mode.md)). Chaque cas est d’abord vérifié donner le même résultat des trois côtés ; la CI exécute la vérification. La vitesse est le temps du JavaScript écrit à la main divisé par celui du module, sur 6 exécutions :
 
 | Cas                                          | Managed (JavaScript) | Owned (WebAssembly) |
 | -------------------------------------------- | -------------------: | ------------------: |

@@ -85,6 +85,14 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
             if name == "toString" {
                 return simple(Ty::String);
             }
+            // `x.toFixed(2)`: as JavaScript writes a `number`; an `i64` is a
+            // `bigint` there, which has none.
+            if name == "toFixed" && !matches!(me, Ty::Int(IntTy::I64 | IntTy::U64)) {
+                return Some(Method {
+                    params: vec![Ty::Int(IntTy::I32)],
+                    ret: Ty::String,
+                });
+            }
             if me.is_integer() && CHECKED.contains(&name) {
                 return Some(Method {
                     params: vec![me.clone()],
@@ -238,6 +246,9 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
                 names.extend(CHECKED);
             }
             names.push("toString");
+            if !matches!(receiver, Ty::Int(IntTy::I64 | IntTy::U64)) {
+                names.push("toFixed");
+            }
         }
         Ty::Array(element) => {
             names.extend([

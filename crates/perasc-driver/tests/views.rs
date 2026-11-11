@@ -174,6 +174,8 @@ fn views_on(simd: bool) {
             allocator: Allocator::Debug,
             simd,
             threads: false,
+            // The code a production build runs: no overflow checks.
+            overflow_checks: false,
         },
         &Localizer::new(Language::English),
     )

@@ -6,8 +6,9 @@
 //      strict type-aware preset; perasc check;
 //   2. run time: the case runs in Chromium, in a page of its own, and throws;
 //   3. silent: it runs and gives a wrong result, or keeps listening or ticking.
-// TypeScript is compiled with `transpileModule`, Peras with `perasc build`
-// for production (no leak detector).
+// TypeScript is compiled with `transpileModule`, Peras with `perasc build` as
+// code runs while it is written and tested: a debug build, which stops on an
+// integer overflow where a production build wraps (decision 0011, step 5).
 // Usage: node scripts/bench-web-bugs.mjs [--check] [--perasc <path>]
 //        --check: fails if Peras lets more bugs through silently than
 //        decision 0011 recorded, and writes nothing.
@@ -22,8 +23,9 @@ import ts from "typescript";
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "bench", "web-bugs");
 const check = process.argv.includes("--check");
-/** Bugs Peras lets through silently, as decision 0011 recorded: no more. */
-const silentAtMost = 2;
+/** Bugs Peras lets through silently, as decision 0011 recorded after its
+ * step 5: no more. */
+const silentAtMost = 1;
 const at = process.argv.indexOf("--perasc");
 const perasc = at > 0 ? (process.argv[at + 1] ?? "") : join(root, "target", "release", "perasc");
 const work = join(root, "target", "bench-web-bugs");
@@ -119,8 +121,6 @@ for (const c of cases) {
       join(work, "peras"),
       "--imports",
       "source",
-      "--allocator",
-      "tlsf",
     ]);
     if (built.status !== 0) throw new Error(`perasc build ${c.id}\n${built.stderr}`);
   }

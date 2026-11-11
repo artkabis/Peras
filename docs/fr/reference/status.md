@@ -49,17 +49,18 @@ Chaque méthode intégrée, avec son état, est dans la [référence des méthod
 
 ## Modes et outillage
 
-| Fonctionnalité                                                                                     | État                                                                             |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| mode possédé, `.peras`, vers WebAssembly                                                           | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
-| mode géré, `.apeiron`, vers JavaScript ([guide](../guide/managed.md))                              | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
-| diagnostics en anglais et en français, `--json`, `perasc explain`                                  | disponible                                                                       |
-| plugin Vite, déclarations TypeScript                                                               | disponible                                                                       |
-| allocateur de débogage, vérificateur de libérations                                                | en service dans chaque module qui alloue                                         |
-| `async`, `await`, `number`, en mode géré                                                           | <span class="status compiled">compilé</span>                                     |
-| le DOM, les évènements, un canvas, les minuteurs, `fetch`, le stockage ([navigateur](browser.md))  | <span class="status compiled">compilé</span>, en mode géré                       |
-| écouteurs et minuteurs comme ressources, libérés avec leur propriétaire, fuites signalées en debug | <span class="status compiled">compilé</span>, en mode géré                       |
-| blocs `extern` : JavaScript et npm appelés avec des types déclarés, chaque valeur vérifiée         | <span class="status compiled">compilé</span>, en mode géré                       |
-| prise en charge des éditeurs (LSP), formateur, lanceur de tests                                    | <span class="status planned">prévu</span>                                        |
+| Fonctionnalité                                                                                                                          | État                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| mode possédé, `.peras`, vers WebAssembly                                                                                                | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
+| mode géré, `.apeiron`, vers JavaScript ([guide](../guide/managed.md))                                                                   | <span class="status compiled">compilé</span>, pour les fonctionnalités ci-dessus |
+| diagnostics en anglais et en français, `--json`, `perasc explain`                                                                       | disponible                                                                       |
+| plugin Vite, déclarations TypeScript                                                                                                    | disponible                                                                       |
+| allocateur de débogage, vérificateur de libérations                                                                                     | en service dans chaque module qui alloue                                         |
+| `async`, `await`, `number`, en mode géré                                                                                                | <span class="status compiled">compilé</span>                                     |
+| le DOM, les évènements, un canvas, les minuteurs, `fetch`, le stockage ([navigateur](browser.md))                                       | <span class="status compiled">compilé</span>, en mode géré                       |
+| écouteurs et minuteurs comme ressources, libérés avec leur propriétaire ou quand ils sont remplacés, fuites signalées en debug          | <span class="status compiled">compilé</span>, en mode géré                       |
+| blocs `extern` : JavaScript et npm appelés avec des types déclarés, chaque valeur vérifiée                                              | <span class="status compiled">compilé</span>, en mode géré                       |
+| fonctions fléchées à instructions, qui capturent ce qu’elles utilisent, comme valeurs ([guide](../guide/managed.md#fonctions-fléchées)) | <span class="status compiled">compilé</span>, en mode géré                       |
+| prise en charge des éditeurs (LSP), formateur, lanceur de tests                                                                         | <span class="status planned">prévu</span>                                        |
 
 Ce qui vient ensuite, et dans quel ordre : [vers un langage complet](roadmap.md).

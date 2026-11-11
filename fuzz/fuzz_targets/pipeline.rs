@@ -43,7 +43,8 @@ fuzz_target!(|data: &[u8]| {
     if !checked.diagnostics.is_empty() {
         return;
     }
-    // Without optimizations or SIMD on the debug allocator, with both on TLSF.
+    // Without optimizations or SIMD on the debug allocator, overflow checked, with
+    // both on TLSF.
     for (optimize, allocator) in [(false, Allocator::Debug), (true, Allocator::Tlsf)] {
         match build_direct(
             source,
@@ -54,6 +55,8 @@ fuzz_target!(|data: &[u8]| {
                 simd: optimize,
                 // The optimized build also exports jobs and their dispatchers.
                 threads: optimize,
+                // The debug build checks integer overflow, as `perasc build` does.
+                overflow_checks: allocator == Allocator::Debug,
             },
             &Localizer::new(Language::English),
         ) {

@@ -23,3 +23,36 @@ export fn find(s: String, needle: String): i32 {
 export fn characters(s: String): i32 {
   return s.split("").length;
 }
+
+// `const parts = line.split(",")`, only read and `line` unable to change: an
+// array of views of `line` (decision 0014, finding F201).
+export fn csvSum(text: String): i32 {
+  let total = 0;
+  for (const line of text.split("\n")) {
+    const parts = line.split(",");
+    if (parts.length == 3) {
+      total += parts[0].parseI32().unwrapOr(0) * parts[2].length + parts[1].length;
+    }
+  }
+  return total;
+}
+
+// A part copied out of the views lives on once they are released.
+export fn firstKept(line: String): String {
+  const parts = line.split(",");
+  return parts[0].copy();
+}
+
+// The text changes while the parts live: they must be copies.
+export fn afterChange(line: String): String {
+  let t = line.copy();
+  const parts = t.split(",");
+  t += "!";
+  return `${parts[0]}|${t}`;
+}
+
+// The array leaves the function: it must own its strings.
+export fn partsOf(line: String): Array<String> {
+  const parts = line.split(",");
+  return parts;
+}

@@ -95,6 +95,7 @@ const fn why(code: ErrorCode) -> &'static str {
         246 => "check-read-only-why",
         247 => "check-extern-why",
         248 => "check-floating-promise-why",
+        249 => "check-sort-key-why",
         _ => "check-operator-why",
     }
 }
@@ -1078,6 +1079,39 @@ pub fn arrow_outside(span: Span) -> Diagnostic {
     )
 }
 
+/// `E0238`: a parameter of an arrow function used as a value, without its type.
+pub fn arrow_param_type(span: Span, name: &str) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow-param").text("name", name),
+        span,
+        Message::new("check-arrow-param-label"),
+        Message::new("check-arrow-param-fix").text("name", name),
+    )
+}
+
+/// `E0238`: a function type elsewhere than for a variable, a parameter or a result.
+pub fn arrow_type_place(span: Span) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow-type"),
+        span,
+        Message::new("check-arrow-type-label"),
+        Message::new("check-arrow-type-fix"),
+    )
+}
+
+/// `E0238`: an exported function that takes or gives a function.
+pub fn arrow_export(span: Span, name: &str) -> Diagnostic {
+    simple(
+        codes::ARROW_FUNCTION,
+        Message::new("check-arrow-export").text("name", name),
+        span,
+        Message::new("check-arrow-export-label"),
+        Message::new("check-arrow-export-fix"),
+    )
+}
+
 /// `E0238`: a method that takes an arrow function was given something else.
 pub fn arrow_expected(span: Span) -> Diagnostic {
     simple(
@@ -1161,6 +1195,17 @@ pub fn extern_decl(span: Span, reason: &str, name: &str) -> Diagnostic {
         span,
         Message::new("check-extern-label").text("reason", reason),
         Message::new("check-extern-fix").text("reason", reason),
+    )
+}
+
+/// `E0249`: a key of `sortBy` that is neither a number nor a string.
+pub fn sort_key(span: Span, ty: &Ty) -> Diagnostic {
+    simple(
+        codes::SORT_KEY,
+        Message::new("check-sort-key").text("type", ty.to_string()),
+        span,
+        Message::new("check-sort-key-label").text("type", ty.to_string()),
+        Message::new("check-sort-key-fix"),
     )
 }
 

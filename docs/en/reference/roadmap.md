@@ -61,7 +61,12 @@ export fn words(text: String): i32 {
 - ~~Calls from managed to owned modules, with conversions checked at the boundary~~: done for numbers, strings, and arrays, options, results, maps and sets of them; structures and enumerations next.
 - ~~The DOM, events, `fetch`, timers, storage, with typed APIs~~: done for a subset, the [browser reference](browser.md) ([decision 0009](../decisions/0009-browser-and-resources.md)); WebSockets, Web Workers, forms and `requestAnimationFrame` next.
 - ~~Rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not~~: done.
-- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: arrow functions with statements that capture what they use; replacing a resource releases the previous one; `sortBy(key)`; `toFixed`; integer overflow stopped in debug, once its cost is measured; structures across `.apeiron` and `.peras`; elements owned by a group.
+- ~~Arrow functions with statements that capture what they use, and functions as values~~: done ([guide](../guide/managed.md#arrow-functions)); the case study keeps its state in the table it mounts, shown twice in one page.
+- ~~Replacing a resource releases the previous one~~: done, with a `Slot` of a group for an arrow function that replaces one ([browser reference](browser.md)); the case study searches after a delay.
+- ~~`sortBy(key)`~~: done, `sortBy` and `sortByDescending` in both modes ([methods](methods.md#sorting-by-a-key)), 3 to 7 times TypeScript's speed by a number.
+- ~~`toFixed`~~: done, in both modes, JavaScript's text by construction ([methods](methods.md#as-text)); the cost on the machine is measured with every step from now on ([decision 0012](../decisions/0012-cost-on-the-machine.md)).
+- ~~Integer overflow stopped in debug~~: done, in both modes, a counted loop's counter left unchecked; production wraps, at no cost ([types](types.md)).
+- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: structures across `.apeiron` and `.peras`; elements owned by a group.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

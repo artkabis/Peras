@@ -111,15 +111,35 @@ export async fn status(url: String): Promise<String> {
 | `set(key, value)` | `void`           | garde `value` pour `key`    |
 | `remove(key)`     | `void`           | oublie `key`                |
 
-## Ressources : `Listener`, `Timer`, `Group`
+## Ressources : `Listener`, `Timer`, `Group`, `Slot`
 
 Une ressource appartient à une variable, et est libérée quand cette variable sort de sa portée : un écouteur est retiré, un minuteur arrêté, un groupe libère ce qu’il tient. Elle peut être donnée une fois, en la rendant, en l’ajoutant à un groupe, ou en la libérant plus tôt ([E0245](../errors/E0245.md)). En JavaScript, une ressource a `release()` et `[Symbol.dispose]()`, pour que TypeScript puisse libérer celle qu’un module rend, ou la tenir avec `using`.
 
-| Membre          | Sur       | Fait                                        |
-| --------------- | --------- | ------------------------------------------- |
-| `Group.new()`   | `Group`   | un groupe vide                              |
-| `add(resource)` | `Group`   | prend la ressource : libérée avec le groupe |
-| `release()`     | les trois | la libère maintenant                        |
+| Membre          | Sur       | Fait                                          |
+| --------------- | --------- | --------------------------------------------- |
+| `Group.new()`   | `Group`   | un groupe vide                                |
+| `add(resource)` | `Group`   | prend la ressource : libérée avec le groupe   |
+| `slot()`        | `Group`   | un `Slot` du groupe, qui ne tient rien        |
+| `release()`     | les trois | la libère maintenant                          |
+| `set(resource)` | `Slot`    | prend la ressource, en libérant la précédente |
+| `clear()`       | `Slot`    | libère la ressource qu’il tient               |
+
+Remplacer la ressource d’une variable `let` libère celle qu’elle tenait : `timer = setTimeout(…)` arrête le minuteur d’avant. Un `Slot` n’est pas une ressource mais une place de son groupe : une fonction fléchée peut l’utiliser, là où elle ne pourrait pas garder une ressource, et ce qu’il tient est libéré avec le groupe. C’est ainsi qu’une recherche attend que l’utilisateur ait fini de taper :
+
+```apeiron build
+fn search(text: String): void {
+  log(text);
+}
+
+export fn watch(field: InputElement): Group {
+  let group = Group.new();
+  const pending = group.slot();
+  group.add(field.on("input", (_e) => {
+    pending.set(setTimeout(300, () => search(field.value)));
+  }));
+  return group;
+}
+```
 
 ```apeiron build
 fn clicked(e: Event): void {

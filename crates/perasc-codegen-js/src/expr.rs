@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 
 use perasc_check::ty::{FloatTy, IntTy, Ty};
 use perasc_check::{MethodCall, NameKind};
-use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Ident, UnaryOp};
+use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Ident, LambdaBody, UnaryOp};
 
 use crate::{Module, is_big, round, wrap};
 
@@ -81,7 +81,7 @@ impl Module<'_> {
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 format!("[{}]", self.exprs(items).join(", "))
             }
-            ExprKind::Lambda { params, body } => self.lambda(params, *body),
+            ExprKind::Lambda { params, body, .. } => self.lambda(params, body),
             ExprKind::Name(_) => self.name(id),
             ExprKind::Paren(inner) => self.expr(*inner),
             ExprKind::Unary { op, operand } => self.unary(id, *op, *operand),
@@ -162,6 +162,12 @@ impl Module<'_> {
                     "undefined".to_owned()
                 }
             }
+            // `render`, given where a function is expected.
+            Some((_, NameKind::Fn(f))) => self
+                .fns
+                .get(&f.0)
+                .cloned()
+                .unwrap_or_else(|| "$unnamed".to_owned()),
             _ => {
                 self.unsupported(span, "function-value");
                 "undefined".to_owned()
@@ -172,12 +178,31 @@ impl Module<'_> {
     fn lambda(
         &mut self,
         params: &[(Ident, Option<perasc_syntax::ast::Type>)],
-        body: ExprId,
+        body: &LambdaBody,
     ) -> String {
         let names: Vec<String> = params
             .iter()
             .map(|(ident, _)| self.declare(ident.span, self.ast.name(ident.symbol)))
             .collect();
+        let body = match body {
+            LambdaBody::Expr(body) => *body,
+            LambdaBody::Block(block) => {
+                // Its own `return`: `?` returns from it too.
+                let outer = std::mem::replace(&mut self.current.in_lambda, false);
+                let ((), lines) = self.apart(|m| m.block_stmts(block));
+                self.current.in_lambda = outer;
+                let close = "  ".repeat(self.current.depth);
+                return if lines.is_empty() {
+                    format!("({}) => {{}}", names.join(", "))
+                } else {
+                    format!(
+                        "({}) => {{\n{}\n{close}}}",
+                        names.join(", "),
+                        lines.join("\n")
+                    )
+                };
+            }
+        };
         let outer = std::mem::replace(&mut self.current.in_lambda, true);
         let (value, lines) = self.apart(|m| m.expr(body));
         self.current.in_lambda = outer;
@@ -285,6 +310,32 @@ impl Module<'_> {
     /// Integer arithmetic: wrapped, and a division by zero throws.
     fn integer(&mut self, op: BinaryOp, int: IntTy, a: &str, b: &str) -> String {
         let big = is_big(int);
+        // In debug, `+`, `-` and `*` stop on an overflow, as in an owned
+        // module ([decision 0011]); `wrappingAdd` and the others still wrap.
+        //
+        // [decision 0011]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0011-what-to-build-next.md
+        let checked = self.options.debug.is_some() && !self.current.wrapping;
+        if checked && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul) {
+            let symbol = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                _ => "*",
+            };
+            // Exact in a double: a product of two 32-bit integers that fits
+            // in 32 bits is exact, and one that does not stays out of range.
+            return if big {
+                let helper = self.helper("$ov64");
+                format!("{helper}({a} {symbol} {b}, {})", int == IntTy::I64)
+            } else {
+                let (lo, hi) = if int == IntTy::I32 {
+                    (-2_147_483_648, 2_147_483_647)
+                } else {
+                    crate::range(int)
+                };
+                let helper = self.helper("$ov");
+                format!("{helper}({a} {symbol} {b}, {lo}, {hi})")
+            };
+        }
         match op {
             BinaryOp::Add => wrap(int, &format!("{a} + {b}")),
             BinaryOp::Sub => wrap(int, &format!("{a} - {b}")),
@@ -358,7 +409,12 @@ impl Module<'_> {
                 }
             }
             if let (Some(value), Some(&id)) = (values.get(i), exprs.get(i)) {
-                let text = self.text_of(id, value);
+                // `${x}` converts as `String(x)` does: only an `f32` needs more.
+                let text = if self.ty(id) == Ty::Float(FloatTy::F32) {
+                    self.text_of(id, value)
+                } else {
+                    value.clone()
+                };
                 out.push_str("${");
                 out.push_str(&text);
                 out.push('}');
@@ -453,12 +509,23 @@ impl Module<'_> {
                     let variant = if kind == NameKind::Ok { "Ok" } else { "Err" };
                     format!("{{ kind: \"{variant}\", values: [{}] }}", values.join(", "))
                 }
+                // A function kept in a variable or a parameter.
+                Some((binding, NameKind::Local | NameKind::Global)) => {
+                    let name = self.variable(binding);
+                    let values = self.exprs(args);
+                    format!("{name}({})", values.join(", "))
+                }
                 _ => {
                     self.unsupported(span, "function-value");
                     "undefined".to_owned()
                 }
             },
             ExprKind::Field { base, name } => self.call_field(id, *base, name, args),
+            _ if matches!(self.ty(callee), Ty::Callback(..)) => {
+                let function = self.expr(callee);
+                let values = self.exprs(args);
+                format!("({function})({})", values.join(", "))
+            }
             _ => {
                 self.unsupported(span, "function-value");
                 "undefined".to_owned()

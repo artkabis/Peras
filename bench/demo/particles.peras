@@ -1,0 +1,39 @@
+// The demo (scripts/demo.mjs): particles orbiting the centre of a canvas,
+// pulled by a force in 1/r that gives them all the same speed, so that the
+// inner ones turn faster and arms wind up; each frame moves them once, then
+// draws how many fall on each pixel, brighter where more do. The arrays live
+// in the module's memory, given by the page with no copy.
+export fn frame(xs: inout Array<f32>, ys: inout Array<f32>, vxs: inout Array<f32>, vys: inout Array<f32>, counts: inout Array<i32>, pixels: inout Array<i32>, width: i32, height: i32): i32 {
+  const cx = width.toF32() * 0.5;
+  const cy = height.toF32() * 0.5;
+  for (let i = 0; i < counts.length; i++) {
+    counts[i] = 0;
+  }
+  let drawn = 0;
+  for (let i = 0; i < xs.length; i++) {
+    const dx = cx - xs[i];
+    const dy = cy - ys[i];
+    const f = 0.6 / (dx * dx + dy * dy + 30.0);
+    const vx = vxs[i] + dx * f;
+    const vy = vys[i] + dy * f;
+    const x = xs[i] + vx;
+    const y = ys[i] + vy;
+    xs[i] = x;
+    ys[i] = y;
+    vxs[i] = vx;
+    vys[i] = vy;
+    if (x >= 0.0 && y >= 0.0) {
+      const px = x.toI32();
+      const py = y.toI32();
+      if (px < width && py < height) {
+        counts[py * width + px] += 1;
+        drawn += 1;
+      }
+    }
+  }
+  for (let i = 0; i < pixels.length; i++) {
+    const lum = (counts[i] * 5).min(255);
+    pixels[i] = -16777216 + lum * 65536 + (lum * 3 / 4) * 256 + lum / 3;
+  }
+  return drawn;
+}

@@ -1,0 +1,219 @@
+// The garden of Apeiron (decision 0013), in Peras: the same specification as
+// garden.ts, written as plainly, and compiled to WebAssembly. It must give
+// the same bytes, pixel for pixel; scripts/bench-garden.mjs checks it.
+//
+// The plane is the square [0, 1] × [0, 1], y downward: a sky, three ranges of
+// mountains, a meadow of flowers. Each doubling of the zoom adds an octave to
+// every noise and a smaller kind of flower: limit, peras, imposed on the
+// unlimited, apeiron.
+
+struct Color {
+  r: f64,
+  g: f64,
+  b: f64,
+}
+
+// lowbias32 (Wellons, 2018) of a lattice point and a seed; `>>` is
+// arithmetic on an `i32`, so each logical shift is masked.
+fn hash(x: i32, y: i32, seed: i32): i32 {
+  let h = x.wrappingMul(374761393).wrappingAdd(y.wrappingMul(668265263)).wrappingAdd(seed.wrappingMul(1274126177));
+  h = h ^ ((h >> 16) & 65535);
+  h = h.wrappingMul(2146121005);
+  h = h ^ ((h >> 15) & 131071);
+  h = h.wrappingMul(-2073254261);
+  h = h ^ ((h >> 16) & 65535);
+  return h;
+}
+
+// 24 bits of a hash as a number in [0, 1).
+fn unit(h: i32): f64 {
+  return (h & 16777215).toF64() / 16777216.0;
+}
+
+// Value noise: the hashes of the four corners, smoothly interpolated.
+fn noise(x: f64, y: f64, seed: i32): f64 {
+  const fx = x.floor();
+  const fy = y.floor();
+  const ix = fx.toI32();
+  const iy = fy.toI32();
+  const tx = x - fx;
+  const ty = y - fy;
+  const ux = tx * tx * (3.0 - 2.0 * tx);
+  const uy = ty * ty * (3.0 - 2.0 * ty);
+  const a = unit(hash(ix, iy, seed));
+  const b = unit(hash(ix + 1, iy, seed));
+  const c = unit(hash(ix, iy + 1, seed));
+  const d = unit(hash(ix + 1, iy + 1, seed));
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+// A fractal sum of noises, each twice the frequency and half the amplitude.
+fn fbm(x: f64, y: f64, seed: i32, octaves: i32): f64 {
+  let sum = 0.0;
+  let amp = 0.5;
+  let f = 1.0;
+  for (let k = 0; k < octaves; k++) {
+    sum += amp * noise(x * f, y * f, seed + k);
+    f *= 2.0;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+// A ridge: folded noise along one axis, sharp at its crests.
+fn ridge(x: f64, seed: i32, octaves: i32): f64 {
+  let sum = 0.0;
+  let amp = 0.5;
+  let f = 1.0;
+  for (let k = 0; k < octaves; k++) {
+    const n = noise(x * f, 0.5, seed + k);
+    const r = 1.0 - (2.0 * n - 1.0).abs();
+    sum += amp * r * r;
+    f *= 2.0;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+fn mix(a: f64, b: f64, t: f64): f64 {
+  return a + (b - a) * t;
+}
+
+fn clamp(c: f64): f64 {
+  if (c < 0.0) {
+    return 0.0;
+  }
+  if (c > 1.0) {
+    return 1.0;
+  }
+  return c;
+}
+
+fn byte(c: f64): i32 {
+  return (clamp(c) * 255.0 + 0.5).floor().toI32();
+}
+
+// The colour of a point.
+fn point(x: f64, y: f64, octaves: i32, levels: i32): Color {
+  // The sky: zenith to horizon, and clouds where the noise rises.
+  const t = clamp(y / 0.7);
+  let r = mix(0.2, 0.98, t);
+  let g = mix(0.36, 0.8, t);
+  let b = mix(0.7, 0.62, t);
+  const cloud = clamp((fbm(x * 4.0, y * 10.0, 100, octaves) - 0.56) * 3.0) * (1.0 - t);
+  r = mix(r, 0.97, cloud * 0.85);
+  g = mix(g, 0.97, cloud * 0.85);
+  b = mix(b, 1.0, cloud * 0.85);
+  // The ranges, far to near: paler with distance, as the air makes them.
+  for (let k = 0; k < 3; k++) {
+    const kf = k.toF64();
+    const top = 0.55 + 0.07 * kf - (0.25 - 0.05 * kf) * ridge(x * (3.0 + 3.0 * kf), 200 + k, octaves);
+    if (y >= top) {
+      const shade = 0.85 + 0.3 * fbm(x * 40.0, y * 40.0, 210 + k, octaves);
+      const fade = 0.5 - 0.21 * kf;
+      r = mix((0.55 - 0.175 * kf) * shade, 0.98, fade);
+      g = mix((0.52 - 0.11 * kf) * shade, 0.8, fade);
+      b = mix((0.72 - 0.21 * kf) * shade, 0.62, fade);
+    }
+  }
+  // The meadow, and its flowers, smaller at each level.
+  if (y >= 0.74 + 0.02 * noise(x * 8.0, 0.5, 350)) {
+    const shade = 0.75 + 0.5 * fbm(x * 60.0, y * 60.0, 300, octaves);
+    r = 0.25 * shade;
+    g = 0.45 * shade;
+    b = 0.18 * shade;
+    let size = 0.012;
+    for (let level = 0; level < levels; level++) {
+      const fx = (x / size).floor().toI32();
+      const fy = (y / size).floor().toI32();
+      for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+          const cx = fx + i;
+          const cy = fy + j;
+          if (unit(hash(cx, cy, 400 + level)) < 0.55) {
+            const px = (cx.toF64() + unit(hash(cx, cy, 500 + level))) * size;
+            const py = (cy.toF64() + unit(hash(cx, cy, 600 + level))) * size;
+            const radius = size * (0.18 + 0.12 * unit(hash(cx, cy, 700 + level)));
+            const dx = x - px;
+            const dy = y - py;
+            const heart = radius * 0.3;
+            if (dx * dx + dy * dy < heart * heart) {
+              r = 0.98;
+              g = 0.82;
+              b = 0.2;
+            } else {
+              // Six petals around the heart.
+              const petal = radius * 0.45;
+              const reach = radius * 0.55;
+              const hue = hash(cx, cy, 800 + level) & 3;
+              for (let p = 0; p < 6; p++) {
+                let ox = -0.5;
+                if (p == 0) {
+                  ox = 1.0;
+                } else if (p == 3) {
+                  ox = -1.0;
+                } else if (p == 1 || p == 5) {
+                  ox = 0.5;
+                }
+                let oy = -0.8660254037844386;
+                if (p == 0 || p == 3) {
+                  oy = 0.0;
+                } else if (p < 3) {
+                  oy = 0.8660254037844386;
+                }
+                const qx = dx - ox * reach;
+                const qy = dy - oy * reach;
+                if (qx * qx + qy * qy < petal * petal) {
+                  if (hue == 0) {
+                    r = 0.95;
+                    g = 0.35;
+                    b = 0.45;
+                  } else if (hue == 1) {
+                    r = 0.9;
+                    g = 0.9;
+                    b = 0.95;
+                  } else if (hue == 2) {
+                    r = 0.98;
+                    g = 0.6;
+                    b = 0.2;
+                  } else {
+                    r = 0.62;
+                    g = 0.45;
+                    b = 0.9;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      size *= 0.5;
+    }
+  }
+  return Color(r, g, b);
+}
+
+// Draws the window of `width` × `height` pixels zoomed `zoom` times around
+// (cx, cy); gives the number of pixels drawn. Each doubling of the zoom adds
+// an octave and a level of flowers.
+export fn render(pixels: inout Array<i32>, width: i32, height: i32, zoom: f64, cx: f64, cy: f64): i32 {
+  let level = 0;
+  let z = zoom;
+  while (z >= 2.0) {
+    z /= 2.0;
+    level += 1;
+  }
+  const octaves = 6 + level;
+  const levels = 1 + level;
+  const w = width.toF64();
+  const h = height.toF64();
+  for (let py = 0; py < height; py++) {
+    const y = cy + ((py.toF64() + 0.5) / h - 0.5) / zoom;
+    for (let px = 0; px < width; px++) {
+      const x = cx + ((px.toF64() + 0.5) / w - 0.5) / zoom;
+      const c = point(x, y, octaves, levels);
+      pixels[py * width + px] = byte(c.r) + byte(c.g) * 256 + byte(c.b) * 65536 - 16777216;
+    }
+  }
+  return width * height;
+}

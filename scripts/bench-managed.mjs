@@ -28,7 +28,8 @@ const run = (args) => {
   if (built.status !== 0)
     throw new Error(`perasc ${args.join(" ")}\n${built.stdout}${built.stderr}`);
 };
-run(["build", source, "--out", join(work, "managed")]);
+// Both for production: no leak detector, integers wrapping unchecked.
+run(["build", source, "--allocator", "tlsf", "--out", join(work, "managed")]);
 run(["build", join(work, "owned.peras"), "--allocator", "tlsf", "--out", join(work, "owned")]);
 
 /** @typedef {{ sum(xs: number[]): number, step(xs: number[], vs: number[]): void, words(t: string): number, gravity(n: number): number }} Kernels */

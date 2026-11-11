@@ -1,0 +1,143 @@
+// Decision 0014, version C: the sales dashboard, written as plainly as the
+// idiomatic TypeScript (dashboard-idiomatic.ts), with what Peras offers.
+
+export struct Pair {
+  country: String;
+  category: i32;
+  count: i32;
+  revenue: i64;
+}
+
+export struct Customers {
+  country: String;
+  users: i32;
+}
+
+export struct Best {
+  product: i32;
+  revenue: i64;
+}
+
+export struct Summary {
+  lines: i32;
+  broken: i32;
+  kept: i32;
+  pairs: Array<Pair>;
+  customers: Array<Customers>;
+  daily: Array<i64>;
+  best: Array<Best>;
+}
+
+struct Row {
+  ts: i32;
+  user: i32;
+  country: String;
+  product: i32;
+  amount: i32;
+  qty: i32;
+}
+
+// Two letters A to Z: toLowerCase changes exactly those.
+fn isCountry(s: String): bool {
+  if (s.length != 2) {
+    return false;
+  }
+  for (const c of s.split("")) {
+    if (c.toLowerCase() == c) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// A well-formed row: six fields, five strict integers and a country.
+fn parse(line: String): Option<Row> {
+  const f = line.split(",");
+  if (f.length != 6 || !isCountry(f[2])) {
+    return None;
+  }
+  return Some(Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?));
+}
+
+export fn summarize(text: String): Summary {
+  const start = 1782864000;
+  const end = 1798761600;
+  let lines = 0;
+  let broken = 0;
+  let kept = 0;
+  let pairs: Map<String, Pair> = Map.new();
+  let countries: Map<String, i32> = Map.new();
+  let users: Array<Set<i32>> = [];
+  let daily: Array<i64> = [];
+  for (let d = 0; d < 184; d++) {
+    daily.push(0);
+  }
+  let products: Map<i32, i64> = Map.new();
+
+  let header = true;
+  for (const line of text.split("\n")) {
+    if (header) {
+      header = false;
+      continue;
+    }
+    lines += 1;
+    const parsed = parse(line);
+    if (parsed.isNone()) {
+      broken += 1;
+      continue;
+    }
+    const row = parsed.unwrapOr(Row(0, 0, "", 0, 0, 0));
+    if (row.qty <= 0 || row.ts < start || row.ts >= end) {
+      continue;
+    }
+    kept += 1;
+    const t = row.ts;
+    const country = row.country.copy();
+    const p = row.product;
+    const user = row.user;
+    const revenue = row.amount.toI64() * row.qty.toI64();
+
+    const category = p % 12;
+    const key = `${country}|${category}`;
+    let pair = pairs.get(key).unwrapOr(Pair(country.copy(), category, 0, 0));
+    pair.count += 1;
+    pair.revenue += revenue;
+    pairs.set(key, pair);
+
+    if (!countries.has(country)) {
+      countries.set(country.copy(), users.length);
+      users.push(Set.new());
+    }
+    users[countries.get(country).unwrapOr(0)].add(user);
+
+    daily[(t - start) / 86400] += revenue;
+    products.set(p, products.get(p).unwrapOr(0) + revenue);
+  }
+  // The last line ends with "\n": the empty part after it is no line.
+  if (text.endsWith("\n")) {
+    lines -= 1;
+    broken -= 1;
+  }
+
+  let byPair: Array<Pair> = [];
+  for (const e of pairs) {
+    byPair.push(Pair(e.1.country.copy(), e.1.category, e.1.count, e.1.revenue));
+  }
+  byPair.sortBy((x) => x.category);
+  byPair.sortBy((x) => x.country);
+
+  let customers: Array<Customers> = [];
+  for (const e of countries) {
+    customers.push(Customers(e.0.copy(), users[e.1].size));
+  }
+  customers.sortBy((x) => x.country);
+
+  let best: Array<Best> = [];
+  for (const e of products) {
+    best.push(Best(e.0, e.1));
+  }
+  best.sortBy((x) => x.product);
+  best.sortByDescending((x) => x.revenue);
+
+  return Summary(lines, broken, kept, byPair, customers, daily, best.slice(0, 10));
+}

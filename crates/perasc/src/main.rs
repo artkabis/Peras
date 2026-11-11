@@ -145,6 +145,10 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             "--no-optimize" => options.direct.optimize = false,
             "--allocator" => {
                 options.direct.allocator = pick("--allocator", value("--allocator")?, &ALLOCATORS)?;
+                // A debug build stops on an integer overflow; a production
+                // build, with TLSF, wraps.
+                options.direct.overflow_checks =
+                    options.direct.allocator == perasc_driver::Allocator::Debug;
             }
             "--simd" => options.direct.simd = pick("--simd", value("--simd")?, &SIMD)?,
             "--threads" => {

@@ -1,0 +1,20 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0238-arrow-block.apeiron
+---
+diagnostics:
+  error[E0218] check-return { kind: "value", expected: "void" }
+    primary 9:12-9:13: check-return-label { kind: "value" }
+    cause: check-return-why
+    fix: check-return-fix { kind: "value" }
+  error[E0219] check-missing-return { name: "=>" }
+    primary 17:3-17:4: check-missing-return-label
+    secondary 13:26-13:29: check-missing-return-declared-label { expected: "i32" }
+    cause: check-missing-return-why
+    fix: check-missing-return-fix { expected: "i32" }
+  error[E0214] check-argument-count { name: "add", expected: 2, found: 1 }
+    primary 24:10-24:16: check-argument-count-label { found: 1 }
+    secondary 23:9-23:12: check-argument-count-declared-label { expected: 2 }
+    cause: check-argument-count-why
+    fix: check-argument-count-fix { expected: 2 }

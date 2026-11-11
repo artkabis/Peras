@@ -335,3 +335,30 @@ struct Point {
 }
 
 "#;
+
+#[test]
+fn to_fixed_writes_as_javascript_does() {
+    let source = "export fn run(n: i32): i32 {
+  const x = 2.5;
+  const y = -0.0001;
+  const big = 123.456;
+  if (x.toFixed(0) != \"3\" || y.toFixed(2) != \"-0.00\" || (1.005).toFixed(2) != \"1.00\") {
+    return -1;
+  }
+  return big.toFixed(n).length;
+}
+";
+    let parsed = perasc_syntax::parse(source);
+    assert_eq!(parsed.diagnostics, [], "syntax errors");
+    let analysis = perasc_check::analyze(&parsed.ast, source);
+    assert_eq!(analysis.diagnostics, [], "check errors");
+    let module = lower(&parsed.ast, &analysis).unwrap_or_else(|e| unreachable!("{e:#?}"));
+    assert_eq!(verify(&module), Ok(()), "{module}");
+    for (n, expected) in [(0, 3), (2, 6), (100, 104)] {
+        let (value, heap) = run_with_heap(&module, FnId(0), &[Value::I32(n)])
+            .unwrap_or_else(|t| unreachable!("{t:?}\n{module}"));
+        assert_eq!(value, Value::I32(expected), "{n}");
+        assert_eq!(heap.live, Vec::<u32>::new(), "leak on {n}");
+    }
+    assert!(run_with_heap(&module, FnId(0), &[Value::I32(101)]).is_err());
+}

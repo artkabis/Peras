@@ -21,7 +21,16 @@ fn js(source: &str) -> String {
         "{:?}",
         analysis.diagnostics
     );
-    generate(&parsed.ast, &analysis, &Options::default()).unwrap_or_else(|errors| {
+    // A source starting with `// debug` is built as a debug build is.
+    let options = if source.starts_with("// debug") {
+        Options {
+            debug: Some(crate::Debug::new("m.apeiron", source)),
+            ..Options::default()
+        }
+    } else {
+        Options::default()
+    };
+    generate(&parsed.ast, &analysis, &options).unwrap_or_else(|errors| {
         assert!(errors.is_empty(), "{errors:?}");
         String::new()
     })
@@ -523,5 +532,206 @@ fn values_from_javascript_that_do_not_match_throw() {
                 js(&source)
             );
         }
+    }
+}
+
+#[test]
+fn arrow_functions_with_statements_capture_what_they_use() {
+    // Each counter keeps its own `n`: a component can be made twice.
+    gives(
+        "fn counter(step: i32): () => i32 {
+           let n = 0;
+           return () => {
+             n += step;
+             return n;
+           };
+         }
+         fn twice(f: (i32) => i32, x: i32): i32 {
+           return f(f(x));
+         }
+         fn inc(x: i32): i32 {
+           return x + 1;
+         }
+         export fn main(): Array<i32> {
+           const a = counter(1);
+           const b = counter(10);
+           a();
+           a();
+           b();
+           let total = 0;
+           const add = (x: i32) => {
+             total += x;
+           };
+           for (const x of [1, 2, 3]) {
+             add(x);
+           }
+           const square = (x: i32): i32 => {
+             const y = x * x;
+             return y;
+           };
+           return [a(), b(), total, twice(square, 3), twice(inc, 3), twice((x) => x * 10, 2)];
+         }",
+        "[3,20,6,81,5,200]",
+    );
+}
+
+#[test]
+fn arrow_functions_return_break_and_try_on_their_own() {
+    gives(
+        "fn first(xs: Array<i32>, keep: (i32) => bool): Option<i32> {
+           for (const x of xs) {
+             if (keep(x)) {
+               return Some(x);
+             }
+           }
+           return None;
+         }
+         export fn main(): Array<i32> {
+           const xs = [1, 4, 9, 16];
+           const big = (x: i32): bool => {
+             if (x > 5) {
+               return true;
+             }
+             return false;
+           };
+           // `?` and `return` leave the arrow function, not `main`.
+           const doubled = (x: i32): Option<i32> => {
+             const found = first(xs, (y) => y > x)?;
+             return Some(found * 2);
+           };
+           let seen = 0;
+           const count = () => {
+             for (const x of xs) {
+               if (x > 9) {
+                 break;
+               }
+               seen += 1;
+             }
+           };
+           count();
+           return [first(xs, big).unwrapOr(-1), doubled(2).unwrapOr(-1), doubled(99).unwrapOr(-1), seen];
+         }",
+        "[9,8,-1,3]",
+    );
+}
+
+#[test]
+fn replacing_a_resource_releases_the_one_before() {
+    // The first interval is cleared when replaced; three calls to `later`
+    // leave one timeout; the one set before the group is released never runs.
+    gives(
+        "export async fn main(): Promise<String> {
+           let ticks = 0;
+           let timer = setInterval(5, () => {
+             ticks += 1;
+           });
+           timer = setInterval(5, () => {
+             ticks += 100;
+           });
+           await sleep(23);
+           timer.release();
+           const seen = ticks;
+           await sleep(20);
+           let group = Group.new();
+           const pending = group.slot();
+           let fired = 0;
+           const later = () => {
+             pending.set(setTimeout(10, () => {
+               fired += 1;
+             }));
+           };
+           later();
+           later();
+           later();
+           await sleep(30);
+           pending.set(setTimeout(10, () => {
+             fired += 10;
+           }));
+           group.release();
+           await sleep(20);
+           return `${seen % 100} ${ticks == seen} ${fired}`;
+         }",
+        "\"0 true 1\"",
+    );
+}
+
+#[path = "../../perasc-driver/tests/fixtures/sort.rs"]
+mod sort;
+
+#[test]
+fn sort_by_gives_what_a_stable_sort_gives() {
+    // The program the WebAssembly and interpreter tests run, as a managed
+    // module: one `main` gives every case at every size.
+    let calls: Vec<String> = sort::CASES
+        .iter()
+        .flat_map(|(name, _)| sort::SIZES.iter().map(move |n| format!("{name}({n})")))
+        .collect();
+    let source = format!(
+        "{}\nexport fn main(): Array<i32> {{\n  return [{}];\n}}\n",
+        sort::PROGRAM,
+        calls.join(", ")
+    );
+    let expected: Vec<String> = sort::CASES
+        .iter()
+        .flat_map(|(_, model)| sort::SIZES.iter().map(|&n| model(n).to_string()))
+        .collect();
+    gives(&source, &format!("[{}]", expected.join(",")));
+}
+
+#[test]
+fn to_fixed_is_javascripts() {
+    gives(
+        "export fn main(): Array<String> {
+           const n = -7;
+           const y: f32 = 0.1;
+           const half = 2.5;
+           return [half.toFixed(0), (1.005).toFixed(2), (-0.0001).toFixed(2), n.toFixed(1), y.toFixed(10), (60016.28000000002).toFixed(2)];
+         }",
+        "[\"3\",\"1.00\",\"-0.00\",\"-7.0\",\"0.1000000015\",\"60016.28\"]",
+    );
+    gives(
+        "export fn main(): String {
+           const d = 101;
+           return (1.5).toFixed(d);
+         }",
+        "throws: toFixed() digits argument must be between 0 and 100",
+    );
+}
+
+#[test]
+fn a_debug_build_stops_on_an_integer_overflow() {
+    let source = |body: &str| {
+        format!(
+            "// debug
+export fn main(): Array<String> {{
+  let out: Array<String> = [];
+  {body}
+  return out;
+}}
+"
+        )
+    };
+    // In range, and wrapping on purpose: as in production.
+    gives(
+        &source(
+            "const max: i32 = 2147483647;
+  const big: i64 = 9223372036854775807;
+  const small: u8 = 250;
+  out.push(`${max - 1 + 1} ${max.wrappingAdd(1)} ${big.wrappingMul(2)} ${small.wrappingAdd(10)} ${(-7) * 3}`);",
+        ),
+        "[\"2147483647 -2147483648 -2 4 -21\"]",
+    );
+    for overflow in [
+        "const max: i32 = 2147483647; out.push(`${max + 1}`);",
+        "const min: i32 = -2147483648; out.push(`${min - 1}`);",
+        "const a: i32 = 65536; out.push(`${a * a}`);",
+        "const big: i64 = 9223372036854775807; out.push(`${big + 1}`);",
+        "const small: u8 = 250; out.push(`${small + 10}`);",
+        "let n: i32 = 2147483647; n += 1; out.push(`${n}`);",
+    ] {
+        gives(
+            &source(overflow),
+            "throws: an integer overflowed: its type cannot hold the result",
+        );
     }
 }

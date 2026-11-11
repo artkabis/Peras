@@ -105,8 +105,8 @@ impl Checker<'_> {
             }
             return Ty::Host(Host::Listener);
         }
-        // `group.add(listener)`: any resource.
-        if name == "add" && of == Host::Group {
+        // `group.add(listener)`, `slot.set(timer)`: any resource.
+        if (name == "add" && of == Host::Group) || (name == "set" && of == Host::Slot) {
             self.arity(span, name, 1, args.len(), None);
             for (i, &arg) in args.iter().enumerate() {
                 let ty = self.infer(arg, None);

@@ -28,7 +28,3 @@ diagnostics:
     primary 40:51-40:56: check-resource-label { reason: "capture" }
     cause: check-resource-why
     fix: check-resource-fix { reason: "capture" }
-  error[E0245] check-resource { reason: "reassign", name: "listener" }
-    primary 52:3-52:11: check-resource-label { reason: "reassign" }
-    cause: check-resource-why
-    fix: check-resource-fix { reason: "reassign" }

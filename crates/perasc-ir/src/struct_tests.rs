@@ -137,3 +137,15 @@ fn a_loop_condition_calls_again_at_every_turn() {
     // n = 4: four turns, p = (4, 8); then two turns of the `for`.
     gives(&source, &[(vec![Value::I32(4)], Ok(Value::I32(24_008)))]);
 }
+
+/// A field read from a structure a call returns: its other blocks are released.
+#[test]
+fn a_field_of_a_temporary_releases_the_others() {
+    let source = "export fn f(n: i32): i32 {\n  return make(n).n + make(n).name.length;\n}\n\
+         struct R {\n  name: String;\n  n: i32;\n}\n\
+         fn make(n: i32): R {\n  return R(\"x\".repeat(n), n * 10);\n}\n";
+    let cases: Vec<(Vec<Value>, Result<Value, Trap>)> = (0..=4)
+        .map(|n| (vec![Value::I32(n)], Ok(Value::I32(n * 11))))
+        .collect();
+    gives(source, &cases);
+}

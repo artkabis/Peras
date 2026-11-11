@@ -299,7 +299,10 @@ fn quiet_stmt(stmt: &Stmt, held: &[LocalId]) -> bool {
         Stmt::Return(value) => value.as_ref().is_none_or(quiet_expr),
         Stmt::ReturnMany(values) => values.iter().all(quiet_expr),
         Stmt::Buf(op, args) => {
-            matches!(op, BufStmt::Set(_) | BufStmt::CheckIndex) && args.iter().all(quiet_expr)
+            matches!(
+                op,
+                BufStmt::Set(_) | BufStmt::CheckIndex | BufStmt::CheckOverflow
+            ) && args.iter().all(quiet_expr)
         }
         Stmt::Release(_) | Stmt::CallMany { .. } => false,
     }
@@ -320,7 +323,7 @@ fn quiet_expr(e: &Expr) -> bool {
 }
 
 /// Whether `stmts` assign `local` anywhere.
-fn assigns(stmts: &[Stmt], local: LocalId) -> bool {
+pub(crate) fn assigns(stmts: &[Stmt], local: LocalId) -> bool {
     stmts.iter().any(|stmt| match stmt {
         Stmt::Set(l, _) => *l == local,
         Stmt::CallMany { targets, .. } => targets.contains(&local),

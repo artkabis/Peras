@@ -45,6 +45,18 @@ export fn label(count: i64, done: bool): String {
 }
 ```
 
+| Method       | On                                                  | Gives                                                  | Status                                        |
+| ------------ | --------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `toFixed(d)` | floats, and integers of 32 bits or fewer (`number`) | the value with `d` decimals, from 0 to 100, a `String` | <span class="status compiled">compiled</span> |
+
+`x.toFixed(2)` writes what JavaScript's `toFixed` writes, in both modes: the exact value of the float rounded to `d` decimals, a tie away from zero, so `(2.5).toFixed(0)` is `"3"`, `(1.005).toFixed(2)` is `"1.00"` since `1.005` is a little below it, and `(-0.0001).toFixed(2)` is `"-0.00"`; from `1e21` up, the same text as `toString()`. Outside 0 to 100 decimals, it throws a `RangeError`, as JavaScript's does. A managed module calls JavaScript's own, with nothing added to the page; an owned one asks the host, as for `toString()`, with room for 100 decimals at most. An `i64` is a `bigint` in JavaScript, which has no `toFixed`: convert it with `toF64()` first. Other formats, a thousands separator or a currency, go through an `extern` block to `Intl.NumberFormat`.
+
+```peras build
+export fn price(amount: f64, count: i32): String {
+  return `${count} × ${amount.toFixed(2)} € = ${(amount * count.toF64()).toFixed(2)} €`;
+}
+```
+
 ### Floats
 
 | Method                    | Gives                                                | Status                                        |
@@ -115,6 +127,66 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
   return n;
 }
 ```
+
+### Sorting by a key
+
+| Method                | Gives                                                                            | Status                                        |
+| --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------- |
+| `sortBy(f)`           | sorts the elements by the key `f(x)`, increasing, in place: the array is a `let` | <span class="status compiled">compiled</span> |
+| `sortByDescending(f)` | the same, decreasing                                                             | <span class="status compiled">compiled</span> |
+
+```peras build
+struct Order {
+  id: i32,
+  customer: String,
+  amount: f64,
+}
+
+export fn largest(orders: Array<Order>, count: i32): Array<Order> {
+  let sorted = orders.copy();
+  sorted.sortByDescending((o) => o.amount);
+  return sorted.slice(0, count);
+}
+```
+
+- **The key** is an `i32`, an `i64`, an `f32`, an `f64` (`number`) or a `String`, computed once per element ([E0249](../errors/E0249.md)). Numbers are in the order of `sort()`: -0 before +0, NaN last. Strings are in the order of their Unicode code points, the same in both modes; JavaScript's `<` compares UTF-16 units, which differ only between characters above U+FFFF and those from U+E000 to U+FFFF.
+- **Stable**: elements with equal keys keep their order, decreasing too. `sortByDescending` reverses the order of the keys, so NaN comes first.
+- **Fast**: numbers are sorted by their bits, a radix sort that carries the elements' indices, in time proportional to the length; strings by comparison. Measured against TypeScript's `sort((a, b) => a.amount - b.amount)` ([results](../../../bench/sort/RESULTS.md)): by a number, 3 to 7 times as fast from 10,000 elements, in both modes; by a string, as fast in a managed module, 1.1 to 1.4 times in an owned one.
+
+Coming from TypeScript, each line of the first block is written as the same line of the second:
+
+```ts
+xs.sort((a, b) => a.amount - b.amount);
+xs.sort((a, b) => b.amount - a.amount);
+xs.sort((a, b) => a.customer.localeCompare(b.customer));
+const ys = xs.toSorted((a, b) => a.amount - b.amount);
+xs.sort((a, b) => a.customer.localeCompare(b.customer) || a.amount - b.amount);
+```
+
+```peras build
+struct Order {
+  id: i32,
+  customer: String,
+  amount: f64,
+}
+
+export fn orders(xs: Array<Order>): Array<Order> {
+  let sorted = xs.copy();
+  sorted.sortBy((x) => x.amount);
+  sorted.sortByDescending((x) => x.amount);
+  // By code points, not by the rules of a language.
+  sorted.sortBy((x) => x.customer);
+  let ys = sorted.copy();
+  ys.sortBy((x) => x.amount);
+  // By customer, then by amount: the last key first, since each sort keeps
+  // the order of the one before for equal keys.
+  ys.sortBy((x) => x.amount);
+  ys.sortBy((x) => x.customer);
+  return ys;
+}
+```
+
+A comparison function, `sort((a, b) => …)`, is not offered: a key says the same in most programs, cannot be inconsistent, and lets the sort compare numbers by their bits instead of calling a function at each comparison. Sorting by the rules of a language, as `localeCompare` does, goes through an `extern` block to `Intl.Collator`.
 
 ## `String`
 

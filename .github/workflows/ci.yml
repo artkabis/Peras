@@ -133,6 +133,8 @@ jobs:
       - name: Install the Chromium of the pinned Playwright
         run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run e2e
+      - name: The garden's playground builds for production
+        run: pnpm --filter peras-example-garden build
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
       - name: Split across Web Workers, the kernels give what they give directly
@@ -145,6 +147,14 @@ jobs:
         run: node scripts/bench-web-bugs.mjs --check
       - name: The case study agrees in TypeScript and in Peras
         run: node scripts/bench-case-study.mjs --check
+      - name: sortBy gives what TypeScript's sort gives, and is not slower by a number
+        run: node scripts/bench-sort.mjs --check
+      - name: The three versions of the demo run and draw
+        run: node scripts/demo.mjs --check
+      - name: The garden of Apeiron gives the same pixels in every version
+        run: node scripts/bench-garden.mjs --check
+      - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
+        run: node scripts/bench-data.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

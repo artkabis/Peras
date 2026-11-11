@@ -660,7 +660,7 @@ impl Lowering<'_> {
         let covered = buffers.iter().zip(&columns).skip(offset).take(count);
         for ((buffer, &elem), value) in covered.zip(values) {
             let value = match op {
-                Some(op) => super::binary(op, get(buffer, index.clone(), elem), value),
+                Some(op) => self.arith(state, op, get(buffer, index.clone(), elem), value),
                 None => value,
             };
             state.pre.push(Stmt::Buf(
@@ -912,7 +912,7 @@ impl Lowering<'_> {
     /// read at once, by the consumer that asked (`views_for`).
     fn gives_views(state: &mut FnState, text: ExprId, method: &str, mode: Mode) -> bool {
         let asked = state.views_for.take() == Some(text);
-        asked && method == "split" && mode == Mode::Borrow
+        asked && method == "split" && (mode == Mode::Borrow || state.views_owned)
     }
 
     /// Notes the temporary `split` just filled with views of `text`.

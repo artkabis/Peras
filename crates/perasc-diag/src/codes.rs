@@ -162,6 +162,8 @@ pub const READ_ONLY: ErrorCode = ErrorCode::new(246);
 pub const EXTERN: ErrorCode = ErrorCode::new(247);
 /// A promise nobody awaits.
 pub const FLOATING_PROMISE: ErrorCode = ErrorCode::new(248);
+/// A sort key that is neither a number nor a string.
+pub const SORT_KEY: ErrorCode = ErrorCode::new(249);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -295,6 +297,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(READ_ONLY, "check-read-only", "E0246"),
     active!(EXTERN, "check-extern", "E0247"),
     active!(FLOATING_PROMISE, "check-floating-promise", "E0248"),
+    active!(SORT_KEY, "check-sort-key", "E0249"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

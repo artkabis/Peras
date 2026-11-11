@@ -39,57 +39,16 @@ export fn summarize(orders: Array<Order>): Summary {
 export fn visible(orders: Array<Order>, text: String, up: bool): Array<Order> {
   const q = text.trim().toLowerCase();
   let kept = orders.filter((o) => o.customer.toLowerCase().includes(q));
-  // No sort with a comparison: an insertion sort, by hand.
-  for (let i = 1; i < kept.length; i++) {
-    let j = i;
-    while (j > 0 && before(kept[j], kept[j - 1], up)) {
-      const swap = kept[j];
-      kept[j] = kept[j - 1];
-      kept[j - 1] = swap;
-      j -= 1;
-    }
+  if (up) {
+    kept.sortBy((o) => o.amount);
+  } else {
+    kept.sortByDescending((o) => o.amount);
   }
   return kept;
 }
 
-fn before(a: Order, b: Order, up: bool): bool {
-  if (up) {
-    return a.amount < b.amount;
-  }
-  return a.amount > b.amount;
-}
-
-let query = "";
-let ascending = false;
-
-fn render(orders: Array<Order>, list: Element, summary: Element): void {
-  const rows = visible(orders, query, ascending);
-  list.textContent = "";
-  for (const o of rows) {
-    const li = document.createElement("li");
-    let label = `#${o.id} ${o.customer} ${o.amount}`;
-    if (!o.paid) {
-      label += " (unpaid)";
-    }
-    li.textContent = label;
-    list.append(li);
-  }
-  const s = summarize(rows);
-  summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
-}
-
-// No delay before searching: a timer kept between two keystrokes, and
-// replaced at each, cannot be written (E0245).
-fn typed(input: InputElement, orders: Array<Order>, list: Element, summary: Element): void {
-  query = input.value;
-  render(orders, list, summary);
-}
-
-fn flip(orders: Array<Order>, list: Element, summary: Element): void {
-  ascending = !ascending;
-  render(orders, list, summary);
-}
-
+// The state belongs to each table: arrow functions capture it, so the
+// table can be shown more than once in a page.
 export fn mount(root: Element, orders: Array<Order>): Group {
   let group = Group.new();
   const input = document.createElement("input");
@@ -101,15 +60,44 @@ export fn mount(root: Element, orders: Array<Order>): Group {
   root.append(sortButton);
   root.append(summary);
   root.append(list);
+
+  let query = "";
+  let ascending = false;
+
+  const render = () => {
+    const rows = visible(orders, query, ascending);
+    list.textContent = "";
+    for (const o of rows) {
+      const li = document.createElement("li");
+      let label = `#${o.id} ${o.customer} ${o.amount.toFixed(2)}`;
+      if (!o.paid) {
+        label += " (unpaid)";
+      }
+      li.textContent = label;
+      list.append(li);
+    }
+    const s = summarize(rows);
+    summary.textContent = `${s.count} orders, ${s.total.toFixed(2)} total, ${s.unpaid} unpaid, top: ${s.top}`;
+  };
+
+  // The search waits for the user to stop typing: the slot holds one timer,
+  // and each keystroke replaces it, releasing the one before.
+  const pending = group.slot();
   match (input.asInput()) {
     Some(field) => {
-      const typing = field.on("input", (e) => typed(field, orders, list, summary));
-      group.add(typing);
+      group.add(field.on("input", (_e) => {
+        pending.set(setTimeout(50, () => {
+          query = field.value;
+          render();
+        }));
+      }));
     }
     None => {}
   }
-  const sorting = sortButton.on("click", (e) => flip(orders, list, summary));
-  group.add(sorting);
-  render(orders, list, summary);
+  group.add(sortButton.on("click", (_e) => {
+    ascending = !ascending;
+    render();
+  }));
+  render();
   return group;
 }

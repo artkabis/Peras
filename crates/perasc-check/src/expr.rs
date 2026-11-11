@@ -18,8 +18,11 @@ use crate::{Checker, builtins};
 impl Checker<'_> {
     /// Checks an expression against an expected type, reporting a mismatch.
     pub(crate) fn expect(&mut self, id: ExprId, expected: &Ty) {
-        // A callback is written in place, as an arrow function.
-        if let Ty::Callback(params, ret) = expected {
+        // A callback is written in place, as an arrow function, or, in a
+        // managed module, given as a function already made.
+        if let Ty::Callback(params, ret) = expected
+            && matches!(self.ast.expr(id).kind, ExprKind::Lambda { .. })
+        {
             let wanted = (**ret != Ty::Void).then_some(&**ret);
             self.arrow(id, params, wanted);
             return;
@@ -48,6 +51,16 @@ impl Checker<'_> {
                 let literal = self.slice(span).to_owned();
                 self.report(errors::integer_for_float(span, &literal, expected));
                 false
+            }
+            // `render` where a `() => void` is expected, in a managed module.
+            (Ty::Fn(fn_id, _), Ty::Callback(params, ret)) if self.managed => {
+                let fits = self.fns.get(fn_id.0).is_some_and(|sig| {
+                    sig.generics.is_empty() && sig.params == *params && sig.ret == **ret
+                });
+                if !fits {
+                    self.report(errors::mismatch(span, expected, actual, None));
+                }
+                fits
             }
             // `None` and `[]` take the type the context expects: code generation
             // needs to know what they hold.
@@ -179,6 +192,7 @@ impl Checker<'_> {
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Array(items) => self.array(items, expected),
             ExprKind::Tuple(items) => self.tuple_expr(items, expected),
+            ExprKind::Lambda { .. } if self.managed => self.arrow_value(id),
             ExprKind::Lambda { .. } => {
                 self.report(errors::arrow_outside(span));
                 Ty::Error
@@ -552,7 +566,10 @@ impl Checker<'_> {
                 // be one that can change.
                 let changes = match receiver {
                     Ty::Array(_) => {
-                        matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
+                        matches!(
+                            self.name(name.symbol),
+                            "push" | "pop" | "reverse" | "sort" | "sortBy" | "sortByDescending"
+                        )
                     }
                     Ty::Map(..) | Ty::Set(_) => {
                         matches!(self.name(name.symbol), "set" | "add" | "delete" | "clear")
@@ -567,6 +584,11 @@ impl Checker<'_> {
             }
             _ => {
                 let ty = self.infer(callee, None);
+                if let Ty::Callback(params, ret) = &ty {
+                    self.arity(span, "=>", params.len(), args.len(), None);
+                    self.check_args(args, params);
+                    return (**ret).clone();
+                }
                 self.check_args(args, &[]);
                 if ty != Ty::Error {
                     self.report(errors::invalid_operator(callee_expr.span, "()", &ty));
@@ -659,6 +681,13 @@ impl Checker<'_> {
                     .bindings
                     .get(index)
                     .map_or(Ty::Error, |b| b.ty.clone());
+                // A function kept in a variable or a parameter.
+                if let Ty::Callback(params, ret) = &ty {
+                    let declared = self.scopes.bindings.get(index).and_then(|b| b.span);
+                    self.arity(span, name, params.len(), args.len(), declared);
+                    self.check_args(args, params);
+                    return (**ret).clone();
+                }
                 self.check_args(args, &[]);
                 if ty != Ty::Error {
                     self.report(errors::invalid_operator(name_span, "()", &ty));

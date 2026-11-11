@@ -17,7 +17,7 @@
 
 Les règles, les mêmes dans chaque backend :
 
-- `+`, `-`, `*` sur les entiers rebouclent en cas de dépassement ; `checkedAdd` et les autres renvoient `None` à la place, `wrappingAdd` et les autres le disent explicitement ;
+- `+`, `-`, `*` sur les entiers arrêtent le programme sur un dépassement dans un build de debug, le défaut de `perasc build` et du serveur de développement de Vite, par une `RangeError` qui le dit, et rebouclent dans un build de production (`--allocator tlsf`), où vérifier coûterait du temps, comme en Rust ; `wrappingAdd`, `wrappingSub` et `wrappingMul` rebouclent exprès dans les deux, `checkedAdd` et les autres renvoient `None` à la place. Un compteur de boucle `i++` sous `i < borne` n’est pas vérifié : il ne peut pas dépasser ;
 - la division et le reste entiers par zéro arrêtent le programme, comme `MIN / -1` ;
 - les conversions de flottant vers entier arrondissent vers zéro et saturent ; NaN devient 0 ;
 - aucune conversion n’est implicite : [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).

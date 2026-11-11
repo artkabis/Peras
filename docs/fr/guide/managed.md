@@ -57,12 +57,12 @@ La possession reviendra dans les modules managed pour les **ressources** seuleme
 
 `number` est le nom managed de `f64`. Les autres types de nombres calculent exactement comme dans un module owned, pour qu’une fonction passée d’un mode à l’autre donne les mêmes résultats :
 
-| Type                      | En JavaScript                                                            |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `i32`, `u32`, plus petits | un `number`, replié après chaque opération : `(a + b) \| 0`, `Math.imul` |
-| `i64`, `u64`              | un `bigint`, replié sur 64 bits                                          |
-| `f32`                     | un `number`, arrondi en `f32` après chaque opération par `Math.fround`   |
-| `f64`, `number`           | un `number`                                                              |
+| Type                      | En JavaScript                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `i32`, `u32`, plus petits | un `number`, replié après chaque opération : `(a + b) \| 0`, `Math.imul` ; vérifié à la place dans un build de debug |
+| `i64`, `u64`              | un `bigint`, replié sur 64 bits ; vérifié à la place dans un build de debug                                          |
+| `f32`                     | un `number`, arrondi en `f32` après chaque opération par `Math.fround`                                               |
+| `f64`, `number`           | un `number`                                                                                                          |
 
 Un entier divisé par zéro lève la `WebAssembly.RuntimeError` d’un module owned ; un indice hors limites, la même `RangeError`, avec le même texte. Les conversions arrondissent vers zéro et saturent, comme dans un module owned.
 
@@ -70,13 +70,13 @@ Un entier divisé par zéro lève la `WebAssembly.RuntimeError` d’un module ow
 export fn checksum(xs: Array<i32>): i32 {
   let h = 17;
   for (const x of xs) {
-    h = h * 31 + x;
+    h = h.wrappingMul(31).wrappingAdd(x);
   }
   return h;
 }
 ```
 
-`h * 31` se replie sur 32 bits, comme en WebAssembly.
+Un hachage reboucle exprès, et le dit : `wrappingMul` se replie sur 32 bits dans chaque build, comme en WebAssembly. Écrit `h * 31 + x`, il s’arrêterait au premier dépassement dans un build de debug, ce que doit faire un dépassement que personne n’a voulu.
 
 ## Les chaînes sont celles de JavaScript
 
@@ -142,7 +142,7 @@ export fn greet(name: String): void {
 }
 ```
 
-Un gestionnaire d’évènement est une fonction fléchée, qui appelle en général une fonction du module : `button.on("click", (e) => clicked(e))`.
+Un gestionnaire d’évènement est une fonction fléchée, `button.on("click", (e) => { … })`, ou une fonction du module par son nom, `button.on("click", clicked)`.
 
 ## Les ressources
 
@@ -163,9 +163,33 @@ export fn start(root: Element): Group {
 }
 ```
 
-`start` donne son groupe à son appelant, qui le libère quand la vue disparaît : `group.release()` en TypeScript, ou `using group = start(root)`. Une ressource peut être donnée une fois : rendue, ajoutée à un groupe, ou libérée par `release()`. Le compilateur refuse une ressource que rien ne garde, utilisée après avoir été donnée, ou gardée par un tableau ou une fonction fléchée, là où rien ne la libérerait ([E0245](../errors/E0245.md)).
+`start` donne son groupe à son appelant, qui le libère quand la vue disparaît : `group.release()` en TypeScript, ou `using group = start(root)`. Une ressource peut être donnée une fois : rendue, ajoutée à un groupe, ou libérée par `release()`. Remplacer la ressource d’une variable `let` libère celle qu’elle tenait, et un `Slot` d’un groupe, `group.slot()`, tient une ressource que des fonctions fléchées remplacent par `set`, comme le fait une recherche pour attendre que l’utilisateur ait fini de taper ([référence du navigateur](../reference/browser.md)). Le compilateur refuse une ressource que rien ne garde, utilisée après avoir été donnée, ou gardée par un tableau ou une fonction fléchée, là où rien ne la libérerait ([E0245](../errors/E0245.md)).
 
 En debug, le défaut de `perasc build` et du serveur de développement de Vite, une ressource ramassée sans avoir été libérée est signalée dans la console avec le fichier et la ligne qui l’ont créée.
+
+## Fonctions fléchées
+
+Une fonction fléchée voit les variables autour d’elle, et change celles déclarées avec `let`. Son corps est une valeur, `(x) => x * 2`, ou des instructions, `(e) => { … }`, qui donnent une valeur par `return` quand son type est écrit : `(x: i32): i32 => { … }`.
+
+```apeiron build
+export fn counter(button: Element, label: Element): Group {
+  let group = Group.new();
+  let count = 0;
+  const show = () => {
+    label.textContent = `${count} clics`;
+  };
+  group.add(button.on("click", (_e) => {
+    count += 1;
+    show();
+  }));
+  show();
+  return group;
+}
+```
+
+Chaque appel de `counter` garde son propre `count` : deux boutons, deux compteurs, comme un composant d’un framework. Dans un module managed, une fonction fléchée est aussi une valeur : gardée dans une variable, passée à une fonction dont le paramètre a un type de fonction, `(Event) => void`, rendue, et appelée. Une fonction du module s’y passe par son nom : `button.on("click", clicked)`.
+
+Là où rien ne donne les types de ses paramètres, ils sont écrits : `const show = (n: i32) => …`. Un type de fonction s’écrit pour une variable, un paramètre ou un résultat, pas à l’intérieur d’un autre type, et une fonction exportée n’en prend ni n’en rend ([E0238](../errors/E0238.md)). Une ressource de la fonction autour ne peut pas être capturée, puisque la fonction fléchée peut tourner après sa libération ; une ressource créée dans la fonction fléchée est la sienne, libérée quand elle rend la main ([E0245](../errors/E0245.md)). Un module owned garde les fonctions fléchées aux méthodes des tableaux, écrites sur place.
 
 ## Appeler JavaScript
 
@@ -204,6 +228,6 @@ Le chemin est un fichier, `"./chart.js"`, ou un paquet npm, `"date-fns"`, import
 - **Davantage du navigateur, typé** : les formulaires, `requestAnimationFrame`, les WebSockets et les workers, d’ici là déclarés dans un bloc `extern`.
 - **Les fonctions `extern` génériques**, les exports par défaut, et la lecture des fichiers `.d.ts` pour proposer des blocs `extern`.
 - **Les tableaux de ressources**, et une requête comme ressource annulée avec son propriétaire.
-- **Les fonctions comme valeurs**, hors des fonctions fléchées données aux méthodes des tableaux et à `on`, `setTimeout` et `setInterval` ; les fonctions fléchées à instructions.
+- **Les fonctions fléchées `async`**, une fonction fléchée qui s’appelle elle-même, et les fonctions données à JavaScript ou reçues de lui par un export.
 - **Les structures et les énumérations à travers un import.**
 - **Les options d’options**, refusées par [E0900](../errors/E0900.md) : en JavaScript, `Some(None)` et `None` valent tous deux `undefined`.

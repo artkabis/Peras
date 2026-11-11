@@ -52,6 +52,8 @@ export const sections: Section[] = [
       "spec",
       "architecture",
       "research",
+      "garden",
+      "findings",
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
       "decisions/0002-tlsf-allocator",
@@ -64,6 +66,9 @@ export const sections: Section[] = [
       "decisions/0009-browser-and-resources",
       "decisions/0010-calling-javascript",
       "decisions/0011-what-to-build-next",
+      "decisions/0012-cost-on-the-machine",
+      "decisions/0013-garden-of-apeiron",
+      "decisions/0014-data-at-scale",
     ],
   },
 ];

@@ -1,0 +1,19 @@
+// A slot of a group: an arrow function may use it, and `set` replaces
+// the resource it holds, releasing the one before.
+export fn search(field: InputElement): Group {
+  let group = Group.new();
+  const pending = group.slot();
+  group.add(field.on("input", (_e) => {
+    pending.set(setTimeout(50, () => log(field.value)));
+  }));
+  return group;
+}
+
+// It holds resources only.
+export fn wrong(): Group {
+  let group = Group.new();
+  const slot = group.slot();
+  slot.set(3);
+  slot.clear();
+  return group;
+}

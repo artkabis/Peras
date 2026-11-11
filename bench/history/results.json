@@ -1,0 +1,437 @@
+{
+  "machine": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "cores": 4,
+  "versions": [
+    {
+      "commit": "484c80c",
+      "label": "first WebAssembly",
+      "date": "2026-11-04"
+    },
+    {
+      "commit": "ef33ccb",
+      "label": "0.0.1",
+      "date": "2026-11-04"
+    },
+    {
+      "commit": "ac717cd",
+      "label": "PR #4",
+      "date": "2026-11-07"
+    },
+    {
+      "commit": "b2403fe",
+      "label": "PR #7",
+      "date": "2026-11-09"
+    },
+    {
+      "commit": "e2e0465",
+      "label": "PR #10",
+      "date": "2026-11-10"
+    },
+    {
+      "commit": "7129e0a",
+      "label": "PR #13",
+      "date": "2026-11-10"
+    },
+    {
+      "commit": "a93195e",
+      "label": "PR #17",
+      "date": "2026-11-10"
+    },
+    {
+      "commit": "caff747",
+      "label": "PR #19, main",
+      "date": "2026-11-11"
+    },
+    {
+      "commit": "8c93a6b",
+      "label": "today",
+      "date": "2026-11-11"
+    }
+  ],
+  "builds": {
+    "484c80c": {
+      "kernels": {
+        "ok": true,
+        "flags": [],
+        "bytes": 689
+      },
+      "garden": {
+        "ok": false,
+        "why": "error[E0900]: code generation does not support structures yet"
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0001]: invalid character ` (U+0060)"
+      }
+    },
+    "ef33ccb": {
+      "kernels": {
+        "ok": true,
+        "flags": [],
+        "bytes": 809
+      },
+      "garden": {
+        "ok": false,
+        "why": "error[E0900]: code generation does not support structures yet"
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0001]: invalid character ` (U+0060)"
+      }
+    },
+    "ac717cd": {
+      "kernels": {
+        "ok": true,
+        "flags": [],
+        "bytes": 853
+      },
+      "garden": {
+        "ok": true,
+        "flags": [],
+        "bytes": 5910
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0001]: invalid character ` (U+0060)"
+      }
+    },
+    "b2403fe": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 857
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 12850
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0213]: unknown type `Map`"
+      }
+    },
+    "e2e0465": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 1041
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 6372
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0213]: unknown type `Map`"
+      }
+    },
+    "7129e0a": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 1041
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 6816
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0215]: `Array<Pair>` has no field or method `sortBy`"
+      }
+    },
+    "a93195e": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 1041
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 6795
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0215]: `Array<Pair>` has no field or method `sortBy`"
+      }
+    },
+    "caff747": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 1041
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 6795
+      },
+      "dashboard": {
+        "ok": false,
+        "why": "error[E0215]: `Array<Pair>` has no field or method `sortBy`"
+      }
+    },
+    "8c93a6b": {
+      "kernels": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 1041
+      },
+      "garden": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 6928
+      },
+      "dashboard": {
+        "ok": true,
+        "flags": [
+          "--allocator",
+          "tlsf"
+        ],
+        "bytes": 13285
+      }
+    }
+  },
+  "runs": {
+    "484c80c": {
+      "kernels": {
+        "same": true,
+        "fib": 6.1000000005587935,
+        "fib_min": 6,
+        "fib_max": 7.2000000001862645,
+        "primes": 24.59999999962747,
+        "primes_min": 24.299999999813735,
+        "primes_max": 26.300000000745058,
+        "mandel": 6.5,
+        "mandel_min": 6.5,
+        "mandel_max": 7
+      }
+    },
+    "ef33ccb": {
+      "kernels": {
+        "same": true,
+        "fib": 1.5,
+        "fib_min": 1.5,
+        "fib_max": 1.800000000745058,
+        "primes": 24.899999999441206,
+        "primes_min": 24.5,
+        "primes_max": 25.799999999813735,
+        "mandel": 6.099999999627471,
+        "mandel_min": 5.900000000372529,
+        "mandel_max": 6.599999999627471
+      }
+    },
+    "ac717cd": {
+      "kernels": {
+        "same": true,
+        "fib": 2.400000000372529,
+        "fib_min": 1.6000000005587935,
+        "fib_max": 2.7999999998137355,
+        "primes": 25.5,
+        "primes_min": 24.5,
+        "primes_max": 31.200000000186265,
+        "mandel": 6.1000000005587935,
+        "mandel_min": 5.900000000372529,
+        "mandel_max": 6.2000000001862645
+      },
+      "garden": {
+        "same": true,
+        "frame": 341.20000000018626,
+        "frame_min": 333.40000000037253,
+        "frame_max": 361.70000000018626
+      }
+    },
+    "b2403fe": {
+      "kernels": {
+        "same": true,
+        "fib": 1.5,
+        "fib_min": 1.5,
+        "fib_max": 2.099999999627471,
+        "primes": 24.800000000745058,
+        "primes_min": 24.40000000037253,
+        "primes_max": 26.699999999254942,
+        "mandel": 6.099999999627471,
+        "mandel_min": 5.900000000372529,
+        "mandel_max": 6.800000000745058
+      },
+      "garden": {
+        "same": true,
+        "frame": 363,
+        "frame_min": 332.5,
+        "frame_max": 410.40000000037253
+      }
+    },
+    "e2e0465": {
+      "kernels": {
+        "same": true,
+        "fib": 1.5,
+        "fib_min": 1.5,
+        "fib_max": 2,
+        "primes": 25.300000000745058,
+        "primes_min": 24.399999999441206,
+        "primes_max": 31.700000000186265,
+        "mandel": 6.099999999627471,
+        "mandel_min": 6,
+        "mandel_max": 9.299999999813735
+      },
+      "garden": {
+        "same": true,
+        "frame": 354.5,
+        "frame_min": 337.5,
+        "frame_max": 376.3999999994412
+      }
+    },
+    "7129e0a": {
+      "kernels": {
+        "same": true,
+        "fib": 1.6000000005587935,
+        "fib_min": 1.599999999627471,
+        "fib_max": 1.7000000001862645,
+        "primes": 25.799999999813735,
+        "primes_min": 24.600000000558794,
+        "primes_max": 27.700000000186265,
+        "mandel": 6.099999999627471,
+        "mandel_min": 6,
+        "mandel_max": 6.5
+      },
+      "garden": {
+        "same": true,
+        "frame": 347.09999999962747,
+        "frame_min": 333.19999999925494,
+        "frame_max": 389.29999999981374
+      }
+    },
+    "a93195e": {
+      "kernels": {
+        "same": true,
+        "fib": 1.599999999627471,
+        "fib_min": 1.5,
+        "fib_max": 1.900000000372529,
+        "primes": 25.100000000558794,
+        "primes_min": 24.899999999441206,
+        "primes_max": 25.90000000037253,
+        "mandel": 6.2999999998137355,
+        "mandel_min": 6,
+        "mandel_max": 7.7000000001862645
+      },
+      "garden": {
+        "same": true,
+        "frame": 352.3999999994412,
+        "frame_min": 339.59999999962747,
+        "frame_max": 370.20000000018626
+      }
+    },
+    "caff747": {
+      "kernels": {
+        "same": true,
+        "fib": 1.599999999627471,
+        "fib_min": 1.5,
+        "fib_max": 2.2999999998137355,
+        "primes": 25.59999999962747,
+        "primes_min": 24.5,
+        "primes_max": 26.200000000186265,
+        "mandel": 6,
+        "mandel_min": 5.900000000372529,
+        "mandel_max": 7
+      },
+      "garden": {
+        "same": true,
+        "frame": 355.5,
+        "frame_min": 333.20000000018626,
+        "frame_max": 372.40000000037253
+      }
+    },
+    "8c93a6b": {
+      "kernels": {
+        "same": true,
+        "fib": 1.6000000005587935,
+        "fib_min": 1.5,
+        "fib_max": 2.400000000372529,
+        "primes": 25.299999999813735,
+        "primes_min": 24.799999999813735,
+        "primes_max": 26.59999999962747,
+        "mandel": 6.300000000745058,
+        "mandel_min": 6,
+        "mandel_max": 6.7000000001862645
+      },
+      "garden": {
+        "same": true,
+        "frame": 355.79999999981374,
+        "frame_min": 332.40000000037253,
+        "frame_max": 375.70000000018626
+      },
+      "dashboard": {
+        "same": true,
+        "summary": 255.70000000018626,
+        "summary_min": 245.79999999981374,
+        "summary_max": 260.6000000005588
+      }
+    },
+    "typescript": {
+      "kernels": {
+        "same": true,
+        "fib": 7.6000000005587935,
+        "fib_min": 7.400000000372529,
+        "fib_max": 7.7000000001862645,
+        "primes": 24.700000000186265,
+        "primes_min": 24.299999999813735,
+        "primes_max": 31.09999999962747,
+        "mandel": 6.400000000372529,
+        "mandel_min": 6.2999999998137355,
+        "mandel_max": 7
+      },
+      "garden": {
+        "same": true,
+        "frame": 353.20000000018626,
+        "frame_min": 344.09999999962747,
+        "frame_max": 362.79999999981374
+      },
+      "dashboard": {
+        "same": true,
+        "summary": 296.5,
+        "summary_min": 274,
+        "summary_max": 339.30000000074506
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+// Decision 0014, version D: version C split into chunks of lines, each
+// aggregated on its own thread by a `parallel for`, then merged. Kept as
+// written: `perasc` refuses it (E0241), and the study reports that.
+
+export fn summarizeChunks(chunks: Array<String>, lines: inout Array<i32>, kept: inout Array<i32>): void {
+  parallel for (let i = 0; i < chunks.length; i++) {
+    let n = 0;
+    let k = 0;
+    for (const line of chunks[i].split("\n")) {
+      const f = line.split(",");
+      n += 1;
+      if (f.length == 6 && f[5].parseI32().unwrapOr(0) > 0) {
+        k += 1;
+      }
+    }
+    lines[i] = n;
+    kept[i] = k;
+  }
+}

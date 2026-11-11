@@ -1,0 +1,181 @@
+{
+  "machine": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "side": 1024,
+  "identity": [
+    {
+      "zoom": 1,
+      "hashes": {
+        "typescript": "4e293e902eaee8b41cdd2b7bec46c335d8d898e972c61b5848b916c6dc45cb69",
+        "peras": "4e293e902eaee8b41cdd2b7bec46c335d8d898e972c61b5848b916c6dc45cb69",
+        "peras-debug": "4e293e902eaee8b41cdd2b7bec46c335d8d898e972c61b5848b916c6dc45cb69",
+        "rust": "4e293e902eaee8b41cdd2b7bec46c335d8d898e972c61b5848b916c6dc45cb69"
+      }
+    },
+    {
+      "zoom": 4,
+      "hashes": {
+        "typescript": "57e6b3a655929d392adf1567de76335c990178a71ce9a158775c020cfaf1f021",
+        "peras": "57e6b3a655929d392adf1567de76335c990178a71ce9a158775c020cfaf1f021",
+        "peras-debug": "57e6b3a655929d392adf1567de76335c990178a71ce9a158775c020cfaf1f021",
+        "rust": "57e6b3a655929d392adf1567de76335c990178a71ce9a158775c020cfaf1f021"
+      }
+    },
+    {
+      "zoom": 16,
+      "hashes": {
+        "typescript": "364cf363503778825aad4c74b9af1f4c50520158b1dc25db6587ecc3ffda8e07",
+        "peras": "364cf363503778825aad4c74b9af1f4c50520158b1dc25db6587ecc3ffda8e07",
+        "peras-debug": "364cf363503778825aad4c74b9af1f4c50520158b1dc25db6587ecc3ffda8e07",
+        "rust": "364cf363503778825aad4c74b9af1f4c50520158b1dc25db6587ecc3ffda8e07"
+      }
+    },
+    {
+      "zoom": 64,
+      "hashes": {
+        "typescript": "93f6b01ccdcf57532d52a71c3859c99ee2d538e56f628b9289b891419d85ff95",
+        "peras": "93f6b01ccdcf57532d52a71c3859c99ee2d538e56f628b9289b891419d85ff95",
+        "peras-debug": "93f6b01ccdcf57532d52a71c3859c99ee2d538e56f628b9289b891419d85ff95",
+        "rust": "93f6b01ccdcf57532d52a71c3859c99ee2d538e56f628b9289b891419d85ff95"
+      }
+    }
+  ],
+  "shipped": {
+    "typescript": 1119,
+    "peras": 5872,
+    "rust": 11695
+  },
+  "code": {
+    "typescript": 169,
+    "peras": 186,
+    "rust": 179
+  },
+  "ms": {
+    "typescript": 913.7999999999302,
+    "peras": 769.4000000000233,
+    "peras-debug": 787.7000000000698,
+    "rust": 855.4000000000233
+  },
+  "lossless": 482545,
+  "h1Avif": [
+    {
+      "chroma": "yuv444p",
+      "bytes": 10719,
+      "ssim": 0.956014,
+      "crf": 59
+    },
+    {
+      "chroma": "yuv420p",
+      "bytes": 9774,
+      "ssim": 0.9504,
+      "crf": 53
+    }
+  ],
+  "h2": [
+    {
+      "zoom": 1,
+      "tiles": 1,
+      "reached": 1,
+      "meanBytes": 9774,
+      "minBytes": 9774,
+      "maxBytes": 9774,
+      "wholeScene": 9774,
+      "chromas": "yuv420p"
+    },
+    {
+      "zoom": 4,
+      "tiles": 8,
+      "reached": 8,
+      "meanBytes": 524.375,
+      "minBytes": 468,
+      "maxBytes": 614,
+      "wholeScene": 8390,
+      "chromas": "yuv420p yuv420p yuv420p yuv420p yuv420p yuv420p yuv420p yuv420p"
+    },
+    {
+      "zoom": 16,
+      "tiles": 8,
+      "reached": 8,
+      "meanBytes": 11006.875,
+      "minBytes": 358,
+      "maxBytes": 85252,
+      "wholeScene": 2817760,
+      "chromas": "yuv420p yuv420p yuv444p yuv420p yuv444p yuv420p yuv420p yuv444p"
+    },
+    {
+      "zoom": 64,
+      "tiles": 8,
+      "reached": 8,
+      "meanBytes": 10622.875,
+      "minBytes": 340,
+      "maxBytes": 82311,
+      "wholeScene": 43511296,
+      "chromas": "yuv420p yuv420p yuv444p yuv420p yuv420p yuv444p yuv420p yuv444p"
+    }
+  ],
+  "h4": [
+    {
+      "format": "webp",
+      "setting": "quality 20",
+      "bytes": 21986,
+      "full": 0.94807,
+      "far": 0.977355
+    },
+    {
+      "format": "webp",
+      "setting": "quality 50",
+      "bytes": 37576,
+      "full": 0.962338,
+      "far": 0.988661
+    },
+    {
+      "format": "webp",
+      "setting": "quality 80",
+      "bytes": 59024,
+      "full": 0.970906,
+      "far": 0.994537
+    },
+    {
+      "format": "avif",
+      "setting": "crf 50",
+      "bytes": 11590,
+      "full": 0.956274,
+      "far": 0.965485
+    },
+    {
+      "format": "avif",
+      "setting": "crf 35",
+      "bytes": 19356,
+      "full": 0.971027,
+      "far": 0.991825
+    },
+    {
+      "format": "avif",
+      "setting": "crf 20",
+      "bytes": 32625,
+      "full": 0.975731,
+      "far": 0.996222
+    }
+  ],
+  "verdicts": {
+    "H1": {
+      "verdict": "holds",
+      "detail": "Peras ships 5872 bytes; the smallest AVIF at SSIM 0.95 weighs 9774 (yuv420p, crf 53)"
+    },
+    "H2": {
+      "verdict": "holds",
+      "detail": "the AVIF of the whole scene at zoom 64 is 4451.7 times the one at zoom 1"
+    },
+    "H3": {
+      "verdict": "refuted",
+      "detail": "Peras at 1.19 times TypeScript's speed, 1.11 times Rust's"
+    },
+    "H4": {
+      "verdict": "holds",
+      "detail": "webp quality 20: 0.948 → 0.977; webp quality 50: 0.962 → 0.989; webp quality 80: 0.971 → 0.995; avif crf 50: 0.956 → 0.965; avif crf 35: 0.971 → 0.992; avif crf 20: 0.976 → 0.996"
+    },
+    "H5": {
+      "verdict": "holds",
+      "detail": "debug at 1.02 times production's time"
+    }
+  }
+}

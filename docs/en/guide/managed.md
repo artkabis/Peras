@@ -57,12 +57,12 @@ Ownership will come back to managed modules for **resources** only: listeners, t
 
 `number` is the managed name of `f64`. The other number types compute exactly as in an owned module, so a function moved from one mode to the other gives the same results:
 
-| Type                  | In JavaScript                                                         |
-| --------------------- | --------------------------------------------------------------------- |
-| `i32`, `u32`, smaller | a `number`, wrapped after each operation: `(a + b) \| 0`, `Math.imul` |
-| `i64`, `u64`          | a `bigint`, wrapped to 64 bits                                        |
-| `f32`                 | a `number`, rounded to `f32` after each operation with `Math.fround`  |
-| `f64`, `number`       | a `number`                                                            |
+| Type                  | In JavaScript                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `i32`, `u32`, smaller | a `number`, wrapped after each operation: `(a + b) \| 0`, `Math.imul`; checked instead in a debug build |
+| `i64`, `u64`          | a `bigint`, wrapped to 64 bits; checked instead in a debug build                                        |
+| `f32`                 | a `number`, rounded to `f32` after each operation with `Math.fround`                                    |
+| `f64`, `number`       | a `number`                                                                                              |
 
 An integer divided by zero throws the `WebAssembly.RuntimeError` an owned module traps with; an index out of bounds, the same `RangeError`, with the same text. Conversions round toward zero and saturate, as they do in an owned module.
 
@@ -70,13 +70,13 @@ An integer divided by zero throws the `WebAssembly.RuntimeError` an owned module
 export fn checksum(xs: Array<i32>): i32 {
   let h = 17;
   for (const x of xs) {
-    h = h * 31 + x;
+    h = h.wrappingMul(31).wrappingAdd(x);
   }
   return h;
 }
 ```
 
-`h * 31` wraps around at 32 bits, as in WebAssembly.
+A hash wraps on purpose, and says so: `wrappingMul` wraps around at 32 bits in every build, as in WebAssembly. Written `h * 31 + x`, it would stop on the first overflow in a debug build, which is what an overflow nobody meant should do.
 
 ## Strings are JavaScript's
 
@@ -142,7 +142,7 @@ export fn greet(name: String): void {
 }
 ```
 
-An event handler is an arrow function, usually calling a function of the module: `button.on("click", (e) => clicked(e))`.
+An event handler is an arrow function, `button.on("click", (e) => { … })`, or a function of the module by its name, `button.on("click", clicked)`.
 
 ## Resources
 
@@ -163,9 +163,33 @@ export fn start(root: Element): Group {
 }
 ```
 
-`start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
+`start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. Replacing the resource of a `let` variable releases the one it held, and a `Slot` of a group, `group.slot()`, holds one resource that arrow functions replace with `set`, as a search does to wait for the user to stop typing ([browser reference](../reference/browser.md)). The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
 
 In debug, the default of `perasc build` and Vite's dev server, a resource collected without being released is reported in the console with the file and line that made it.
+
+## Arrow functions
+
+An arrow function sees the variables around it, and changes those declared with `let`. Its body is a value, `(x) => x * 2`, or statements, `(e) => { … }`, which give a value by `return` when its type is written: `(x: i32): i32 => { … }`.
+
+```apeiron build
+export fn counter(button: Element, label: Element): Group {
+  let group = Group.new();
+  let count = 0;
+  const show = () => {
+    label.textContent = `${count} clicks`;
+  };
+  group.add(button.on("click", (_e) => {
+    count += 1;
+    show();
+  }));
+  show();
+  return group;
+}
+```
+
+Each call of `counter` keeps its own `count`: two buttons, two counters, as a component of a framework. In a managed module an arrow function is also a value: kept in a variable, passed to a function whose parameter has a function type, `(Event) => void`, returned, and called. A function of the module goes there by its name: `button.on("click", clicked)`.
+
+Where nothing gives the types of its parameters, they are written: `const show = (n: i32) => …`. A function type is written for a variable, a parameter or a result, not inside another type, and an exported function does not take or give one ([E0238](../errors/E0238.md)). A resource of the function around it cannot be captured, since the arrow function may run after it was released; one made inside the arrow function is its own, released when it returns ([E0245](../errors/E0245.md)). An owned module keeps arrow functions to the methods of arrays, written in place.
 
 ## Calling JavaScript
 
@@ -204,6 +228,6 @@ The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as
 - **More of the browser, typed**: forms, `requestAnimationFrame`, WebSockets and workers, until then declared in an `extern` block.
 - **Generic `extern` functions**, default exports, and reading `.d.ts` files to propose `extern` blocks.
 - **Arrays of resources**, and a request as a resource cancelled with its owner.
-- **Functions as values**, outside the arrow functions given to array methods and to `on`, `setTimeout` and `setInterval`; arrow functions with statements.
+- **`async` arrow functions**, an arrow function that calls itself, and functions given to or by JavaScript through an export.
 - **Structures and enumerations across an import.**
 - **Options of options**, refused with [E0900](../errors/E0900.md): in JavaScript, `Some(None)` and `None` are both `undefined`.

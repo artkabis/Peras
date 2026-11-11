@@ -1,0 +1,171 @@
+# 0014 : La donnée à l’échelle, agrégée dans le navigateur
+
+_Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
+
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Résultats et journal ci-dessous._
+
+_Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
+
+## Contexte
+
+Le jardin d’Apeiron (décision 0013) a montré qu’un programme peut être plus petit que son image ; il n’a pas montré que Peras aide une entreprise. Son propriétaire a dit ce que cela veut dire : absorber beaucoup de données et en faire quelque chose sur la page web, sans friction. C’est une autre affirmation, sur l’ingestion, pas la génération, et elle a un solide concurrent : TypeScript, que chaque équipe web écrit déjà, simplement ou optimisé à la main.
+
+Cette étude demande, avant d’en écrire une ligne, si Peras fait le travail d’un tableau de bord commercial plus vite, dans moins de mémoire et avec moins de friction que TypeScript, de cent mille à quatre millions de lignes. Elle est enregistrée pour que sa réponse ne puisse pas être pliée vers une démo : les données, la requête, les versions, les mesures et les seuils sont fixés ici.
+
+Les risques sont ceux que la décision 0013 a nommés, et un de plus :
+
+- **Une démo choisie pour gagner.** Les seuils sont fixés ici ; une hypothèse réfutée est annoncée réfutée, dans le README aussi.
+- **Des versions qui ne font pas le même travail.** Chaque version doit donner le même résumé, octet pour octet, vérifié par une empreinte.
+- **Un homme de paille.** Le TypeScript idiomatique est ce qu’un développeur web écrit sans optimiser ; un TypeScript optimisé à la main est mesuré à côté, pour que Peras ne soit pas jugé face au plus faible seulement.
+- **Des données propres.** Les vrais exports portent des lignes cassées ; une ligne sur mille est cassée ici, et chaque version doit compter et écarter les mêmes.
+
+## Les données
+
+Des lignes d’événements de vente, comme un export CSV, produites par `scripts/bench-data.mjs` à partir d’une graine fixe avec l’empreinte entière de la décision 0013 (`lowbias32`). La même graine donne le même fichier ; son SHA-256 est consigné avec les résultats.
+
+- **Tailles** : _N_ = 100 000, 1 000 000 et 4 000 000 lignes, environ 3,5 Mo, 35 Mo et 140 Mo.
+- **En-tête**, puis une ligne par enregistrement, terminée par `\n` : `ts,user,country,product,amount,qty`.
+- **`ts`** : secondes Unix en 2026, de 1 767 225 600 à 1 798 761 599, uniformes.
+- **`user`** : 1 à 200 000, biaisé pour que certains clients achètent souvent : `1 + floor(u² × 200 000)`, _u_ uniforme dans [0, 1).
+- **`country`** : un de 20 codes ISO 3166, deux lettres capitales, les premiers plus fréquents : indice `floor(u^1,5 × 20)`.
+- **`product`** : 1 à 5 000, quelques meilleures ventes : `1 + floor(u³ × 5 000)`. Sa catégorie est `product % 12`, dérivée, pas une colonne.
+- **`amount`** : le prix unitaire en centimes, 100 à 99 999.
+- **`qty`** : 0 à 5 ; 0, une commande annulée, dans environ 2 % des lignes.
+- **Lignes cassées** : environ une sur mille, de trois sortes à tour de rôle : un champ manquant ; un montant qui n’est pas un entier (`12a`) ; une ligne vide.
+
+Une ligne est **bien formée** quand elle a exactement six champs ; que `ts`, `user`, `product`, `amount` et `qty` sont des entiers stricts (un signe facultatif, puis des chiffres ASCII, rien d’autre, dans la plage d’un entier signé de 32 bits) ; et que `country` est deux lettres de `A` à `Z`. Toute autre ligne non vide après l’en-tête est **cassée**. Une ligne est **retenue** quand elle est bien formée, que son `qty` est supérieur à 0, et que son `ts` est dans la seconde moitié de 2026, de 1 782 864 000 (1er juillet) à 1 798 761 600 (1er janvier 2027) exclu. Son **chiffre d’affaires** est `amount × qty`, en centimes, un entier exact.
+
+## La requête
+
+Ce que montre un tableau de bord commercial, calculé à partir des octets du fichier :
+
+1. **Les comptes** : les lignes lues, les lignes cassées, les lignes retenues.
+2. **Par pays et catégorie** : pour chaque paire présente parmi les lignes retenues, leur nombre et leur chiffre d’affaires.
+3. **Les clients** : pour chaque pays, le nombre d’utilisateurs distincts parmi ses lignes retenues.
+4. **Chaque jour** : le chiffre d’affaires de chacun des 184 jours du 1er juillet au 31 décembre, par `floor((ts − 1 782 864 000) / 86 400)`.
+5. **Les meilleures ventes** : les 10 produits au plus fort chiffre d’affaires, à égalité le plus petit numéro de produit d’abord.
+
+Le **résumé** est ces cinq parties, écrites en JSON sous une forme canonique : les clés dans l’ordre ci-dessus, les paires triées par pays puis catégorie, les pays triés, les entiers en décimal. Son SHA-256 doit être le même pour chaque version et chaque taille.
+
+Puis la page **dessine un graphique** à partir du résumé : le chiffre d’affaires de chaque jour en courbe, celui de chaque pays en barres, sur un canvas de 1200 × 600 pixels. Le graphique est dessiné par une seule fonction JavaScript, partagée par toutes les versions : ce qui est comparé, c’est comment le résumé est obtenu, pas comment il est peint.
+
+## Les versions
+
+- **A. TypeScript, idiomatique** : le texte de `response.text()`, `split("\n")`, `split(",")`, les nombres vérifiés par une expression régulière et lus par `Number`, des `Map` et `Set` à clés textuelles, `Array.prototype.sort`. Écrit comme un développeur web l’écrit sans optimiser.
+- **B. TypeScript, optimisé** : les octets du `Uint8Array`, lus sans créer de chaînes ; les entiers lus à la main ; les clés tassées en entiers ; les comptes dans des tableaux typés ; les utilisateurs distincts dans une table de bits.
+- **C. Peras** : un module owned compilé en WebAssembly, écrit aussi simplement que A avec ce que le langage offre : `split`, `parseI32`, `Map`, `Set`, `sortByDescending`. Il reçoit le texte ou ses octets, ce que le langage passe avec le moins de copie, et ce choix est consigné.
+- **D. Peras, en parallèle** : C, ses lignes découpées en autant de morceaux que de threads aux frontières de lignes, chacun agrégé dans un `parallel for` (décision 0007), puis fusionnés ; construit avec `--threads`, mesuré dans une page isolée cross-origin. Si `parallel for` ne peut pas l’exprimer, D est déclaré non exprimable, et c’est un résultat.
+
+Chaque version est écrite d’après la spécification ci-dessus par les auteurs de Peras ; c’est une menace pour la validité, listée plus bas.
+
+## Hypothèses
+
+Chacune avec ce qui la réfute. La « vitesse » est l’inverse du temps médian jusqu’au résumé, à chaud ; « au moins _k_ fois plus rapide » compare des vitesses.
+
+- **H1, Peras simple bat TypeScript simple.** C est au moins 2 fois plus rapide que A à 1 000 000 et à 4 000 000 lignes. _Réfutée_ si l’un des rapports est sous 2.
+- **H2, Peras simple approche le TypeScript optimisé.** C est au moins 0,8 fois aussi rapide que B à 1 000 000 et à 4 000 000 lignes. _Réfutée_ si l’un des rapports est sous 0,8. Elle teste l’affirmation d’absence de friction : la vitesse sans écrire la version optimisée.
+- **H3, moins de mémoire.** La mémoire résidente maximale de C vaut au plus la moitié de celle de A à 4 000 000 lignes. _Réfutée_ au-delà de la moitié.
+- **H4, un petit programme.** C livre au plus 3 fois les octets de A. _Réfutée_ au-delà.
+- **H5, les cœurs aident.** D est au moins 2 fois plus rapide que C à 4 000 000 lignes, sur les 4 cœurs de la machine. _Réfutée_ sous 2, ou si D ne peut pas être écrit.
+- **H6, linéaire.** Le temps de C à 4 000 000 lignes vaut au plus 4,4 fois son temps à 1 000 000. _Réfutée_ au-delà.
+- **H7, pas plus de code.** C compte au plus 1,25 fois les lignes de A. _Réfutée_ au-delà.
+
+Le temps jusqu’au premier graphique, à froid, est mesuré et rapporté pour chaque version, et testé contre aucune hypothèse.
+
+## Mesures
+
+- **Même résumé** : SHA-256 du résumé canonique de chaque version, à chaque taille, tous égaux. Une version qui diffère est exclue des hypothèses qui la concernent, et cela est rapporté.
+- **Temps jusqu’au résumé, à chaud** : des octets du fichier en mémoire, un `Uint8Array`, au résumé en objet JavaScript, décodage et copie éventuelle dans un module compris ; médiane de 15 exécutions après 2 d’échauffement, les versions en alternance, dans Chromium, à chaque taille.
+- **Temps jusqu’au premier graphique, à froid** : un nouveau contexte de navigateur, rien en cache, le programme et les données servis par un serveur local ; du début de la navigation au graphique peint, l’image qui suit son tracé ; médiane de 7 chargements, à chaque taille.
+- **Mémoire** : la mémoire résidente maximale du processus de rendu de la page, `VmHWM` dans `/proc/<pid>/status` de Linux, un nouveau processus par exécution, moins le maximum du même processus avec la version chargée et les données en mémoire avant que la requête tourne ; médiane de 5 exécutions, à chaque taille. Elle compte tout ce que la page tient : le tas JavaScript, les mémoires WebAssembly, les tampons.
+- **Octets livrés** : le JavaScript et le WebAssembly que chaque version charge, minifiés par Vite là où cela s’applique, puis gzip.
+- **Énergie** : celle du processeur, lue par RAPL là où la machine la donne ; déclarée non mesurée ailleurs, jamais estimée (décision 0012).
+- **Code** : les lignes sans commentaires ni lignes vides, du code qui calcule le résumé à partir des octets ; le graphique et la page partagés ne sont pas comptés.
+
+## Menaces pour la validité
+
+- Les données sont générées ; les vrais exports ont d’autres distributions, d’autres largeurs, des champs entre guillemets. Le CSV ici n’a pas de guillemets, ce qui rend le travail de chaque analyseur plus simple que celui d’un vrai export.
+- Les auteurs ont écrit chaque version ; un expert d’un langage peut l’écrire plus rapide.
+- Les moteurs analytiques compilés en WebAssembly, comme DuckDB-wasm, ne sont pas mesurés : le projet ne prend aucune dépendance hors de Rust, pas même dans un banc (voir l’amendement). Toute comparaison avec eux citera leurs chiffres publiés, avec leur source et leurs conditions, et ne sera pas présentée comme une mesure de cette étude.
+- Une machine, sans écran, 4 cœurs ; un téléphone peut ordonner les versions autrement. Le serveur local cache le réseau : les temps à froid seront aussi mesurés sous un réseau bridé, comme chiffre exploratoire.
+- `VmHWM` compte ce qu’un processus a touché, pas ce dont il avait besoin ; une version qui rend sa mémoire plus tôt n’en est pas récompensée.
+
+## Conséquences
+
+- `bench/data`, `node scripts/bench-data.mjs`, et ses résultats sous ce protocole ; une vérification en CI que les versions donnent le même résumé à 100 000 lignes.
+- Si les hypothèses tiennent, le README gagne une troisième démo : un tableau de bord commercial de millions de lignes, construit dans le navigateur, avec ses chiffres mesurés. Sinon, les résultats le disent, le README aussi, et celles réfutées nomment ce que le compilateur doit améliorer, ordonné comme la décision 0011 ordonne ses étapes : par la mesure.
+
+## Amendement, avant toute mesure
+
+Le 2026-11-11, après l’enregistrement (commit `96e6c43`) et avant qu’aucune version ne soit écrite ni aucune mesure prise, le propriétaire a fixé un principe : Peras ne prend aucune dépendance envers un autre langage que Rust, et un banc ne doit pas non plus en introduire dans le dépôt. Mesurer DuckDB-wasm aurait ajouté un paquet d’environ 149 Mo, en version de développement, à ce que surveille `pnpm audit`. Le protocole a été amendé en conséquence :
+
+- La version **E, DuckDB-wasm**, est retirée.
+- Les hypothèses qui comparaient Peras à elle sont retirées : **H4** enregistrée (le premier graphique avant la base, à froid) et **H5** (aussi rapide que la base, à chaud), et la première borne de **H6** enregistrée (un centième de ses octets) ; la seconde borne de H6 est gardée, comme **H4**.
+- Les autres hypothèses sont inchangées et renumérotées : H7, H8 et H9 enregistrées deviennent **H5**, **H6** et **H7**. Aucun seuil n’a changé.
+- Le temps jusqu’au premier graphique, à froid, reste une mesure, sans hypothèse.
+
+Aucune mesure n’ayant été prise, l’amendement ne peut pas avoir été guidé par un résultat.
+
+## Journal de l’étude
+
+### Décidé après l’enregistrement, avant la première mesure
+
+Écrit avec les versions et le script, dans le commit `b06da25`, avant le début de l’exécution 1 :
+
+- **Une ligne vide est une ligne cassée.** Le protocole dit à la fois « toute autre ligne non vide après l’en-tête est cassée » et range « une ligne vide » parmi les lignes cassées ; la liste est suivie. Le `\n` qui termine la dernière ligne n’en commence pas une.
+- **Ce que reçoit C.** Le `split` et le `parseI32` de Peras travaillent sur une `String` ; un tableau d’octets ne peut pas être lu comme du texte. C reçoit le texte : le temps de C comprend le décodage des octets et la copie du texte dans le module.
+- **D ne peut pas être écrite.** `perasc` refuse `bench/data/dashboard-parallel.peras` : `error[E0241]: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map`. Le fichier est gardé tel qu’écrit ; selon le protocole, H5 est réfutée.
+- **Lignes de code.** Les types du résumé sont déclarés dans `summary.ts` pour A et B, qui n’est pas compté ; C les déclare dans son propre fichier, en `export struct`. Ils sont exclus du compte de C de la même façon.
+- **Une collecte avant chaque exécution chronométrée**, `gc()` avec `--expose-gc`, pour qu’une version ne paie pas les déchets de la précédente.
+- **Mémoire.** Le plus grand `VmHWM` parmi les processus de rendu d’un navigateur lancé pour l’exécution, la page étant la seule ouverte.
+- **Le réseau bridé**, exploratoire : 9 Mb/s en réception, 1,5 en émission, 170 ms de latence, à 100 000 lignes seulement, 3 chargements : à cette vitesse, 140 Mo prendraient deux minutes par chargement.
+- **Deux bogues du compilateur** ont été trouvés en écrivant C, tous deux refusés par son vérificateur de libération plutôt que livrés, et corrigés avec un test chacun avant la mesure (commit `e1f58b4` ; [constats](../findings.md), F001 et F002).
+
+### Exécution 1, au commit `b06da25` : les résultats
+
+Mesuré le 2026-11-11 de 06:54 à 07:02 UTC, sur un Intel Xeon à 2,10 GHz à 4 cœurs, Chromium sans écran ; le rapport complet est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) et chaque nombre dans son `results.json`. Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+| Hypothèse                                        | Verdict     | Mesuré                                                                |
+| ------------------------------------------------ | ----------- | --------------------------------------------------------------------- |
+| H1, Peras simple bat TypeScript simple           | **réfutée** | C à 0,85 fois la vitesse de A à 1 000 000 lignes, 0,88 à 4 000 000    |
+| H2, Peras simple approche le TypeScript optimisé | **réfutée** | C à 0,10 fois la vitesse de B à 1 000 000 lignes, 0,09 à 4 000 000    |
+| H3, moins de mémoire                             | **réfutée** | le maximum de C vaut 1,12 fois celui de A à 4 000 000 lignes          |
+| H4, un petit programme                           | **réfutée** | C livre 12 169 octets, 15,4 fois les 788 de A                         |
+| H5, les cœurs aident                             | **réfutée** | D ne peut pas être écrite (E0241)                                     |
+| H6, linéaire                                     | tient       | le temps de C à 4 000 000 lignes vaut 4,17 fois son temps à 1 000 000 |
+| H7, pas plus de code                             | tient       | C compte 99 lignes, 1,08 fois les 92 de A                             |
+
+À chaud, en millisecondes, médianes de 15 exécutions :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |    75,7 |   1 015,4 |   4 360,4 |
+| B. TypeScript, optimisé    |    12,8 |     121,5 |     469,1 |
+| C. Peras                   |   105,6 |   1 193,0 |   4 976,5 |
+
+Les exécutions ne se chevauchent pas là où cela compte : à 4 000 000 lignes, les quinze temps de C vont de 4 776 à 5 507 ms, tous au-dessus de la médiane de A. À froid, le premier graphique arrive dans le même ordre, 5,5 s pour C, 4,8 pour A et 0,9 pour B à 4 000 000 lignes ; sous le réseau bridé, à 100 000 lignes, le téléchargement en prend presque tout, 3,7 à 3,8 s pour chaque version.
+
+### Analyse
+
+- **Où C perd son temps.** Un profil fait en écrivant C, à 1 000 000 lignes dans Node, hors protocole : passer le texte au module coûte 7 ms, le découper en lignes 20 ms, en champs 126 ms, contre 586 ms pour le `split` de JavaScript ; lire deux entiers par ligne avec `parseI32` le porte à 434 ms, environ 150 ns par entier, et les tables à clés textuelles construites à chaque ligne à 793 ms. Peras découpe le texte plus vite que JavaScript ; il perd sur la lecture des entiers et sur les tables à clés textuelles ([constats](../findings.md) F201, F202).
+- **La marge existe.** B montre ce que la machine permet pour le même travail : 8,4 à 9,3 fois la vitesse de A, et 9,8 à 10,6 fois celle de C, à 1 000 000 et 4 000 000 lignes. Rien dans les données ni dans la requête n’empêche un langage compilé de l’atteindre ; ce qui en empêche Peras, c’est la lecture d’entiers de son runtime, ses tables à clés textuelles, et la copie du texte dans le module.
+- **La mémoire.** C tient le texte une seconde fois, copié dans sa mémoire linéaire, que WebAssembly ne rend pas ; à 4 000 000 lignes, cette copie seule fait 122 Mio. C’est pourquoi le maximum de C dépasse celui de A, où le texte est partagé avec la chaîne décodée.
+- **Le programme.** C livre son runtime, les tables, les chaînes, le tri : 12 169 octets, contre 788 pour A, qui utilise ceux de JavaScript. À 100 000 lignes sous un réseau bridé, l’écart se perd dans le téléchargement des données, 3,7 à 3,8 s pour chaque version.
+- **Ce qui tient.** Le coût de C croît linéairement avec les lignes, et il s’écrit en autant de lignes que le TypeScript, 99 contre 92, avec la même structure : Peras simple n’est pas plus difficile à écrire pour ce travail, il est plus lent.
+
+### Ce que cela veut dire
+
+Sur l’ingestion de données textuelles, l’affirmation que cette étude testait, Peras ne tient pas aujourd’hui : Peras simple est plus lent que TypeScript simple, tient plus de mémoire, livre quinze fois plus de code et ne peut pas utiliser les cœurs. L’étude le dit, et dit pourquoi, en des termes sur lesquels le compilateur peut agir. Dans l’ordre que donnent les mesures, comme la décision 0011 ordonne ses étapes :
+
+1. **Lire les entiers vite** : `parseI32` à la vitesse d’une boucle sur des octets (F201).
+2. **Des tables à clés textuelles sans une chaîne par ligne** : une clé cherchée depuis la tranche d’où elle vient, copiée seulement quand elle est nouvelle (F202).
+3. **Pas de copie du texte** : lire les octets là où ils sont, ce qui demande `u8` compilé (F302), la prochaine étape déjà décidée.
+4. **Agréger sur les cœurs** : `parallel for` avec une réduction par thread et l’allocation dans un tour (F301).
+5. **Un runtime plus léger** pour ce qu’un module n’utilise pas (F203).
+
+Chacune sera mesurée de nouveau sous ce protocole, inchangé, comme exécution 2 et suivantes, et rapportée quoi qu’elle donne.
+
+### Limites
+
+- **La mémoire sous le pic du chargement n’est pas vue.** `VmHWM` ne monte qu’au-delà de son point le plus haut ; charger le fichier, comme réponse puis tampon, atteint déjà un pic. La requête de B reste en dessous à 1 000 000 et 4 000 000 lignes, et sa mémoire se lit 0 : pas rien, mais moins que le chargement des données. A et C le dépassent tous deux, ce qui garde H3 lisible.
+- Les autres limites sont celles enregistrées : données générées sans guillemets, versions écrites par les auteurs, une machine.

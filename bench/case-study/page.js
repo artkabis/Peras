@@ -22,15 +22,22 @@ export async function measure(url, count) {
     f();
     return performance.now() - t0;
   };
+  // The JavaScript heap after a collection, when the script measuring the
+  // page offers it (scripts/bench-case-study.mjs): before mounting, while
+  // shown, and once removed.
+  const heap = async () =>
+    typeof globalThis.__heap === "function" ? await globalThis.__heap() : 0;
+  const heapBefore = await heap();
   let handle;
   const mount = time(() => {
     handle = m.mount(app, orders);
   });
+  const heapShown = (await heap()) - heapBefore;
   const input = app.querySelector("input");
   const button = app.querySelector("button");
   input.value = "ada";
   input.dispatchEvent(new Event("input"));
-  // TypeScript searches after a delay of 50 ms; Peras at once.
+  // Both search after a delay of 50 ms.
   await new Promise((r) => setTimeout(r, 80));
   const shown = items();
   const summary = app.querySelector("p")?.textContent ?? "";
@@ -40,6 +47,7 @@ export async function measure(url, count) {
   if (typeof handle === "function") handle();
   else handle.release();
   const left = items();
+  const heapLeft = (await heap()) - heapBefore;
   input.value = "zzz";
   input.dispatchEvent(new Event("input"));
   button.click();
@@ -47,5 +55,21 @@ export async function measure(url, count) {
   const reacts =
     items() !== left ||
     (app.querySelector("li")?.textContent ?? "") !== (left > 0 ? firstSorted : "");
-  return { mount, sort, shown, firstSorted, summary, left, reacts };
+  // Two tables in one page, each sorted once: with their own state, both
+  // turn ascending; with one shared, the second click turns it back.
+  const one = document.createElement("div");
+  const two = document.createElement("div");
+  document.body.append(one, two);
+  const few = orders.slice(0, 20);
+  const handles = [m.mount(one, few), m.mount(two, few)];
+  const firstOf = (root) => root.querySelector("li")?.textContent ?? "";
+  const before = firstOf(two);
+  one.querySelector("button").click();
+  two.querySelector("button").click();
+  const twice = firstOf(two) !== before && firstOf(two) === firstOf(one);
+  for (const h of handles) {
+    if (typeof h === "function") h();
+    else h.release();
+  }
+  return { mount, sort, shown, firstSorted, summary, left, reacts, twice, heapShown, heapLeft };
 }

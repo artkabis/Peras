@@ -104,6 +104,9 @@ impl Module<'_> {
                 format!("{release}({me})")
             }
             (Host::Group, "add") => format!("{me}.add({})", arg(0)),
+            (Host::Group, "slot") => format!("{me}.slot()"),
+            (Host::Slot, "set") => format!("{me}.set({})", arg(0)),
+            (Host::Slot, "clear") => format!("{me}.clear()"),
             // The DOM gives `null` where Peras has `None`, which is `undefined`.
             (
                 Host::Document | Host::Element,

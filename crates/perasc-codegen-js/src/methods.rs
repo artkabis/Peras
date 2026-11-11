@@ -38,6 +38,21 @@ impl Module<'_> {
             Ty::Int(int) => self.int_method(*int, name, &me, rest, &result, base),
             Ty::Float(float) => self.float_method(*float, name, &me, rest, &result, base),
             Ty::Bool => Some(format!("String({me})")),
+            Ty::Array(_) if name == "sortBy" || name == "sortByDescending" => {
+                let key = match args.first().map(|&f| self.ty(f)) {
+                    Some(Ty::Callback(_, key)) => *key,
+                    _ => Ty::Error,
+                };
+                // Only the sort the key needs: numbers by their bits, `i64`
+                // as `bigint`s, strings by their code points.
+                let helper = self.helper(match key {
+                    Ty::Int(IntTy::I64 | IntTy::U64) => "$sortBig",
+                    Ty::String => "$sortStr",
+                    _ => "$sortNum",
+                });
+                let desc = name == "sortByDescending";
+                Some(format!("{helper}({me}, {}, {desc})", arg(0)))
+            }
             Ty::Array(element) => self.array_method(element, name, &me, rest),
             Ty::String => self.string_method(name, &me, rest),
             Ty::Map(_, value) => match name {
@@ -99,6 +114,8 @@ impl Module<'_> {
         let ty = Ty::Int(int);
         Some(match name {
             "toString" => self.text_of(base, me),
+            // JavaScript's own: no helper, and the same text as in an owned module.
+            "toFixed" => format!("({me}).toFixed({})", arg(0)),
             "abs" if big => {
                 let me = self.spill(me.to_owned());
                 wrap(int, &format!("{me} < 0n ? -{me} : {me}"))
@@ -114,9 +131,17 @@ impl Module<'_> {
                 format!("{min}({max}({me}, {}), {})", arg(0), arg(1))
             }
             "clamp" => format!("Math.min(Math.max({me}, {}), {})", arg(0), arg(1)),
-            "wrappingAdd" => self.operation(BinaryOp::Add, &ty, me, &arg(0)),
-            "wrappingSub" => self.operation(BinaryOp::Sub, &ty, me, &arg(0)),
-            "wrappingMul" => self.operation(BinaryOp::Mul, &ty, me, &arg(0)),
+            "wrappingAdd" | "wrappingSub" | "wrappingMul" => {
+                let op = match name {
+                    "wrappingAdd" => BinaryOp::Add,
+                    "wrappingSub" => BinaryOp::Sub,
+                    _ => BinaryOp::Mul,
+                };
+                let outer = std::mem::replace(&mut self.current.wrapping, true);
+                let text = self.operation(op, &ty, me, &arg(0));
+                self.current.wrapping = outer;
+                text
+            }
             "checkedAdd" | "checkedSub" | "checkedMul" => {
                 let symbol = match name {
                     "checkedAdd" => "+",
@@ -154,6 +179,8 @@ impl Module<'_> {
         let ty = Ty::Float(float);
         Some(match name {
             "toString" => self.text_of(base, me),
+            // JavaScript's own: no helper, and the same text as in an owned module.
+            "toFixed" => format!("({me}).toFixed({})", arg(0)),
             "abs" | "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan" | "exp" | "log" => {
                 round(&ty, format!("Math.{name}({me})"))
             }

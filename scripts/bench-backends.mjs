@@ -91,6 +91,9 @@ function build(backend, k) {
       file,
       "--backend",
       backend,
+      // Production builds: since decision 0011, step 5, a debug build checks
+      // integer overflow through the runtime, and imports it.
+      ...(backend === "direct" ? ["--allocator", "tlsf"] : []),
       "--out",
       join(work, backend),
       "--lang",
@@ -121,6 +124,8 @@ run(perasc, [
   "--backend",
   "direct",
   "--no-optimize",
+  "--allocator",
+  "tlsf",
   "--out",
   join(work, "direct-plain"),
   "--lang",

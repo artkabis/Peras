@@ -16,7 +16,7 @@ cli-usage =
       --backend <name>   code generator of `build`: direct (default, no other tool) or rust (cargo, wasm-bindgen)
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
-      --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
+      --allocator <name> the build: debug (default, every memory bug and integer overflow caught) or tlsf (production, bounded time, integers wrap)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
       --imports <how>    imports of .peras files in a .apeiron module: built (default, each next to it) or source (kept for a bundler such as Vite)
@@ -624,12 +624,21 @@ check-interface-as-type-why = An interface is a constraint: it says what a type 
 check-interface-as-type-fix = use a type parameter: `fn f<T: { $name }>(x: T)`
 
 # E0238
-check-arrow = an arrow function cannot be a value yet
+check-arrow = an arrow function is a value only in a managed module
 check-arrow-label = not the argument of a method that takes a function
 check-arrow-expected = this method takes an arrow function
 check-arrow-expected-label = expected `(x) => …`
-check-arrow-why = An arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. Functions as values, stored or passed on, come with closures.
+check-arrow-why = In an owned module, an arrow function is compiled in place, as the body of a loop, by the methods of arrays that take one: `map`, `filter`, `reduce`, `find`, `findIndex`, `some` and `every`. In a managed module, an arrow function is also a value: kept in a variable, passed to a function whose parameter has a function type, `(Event) => void`, and called; it sees the variables around it, and changes those declared with `let`. Its parameters then have their types written, since nothing else gives them, and a function type is written only for a variable, a parameter or a result, where the checker can follow it. An exported function cannot take or give one yet: the values a function of JavaScript returns would go unchecked.
 check-arrow-fix = pass it to `map`, `filter`, `reduce`, `find`, `findIndex`, `some` or `every`, or write a function with `fn`
+check-arrow-param = the type of `{ $name }` is not written
+check-arrow-param-label = a parameter of an arrow function used as a value
+check-arrow-param-fix = write its type: `({ $name }: Event) => …`
+check-arrow-type = a function type cannot be written here
+check-arrow-type-label = inside another type
+check-arrow-type-fix = write a function type only for a variable, a parameter or a result
+check-arrow-export = exported function `{ $name }` takes or gives a function
+check-arrow-export-label = a function type, in an exported function
+check-arrow-export-fix = keep the function to the module, and export one that takes data
 check-arrow-expected-fix = write the function in place: `xs.map((x) => x * 2)`
 check-template = a template literal cannot write a `{ $type }` as text yet
 check-template-label = a `{ $type }`
@@ -663,6 +672,8 @@ check-managed-only = { $what ->
     [import] an `import`
     [browser] the browser's API
     [extern] an `extern` block
+    [arrow-block] an arrow function with statements
+    [function-type] a function type
    *[other] this
 } { $what ->
     [await-sync] cannot wait
@@ -725,7 +736,7 @@ check-resource = { $reason ->
     [capture] `{ $name }` is a resource, and an arrow function cannot keep it
     [holder] a resource cannot be kept in a structure, an array, an option or a map
     [lent] `{ $name }` is lent to this function, which cannot give it away
-    [reassign] `{ $name }` holds a resource, which cannot be replaced
+    [reassign] `{ $name }` is lent to this function, which cannot replace it
     [global] `{ $name }` is a module variable: nothing would release the resource it holds
    *[other] this resource cannot be used here
 }
@@ -740,15 +751,15 @@ check-resource-label = { $reason ->
     [global] kept for as long as the page
    *[other] here
 }
-check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, or released with `release()`; after that, its variable holds nothing. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
+check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, set in a `Slot`, or released with `release()`; after that, its variable holds nothing. Replacing the resource of a `let` variable releases the one it held. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
 check-resource-fix = { $reason ->
     [dropped] keep it in a variable, `const listener = …`, add it to a `Group`, or return it
     [moved] give it away last, or keep it in a `Group` and use the group
     [loop] add each one to a `Group` declared before the loop
-    [capture] keep the resource outside, and let the arrow function call a function
+    [capture] keep it in a `Slot` of a group, which an arrow function can use: `const pending = group.slot();`, then `pending.set(…)`
     [holder] keep it in a variable or a `Group`
     [lent] return it from the function that made it, or add it to a `Group` there
-    [reassign] declare a new `const` for the new resource
+    [reassign] return the new resource, or keep the resource in a `Slot` of a group: `slot.set(…)` replaces it
     [global] keep it in a function that returns it, or in a `Group` that one returns
    *[other] keep the resource in a variable
 }
@@ -774,7 +785,7 @@ check-extern-label = { $reason ->
     [async] not a `Promise`
    *[other] here
 }
-check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type is a callback, written as an arrow function where the `extern` function is called: elsewhere there is nothing to call it with. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
+check-extern-why = An `extern` block declares JavaScript a managed module calls, with Peras types: at each call, every value JavaScript gives back is checked against them. A resource belongs to one variable of Peras, which releases it: JavaScript would keep it without releasing it. A function type at the top of a parameter is a callback, which Peras gives and JavaScript calls; inside another type, or as a result, it would be a function of JavaScript whose values nothing checks. A method is declared with `self` of a type of the block, the values JavaScript makes. An `async` function gives a promise.
 check-extern-fix = { $reason ->
     [resource] give JavaScript the data instead, and keep the resource in Peras
     [callback] declare the callback as a parameter of an `extern` function, and pass an arrow function there
@@ -788,6 +799,12 @@ check-floating-promise = this promise is never awaited
 check-floating-promise-label = runs later, and nothing waits for it
 check-floating-promise-why = Calling an `async` function starts its work and gives a promise of its result. Without `await`, the statements after the call run before that work is done, and an error it throws is lost. Forgetting `await` is one of the commonest bugs of asynchronous code.
 check-floating-promise-fix = write `await` before the call, in an `async` function; to let it run on purpose, keep it: `const _saving = save();`
+
+# E0249
+check-sort-key = an array cannot be sorted by a `{ $type }`
+check-sort-key-label = a `{ $type }`, not a number or a string
+check-sort-key-why = `sortBy` and `sortByDescending` compute a key once per element, then sort the keys: numbers in the order of `sort()`, -0 before +0 and NaN last, strings in the order of their Unicode code points. Both modes sort them without calling a function at each comparison, in time proportional to the length for numbers. A key of another type has no order of its own: which field first, in which order, is for the program to say.
+check-sort-key-fix = sort by a number or a string: a field, `(o) => o.amount`, or a key built as text
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->
@@ -841,4 +858,5 @@ runtime-double-release = the block allocated at { $alloc } is released a second 
 runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
 runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }
 runtime-index = index { $index } is out of bounds: the length is { $length }
+runtime-integer-overflow = an integer overflowed: its type cannot hold the result. To wrap on purpose, use `wrappingAdd`, `wrappingSub` or `wrappingMul`; a production build wraps
 runtime-simd = this module uses WebAssembly SIMD, which this browser does not have: Chrome or Edge 91, Firefox 89 and Safari 16.4 do. Build it with `--simd off` to load it everywhere.
