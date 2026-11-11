@@ -42,6 +42,9 @@ pub struct Options {
     /// `{index}` and `{length}` in it: the one owned modules throw, in the
     /// language of the build.
     pub bounds: String,
+    /// The text of the `RangeError` an integer overflow throws in debug, in
+    /// the language of the build.
+    pub overflow: String,
     /// In debug, the leak detector: each resource collected without being
     /// released is reported, with the file and line that made it.
     pub debug: Option<Debug>,
@@ -89,6 +92,7 @@ impl Default for Options {
         Self {
             peras_imports_as_js: false,
             bounds: "index {index} is out of bounds: the length is {length}".to_owned(),
+            overflow: "an integer overflowed: its type cannot hold the result".to_owned(),
             debug: None,
         }
     }
@@ -136,7 +140,7 @@ pub fn generate(
     }
     out.push_str(&extern_imports);
     for helper in runtime::closure(&module.helpers) {
-        let source = runtime::source(helper, &options.bounds, options.debug.is_some());
+        let source = runtime::source(helper, options);
         if !source.is_empty() {
             out.push_str(&source);
             out.push('\n');
@@ -184,6 +188,9 @@ struct Function {
     depth: usize,
     /// Inside an arrow function: `?` cannot return from the function.
     in_lambda: bool,
+    /// Generating `wrappingAdd` and the others, which wrap on purpose: no
+    /// overflow check.
+    wrapping: bool,
     /// The bounds proven by the loops being generated.
     proofs: Vec<bounds::Proof>,
 }

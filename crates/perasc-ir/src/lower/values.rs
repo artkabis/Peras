@@ -1025,7 +1025,7 @@ fn convert(e: Expr, ty: Ty) -> Expr {
 /// `a.checkedAdd(b)` and the others: whether the exact result fits, and the
 /// wrapped result. An `i32` is computed in 64 bits; an `i64` is checked on its
 /// sign bits, and a product by dividing it again.
-fn checked(state: &mut FnState, op: BinOp, a: Expr, b: Expr) -> Vec<Expr> {
+pub(super) fn checked(state: &mut FnState, op: BinOp, a: Expr, b: Expr) -> Vec<Expr> {
     use super::binary;
     let a = state.spill(a);
     let b = state.spill(b);

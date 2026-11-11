@@ -16,7 +16,7 @@ cli-usage =
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
-      --allocator <nom>  allocateur d’un module qui utilise le tas : debug (par défaut, chaque bug mémoire détecté) ou tlsf (production, temps borné)
+      --allocator <nom>  le build : debug (défaut, chaque bug mémoire et chaque débordement d’entier attrapés) ou tlsf (production, temps borné, les entiers bouclent)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
       --imports <mode>   imports de fichiers .peras dans un module .apeiron : built (par défaut, chacun compilé à côté) ou source (gardés pour un bundler comme Vite)
@@ -858,4 +858,5 @@ runtime-double-release = le bloc alloué à { $alloc } est libéré une seconde 
 runtime-use-after-release = le bloc alloué à { $alloc } a été modifié après que { $release } l’a libéré
 runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a été alloué à { $alloc }
 runtime-index = l’indice { $index } est hors limites : la longueur est { $length }
+runtime-integer-overflow = un entier a débordé : son type ne peut pas contenir le résultat. Pour boucler exprès, utilisez `wrappingAdd`, `wrappingSub` ou `wrappingMul` ; un build de production boucle
 runtime-simd = ce module utilise le SIMD de WebAssembly, que ce navigateur n’a pas : Chrome ou Edge 91, Firefox 89 et Safari 16.4 l’ont. Compilez-le avec `--simd off` pour le charger partout.

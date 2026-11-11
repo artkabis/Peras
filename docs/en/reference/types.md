@@ -17,7 +17,7 @@
 
 Rules, the same in every backend:
 
-- integer `+`, `-`, `*` wrap around on overflow; `checkedAdd` and the others return `None` instead, `wrappingAdd` and the others say it explicitly;
+- integer `+`, `-`, `*` stop the program on an overflow in a debug build, the default of `perasc build` and of Vite's dev server, with a `RangeError` that says so, and wrap around in a production build (`--allocator tlsf`), where checking would cost time, as in Rust; `wrappingAdd`, `wrappingSub` and `wrappingMul` wrap on purpose in both, `checkedAdd` and the others return `None` instead. A loop counter `i++` under `i < bound` is not checked: it cannot overflow;
 - integer division and remainder by zero stop the program, as does `MIN / -1`;
 - float to integer conversions round toward zero and saturate; NaN becomes 0;
 - no conversion is implicit: [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).

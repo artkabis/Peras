@@ -239,6 +239,7 @@ impl<'a> Verifier<'a> {
                 self.operands("buf.truncate", rest, &[Ty::I32]);
             }
             BufStmt::CheckIndex => self.operands("check_index", args, &[Ty::I32, Ty::I32]),
+            BufStmt::CheckOverflow => self.operands("check_overflow", args, &[Ty::Bool]),
             BufStmt::Append(_) => {
                 self.buffer(args.first());
                 self.buffer(args.get(1));

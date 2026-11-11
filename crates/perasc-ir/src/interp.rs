@@ -42,6 +42,8 @@ pub enum Trap {
     BadAlloc,
     /// `check_index` failed: the program reports an index out of bounds.
     Bounds,
+    /// `check_overflow` failed: an integer overflowed in a debug build.
+    Overflow,
     /// A buffer was read or written past its length without a check first: a
     /// bug in `perasc`, which the backends would not catch.
     Unchecked,
@@ -1068,6 +1070,11 @@ impl Machine<'_> {
             (BufStmt::CheckIndex, [Value::I32(index), Value::I32(len)]) => {
                 if *index < 0 || index >= len {
                     return Err(Trap::Bounds);
+                }
+            }
+            (BufStmt::CheckOverflow, [Value::Bool(fits)]) => {
+                if !fits {
+                    return Err(Trap::Overflow);
                 }
             }
             _ => return Err(Trap::Unreachable),

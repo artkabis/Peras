@@ -57,12 +57,12 @@ Ownership will come back to managed modules for **resources** only: listeners, t
 
 `number` is the managed name of `f64`. The other number types compute exactly as in an owned module, so a function moved from one mode to the other gives the same results:
 
-| Type                  | In JavaScript                                                         |
-| --------------------- | --------------------------------------------------------------------- |
-| `i32`, `u32`, smaller | a `number`, wrapped after each operation: `(a + b) \| 0`, `Math.imul` |
-| `i64`, `u64`          | a `bigint`, wrapped to 64 bits                                        |
-| `f32`                 | a `number`, rounded to `f32` after each operation with `Math.fround`  |
-| `f64`, `number`       | a `number`                                                            |
+| Type                  | In JavaScript                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `i32`, `u32`, smaller | a `number`, wrapped after each operation: `(a + b) \| 0`, `Math.imul`; checked instead in a debug build |
+| `i64`, `u64`          | a `bigint`, wrapped to 64 bits; checked instead in a debug build                                        |
+| `f32`                 | a `number`, rounded to `f32` after each operation with `Math.fround`                                    |
+| `f64`, `number`       | a `number`                                                                                              |
 
 An integer divided by zero throws the `WebAssembly.RuntimeError` an owned module traps with; an index out of bounds, the same `RangeError`, with the same text. Conversions round toward zero and saturate, as they do in an owned module.
 
@@ -70,13 +70,13 @@ An integer divided by zero throws the `WebAssembly.RuntimeError` an owned module
 export fn checksum(xs: Array<i32>): i32 {
   let h = 17;
   for (const x of xs) {
-    h = h * 31 + x;
+    h = h.wrappingMul(31).wrappingAdd(x);
   }
   return h;
 }
 ```
 
-`h * 31` wraps around at 32 bits, as in WebAssembly.
+A hash wraps on purpose, and says so: `wrappingMul` wraps around at 32 bits in every build, as in WebAssembly. Written `h * 31 + x`, it would stop on the first overflow in a debug build, which is what an overflow nobody meant should do.
 
 ## Strings are JavaScript's
 

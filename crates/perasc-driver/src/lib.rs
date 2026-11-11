@@ -161,9 +161,11 @@ pub fn build_managed(
         || path.display().to_string(),
         |f| f.to_string_lossy().into_owned(),
     );
+    let overflow = localizer.message(&perasc_diag::Message::new("runtime-integer-overflow"));
     let options = perasc_codegen_js::Options {
         peras_imports_as_js,
         bounds,
+        overflow,
         debug: debug.then(|| perasc_codegen_js::Debug::new(&file, source)),
     };
     let js = perasc_codegen_js::generate(&parsed.ast, &analysis, &options)
@@ -184,6 +186,19 @@ pub fn build_managed(
 /// The errors of the first stage that has any: syntax, names and types, or code
 /// generation limits (`E0900`); [`ToolError::Internal`] if the IR verifier fails.
 pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, ToolError> {
+    compile_ir_with(source, false)
+}
+
+/// [`compile_ir`], with `+`, `-` and `*` on integers stopping the program on
+/// an overflow when `overflow_checks`, as a debug build does.
+///
+/// # Errors
+///
+/// As [`compile_ir`].
+pub fn compile_ir_with(
+    source: &str,
+    overflow_checks: bool,
+) -> Result<perasc_ir::Module, ToolError> {
     let parsed = perasc_syntax::parse(source);
     if !parsed.diagnostics.is_empty() {
         return Err(ToolError::Diagnostics(Checked::capped(parsed.diagnostics)));
@@ -194,7 +209,7 @@ pub fn compile_ir(source: &str) -> Result<perasc_ir::Module, ToolError> {
             analysis.diagnostics,
         )));
     }
-    let module = perasc_ir::lower(&parsed.ast, &analysis)
+    let module = perasc_ir::lower_with(&parsed.ast, &analysis, overflow_checks)
         .map_err(|d| ToolError::Diagnostics(Checked::capped(d)))?;
     perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     Ok(module)
@@ -223,7 +238,7 @@ pub fn build_direct(
     options: DirectOptions,
     localizer: &Localizer,
 ) -> Result<DirectOutput, ToolError> {
-    let mut module = compile_ir(source)?;
+    let mut module = compile_ir_with(source, options.overflow_checks)?;
     if options.optimize {
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
@@ -234,6 +249,8 @@ pub fn build_direct(
 pub use perasc_runtime::Allocator;
 
 /// How the direct backend builds a module.
+// Independent switches of a build, each a flag of the command line.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DirectOptions {
     /// Runs the IR optimizations.
@@ -250,6 +267,12 @@ pub struct DirectOptions {
     ///
     /// [decision 0007]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0007-threads-over-shared-memory.md
     pub threads: bool,
+    /// `+`, `-` and `*` on integers stop the program on an overflow, as a
+    /// debug build does, the default; without, they wrap, as in production
+    /// ([decision 0011]).
+    ///
+    /// [decision 0011]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0011-what-to-build-next.md
+    pub overflow_checks: bool,
 }
 
 impl Default for DirectOptions {
@@ -259,6 +282,7 @@ impl Default for DirectOptions {
             allocator: perasc_runtime::Allocator::Debug,
             simd: true,
             threads: false,
+            overflow_checks: true,
         }
     }
 }
@@ -292,7 +316,7 @@ pub fn emit_direct_for(
     let compiled = perasc_codegen_wasm::compile_with(module, options.simd, threads);
     // SIMD is needed by the runtime of a module that uses the heap, and by
     // the loops that run several turns at once.
-    let needs_simd = options.simd && (module.uses_heap() || compiled.vectors);
+    let needs_simd = options.simd && (module.needs_runtime() || compiled.vectors);
     let simd = localizer.message(&perasc_diag::Message::new("runtime-simd"));
     let faults = fault_messages(localizer);
     let bounds = localizer.message(
@@ -300,6 +324,7 @@ pub fn emit_direct_for(
             .text("index", "{index}")
             .text("length", "{length}"),
     );
+    let overflow = localizer.message(&perasc_diag::Message::new("runtime-integer-overflow"));
     // The runtime this module needs: what its loader calls, and the
     // functions on strings and arrays the module calls.
     let full = options.allocator.runtime(options.simd);
@@ -317,6 +342,7 @@ pub fn emit_direct_for(
             sites: &compiled.sites,
             faults: &faults,
             bounds: &bounds,
+            overflow: &overflow,
             simd: needs_simd.then_some(simd.as_str()),
             threads: flags
                 .filter(|_| threads)

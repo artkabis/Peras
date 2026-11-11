@@ -23,15 +23,15 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 
 ## Bugs d’applications web (`bench/web-bugs`)
 
-`node scripts/bench-web-bugs.mjs` prend dix-sept bugs d’applications web, chacun écrit comme on l’écrit naturellement en TypeScript et dans un module Peras managed, et trouve le premier moment où la chaîne d’outils arrête chacun : à la compilation (`tsc` au plus strict, puis le preset strict typé de typescript-eslint ; `perasc check`), à l’exécution par une erreur, dans Chromium, ou pas du tout ([résultats](web-bugs/RESULTS.md), [décision 0011](../docs/fr/decisions/0011-what-to-build-next.md)). La CI vérifie que Peras n’en laisse pas passer plus que ne l’a relevé la décision 0011.
+`node scripts/bench-web-bugs.mjs` prend dix-sept bugs d’applications web, chacun écrit comme on l’écrit naturellement en TypeScript et dans un module Peras managed, et trouve le premier moment où la chaîne d’outils arrête chacun : à la compilation (`tsc` au plus strict, puis le preset strict typé de typescript-eslint ; `perasc check`), à l’exécution par une erreur, dans Chromium, ou pas du tout ([résultats](web-bugs/RESULTS.md), [décision 0011](../docs/fr/decisions/0011-what-to-build-next.md)). Peras tourne en build de debug, comme le code tourne pendant qu’on l’écrit et le teste. La CI vérifie que Peras n’en laisse pas passer plus que ne l’a relevé la décision 0011.
 
 | Arrêtés                        | TypeScript | Peras |
 | ------------------------------ | ---------: | ----: |
 | à la compilation               |          7 |     9 |
-| à l’exécution, avec un message |          1 |     5 |
-| en silence                     |          8 |     2 |
+| à l’exécution, avec un message |          1 |     6 |
+| en silence                     |          8 |     1 |
 
-Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les bibliothèques qui mentent sur leurs types ; TypeScript est seul à arrêter à la compilation un indice au-delà de la fin, et garde exact un total au-delà de 2³¹ là où un `i32` se replie. Le corpus a été écrit par les auteurs de Peras, les deux versions aussi naturellement qu’ils le pouvaient : il couvre les bugs d’applications web qu’ils connaissent, pas tous les bugs.
+Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les bibliothèques qui mentent sur leurs types ; TypeScript est seul à arrêter à la compilation un indice au-delà de la fin, et garde exact un total au-delà de 2³¹, qu’un build de debug de Peras arrête avec un message là où un `i32` ne peut pas le contenir, et qu’un build de production replie. Le corpus a été écrit par les auteurs de Peras, les deux versions aussi naturellement qu’ils le pouvaient : il couvre les bugs d’applications web qu’ils connaissent, pas tous les bugs.
 
 ## Étude de cas (`bench/case-study`)
 
@@ -156,7 +156,7 @@ Les premières tables compilées étaient plus lentes que celles de JavaScript :
 
 ## Modules managed (`bench/managed`)
 
-`node scripts/bench-managed.mjs` compile [bench/managed/kernels.apeiron](managed/kernels.apeiron) en JavaScript, et la même source en WebAssembly comme fichier `.peras` avec l’allocateur TLSF, et les exécute face au même travail écrit à la main en JavaScript, dans Node ([résultats](managed/RESULTS.md), [décision 0008](../docs/fr/decisions/0008-managed-mode.md)). Chaque cas est d’abord vérifié donner le même résultat des trois côtés ; la CI exécute la vérification. La vitesse est le temps du JavaScript écrit à la main divisé par celui du module, sur 6 exécutions :
+`node scripts/bench-managed.mjs` compile [bench/managed/kernels.apeiron](managed/kernels.apeiron) en JavaScript pour la production, et la même source en WebAssembly comme fichier `.peras` avec l’allocateur TLSF, et les exécute face au même travail écrit à la main en JavaScript, dans Node ([résultats](managed/RESULTS.md), [décision 0008](../docs/fr/decisions/0008-managed-mode.md)). Chaque cas est d’abord vérifié donner le même résultat des trois côtés ; la CI exécute la vérification. La vitesse est le temps du JavaScript écrit à la main divisé par celui du module, sur 6 exécutions :
 
 | Cas                                          | Managed (JavaScript) | Owned (WebAssembly) |
 | -------------------------------------------- | -------------------: | ------------------: |

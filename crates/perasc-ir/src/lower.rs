@@ -35,7 +35,27 @@ use crate::{
 ///
 /// One `E0900` diagnostic per unsupported construct, sorted by position.
 pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> {
+    lower_with(ast, analysis, false)
+}
+
+/// [`lower`], and, with `overflow_checks`, `+`, `-` and `*` on integers stop
+/// the program when the result does not fit, as a debug build does
+/// ([decision 0011]); without, they wrap, as a production build does. A loop
+/// counter `i++` under `i < bound`, which the body never assigns, is not
+/// checked: `i + 1` is at most `bound`.
+///
+/// [decision 0011]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0011-what-to-build-next.md
+///
+/// # Errors
+///
+/// As [`lower`].
+pub fn lower_with(
+    ast: &Ast,
+    analysis: &Analysis,
+    overflow_checks: bool,
+) -> Result<Module, Vec<Diagnostic>> {
     let mut lowering = Lowering {
+        overflow_checks,
         ast,
         analysis,
         fns: HashMap::new(),
@@ -133,6 +153,8 @@ pub fn lower(ast: &Ast, analysis: &Analysis) -> Result<Module, Vec<Diagnostic>> 
 }
 
 struct Lowering<'a> {
+    /// `+`, `-` and `*` on integers stop the program on an overflow.
+    overflow_checks: bool,
     ast: &'a Ast,
     analysis: &'a Analysis,
     /// The name of the function being lowered, which its jobs carry.
@@ -652,9 +674,65 @@ impl Lowering<'_> {
         if let Some(update) = update {
             self.stmt(state, update, &mut step);
         }
-        let lowered = self.loop_body(state, cond, before, body, step, &mut Vec::new());
+        let counter = self.counter(state, cond.as_ref(), update.as_deref());
+        let mut lowered = self.loop_body(state, cond, before, body, step, &mut Vec::new());
+        if let Some(i) = counter {
+            unchecked_counter(&mut lowered, i);
+        }
         out.extend(lowered);
         state.close(out);
+    }
+
+    /// `a op b`; with overflow checks, `+`, `-` and `*` on integers computed
+    /// as `checkedAdd` and the others are, the program stopped when the
+    /// result does not fit.
+    fn arith(&mut self, state: &mut FnState, op: BinOp, a: Expr, b: Expr) -> Expr {
+        if !self.overflow_checks
+            || !matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul)
+            || !matches!(a.ty, Ty::I32 | Ty::I64)
+        {
+            return binary(op, a, b);
+        }
+        let mut parts = values::checked(state, op, a, b).into_iter();
+        let (Some(fits), Some(value)) = (parts.next(), parts.next()) else {
+            return zero(Ty::I32);
+        };
+        state
+            .pre
+            .push(Stmt::Buf(crate::BufStmt::CheckOverflow, vec![fits]));
+        value
+    }
+
+    /// The local of a loop counter whose step cannot overflow: the condition
+    /// is `i < bound` and the step `i++`, on the same integer variable.
+    fn counter(
+        &mut self,
+        state: &mut FnState,
+        cond: Option<&Expr>,
+        update: Option<&AstStmt>,
+    ) -> Option<LocalId> {
+        if !self.overflow_checks {
+            return None;
+        }
+        let StmtKind::Step {
+            target,
+            op: StepOp::Increment,
+        } = &update?.kind
+        else {
+            return None;
+        };
+        if !matches!(self.ast.expr(*target).kind, AstExpr::Name(_)) {
+            return None;
+        }
+        let locals = self.place(state, *target)?;
+        let [local] = locals.as_slice() else {
+            return None;
+        };
+        let local = *local;
+        let ExprKind::Binary(BinOp::Lt, i, _) = &cond?.kind else {
+            return None;
+        };
+        (i.kind == ExprKind::Local(local) && matches!(i.ty, Ty::I32 | Ty::I64)).then_some(local)
     }
 
     fn stmt(&mut self, state: &mut FnState, stmt: &AstStmt, out: &mut Vec<Stmt>) {
@@ -702,7 +780,9 @@ impl Lowering<'_> {
                 } else {
                     BinOp::Sub
                 };
-                out.push(Stmt::Set(local, binary(op, current, one)));
+                let value = self.arith(state, op, current, one);
+                state.flush(out);
+                out.push(Stmt::Set(local, value));
             }
             StmtKind::Block(block) => self.block(state, &block.stmts, out),
             StmtKind::If {
@@ -882,7 +962,9 @@ impl Lowering<'_> {
         state.flush(out);
         match (assign_op(op), locals.as_slice(), values.as_slice()) {
             (Some(op), [local], [value]) => {
-                let value = binary(op, local_expr(state, *local), value.clone());
+                let current = local_expr(state, *local);
+                let value = self.arith(state, op, current, value.clone());
+                state.flush(out);
                 out.push(Stmt::Set(*local, value));
             }
             _ => Self::assign(state, &locals, values, out),
@@ -1004,7 +1086,7 @@ impl Lowering<'_> {
                 if *op == BinaryOp::Rem && lhs.ty.is_float() {
                     self.unsupported(span, "float-remainder");
                 }
-                ExprKind::Binary(bin_op(*op), Box::new(lhs), Box::new(rhs))
+                return self.arith(state, bin_op(*op), lhs, rhs);
             }
             AstExpr::Call { callee, args, .. } => {
                 return self.call(state, id, *callee, args, ty, span);
@@ -1378,3 +1460,32 @@ const fn bin_op(op: BinaryOp) -> BinOp {
 
 #[cfg(test)]
 mod tests;
+
+/// In the loop just lowered, a step `i++` checked for overflow becomes a plain
+/// `i = i + 1` when the body never assigns `i`: the condition `i < bound`,
+/// checked before, keeps `i + 1` at most `bound`.
+fn unchecked_counter(lowered: &mut [Stmt], i: LocalId) {
+    let Some(Stmt::Loop { body, step, .. }) = lowered.last_mut() else {
+        return;
+    };
+    if crate::bounds::assigns(body, i) {
+        return;
+    }
+    let checked = step
+        .iter()
+        .any(|s| matches!(s, Stmt::Buf(crate::BufStmt::CheckOverflow, _)));
+    if !checked {
+        return;
+    }
+    let Some(ty) = step.iter().find_map(|s| match s {
+        Stmt::Set(l, e) if *l == i => Some(e.ty),
+        _ => None,
+    }) else {
+        return;
+    };
+    let current = Expr {
+        kind: ExprKind::Local(i),
+        ty,
+    };
+    *step = vec![Stmt::Set(i, binary(BinOp::Add, current, one(ty)))];
+}

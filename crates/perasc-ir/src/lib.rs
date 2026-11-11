@@ -21,7 +21,7 @@ mod own;
 pub mod text;
 mod verify;
 
-pub use lower::lower;
+pub use lower::{lower, lower_with};
 pub use opt::optimize;
 pub use verify::verify;
 
@@ -236,6 +236,15 @@ impl Module {
     pub fn uses_heap(&self) -> bool {
         self.functions.iter().any(Function::uses_heap)
     }
+
+    /// Whether the module is linked to the runtime: it uses the heap, or, in
+    /// a debug build, it reports an integer overflow through the runtime's
+    /// imports, as an index out of bounds is. Its declarations for TypeScript
+    /// follow [`Module::uses_heap`] alone, the same in every build.
+    #[must_use]
+    pub fn needs_runtime(&self) -> bool {
+        self.uses_heap() || self.functions.iter().any(Function::checks_overflow)
+    }
 }
 
 impl Function {
@@ -272,6 +281,23 @@ impl Function {
     #[must_use]
     pub fn uses_heap(&self) -> bool {
         self.ret.is_handle() || self.locals.iter().any(|l| l.ty.is_handle())
+    }
+
+    /// Whether the function checks an integer for overflow, in a debug build.
+    #[must_use]
+    pub fn checks_overflow(&self) -> bool {
+        fn checks(stmts: &[Stmt]) -> bool {
+            stmts.iter().any(|stmt| match stmt {
+                Stmt::Buf(BufStmt::CheckOverflow, _) => true,
+                Stmt::If {
+                    then, otherwise, ..
+                } => checks(then) || checks(otherwise),
+                Stmt::Loop { body, step, .. } => checks(body) || checks(step),
+                Stmt::Block(body) => checks(body),
+                _ => false,
+            })
+        }
+        checks(&self.body)
     }
 
     /// The parameters.
@@ -839,6 +865,9 @@ pub enum BufStmt {
     /// `[index, length]`: stops the program with an error unless
     /// `0 <= index < length`.
     CheckIndex,
+    /// `[fits]`: stops the program with an integer overflow unless `fits`,
+    /// a `bool`: `+`, `-` and `*` on integers in a debug build.
+    CheckOverflow,
     /// `[move buffer]`: releases the buffer and its elements.
     Release,
     /// `[buffer, other]`: adds the elements of `other` at the end of `buffer`.
@@ -870,6 +899,7 @@ impl BufStmt {
             Self::Push(elem) => format!("buf.push.{}", elem.name()),
             Self::Truncate => "buf.truncate".to_owned(),
             Self::CheckIndex => "check_index".to_owned(),
+            Self::CheckOverflow => "check_overflow".to_owned(),
             Self::Release => "buf.release".to_owned(),
             Self::Append(elem) => format!("buf.append.{}", elem.name()),
         }
@@ -1353,6 +1383,8 @@ mod method_tests;
 mod opt_tests;
 #[cfg(test)]
 mod option_tests;
+#[cfg(test)]
+mod overflow_tests;
 #[cfg(test)]
 mod own_tests;
 #[cfg(test)]

@@ -131,9 +131,17 @@ impl Module<'_> {
                 format!("{min}({max}({me}, {}), {})", arg(0), arg(1))
             }
             "clamp" => format!("Math.min(Math.max({me}, {}), {})", arg(0), arg(1)),
-            "wrappingAdd" => self.operation(BinaryOp::Add, &ty, me, &arg(0)),
-            "wrappingSub" => self.operation(BinaryOp::Sub, &ty, me, &arg(0)),
-            "wrappingMul" => self.operation(BinaryOp::Mul, &ty, me, &arg(0)),
+            "wrappingAdd" | "wrappingSub" | "wrappingMul" => {
+                let op = match name {
+                    "wrappingAdd" => BinaryOp::Add,
+                    "wrappingSub" => BinaryOp::Sub,
+                    _ => BinaryOp::Mul,
+                };
+                let outer = std::mem::replace(&mut self.current.wrapping, true);
+                let text = self.operation(op, &ty, me, &arg(0));
+                self.current.wrapping = outer;
+                text
+            }
             "checkedAdd" | "checkedSub" | "checkedMul" => {
                 let symbol = match name {
                     "checkedAdd" => "+",

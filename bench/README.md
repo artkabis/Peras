@@ -23,15 +23,15 @@ What it measures, and what it does not:
 
 ## Web application bugs (`bench/web-bugs`)
 
-`node scripts/bench-web-bugs.mjs` takes seventeen bugs of web applications, each written as it is naturally written in TypeScript and in a managed Peras module, and finds the earliest point where the toolchain stops each: at compile time (`tsc` at its strictest, then typescript-eslint's strict type-checked preset; `perasc check`), at run time by an error, in Chromium, or not at all ([results](web-bugs/RESULTS.md), [decision 0011](../docs/en/decisions/0011-what-to-build-next.md)). CI checks that Peras lets no more through than decision 0011 recorded.
+`node scripts/bench-web-bugs.mjs` takes seventeen bugs of web applications, each written as it is naturally written in TypeScript and in a managed Peras module, and finds the earliest point where the toolchain stops each: at compile time (`tsc` at its strictest, then typescript-eslint's strict type-checked preset; `perasc check`), at run time by an error, in Chromium, or not at all ([results](web-bugs/RESULTS.md), [decision 0011](../docs/en/decisions/0011-what-to-build-next.md)). Peras runs as a debug build, as code runs while it is written and tested. CI checks that Peras lets no more through than decision 0011 recorded.
 
 | Stopped                     | TypeScript | Peras |
 | --------------------------- | ---------: | ----: |
 | at compile time             |          7 |     9 |
-| at run time, with a message |          1 |     5 |
-| silent                      |          8 |     2 |
+| at run time, with a message |          1 |     6 |
+| silent                      |          8 |     1 |
 
-Peras alone stops the listeners and timers left running and the libraries that lie about their types; TypeScript alone stops an index past the end at compile time, and keeps a total above 2³¹ exact where an `i32` wraps. The corpus was written by the Peras authors, both versions as naturally as they could: it covers the bugs of web applications they know, not every bug.
+Peras alone stops the listeners and timers left running and the libraries that lie about their types; TypeScript alone stops an index past the end at compile time, and keeps a total above 2³¹ exact, which a debug build of Peras stops with a message where an `i32` cannot hold it, and a production build wraps. The corpus was written by the Peras authors, both versions as naturally as they could: it covers the bugs of web applications they know, not every bug.
 
 ## Case study (`bench/case-study`)
 
@@ -156,7 +156,7 @@ The first compiled maps were slower than JavaScript's: 0.68, 0.93 and 0.69. Two 
 
 ## Managed modules (`bench/managed`)
 
-`node scripts/bench-managed.mjs` compiles [bench/managed/kernels.apeiron](managed/kernels.apeiron) to JavaScript, and the same source to WebAssembly as a `.peras` file with the TLSF allocator, and runs both against the same work written by hand in JavaScript, in Node ([results](managed/RESULTS.md), [decision 0008](../docs/en/decisions/0008-managed-mode.md)). Each case is checked to give the same result on the three sides first; CI runs the check. Speed is the time of hand-written JavaScript divided by the module's, over 6 runs:
+`node scripts/bench-managed.mjs` compiles [bench/managed/kernels.apeiron](managed/kernels.apeiron) to JavaScript for production, and the same source to WebAssembly as a `.peras` file with the TLSF allocator, and runs both against the same work written by hand in JavaScript, in Node ([results](managed/RESULTS.md), [decision 0008](../docs/en/decisions/0008-managed-mode.md)). Each case is checked to give the same result on the three sides first; CI runs the check. Speed is the time of hand-written JavaScript divided by the module's, over 6 runs:
 
 | Case                                      | Managed (JavaScript) | Owned (WebAssembly) |
 | ----------------------------------------- | -------------------: | ------------------: |

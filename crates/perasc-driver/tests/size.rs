@@ -16,6 +16,8 @@ fn build(source: &str) -> DirectOutput {
             allocator: Allocator::Tlsf,
             simd: true,
             threads: false,
+            // The code a production build runs: no overflow checks.
+            overflow_checks: false,
         },
         &Localizer::new(Language::English),
     )

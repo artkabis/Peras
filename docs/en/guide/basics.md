@@ -50,7 +50,7 @@ A module `let`, a variable shared by all functions, is checked but not compiled 
 | `u8`, `u16`, `u32`, `u64` | unsigned integers      |
 | `f32`, `f64`              | floating-point numbers |
 
-Integer arithmetic wraps around on overflow, the same way in every backend. Division by zero stops the program (a _trap_), it never returns a made-up value.
+Integer arithmetic stops the program on an overflow while you develop, in a debug build, the default, and wraps around in a production build, the same way in every backend, as in Rust ([types](../reference/types.md)); `wrappingAdd`, `wrappingSub` and `wrappingMul` wrap on purpose. Division by zero stops the program (a _trap_), it never returns a made-up value.
 
 Literals take the type their context asks for, `i32` and `f64` when nothing does. They can be written in hexadecimal, binary, with separators and exponents:
 

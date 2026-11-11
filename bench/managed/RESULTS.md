@@ -6,7 +6,7 @@ Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, Node v24.22.1. Medians of 15 runs
 
 | Case | JavaScript (ms) | Managed (ms) | Speed | Owned (ms) | Speed |
 | --- | --: | --: | --: | --: | --: |
-| sum of 1000000 i32, wrapping | 5.5 | 5.5 | 0.99 | 4.8 | 1.14 |
-| 1000000 particles, one step, inout arrays | 12.3 | 12.8 | 0.96 | 74.9 | 0.16 |
-| count 500000 words, Map<String, i32> | 65.0 | 49.4 | 1.31 | 33.9 | 1.91 |
-| energy of 2000 bodies, structures | 7.5 | 8.0 | 0.94 | 7.4 | 1.02 |
+| sum of 1000000 i32, wrapping | 5.8 | 5.8 | 1.00 | 6.0 | 0.96 |
+| 1000000 particles, one step, inout arrays | 16.5 | 14.4 | 1.15 | 80.6 | 0.21 |
+| count 500000 words, Map<String, i32> | 60.9 | 57.9 | 1.05 | 34.2 | 1.78 |
+| energy of 2000 bodies, structures | 6.9 | 7.2 | 0.97 | 6.8 | 1.02 |

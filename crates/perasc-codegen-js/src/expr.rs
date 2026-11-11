@@ -310,6 +310,32 @@ impl Module<'_> {
     /// Integer arithmetic: wrapped, and a division by zero throws.
     fn integer(&mut self, op: BinaryOp, int: IntTy, a: &str, b: &str) -> String {
         let big = is_big(int);
+        // In debug, `+`, `-` and `*` stop on an overflow, as in an owned
+        // module ([decision 0011]); `wrappingAdd` and the others still wrap.
+        //
+        // [decision 0011]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0011-what-to-build-next.md
+        let checked = self.options.debug.is_some() && !self.current.wrapping;
+        if checked && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul) {
+            let symbol = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                _ => "*",
+            };
+            // Exact in a double: a product of two 32-bit integers that fits
+            // in 32 bits is exact, and one that does not stays out of range.
+            return if big {
+                let helper = self.helper("$ov64");
+                format!("{helper}({a} {symbol} {b}, {})", int == IntTy::I64)
+            } else {
+                let (lo, hi) = if int == IntTy::I32 {
+                    (-2_147_483_648, 2_147_483_647)
+                } else {
+                    crate::range(int)
+                };
+                let helper = self.helper("$ov");
+                format!("{helper}({a} {symbol} {b}, {lo}, {hi})")
+            };
+        }
         match op {
             BinaryOp::Add => wrap(int, &format!("{a} + {b}")),
             BinaryOp::Sub => wrap(int, &format!("{a} - {b}")),

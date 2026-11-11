@@ -57,12 +57,12 @@ La possession reviendra dans les modules managed pour les **ressources** seuleme
 
 `number` est le nom managed de `f64`. Les autres types de nombres calculent exactement comme dans un module owned, pour qu’une fonction passée d’un mode à l’autre donne les mêmes résultats :
 
-| Type                      | En JavaScript                                                            |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `i32`, `u32`, plus petits | un `number`, replié après chaque opération : `(a + b) \| 0`, `Math.imul` |
-| `i64`, `u64`              | un `bigint`, replié sur 64 bits                                          |
-| `f32`                     | un `number`, arrondi en `f32` après chaque opération par `Math.fround`   |
-| `f64`, `number`           | un `number`                                                              |
+| Type                      | En JavaScript                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `i32`, `u32`, plus petits | un `number`, replié après chaque opération : `(a + b) \| 0`, `Math.imul` ; vérifié à la place dans un build de debug |
+| `i64`, `u64`              | un `bigint`, replié sur 64 bits ; vérifié à la place dans un build de debug                                          |
+| `f32`                     | un `number`, arrondi en `f32` après chaque opération par `Math.fround`                                               |
+| `f64`, `number`           | un `number`                                                                                                          |
 
 Un entier divisé par zéro lève la `WebAssembly.RuntimeError` d’un module owned ; un indice hors limites, la même `RangeError`, avec le même texte. Les conversions arrondissent vers zéro et saturent, comme dans un module owned.
 
@@ -70,13 +70,13 @@ Un entier divisé par zéro lève la `WebAssembly.RuntimeError` d’un module ow
 export fn checksum(xs: Array<i32>): i32 {
   let h = 17;
   for (const x of xs) {
-    h = h * 31 + x;
+    h = h.wrappingMul(31).wrappingAdd(x);
   }
   return h;
 }
 ```
 
-`h * 31` se replie sur 32 bits, comme en WebAssembly.
+Un hachage reboucle exprès, et le dit : `wrappingMul` se replie sur 32 bits dans chaque build, comme en WebAssembly. Écrit `h * 31 + x`, il s’arrêterait au premier dépassement dans un build de debug, ce que doit faire un dépassement que personne n’a voulu.
 
 ## Les chaînes sont celles de JavaScript
 

@@ -16,7 +16,7 @@ cli-usage =
       --backend <name>   code generator of `build`: direct (default, no other tool) or rust (cargo, wasm-bindgen)
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
-      --allocator <name> allocator of a module that uses the heap: debug (default, every memory bug caught) or tlsf (production, bounded time)
+      --allocator <name> the build: debug (default, every memory bug and integer overflow caught) or tlsf (production, bounded time, integers wrap)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
       --imports <how>    imports of .peras files in a .apeiron module: built (default, each next to it) or source (kept for a bundler such as Vite)
@@ -858,4 +858,5 @@ runtime-double-release = the block allocated at { $alloc } is released a second 
 runtime-use-after-release = the block allocated at { $alloc } was written after { $release } released it
 runtime-leak = { $count } block(s) still alive at the end; the first was allocated at { $alloc }
 runtime-index = index { $index } is out of bounds: the length is { $length }
+runtime-integer-overflow = an integer overflowed: its type cannot hold the result. To wrap on purpose, use `wrappingAdd`, `wrappingSub` or `wrappingMul`; a production build wraps
 runtime-simd = this module uses WebAssembly SIMD, which this browser does not have: Chrome or Edge 91, Firefox 89 and Safari 16.4 do. Build it with `--simd off` to load it everywhere.

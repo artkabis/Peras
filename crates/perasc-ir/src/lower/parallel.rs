@@ -241,7 +241,7 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
                 }
             }
             // A bounds check reads the length only.
-            Stmt::Buf(BufStmt::CheckIndex, _) => {}
+            Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
             Stmt::Buf(..) | Stmt::Release(_) => return Err(Refusal::Heap),
             Stmt::CallMany { .. } => return Err(Refusal::Calls),
             Stmt::Return(_) | Stmt::ReturnMany(_) => return Err(Refusal::Exits),

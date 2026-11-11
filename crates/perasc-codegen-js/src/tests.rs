@@ -21,7 +21,16 @@ fn js(source: &str) -> String {
         "{:?}",
         analysis.diagnostics
     );
-    generate(&parsed.ast, &analysis, &Options::default()).unwrap_or_else(|errors| {
+    // A source starting with `// debug` is built as a debug build is.
+    let options = if source.starts_with("// debug") {
+        Options {
+            debug: Some(crate::Debug::new("m.apeiron", source)),
+            ..Options::default()
+        }
+    } else {
+        Options::default()
+    };
+    generate(&parsed.ast, &analysis, &options).unwrap_or_else(|errors| {
         assert!(errors.is_empty(), "{errors:?}");
         String::new()
     })
@@ -687,4 +696,42 @@ fn to_fixed_is_javascripts() {
          }",
         "throws: toFixed() digits argument must be between 0 and 100",
     );
+}
+
+#[test]
+fn a_debug_build_stops_on_an_integer_overflow() {
+    let source = |body: &str| {
+        format!(
+            "// debug
+export fn main(): Array<String> {{
+  let out: Array<String> = [];
+  {body}
+  return out;
+}}
+"
+        )
+    };
+    // In range, and wrapping on purpose: as in production.
+    gives(
+        &source(
+            "const max: i32 = 2147483647;
+  const big: i64 = 9223372036854775807;
+  const small: u8 = 250;
+  out.push(`${max - 1 + 1} ${max.wrappingAdd(1)} ${big.wrappingMul(2)} ${small.wrappingAdd(10)} ${(-7) * 3}`);",
+        ),
+        "[\"2147483647 -2147483648 -2 4 -21\"]",
+    );
+    for overflow in [
+        "const max: i32 = 2147483647; out.push(`${max + 1}`);",
+        "const min: i32 = -2147483648; out.push(`${min - 1}`);",
+        "const a: i32 = 65536; out.push(`${a * a}`);",
+        "const big: i64 = 9223372036854775807; out.push(`${big + 1}`);",
+        "const small: u8 = 250; out.push(`${small + 10}`);",
+        "let n: i32 = 2147483647; n += 1; out.push(`${n}`);",
+    ] {
+        gives(
+            &source(overflow),
+            "throws: an integer overflowed: its type cannot hold the result",
+        );
+    }
 }

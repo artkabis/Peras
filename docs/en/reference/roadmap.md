@@ -65,7 +65,8 @@ export fn words(text: String): i32 {
 - ~~Replacing a resource releases the previous one~~: done, with a `Slot` of a group for an arrow function that replaces one ([browser reference](browser.md)); the case study searches after a delay.
 - ~~`sortBy(key)`~~: done, `sortBy` and `sortByDescending` in both modes ([methods](methods.md#sorting-by-a-key)), 3 to 7 times TypeScript's speed by a number.
 - ~~`toFixed`~~: done, in both modes, JavaScript's text by construction ([methods](methods.md#as-text)); the cost on the machine is measured with every step from now on ([decision 0012](../decisions/0012-cost-on-the-machine.md)).
-- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: integer overflow stopped in debug, once its cost is measured; structures across `.apeiron` and `.peras`; elements owned by a group.
+- ~~Integer overflow stopped in debug~~: done, in both modes, a counted loop's counter left unchecked; production wraps, at no cost ([types](types.md)).
+- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: structures across `.apeiron` and `.peras`; elements owned by a group.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

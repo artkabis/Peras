@@ -50,7 +50,7 @@ Un `let` de module, une variable partagée par toutes les fonctions, est vérifi
 | `u8`, `u16`, `u32`, `u64` | entiers non signés          |
 | `f32`, `f64`              | nombres à virgule flottante |
 
-L’arithmétique entière reboucle en cas de dépassement, de la même façon dans chaque backend. Une division par zéro arrête le programme (un _trap_) : elle ne renvoie jamais une valeur inventée.
+L’arithmétique entière arrête le programme sur un dépassement pendant que vous développez, dans un build de debug, le défaut, et reboucle dans un build de production, de la même façon dans chaque backend, comme en Rust ([types](../reference/types.md)) ; `wrappingAdd`, `wrappingSub` et `wrappingMul` rebouclent exprès. Une division par zéro arrête le programme (un _trap_) : elle ne renvoie jamais une valeur inventée.
 
 Les littéraux prennent le type que demande leur contexte, `i32` et `f64` quand rien ne le fixe. Ils s’écrivent en hexadécimal, en binaire, avec des séparateurs et des exposants :
 

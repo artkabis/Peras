@@ -50,6 +50,21 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
     ("$min", &[], "const $min = (a, b) => (a < b ? a : b);"),
     ("$max", &[], "const $max = (a, b) => (a > b ? a : b);"),
     (
+        "$overflow",
+        &[],
+        "const $overflow = () => { throw new RangeError(OVERFLOW); };",
+    ),
+    (
+        "$ov",
+        &["$overflow"],
+        "const $ov = (r, lo, hi) => (r >= lo && r <= hi ? r : $overflow());",
+    ),
+    (
+        "$ov64",
+        &["$overflow"],
+        "const $ov64 = (r, signed) => ((signed ? BigInt.asIntN(64, r) : BigInt.asUintN(64, r)) === r ? r : $overflow());",
+    ),
+    (
         "$checked",
         &[],
         "const $checked = (r, lo, hi) => (r >= lo && r <= hi ? r : undefined);",
@@ -233,7 +248,8 @@ const RESOURCE: &str = "class $Resource { #release; constructor(release) { this.
 
 /// A helper's source; `bounds` is the text of an index out of bounds, with
 /// `{index}` and `{length}` in it.
-pub fn source(name: &str, bounds: &str, debug: bool) -> String {
+pub fn source(name: &str, options: &crate::Options) -> String {
+    let debug = options.debug.is_some();
     // In production, no leak detector: nothing registers a resource.
     if !debug {
         match name {
@@ -247,6 +263,7 @@ pub fn source(name: &str, bounds: &str, debug: bool) -> String {
         .find(|(n, _, _)| *n == name)
         .map_or("", |(_, _, source)| source);
     source
-        .replace("BOUNDS", &crate::expr::string_literal(bounds))
+        .replace("BOUNDS", &crate::expr::string_literal(&options.bounds))
+        .replace("OVERFLOW", &crate::expr::string_literal(&options.overflow))
         .replace("DEBUG ?", if debug { "true ?" } else { "false ?" })
 }
