@@ -92,7 +92,7 @@ Le script écrit `bench/stream/RESULTS.md`, `bench/stream/results.json`, avec le
 
 ## Exécution 1 : résultats
 
-Mesurée au commit `13921e6`, celui du protocole, sans rien d’autre en marche ; le [rapport](../../../bench/stream/RESULTS.md) et le temps de chaque appel dans [results.json](../../../bench/stream/results.json). Chaque lot de chaque réserve a donné le même résultat dans A, B et C, et C a refusé exactement les lignes cassées exprès.
+Mesurée au commit `13921e6`, celui du protocole, sans rien d’autre en marche ; le [rapport](../../../bench/stream/run-1/RESULTS.md) et le temps de chaque appel dans [results.json](../../../bench/stream/run-1/results.json). Chaque lot de chaque réserve a donné le même résultat dans A, B et C, et C a refusé exactement les lignes cassées exprès.
 
 | Hypothèse                                           | Mesuré, intervalle à 95 %                                       | Verdict      |
 | --------------------------------------------------- | --------------------------------------------------------------- | ------------ |
@@ -104,12 +104,12 @@ Mesurée au commit `13921e6`, celui du protocole, sans rien d’autre en marche 
 
 **Ce que cela dit.** Peras traite le flux 1,5 à 1,7 fois plus vite que le TypeScript tel qu’on l’écrit, et la frontière lui coûte 5 %. Il ne bat pas le TypeScript écrit pour la vitesse : il tourne à 0,87 à 0,96 fois sa vitesse, 4 à 13 % plus lent. H2 tient parce que son seuil était 0,8, pas parce que Peras gagne : entre les deux TypeScript, Peras se place plus près du rapide, et en dessous. Ses appels lents ne sont pas tranchés : l’intervalle de sa queue traverse son seuil.
 
-![Lignes par seconde par taille de lot : B le plus haut, C juste en dessous, A le plus bas](../../assets/stream-throughput.svg)
+![Lignes par seconde par taille de lot : B le plus haut, C juste en dessous, A le plus bas](../../assets/stream-run-1-throughput.svg)
 
-![Les rapports de vitesse avec leur intervalle à 95 % : C sur A entre 1,48 et 1,70, C sur B entre 0,87 et 0,96](../../assets/stream-ratios.svg)
+![Les rapports de vitesse avec leur intervalle à 95 % : C sur A entre 1,48 et 1,70, C sur B entre 0,87 et 0,96](../../assets/stream-run-1-ratios.svg)
 
-![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes : B et C proches, A à droite](../../assets/stream-latency.svg)
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes : B et C proches, A à droite](../../assets/stream-run-1-latency.svg)
 
-![Le temps par ligne de C séparé entre la frontière, environ 20 ns, et le calcul, environ 420 ns](../../assets/stream-breakdown.svg)
+![Le temps par ligne de C séparé entre la frontière, environ 20 ns, et le calcul, environ 420 ns](../../assets/stream-run-1-breakdown.svg)
 
 Pourquoi Peras n’est pas plus rapide est la question suivante ; elle est profilée dans [les constats](../findings.md), une étape retirée à la fois.

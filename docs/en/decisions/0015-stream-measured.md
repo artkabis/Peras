@@ -92,7 +92,7 @@ The script writes `bench/stream/RESULTS.md`, `bench/stream/results.json`, with e
 
 ## Run 1: results
 
-Measured at commit `13921e6`, the protocol's own, with nothing else running; the [report](../../../bench/stream/RESULTS.md) and every call's time in [results.json](../../../bench/stream/results.json). Every batch of every pool gave the same digest in A, B and C, and C refused exactly the lines broken on purpose.
+Measured at commit `13921e6`, the protocol's own, with nothing else running; the [report](../../../bench/stream/run-1/RESULTS.md) and every call's time in [results.json](../../../bench/stream/run-1/results.json). Every batch of every pool gave the same digest in A, B and C, and C refused exactly the lines broken on purpose.
 
 | Hypothesis                                           | Measured, 95 % interval                                        | Verdict      |
 | ---------------------------------------------------- | -------------------------------------------------------------- | ------------ |
@@ -104,12 +104,12 @@ Measured at commit `13921e6`, the protocol's own, with nothing else running; the
 
 **What it says.** Peras digests the stream 1.5 to 1.7 times as fast as the TypeScript as written, and the boundary costs it 5 %. It does not beat TypeScript written for speed: it runs at 0.87 to 0.96 times its speed, 4 to 13 % slower. H2 holds because its threshold was 0.8, not because Peras wins: between the two TypeScripts, Peras sits closer to the fast one, and below it. Its slow calls are not settled: the interval of its tail crosses its threshold.
 
-![Rows per second by batch size: B highest, C close below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size: B highest, C close below it, A lowest](../../assets/stream-run-1-throughput.svg)
 
-![The speed ratios with their 95 % intervals: C over A between 1.48 and 1.70, C over B between 0.87 and 0.96](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals: C over A between 1.48 and 1.70, C over B between 0.87 and 0.96](../../assets/stream-run-1-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows: B and C close, A to the right](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows: B and C close, A to the right](../../assets/stream-run-1-latency.svg)
 
-![C's time per row split into the boundary, about 20 ns, and the digest, about 420 ns](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary, about 20 ns, and the digest, about 420 ns](../../assets/stream-run-1-breakdown.svg)
 
 Why Peras is not faster is the next question; it is profiled in [the findings](../findings.md), one step removed at a time.
