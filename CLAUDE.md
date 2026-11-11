@@ -9,6 +9,7 @@ Read at the start of every session. It holds the rules of the project and the tr
 - **A build fails on any error.** Before a commit: `cargo fmt`, `cargo clippy -D warnings`, `cargo test --workspace`, `pnpm run check` (format, lint, types, tests, translations, `pnpm audit` with no vulnerability), `pnpm run docs`, and the `--check` of each benchmark touched.
 - **pnpm installs nothing published less than 24 hours ago** (`minimumReleaseAge`); never add an exclusion.
 - **Commits** follow Conventional Commits, signed off (`git commit -s`), with the attribution lines the session gives. No model name in the repository.
+- **Commits are authored by the owner**, who decides and signs off: in this repository, `git config user.name "Artkabis"` and `git config user.email "8205827+artkabis@users.noreply.github.com"`, set before the first commit of a session. The `Co-Authored-By` line still names who wrote the code.
 - **No force push.** After a pull request is merged, merge `main` into the branch.
 - **Nothing published outside the repository** (forums, social networks) without the owner.
 
