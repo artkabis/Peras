@@ -22,6 +22,8 @@ fn build(source: &str, optimize: bool) -> Vec<u8> {
             threads: false,
             // The code a production build runs: no overflow checks.
             overflow_checks: false,
+            // Instantiated beside its allocator, as the tests' host does.
+            link: false,
         },
         &Localizer::new(Language::English),
     )
@@ -282,6 +284,7 @@ fn simd_off_gives_modules_and_runtimes_without_it_and_a_loader_without_the_check
                 threads: false,
                 // The code a production build runs: no overflow checks.
                 overflow_checks: false,
+                link: false,
             },
             &Localizer::new(Language::English),
         )

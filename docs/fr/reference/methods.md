@@ -208,6 +208,7 @@ Les indices et les longueurs comptent les octets UTF-8, comme `length`. Un indic
 | `replace(from, to)`, `replaceAll(from, to)`   | le premier `from`, ou tous, remplacés par `to`                                                                                                                                                   | <span class="status compiled">compilé</span> |
 | `split(separator)`                            | les morceaux entre chaque séparateur, un `Array<String>` ; avec `""`, les caractères ; lus aussitôt, comme dans `text.split(" ").filter(…)`, les morceaux sont des vues du texte, pas des copies | <span class="status compiled">compilé</span> |
 | `parseI32()`, `parseI64()`                    | `Some(n)` quand le texte est un entier dans l’intervalle, sinon `None` ; voir plus bas                                                                                                           | <span class="status compiled">compilé</span> |
+| `parseF64()`                                  | `Some(x)` quand le texte est un nombre décimal, sinon `None` ; voir plus bas                                                                                                                     | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn tidy(line: String): String {
@@ -223,6 +224,15 @@ export fn tidy(line: String): String {
 export fn port(text: String): i32 {
   const n = text.trim().parseI32().unwrapOr(-1);
   return n.clamp(-1, 65535);
+}
+```
+
+`parseF64()` suit la même règle : un signe ou rien, des chiffres avec au plus un point et au moins un chiffre, puis éventuellement `e` ou `E`, un signe ou rien, et des chiffres. Ni espace, ni `_`, ni `Infinity`, ni `NaN`. Le nombre est le `f64` le plus proche, celui que donne `Number` en JavaScript, bit pour bit ; une valeur trop grande donne un infini, trop petite un zéro.
+
+```peras build
+export fn cents(price: String): i64 {
+  const euros = price.trim().parseF64().unwrapOr(0.0);
+  return (euros * 100.0).round().toI64();
 }
 ```
 

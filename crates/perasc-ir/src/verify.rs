@@ -123,6 +123,10 @@ impl<'a> Verifier<'a> {
                 if self.local_type(local.0) == Some(Ty::Owned) => {}
             Some((ExprKind::Local(local), Ty::Borrowed))
                 if self.local_type(local.0) == Some(Ty::Borrowed) => {}
+            // A literal only read, lent from its static header.
+            Some((ExprKind::Buf(op @ BufOp::Static(..), args), Ty::Borrowed)) => {
+                self.buf_expr(*op, args, Ty::Borrowed);
+            }
             // An element of an array of buffers, lent.
             Some((ExprKind::Buf(BufOp::Get(crate::Elem::Handle), args), Ty::Borrowed)) => {
                 self.buf_expr(BufOp::Get(crate::Elem::Handle), args, Ty::Borrowed);
@@ -180,6 +184,25 @@ impl<'a> Verifier<'a> {
                     self.problem(&format!("buf.literal #{index} has no data"));
                 }
                 Ty::Owned
+            }
+            BufOp::Static(index, at) => {
+                self.operands("buf.static", args, &[]);
+                let len = usize::try_from(index)
+                    .ok()
+                    .and_then(|i| self.module.data.get(i))
+                    .map(Vec::len);
+                match len.and_then(|n| u32::try_from(n).ok()) {
+                    None => self.problem(&format!("buf.static #{index} has no data")),
+                    Some(n)
+                        if at < crate::STATIC_START
+                            || at % 16 != 0
+                            || at + 16 + n > crate::STATIC_END =>
+                    {
+                        self.problem(&format!("buf.static #{index} @{at} is not below the heap"));
+                    }
+                    Some(_) => {}
+                }
+                Ty::Borrowed
             }
             BufOp::Len => {
                 self.buffer(args.first());

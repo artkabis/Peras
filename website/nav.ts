@@ -53,6 +53,7 @@ export const sections: Section[] = [
       "architecture",
       "research",
       "garden",
+      "stream",
       "findings",
       "kickoff-plan",
       "decisions/0001-webassembly-backend",
@@ -69,6 +70,8 @@ export const sections: Section[] = [
       "decisions/0012-cost-on-the-machine",
       "decisions/0013-garden-of-apeiron",
       "decisions/0014-data-at-scale",
+      "decisions/0015-stream-measured",
+      "decisions/0016-faster-from-the-literature",
     ],
   },
 ];

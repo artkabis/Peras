@@ -268,14 +268,39 @@ impl Lowering<'_> {
                 self.data.push(bytes);
                 self.data.len() - 1
             });
+        let segment = u32::try_from(index).unwrap_or(u32::MAX);
+        // Only read: lent from its static header, made when the module is
+        // instantiated, while there is room below the heap (decision 0016).
+        if mode == Mode::Borrow
+            && let Some(at) = self.static_literal(index)
+        {
+            return vec![Expr {
+                kind: ExprKind::Buf(BufOp::Static(segment, at), Vec::new()),
+                ty: Ty::Borrowed,
+            }];
+        }
         let literal = Expr {
-            kind: ExprKind::Buf(
-                BufOp::Literal(u32::try_from(index).unwrap_or(u32::MAX)),
-                Vec::new(),
-            ),
+            kind: ExprKind::Buf(BufOp::Literal(segment), Vec::new()),
             ty: Ty::Owned,
         };
         Self::fresh(state, vec![literal], mode)
+    }
+
+    /// The address of the static header of literal `index`, placed now if it
+    /// is not yet and fits: 16 bytes of header, then its bytes, rounded to 16.
+    fn static_literal(&mut self, index: usize) -> Option<u32> {
+        if let Some(&at) = self.statics.get(&index) {
+            return Some(at);
+        }
+        let len = u32::try_from(self.data.get(index)?.len()).ok()?;
+        let size = 16 + len.div_ceil(16) * 16;
+        let at = self.static_top;
+        if at + size > crate::STATIC_END {
+            return None;
+        }
+        self.static_top = at + size;
+        self.statics.insert(index, at);
+        Some(at)
     }
 
     /// `a + b` on strings: a new buffer with room for both, then each appended.
@@ -353,6 +378,13 @@ impl Lowering<'_> {
             self.unsupported(span, "deep-equality");
             return int(0);
         }
+        // `x.toLowerCase() == y`: each byte of `x`, its case changed, against
+        // `y`'s, without making the new string (decision 0014, finding F205).
+        let (lhs, rhs, case) = match (self.case_of(lhs), self.case_of(rhs)) {
+            (Some((x, case)), None) => (x, rhs, Some(case)),
+            (None, Some((y, case))) => (y, lhs, Some(case)),
+            _ => (lhs, rhs, None),
+        };
         let a = self.value_as(state, lhs, Mode::Borrow);
         let b = self.value_as(state, rhs, Mode::Borrow);
         let (Some(a0), Some(b0)) = (a.first(), b.first()) else {
@@ -375,11 +407,12 @@ impl Lowering<'_> {
             .zip(&b)
             .zip(&columns)
             .map(|((x, y), &elem)| {
-                super::binary(
-                    BinOp::Eq,
-                    get(x, i_expr.clone(), elem),
-                    get(y, i_expr.clone(), elem),
-                )
+                let xb = get(x, i_expr.clone(), elem);
+                let yb = get(y, i_expr.clone(), elem);
+                match case {
+                    None => super::binary(BinOp::Eq, xb, yb),
+                    Some(lower) => case_equal(xb, yb, lower),
+                }
             })
             .reduce(|acc, e| super::binary(BinOp::And, acc, e))
             .unwrap_or(Expr {
@@ -520,6 +553,29 @@ impl Lowering<'_> {
         match buffer {
             Some(buffer) => len(&buffer),
             None => int(0),
+        }
+    }
+
+    /// The string whose case `id` changes and how, when `id` is
+    /// `x.toLowerCase()` (true) or `x.toUpperCase()` (false) on a string.
+    fn case_of(&self, id: ExprId) -> Option<(ExprId, bool)> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Paren(inner) => self.case_of(*inner),
+            AstExpr::Call { callee, args, .. } if args.is_empty() => {
+                match &self.ast.expr(*callee).kind {
+                    AstExpr::Field { base, name }
+                        if matches!(self.check_type(*base), Some(CheckTy::String)) =>
+                    {
+                        match self.ast.name(name.symbol) {
+                            "toLowerCase" => Some((*base, true)),
+                            "toUpperCase" => Some((*base, false)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 
@@ -759,6 +815,10 @@ impl Lowering<'_> {
             self.map_for_of(state, name, iterable, body, out);
             return;
         }
+        if let Some((text, separator)) = self.streamed_split(iterable, body.span) {
+            self.split_for_of(state, name, text, separator, body, out);
+            return;
+        }
         let Some(columns) = self.columns_of(iterable, span) else {
             return;
         };
@@ -816,6 +876,101 @@ impl Lowering<'_> {
         let cond = super::binary(BinOp::Lt, i_expr.clone(), len(&first));
         let step = vec![Stmt::Set(i, super::binary(BinOp::Add, i_expr, int(1)))];
         let lowered = self.loop_body(state, Some(cond), Vec::new(), body, step, &mut turn);
+        out.extend(lowered);
+        state.close(out);
+        state.end_statement(out);
+    }
+
+    /// The text and the separator of `for (const x of text.split(sep))`
+    /// when its parts can be walked one at a time, with no array: `sep` is a
+    /// string written in the source, empty for its characters (F207), and the body does not name
+    /// `text`, so that it cannot change while a part is read.
+    fn streamed_split(&self, iterable: ExprId, body: Span) -> Option<(ExprId, ExprId)> {
+        let AstExpr::Call { callee, args, .. } = &self.ast.expr(iterable).kind else {
+            return None;
+        };
+        let AstExpr::Field { base, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        let [separator] = args.as_slice() else {
+            return None;
+        };
+        let literal = matches!(&self.ast.expr(*separator).kind, AstExpr::String(_));
+        let text = matches!(self.check_type(*base), Some(CheckTy::String));
+        let named = self
+            .root(*base)
+            .is_some_and(|root| self.mentions(&[body], root));
+        (self.ast.name(name.symbol) == "split" && literal && text && !named)
+            .then_some((*base, *separator))
+    }
+
+    /// `for (const x of text.split(sep))` walked part by part: one view of
+    /// `text`, pointed at each part in turn by the runtime, and no array of
+    /// them (decision 0014). The parts are those `split` gives, the last
+    /// empty one included; the view is released after the loop, or on a
+    /// `return` from it.
+    fn split_for_of(
+        &mut self,
+        state: &mut FnState,
+        name: &perasc_syntax::ast::Ident,
+        text: ExprId,
+        separator: ExprId,
+        body: &perasc_syntax::ast::Stmt,
+        out: &mut Vec<Stmt>,
+    ) {
+        let characters =
+            matches!(&self.ast.expr(separator).kind, AstExpr::String(s) if s.is_empty());
+        let Some(source) = self.value_as(state, text, Mode::Borrow).into_iter().next() else {
+            return;
+        };
+        let Some(sep) = self
+            .value_as(state, separator, Mode::Borrow)
+            .into_iter()
+            .next()
+        else {
+            return;
+        };
+        let cursor = state.owned_temp(Expr {
+            kind: ExprKind::Buf(
+                BufOp::Runtime(crate::RuntimeFn::StrCursor),
+                vec![source.clone()],
+            ),
+            ty: Ty::Owned,
+        });
+        state.drops.push(cursor);
+        let at = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(at, int(0)));
+        // The characters of an empty text are none: `"".split("")` is `[]`.
+        if characters {
+            state.pre.push(Stmt::If {
+                cond: super::binary(BinOp::Eq, len(&source), int(0)),
+                then: vec![Stmt::Set(at, int(-1))],
+                otherwise: Vec::new(),
+            });
+        }
+        state.flush(out);
+        let at_expr = super::local_expr(state, at);
+        state.open();
+        // The text, the separator and the view live through every turn.
+        let temporaries = std::mem::take(&mut state.drops);
+        if let Some(scope) = state.owned.last_mut() {
+            scope.extend(temporaries);
+        }
+        if let Some(scope) = state.scopes.last_mut() {
+            scope.insert(name.symbol, super::Binding::Lent(vec![borrowed(cursor)]));
+        }
+        let mut turn = vec![Stmt::Set(
+            at,
+            Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(crate::RuntimeFn::NextPart),
+                    vec![source, sep, borrowed(cursor), at_expr.clone()],
+                ),
+                ty: Ty::I32,
+            },
+        )];
+        let cond = super::binary(BinOp::Ge, at_expr, int(0));
+        let lowered = self.loop_body(state, Some(cond), Vec::new(), body, Vec::new(), &mut turn);
         out.extend(lowered);
         state.close(out);
         state.end_statement(out);
@@ -898,6 +1053,9 @@ impl Lowering<'_> {
         views: bool,
     ) -> Option<Vec<Expr>> {
         let (id, buffer) = text;
+        if method == "parseF64" {
+            return Some(Self::parse_float(state, buffer.clone()));
+        }
         if matches!(method, "parseI32" | "parseI64") {
             return Some(Self::parse_int(state, buffer.clone(), method == "parseI32"));
         }
@@ -1191,4 +1349,33 @@ fn fill_breaks(stmts: Vec<Stmt>, releases: &mut impl Iterator<Item = Vec<Stmt>>)
         }
     }
     out
+}
+
+/// Whether byte `x`, in lower case (`lower`) or upper case, is byte `y`: an
+/// ASCII letter of the other case changes by 32, every other byte stays.
+fn case_equal(x: Expr, y: Expr, lower: bool) -> Expr {
+    let (from, to, shift) = if lower { (65, 90, 32) } else { (97, 122, -32) };
+    let letter = super::binary(
+        BinOp::And,
+        super::binary(BinOp::Ge, x.clone(), int(from)),
+        super::binary(BinOp::Le, x.clone(), int(to)),
+    );
+    let changed = super::binary(
+        BinOp::Eq,
+        super::binary(BinOp::Add, x.clone(), int(shift)),
+        y.clone(),
+    );
+    let kept = super::binary(BinOp::Eq, x, y);
+    super::binary(
+        BinOp::Or,
+        super::binary(BinOp::And, letter.clone(), changed),
+        super::binary(
+            BinOp::And,
+            Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(letter)),
+                ty: Ty::Bool,
+            },
+            kept,
+        ),
+    )
 }

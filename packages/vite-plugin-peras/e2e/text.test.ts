@@ -20,6 +20,19 @@ interface Words {
   firstKept(line: string): string;
   afterChange(line: string): string;
   partsOf(line: string): string[];
+  sameLower(a: string, b: string): boolean;
+  sameUpper(a: string, b: string): boolean;
+  notLower(a: string, b: string): boolean;
+  partsComma(text: string): string;
+  partsDash(text: string): string;
+  firstLong(text: string, min: number): string;
+  countUntil(text: string, stop: string): number;
+  nestedLengths(text: string): number;
+  charsOf(text: string): string;
+  literalLength(): number;
+  whichLiteral(s: string): number;
+  literalKey(text: string): number;
+  upperCount(text: string, stop: string): number;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -32,6 +45,130 @@ async function load(allocator: "debug" | "tlsf"): Promise<Words> {
 
 describe("strings in JavaScript", () => {
   for (const allocator of ["debug", "tlsf"] as const) {
+    it(`walk the parts of a split one by one as JavaScript's split gives them, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const parts = (text: string, sep: string) => {
+        const p = text.split(sep);
+        return `${String(p.length)}:${p.map((x) => `${x}|`).join("")}`;
+      };
+      const texts = [
+        "",
+        ",",
+        ",,",
+        "a",
+        "a,",
+        ",a",
+        "a,,b",
+        "é,ü,🌿",
+        "x -- y",
+        " -- ",
+        "a -- -- b",
+        "a - - b",
+      ];
+      for (const t of texts) {
+        expect(m.partsComma(t), JSON.stringify(t)).toBe(parts(t, ","));
+        expect(m.partsDash(t), JSON.stringify(t)).toBe(parts(t, " -- "));
+      }
+      expect(m.firstLong("ab;abcd;abcdef", 4)).toBe("abcd");
+      expect(m.firstLong("ab;cd", 9)).toBe("");
+      const until = (t: string, stop: string) => {
+        let n = 0;
+        for (const p of t.split(",")) {
+          if (p === stop) break;
+          if (p.length === 0) continue;
+          n++;
+        }
+        return n;
+      };
+      for (const [t, stop] of [
+        ["a,,b,STOP,c", "STOP"],
+        ["a,b", "z"],
+        ["", ""],
+        [",,", "x"],
+      ] as const)
+        expect(m.countUntil(t, stop), t).toBe(until(t, stop));
+      const nested = (t: string) =>
+        t
+          .split("\n")
+          .reduce((n, line) => n + line.split(",").reduce((k, f) => k + f.length * 10 + 1, 0), 0);
+      for (const t of ["a,bb\nccc", "", "\n", "x,\n,y\n"])
+        expect(m.nestedLengths(t), JSON.stringify(t)).toBe(nested(t));
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`compare a string whose case changes as JavaScript's ASCII rule does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const words = [
+        "",
+        "A",
+        "a",
+        "Z",
+        "z",
+        "@",
+        "[",
+        "`",
+        "{",
+        "AbC-9",
+        "abc-9",
+        "ABC-9",
+        "é",
+        "É",
+        "ÉA",
+        "éa",
+        "ab",
+        "abc",
+        "US",
+        "us",
+      ];
+      // Peras changes the case of ASCII letters only, as its documentation says.
+      const lower = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+      const upper = (s: string) => s.replace(/[a-z]/g, (c) => c.toUpperCase());
+      for (const a of words)
+        for (const b of words) {
+          expect(m.sameLower(a, b), `${a}.toLowerCase() == ${b}`).toBe(lower(a) === b);
+          expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
+          expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
+        }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`lends literals only read from a static header, and copies them past its room, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.literalLength()).toBe(6);
+      for (let i = 0; i < 70; i++)
+        expect(m.whichLiteral(`literal number ${String(i).padStart(2, "0")}!`)).toBe(i);
+      expect(m.whichLiteral("literal number 70!")).toBe(-1);
+      expect(m.literalKey("a b c b zz b")).toBe(31);
+      for (let k = 0; k < 1000; k++) m.literalLength();
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`walks the characters of split("") one at a time, as split gives them, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      // Peras's split("") cuts at characters, code points, not UTF-16 units.
+      const chars = (t: string) => Array.from(t);
+      for (const t of ["", "a", "abc", "héllo", "日本語", "a😀b", "𝄞x", " ,\n", "ÉtÉ"]) {
+        expect(m.charsOf(t), JSON.stringify(t)).toBe(
+          chars(t)
+            .map((c) => `${c}|`)
+            .join(""),
+        );
+        for (const stop of ["", "x", "b", "語"]) {
+          let n = 0;
+          for (const c of chars(t)) {
+            if (c === stop) break;
+            if (c.toLowerCase() !== c && /^[A-Z]$/.test(c)) n++;
+          }
+          expect(m.upperCount(t, stop), `${t} / ${stop}`).toBe(n);
+        }
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
     it(`split into a constant only read gives views, and copies where it must, on ${allocator}`, async () => {
       const m = await load(allocator);
       expect(m.csvSum("1,ab,xyz\n2,c,de\nbad\n")).toBe(10);

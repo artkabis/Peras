@@ -17,6 +17,7 @@ wat.workspace = true
 
 [dev-dependencies]
 wasmi.workspace = true
+wat.workspace = true
 wasmparser = { workspace = true, features = ["validate"] }
 
 [lints]

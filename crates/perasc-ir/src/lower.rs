@@ -67,6 +67,8 @@ pub fn lower_with(
         results: HashMap::new(),
         conventions: HashMap::new(),
         data: Vec::new(),
+        statics: HashMap::new(),
+        static_top: crate::STATIC_START,
         diagnostics: Vec::new(),
         current: String::new(),
         body_span: Span::new(0, 0),
@@ -186,6 +188,11 @@ struct Lowering<'a> {
     conventions: HashMap<FnId, Vec<Convention>>,
     /// The bytes of the string literals, each once.
     data: Vec<Vec<u8>>,
+    /// The literals only read, placed below the heap: each one's header
+    /// address, by its index in `data` ([`crate::BufOp::Static`]).
+    statics: HashMap<usize, u32>,
+    /// The first free address below the heap for the next one.
+    static_top: u32,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -942,9 +949,14 @@ impl Lowering<'_> {
             state.views_owned = true;
         }
         if let Some(ty) = ty.filter(values::is_aggregate) {
-            let Ok(leaves) = self.leaves(&ty) else {
-                self.unsupported(local.name.span, "struct");
-                return;
+            let leaves = match self.leaves(&ty) {
+                Ok(leaves) => leaves,
+                // The reason itself: a type that contains itself, an element
+                // not compiled yet…
+                Err(feature) => {
+                    self.unsupported(local.name.span, feature);
+                    return;
+                }
             };
             let values = match local.init {
                 Some(init) => self.value(state, init),

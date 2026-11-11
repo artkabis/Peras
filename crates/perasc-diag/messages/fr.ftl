@@ -19,6 +19,7 @@ cli-usage =
       --allocator <nom>  le build : debug (défaut, chaque bug mémoire et chaque débordement d’entier attrapés) ou tlsf (production, temps borné, les entiers bouclent)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
+      --link <on|off>    le runtime lié dans le .wasm du module, ses appels internes à un seul module (décision 0016) : on (par défaut) ou off
       --imports <mode>   imports de fichiers .peras dans un module .apeiron : built (par défaut, chacun compilé à côté) ou source (gardés pour un bundler comme Vite)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version
@@ -836,7 +837,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
    *[other] cette construction
 }
 gen-unsupported-label = du Peras valide, pas encore compilé
-gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes et, pour l’instant, traite `i32`, `i64`, `f32`, `f64` et `bool`, les structures, les options, et les tableaux de nombres et de booléens, avec toutes les instructions, les appels et les conversions.
+gen-unsupported-why = Le programme est correct : les vérifications l’ont accepté. La génération de code se construit par étapes, et cette construction n’est pas encore prise en charge ; la page « Ce qui fonctionne aujourd’hui » de la documentation dit, fonctionnalité par fonctionnalité, ce qui est compilé.
 gen-unsupported-fix = n’utilise pour l’instant que les constructions prises en charge dans ce module, ou limite-le à `perasc check`
 
 ## Rendu des diagnostics

@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint --max-warnings 0 .",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/fib/tsconfig.json --noEmit && tsc -p examples/garden/tsconfig.json --noEmit && tsc -p website/tsconfig.json --noEmit && tsc -p bench/browser/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/fib/tsconfig.json --noEmit && tsc -p examples/garden/tsconfig.json --noEmit && tsc -p examples/stream/tsconfig.json --noEmit && tsc -p website/tsconfig.json --noEmit && tsc -p bench/browser/tsconfig.json",
     "test": "vitest run",
     "check:i18n": "node scripts/check-i18n.mjs",
     "audit": "pnpm audit --audit-level low",

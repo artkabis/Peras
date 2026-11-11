@@ -1,0 +1,126 @@
+// The stream's digest: one batch of sensor readings, as CSV text, read and
+// summed in one pass. The page runs it on every batch, and the same digest
+// written in TypeScript (digest.ts) beside it, to compare their times and
+// check, batch by batch, that they give the same numbers.
+//
+// A line is `ts,sensor,zone,temp,humidity,watts`: three integers or names,
+// then three decimal numbers. A line that is not so is counted as broken.
+
+export struct Zone {
+  name: String;
+  readings: i32;
+  alerts: i32;
+  tempSum: f64;
+  tempMin: f64;
+  tempMax: f64;
+  humiditySum: f64;
+  energy: f64;
+}
+
+export struct Digest {
+  lines: i32;
+  broken: i32;
+  kept: i32;
+  zones: Array<Zone>;
+  histogram: Array<i32>;
+  hottestSensor: i32;
+  hottest: f64;
+}
+
+struct Reading {
+  sensor: i32;
+  zone: String;
+  temp: f64;
+  humidity: f64;
+  watts: f64;
+}
+
+/** The bins of the temperature histogram: 2 °C each, from -10 to 50. */
+export fn bins(): i32 {
+  return 30;
+}
+
+// A zone is a name of 1 to 12 letters from a to z: toUpperCase changes
+// exactly those.
+fn isZone(s: String): bool {
+  if (s.length == 0 || s.length > 12) {
+    return false;
+  }
+  for (const c of s.split("")) {
+    if (c.toUpperCase() == c) {
+      return false;
+    }
+  }
+  return true;
+}
+
+fn parse(line: String): Option<Reading> {
+  const f = line.split(",");
+  if (f.length != 6 || !isZone(f[2])) {
+    return None;
+  }
+  const ts = f[0].parseI64()?;
+  const sensor = f[1].parseI32()?;
+  const temp = f[3].parseF64()?;
+  const humidity = f[4].parseF64()?;
+  const watts = f[5].parseF64()?;
+  if (ts < 0 || temp < -60.0 || temp > 80.0 || humidity < 0.0 || humidity > 100.0 || watts < 0.0) {
+    return None;
+  }
+  return Some(Reading(sensor, f[2].copy(), temp, humidity, watts));
+}
+
+export fn digest(text: String): Digest {
+  let lines = 0;
+  let broken = 0;
+  let kept = 0;
+  let index: Map<String, i32> = Map.new();
+  let zones: Array<Zone> = [];
+  let histogram: Array<i32> = [];
+  for (let b = 0; b < bins(); b++) {
+    histogram.push(0);
+  }
+  let hottestSensor = -1;
+  let hottest = -1000.0;
+
+  for (const line of text.split("\n")) {
+    if (line.length == 0) {
+      continue;
+    }
+    lines += 1;
+    const parsed = parse(line);
+    if (parsed.isNone()) {
+      broken += 1;
+      continue;
+    }
+    const r = parsed.unwrapOr(Reading(0, "", 0.0, 0.0, 0.0));
+    kept += 1;
+    if (!index.has(r.zone)) {
+      index.set(r.zone.copy(), zones.length);
+      zones.push(Zone(r.zone.copy(), 0, 0, 0.0, r.temp, r.temp, 0.0, 0.0));
+    }
+    const at = index.get(r.zone).unwrapOr(0);
+    zones[at].readings += 1;
+    zones[at].tempSum += r.temp;
+    zones[at].tempMin = zones[at].tempMin.min(r.temp);
+    zones[at].tempMax = zones[at].tempMax.max(r.temp);
+    zones[at].humiditySum += r.humidity;
+    zones[at].energy += r.watts;
+    if (r.temp > 35.0 || r.humidity > 90.0) {
+      zones[at].alerts += 1;
+    }
+    const bin = ((r.temp + 10.0) / 2.0).floor().max(0.0).min(29.0).toI32();
+    histogram[bin] += 1;
+    if (r.temp > hottest) {
+      hottest = r.temp;
+      hottestSensor = r.sensor;
+    }
+  }
+
+  let sorted: Array<Zone> = [];
+  for (const z of zones) {
+    sorted.push(Zone(z.name.copy(), z.readings, z.alerts, z.tempSum, z.tempMin, z.tempMax, z.humiditySum, z.energy));
+  }
+  sorted.sortBy((z) => z.name);
+  return Digest(lines, broken, kept, sorted, histogram, hottestSensor, hottest);
+}

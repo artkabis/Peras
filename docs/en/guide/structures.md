@@ -120,6 +120,6 @@ export interface Segment {
 export declare function flip(s: Segment): Segment;
 ```
 
-> Structures whose fields are numbers, booleans or structures compile. A field that is an array or a string is checked, not compiled yet.
+> Structures compile whatever their fields hold: numbers, booleans, strings, arrays, options, maps, other structures; a structure holding a string or an array releases it with itself. From JavaScript, they come and go as plain objects. A structure has no `copy()` yet: one lent by a loop is rebuilt field by field to be kept ([findings](../findings.md), F102).
 
 Next: [enumerations and match](enums.md).

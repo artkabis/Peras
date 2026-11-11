@@ -62,6 +62,50 @@ Masmano, Ripoll, Crespo et Real, _TLSF: A New Dynamic Memory Allocator for Real-
 - **Montre** : une famille de fonctions pseudo-aléatoires rapides sur les entrées courtes, conçue pour les tables de hachage protégées contre l’inondation de hachage.
 - **Dans Peras** : les tables et les ensembles hachent avec SipHash-1-3 sous une clé tirée pour chaque instance ([décision 0005](decisions/0005-maps-and-sets.md)).
 
+## Lire les données vite
+
+**Du texte décimal au flottant le plus proche.** Clinger, _How to Read Floating Point Numbers Accurately_, PLDI 1990 (p. 92–101).
+
+- **Montre** : un algorithme qui trouve toujours la meilleure approximation binaire d’un nombre décimal, un problème qu’aucune arithmétique de précision fixe ne résout seule.
+- **Dans Peras** : `parseF64` calcule le cas courant exactement en WebAssembly par son chemin rapide, et demande le `Number` de l’hôte au-delà ([méthodes](reference/methods.md)).
+
+**Des nombres lus au gigaoctet par seconde.** Lemire, _Number Parsing at a Gigabyte per Second_, Software: Practice and Experience 51(8), 2021, p. 1700–1727 ([DOI 10.1002/spe.2984](https://doi.org/10.1002/spe.2984)).
+
+- **Montre** : du texte décimal lu en flottant le plus proche à environ un gigaoctet par seconde sur des processeurs 64 bits, en optimisant le cas courant d’au plus 19 chiffres, sans perte d’exactitude.
+- **Dans Peras** : la voie pour lire chaque `parseF64` en WebAssembly, sans demander à l’hôte ([décision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**La structure trouvée plusieurs octets à la fois.** Langdale et Lemire, _Parsing Gigabytes of JSON per Second_, The VLDB Journal 28(6), 2019 ([DOI 10.1007/s00778-019-00578-5](https://doi.org/10.1007/s00778-019-00578-5)).
+
+- **Montre** : un analyseur JSON qui valide et traite des gigaoctets par seconde sur un cœur, avec un quart ou moins des instructions d’un analyseur de référence, en utilisant largement les instructions SIMD.
+- **Dans Peras** : la voie pour chercher un séparateur 16 octets à la fois dans `split` ([décision 0016](decisions/0016-faster-from-the-literature.md)).
+
+## Retirer le travail que le programme n’a pas demandé
+
+**Pas de liste intermédiaire.** Coutts, Leshchinskiy et Stewart, _Stream Fusion: From Lists to Streams to Nothing at All_, ICFP 2007 (p. 315–326).
+
+- **Montre** : une déforestation automatique, par transformations équationnelles, qui fusionne plus de fonctions que la fusion raccourcie d’avant, plis à gauche et listes imbriquées compris.
+- **Dans Peras** : `for (const part of text.split(sep))` parcourt les morceaux sans le tableau (constat F206) ; les caractères de `split("")` sont les suivants ([décision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**Un calcul fait deux fois, fait une fois.** Morel et Renvoise, _Global Optimization by Suppression of Partial Redundancies_, Communications of the ACM 22(2), 1979.
+
+- **Montre** : l’élimination des redondances et la sortie des invariants de boucle traitées comme un seul problème, la suppression des calculs partiellement redondants, par analyse de flot de données.
+- **Dans Peras** : une seule recherche pour `has` ou `get` suivi de `get` ou `set` de la même clé (constat F210, [décision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**Les objets qui ne s’échappent pas.** Choi, Gupta, Serrano, Sreedhar et Midkiff, _Escape Analysis for Java_, OOPSLA 1999.
+
+- **Montre** : une analyse de flot de données, sur un graphe de connexion, qui trouve les objets qui ne survivent pas à la méthode qui les crée, pour les allouer sur sa pile.
+- **Dans Peras** : un tableau de vues qui ne quitte pas le corps d’une boucle, et un `Option` rendu puis déballé aussitôt, n’ont pas besoin d’un bloc du tas à chaque fois (constats F208, F209).
+
+**Les régions.** Tofte et Talpin, _Region-Based Memory Management_, Information and Computation 132(2), 1997, p. 109–176.
+
+- **Montre** : la mémoire allouée et libérée par régions, les points d’allocation et de libération inférés par une analyse de types et d’effets, sans ramasse-miettes.
+
+**La réutilisation.** Reinking, Xie, de Moura et Leijen, _Perceus: Garbage Free Reference Counting with Reuse_, PLDI 2021.
+
+- **Montre** : un comptage de références précis qui ne garde que les données vivantes, prouvé sûr et sans déchets, dont l’analyse de réutilisation change du code fonctionnel en mises à jour sur place.
+- **Ne montre pas** : quoi que ce soit sur la possession de Peras, qui ne compte pas de références ; la réutilisation d’un bloc libéré juste avant une allocation de sa taille s’y applique tout de même.
+- **Dans Peras** : le tableau d’une boucle réutilisé d’une itération à l’autre (constat F208).
+
 ## Les flottants en texte
 
 Adams, _Ryū: Fast Float-to-String Conversion_, PLDI 2018 ([DOI 10.1145/3192366.3192369](https://doi.org/10.1145/3192366.3192369)).

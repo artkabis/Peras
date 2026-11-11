@@ -225,6 +225,20 @@ fn arrays_strings_maps_and_sets() {
 }
 
 #[test]
+fn parse_f64_is_strict() {
+    gives(
+        "export fn main(): Array<bool> {
+           return [
+             \"12.5\".parseF64().unwrapOr(-1.0) == 12.5, \".5\".parseF64().unwrapOr(-1.0) == 0.5,
+             \"1e3\".parseF64().unwrapOr(-1.0) == 1000.0, \" 1\".parseF64().isNone(),
+             \"0x10\".parseF64().isNone(), \"Infinity\".parseF64().isNone(), \"\".parseF64().isNone(),
+           ];
+         }",
+        "[true,true,true,true,true,true,true]",
+    );
+}
+
+#[test]
 fn out_of_bounds_throws() {
     gives(
         "export fn main(): i32 {

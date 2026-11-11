@@ -208,6 +208,7 @@ Indices and lengths count bytes of UTF-8, as `length` does. An index inside a ch
 | `replace(from, to)`, `replaceAll(from, to)`   | the first `from`, or every one, replaced by `to`                                                                                                                           | <span class="status compiled">compiled</span> |
 | `split(separator)`                            | the parts between each separator, an `Array<String>`; with `""`, the characters; read at once, as `text.split(" ").filter(…)`, the parts are views of the text, not copies | <span class="status compiled">compiled</span> |
 | `parseI32()`, `parseI64()`                    | `Some(n)` when the text is an integer in range, else `None`; see below                                                                                                     | <span class="status compiled">compiled</span> |
+| `parseF64()`                                  | `Some(x)` when the text is a decimal number, else `None`; see below                                                                                                        | <span class="status compiled">compiled</span> |
 
 ```peras build
 export fn tidy(line: String): String {
@@ -223,6 +224,15 @@ export fn tidy(line: String): String {
 export fn port(text: String): i32 {
   const n = text.trim().parseI32().unwrapOr(-1);
   return n.clamp(-1, 65535);
+}
+```
+
+`parseF64()` follows the same rule: a sign or none, digits with at most one point and at least one digit, then optionally `e` or `E`, a sign or none, and digits. No spaces, no `_`, no `Infinity`, no `NaN`. The number is the nearest `f64`, the same as JavaScript's `Number` gives, bit for bit; a value too large is an infinity, too small a zero.
+
+```peras build
+export fn cents(price: String): i64 {
+  const euros = price.trim().parseF64().unwrapOr(0.0);
+  return (euros * 100.0).round().toI64();
 }
 ```
 

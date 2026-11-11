@@ -254,7 +254,19 @@ impl Checker<'_> {
                 self.useful(&kept, rest, rest_types)
             }
             Pat::Any => {
-                if let Some(cs) = &constructors {
+                // Every constructor is tried only when the rows name them all,
+                // a complete signature; otherwise the rows that match anything
+                // decide (Maranget's default matrix). Trying them all anyway
+                // never ends on a type that contains itself, as
+                // `enum List { Nil, Cons(i32, List) }`.
+                let named: std::collections::BTreeSet<usize> = matrix
+                    .iter()
+                    .filter_map(|r| match r.first() {
+                        Some(Pat::Ctor(c, _)) => Some(*c),
+                        _ => None,
+                    })
+                    .collect();
+                if let Some(cs) = constructors.as_ref().filter(|cs| named.len() == cs.len()) {
                     return cs.iter().enumerate().any(|(c, (_, fields))| {
                         let row = with(vec![Pat::Any; fields.len()]);
                         self.useful(

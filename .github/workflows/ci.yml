@@ -95,7 +95,7 @@ jobs:
       # JavaScript give: the comparison of bench/README.md stays runnable.
       - run: cargo build --release --locked -p perasc
       - name: Install the Chromium of the pinned Playwright
-        run: pnpm exec playwright install --with-deps chromium
+        run: node scripts/install-browser.mjs chromium
       - name: Peras, JavaScript, Rust and AssemblyScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check --contenders
 
@@ -131,10 +131,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install the Chromium of the pinned Playwright
-        run: pnpm exec playwright install --with-deps chromium
+        run: node scripts/install-browser.mjs chromium
       - run: pnpm run e2e
       - name: The garden's playground builds for production
         run: pnpm --filter peras-example-garden build
+      - name: The stream app builds for production
+        run: pnpm --filter peras-example-stream build
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
       - name: Split across Web Workers, the kernels give what they give directly
@@ -155,6 +157,10 @@ jobs:
         run: node scripts/bench-garden.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
+      - name: The stream's three digests agree (decision 0015)
+        run: node scripts/bench-stream.mjs --check
+      - name: The candle's three gardens give the same pixels
+        run: node scripts/candle.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 
@@ -183,7 +189,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install the WebKit of the pinned Playwright
-        run: pnpm exec playwright install --with-deps webkit
+        run: node scripts/install-browser.mjs webkit
       - name: Peras against JavaScript, in WebKit
         run: |
           node scripts/bench-browser.mjs --browser webkit

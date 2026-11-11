@@ -154,6 +154,33 @@ impl Lowering<'_> {
         Self::fresh(state, vec![joined], mode)
     }
 
+    /// `s.parseF64()` on the lent string `s`: whether it is a decimal number,
+    /// and its value, correctly rounded; 0 when it is not. The runtime gives
+    /// NaN for a text that is not one, which no number accepted can be.
+    pub(super) fn parse_float(state: &mut FnState, s: Expr) -> Vec<Expr> {
+        let read = state.temp(Ty::F64);
+        state
+            .pre
+            .push(Stmt::Set(read, runtime(RuntimeFn::ParseFloat, vec![s])));
+        let read = super::local_expr(state, read);
+        let some = state.temp(Ty::Bool);
+        state.pre.push(Stmt::Set(
+            some,
+            super::binary(BinOp::Eq, read.clone(), read.clone()),
+        ));
+        let value = state.temp(Ty::F64);
+        state.pre.push(Stmt::Set(value, super::zero(Ty::F64)));
+        state.pre.push(Stmt::If {
+            cond: super::local_expr(state, some),
+            then: vec![Stmt::Set(value, read)],
+            otherwise: Vec::new(),
+        });
+        vec![
+            super::local_expr(state, some),
+            super::local_expr(state, value),
+        ]
+    }
+
     /// `s.parseI32()` or `s.parseI64()` on the lent string `s`: whether it is
     /// an integer in range, and its value, 0 when it is not.
     pub(super) fn parse_int(state: &mut FnState, s: Expr, narrow: bool) -> Vec<Expr> {

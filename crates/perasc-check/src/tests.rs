@@ -280,3 +280,34 @@ fn applying_a_fix_removes_its_error() {
         }
     }
 }
+
+/// A type that contains itself is matched in finite time: the check of
+/// exhaustiveness tries every variant only when the rows name them all.
+#[test]
+fn a_match_on_a_type_that_contains_itself_ends() {
+    let list = "enum List {\n  Nil,\n  Cons(i32, List),\n}\n";
+    let complete = format!(
+        "{list}export fn f(l: List): i32 {{\n  return match (l) {{\n    List.Nil => 0,\n    List.Cons(x, _) => x,\n  }};\n}}\n"
+    );
+    assert_eq!(codes_of(&complete), []);
+    let deep = format!(
+        "{list}export fn f(l: List): i32 {{\n  return match (l) {{\n    List.Cons(x, List.Cons(y, _)) => x + y,\n    List.Cons(x, List.Nil) => x,\n    List.Nil => 0,\n  }};\n}}\n"
+    );
+    assert_eq!(codes_of(&deep), []);
+    let wildcard = format!(
+        "{list}export fn f(l: List): i32 {{\n  return match (l) {{\n    _ => 1,\n  }};\n}}\n"
+    );
+    assert_eq!(codes_of(&wildcard), []);
+    let missing = format!(
+        "{list}export fn f(l: List): i32 {{\n  return match (l) {{\n    List.Nil => 0,\n  }};\n}}\n"
+    );
+    let found = diagnostics(&missing);
+    assert_eq!(
+        found.iter().map(|d| d.code).collect::<Vec<_>>(),
+        [codes::NON_EXHAUSTIVE_MATCH]
+    );
+    let deep_missing = format!(
+        "{list}export fn f(l: List): i32 {{\n  return match (l) {{\n    List.Cons(x, List.Nil) => x,\n    List.Nil => 0,\n  }};\n}}\n"
+    );
+    assert_eq!(codes_of(&deep_missing), [codes::NON_EXHAUSTIVE_MATCH]);
+}

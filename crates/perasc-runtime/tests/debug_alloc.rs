@@ -91,6 +91,13 @@ impl Heap {
                 Err(wasmi::Error::new("float_text is not called here"))
             },
         )?;
+        linker.func_wrap(
+            "peras",
+            "float_parse",
+            |_: Caller<'_, Host>, _at: i32, _len: i32| -> Result<f64, wasmi::Error> {
+                Err(wasmi::Error::new("float_parse is not called here"))
+            },
+        )?;
         let instance = linker.instantiate_and_start(&mut store, &module)?;
         let memory = instance
             .get_memory(&store, "memory")

@@ -139,6 +139,8 @@ fn a_filter_whose_length_is_read_counts_and_allocates_no_array() {
             threads: false,
             // The code a production build runs: no overflow checks.
             overflow_checks: false,
+            // Instantiated beside its allocator, as the tests' host does.
+            link: false,
         },
         &Localizer::new(Language::English),
     )

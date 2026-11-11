@@ -3,7 +3,7 @@
 //! count bytes; one that falls inside a character moves back to its start.
 
 /// Whether byte `i` continues a character.
-fn continues(s: &[u8], i: usize) -> bool {
+pub(crate) fn continues(s: &[u8], i: usize) -> bool {
     s.get(i).is_some_and(|b| b & 0xC0 == 0x80)
 }
 
@@ -125,6 +125,44 @@ pub fn parse_int(s: &[u8], bits: i32) -> Option<i64> {
     } else {
         i64::try_from(magnitude).ok()?
     })
+}
+
+/// Whether `s` is a decimal number as `parseF64` reads it: a sign or none,
+/// digits with at most one point among them and at least one digit, then
+/// `e` or `E`, a sign or none and digits, or nothing else. No spaces, no
+/// `Infinity`, no `0x`, no `_`: stricter than JavaScript's `Number`, which
+/// reads the same value from every text this accepts.
+#[must_use]
+pub fn is_decimal(s: &[u8]) -> bool {
+    let body = match s.first() {
+        Some(b'+' | b'-') => &s[1..],
+        _ => s,
+    };
+    let (mantissa, exponent) = match body.iter().position(|&c| c == b'e' || c == b'E') {
+        Some(at) => (&body[..at], Some(&body[at + 1..])),
+        None => (body, None),
+    };
+    let digits = mantissa.iter().filter(|c| c.is_ascii_digit()).count();
+    let others = mantissa.len() - digits;
+    let mantissa_ok = digits >= 1 && (others == 0 || (others == 1 && mantissa.contains(&b'.')));
+    let exponent_ok = exponent.is_none_or(|e| {
+        let e = match e.first() {
+            Some(b'+' | b'-') => &e[1..],
+            _ => e,
+        };
+        !e.is_empty() && e.iter().all(u8::is_ascii_digit)
+    });
+    mantissa_ok && exponent_ok
+}
+
+/// The number `s` writes, correctly rounded, when [`is_decimal`] accepts it:
+/// what `parseF64` gives, and JavaScript's `Number(s)`.
+#[must_use]
+pub fn parse_decimal(s: &[u8]) -> Option<f64> {
+    if !is_decimal(s) {
+        return None;
+    }
+    std::str::from_utf8(s).ok()?.parse::<f64>().ok()
 }
 
 /// What the loader's `float_text` writes for `mode`: 0 `String(x)`, 1 the
@@ -319,7 +357,26 @@ fn rounded_up_on_ties(digits: &[u8], exponent: i32, precision: usize) -> (Vec<u8
 
 #[cfg(test)]
 mod tests {
-    use super::{index_of, number_text, replace, slice, split, trim};
+    use super::{index_of, number_text, parse_decimal, replace, slice, split, trim};
+
+    #[test]
+    fn decimals_follow_a_strict_grammar() {
+        for (text, want) in [
+            ("12.5", 12.5),
+            (".5", 0.5),
+            ("5.", 5.0),
+            ("-1e3", -1000.0),
+            ("1E-2", 0.01),
+        ] {
+            assert_eq!(parse_decimal(text.as_bytes()), Some(want), "{text}");
+        }
+        assert!(parse_decimal(b"-0").is_some_and(|x| x == 0.0 && x.is_sign_negative()));
+        for text in [
+            "", ".", "+", "1e", "e5", " 1", "1 ", "0x10", "1_0", "inf", "Infinity", "NaN", "1..2",
+        ] {
+            assert_eq!(parse_decimal(text.as_bytes()), None, "{text}");
+        }
+    }
 
     #[test]
     fn indices_count_bytes_and_stop_at_characters() {

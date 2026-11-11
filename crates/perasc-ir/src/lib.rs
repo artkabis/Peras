@@ -90,6 +90,13 @@ pub struct FnId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalId(pub u32);
 
+/// The first address of the static literals' headers: address 0 is never a
+/// valid pointer.
+pub const STATIC_START: u32 = 16;
+/// The end of the static literals: both allocators leave the memory below
+/// 1024 unused.
+pub const STATIC_END: u32 = 1024;
+
 /// A compiled module.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -234,7 +241,22 @@ impl Module {
     /// to be linked in first.
     #[must_use]
     pub fn uses_heap(&self) -> bool {
-        self.functions.iter().any(Function::uses_heap)
+        self.functions.iter().any(Function::uses_heap) || !self.statics().is_empty()
+    }
+
+    /// The static literals the module lends ([`BufOp::Static`]): each one's
+    /// index in [`Module::data`] and header address, once, by address.
+    #[must_use]
+    pub fn statics(&self) -> Vec<(u32, u32)> {
+        let mut found = std::collections::BTreeMap::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if let ExprKind::Buf(BufOp::Static(index, at), _) = &e.kind {
+                    found.insert(*at, *index);
+                }
+            });
+        }
+        found.into_iter().map(|(at, index)| (index, at)).collect()
     }
 
     /// Whether the module is linked to the runtime: it uses the heap, or, in
@@ -513,6 +535,13 @@ pub enum BufOp {
     Get(Elem),
     /// `[]`: a new `owned` buffer of bytes holding [`Module::data`] at this index.
     Literal(u32),
+    /// `[]`: a `borrowed` buffer holding [`Module::data`] at the first index,
+    /// whose 16-byte header is at the address given, in memory below the
+    /// allocators' heap ([`STATIC_START`] to [`STATIC_END`]), written once
+    /// when the module is instantiated: a literal only read, neither copied
+    /// nor released (decision 0016, finding F211). Releasing it is an invalid
+    /// release, which both allocators catch.
+    Static(u32, u32),
     /// `[buffer]`: a new `owned` copy, with copies of the buffers it owns.
     Clone,
     /// `[buffer, index]`: the buffer element at a checked index, taken: the
@@ -647,11 +676,24 @@ pub enum RuntimeFn {
     ///
     /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
     SplitViews,
+    /// `(s) -> owned`: a view of `s` to walk its parts one at a time, empty
+    /// at first: one header whose bytes are `s`'s own, released alone
+    /// (decision 0014, `for (const x of s.split(sep))` without an array).
+    StrCursor,
+    /// `(s, separator, cursor, from) -> i32`: points `cursor` at the part of
+    /// `s` from `from` to the next `separator`, or to its end; gives where
+    /// the next part starts, or -1 when this one was the last. The parts are
+    /// those of `Split`, the last empty one included.
+    NextPart,
+    /// `(s) -> f64`: the decimal number `s` writes, correctly rounded, as
+    /// `parseF64` reads it ([`text::is_decimal`]); NaN when it is not one,
+    /// which no text it accepts can write.
+    ParseFloat,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 47] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -696,6 +738,9 @@ impl RuntimeFn {
         Self::MapKeyS,
         Self::ArrSortIndex,
         Self::ArrPermute,
+        Self::StrCursor,
+        Self::NextPart,
+        Self::ParseFloat,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -727,6 +772,9 @@ impl RuntimeFn {
             Self::ParseInt => "str_parse_int",
             Self::ArrKeep => "arr_keep",
             Self::SplitViews => "str_split_views",
+            Self::StrCursor => "str_cursor",
+            Self::NextPart => "str_next_part",
+            Self::ParseFloat => "str_parse_float",
             Self::FmtFloat => "fmt_float",
             Self::MapNew => "map_new",
             Self::MapFindI => "map_find_i",
@@ -766,6 +814,7 @@ impl RuntimeFn {
     #[must_use]
     pub const fn operands(self) -> &'static [Ty] {
         match self {
+            Self::NextPart => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
             Self::IndexOf => &[Ty::Borrowed, Ty::I32],
             Self::StartsWith
             | Self::EndsWith
@@ -786,6 +835,8 @@ impl RuntimeFn {
             | Self::MapValueF
             | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
+            | Self::StrCursor
+            | Self::ParseFloat
             | Self::Upper
             | Self::Lower
             | Self::ArrReverse
@@ -815,6 +866,7 @@ impl RuntimeFn {
     pub const fn result(self) -> Ty {
         match self {
             Self::IndexOf
+            | Self::NextPart
             | Self::ArrIndexOfStr
             | Self::MapFindI
             | Self::MapFindS
@@ -829,7 +881,7 @@ impl RuntimeFn {
             | Self::MapDeleteS => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
-            Self::MapValueF => Ty::F64,
+            Self::MapValueF | Self::ParseFloat => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
             | Self::ArrPermute
@@ -883,6 +935,7 @@ impl BufOp {
             Self::Len => "buf.len".to_owned(),
             Self::Get(elem) => format!("buf.get.{}", elem.name()),
             Self::Literal(index) => format!("buf.literal #{index}"),
+            Self::Static(index, at) => format!("buf.static #{index} @{at}"),
             Self::Clone => "buf.clone".to_owned(),
             Self::Take => "buf.take".to_owned(),
             Self::Runtime(f) => f.name().to_owned(),

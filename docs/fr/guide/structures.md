@@ -120,6 +120,6 @@ export interface Segment {
 export declare function flip(s: Segment): Segment;
 ```
 
-> Les structures dont les champs sont des nombres, des booléens ou des structures sont compilées. Un champ tableau ou chaîne est vérifié, pas encore compilé.
+> Les structures sont compilées quel que soit le contenu de leurs champs : nombres, booléens, chaînes, tableaux, options, tables, autres structures ; une structure qui tient une chaîne ou un tableau le libère avec elle. Depuis JavaScript, elles vont et viennent comme des objets ordinaires. Une structure n’a pas encore de `copy()` : celle qu’une boucle prête se reconstruit champ par champ pour être gardée ([constats](../findings.md), F102).
 
 Ensuite : [énumérations et match](enums.md).

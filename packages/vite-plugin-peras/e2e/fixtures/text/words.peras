@@ -56,3 +56,325 @@ export fn partsOf(line: String): Array<String> {
   const parts = line.split(",");
   return parts;
 }
+
+// A string whose case changes, compared at once: compared byte by byte,
+// without making it (decision 0014, finding F205).
+export fn sameLower(a: String, b: String): bool {
+  return a.toLowerCase() == b;
+}
+
+export fn sameUpper(a: String, b: String): bool {
+  return b == a.toUpperCase();
+}
+
+export fn notLower(a: String, b: String): bool {
+  return a.toLowerCase() != b;
+}
+
+// `for (const p of text.split(sep))` walked part by part, with no array
+// (decision 0014): the parts of `split`, the last empty one included.
+export fn partsComma(text: String): String {
+  let out = "";
+  let n = 0;
+  for (const p of text.split(",")) {
+    out += `${p}|`;
+    n += 1;
+  }
+  return `${n}:${out}`;
+}
+
+export fn partsDash(text: String): String {
+  let out = "";
+  let n = 0;
+  for (const p of text.split(" -- ")) {
+    out += `${p}|`;
+    n += 1;
+  }
+  return `${n}:${out}`;
+}
+
+// A part kept past the loop is a copy; the walk stops at the return.
+export fn firstLong(text: String, min: i32): String {
+  for (const p of text.split(";")) {
+    if (p.length >= min) {
+      return p.copy();
+    }
+  }
+  return "";
+}
+
+export fn countUntil(text: String, stop: String): i32 {
+  let n = 0;
+  for (const p of text.split(",")) {
+    if (p == stop) {
+      break;
+    }
+    if (p.length == 0) {
+      continue;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+export fn nestedLengths(text: String): i32 {
+  let n = 0;
+  for (const line of text.split("\n")) {
+    for (const f of line.split(",")) {
+      n += f.length * 10 + 1;
+    }
+  }
+  return n;
+}
+
+// The characters of a text walked one at a time, without an array of them
+// (decision 0016, finding F207): each joined with "|", and their count.
+export fn charsOf(text: String): String {
+  let out = "";
+  for (const c of text.split("")) {
+    out += `${c}|`;
+  }
+  return out;
+}
+
+export fn upperCount(text: String, stop: String): i32 {
+  let n = 0;
+  for (const c of text.split("")) {
+    if (c == stop) {
+      break;
+    }
+    if (c.toLowerCase() != c) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+
+// Literals only read are lent from a static header, below the heap, made
+// once (decision 0016, finding F211); past the room there, copied as before.
+export fn literalLength(): i32 {
+  return "static".length + "".length;
+}
+
+export fn whichLiteral(s: String): i32 {
+  if (s == "literal number 00!") {
+    return 0;
+  }
+  if (s == "literal number 01!") {
+    return 1;
+  }
+  if (s == "literal number 02!") {
+    return 2;
+  }
+  if (s == "literal number 03!") {
+    return 3;
+  }
+  if (s == "literal number 04!") {
+    return 4;
+  }
+  if (s == "literal number 05!") {
+    return 5;
+  }
+  if (s == "literal number 06!") {
+    return 6;
+  }
+  if (s == "literal number 07!") {
+    return 7;
+  }
+  if (s == "literal number 08!") {
+    return 8;
+  }
+  if (s == "literal number 09!") {
+    return 9;
+  }
+  if (s == "literal number 10!") {
+    return 10;
+  }
+  if (s == "literal number 11!") {
+    return 11;
+  }
+  if (s == "literal number 12!") {
+    return 12;
+  }
+  if (s == "literal number 13!") {
+    return 13;
+  }
+  if (s == "literal number 14!") {
+    return 14;
+  }
+  if (s == "literal number 15!") {
+    return 15;
+  }
+  if (s == "literal number 16!") {
+    return 16;
+  }
+  if (s == "literal number 17!") {
+    return 17;
+  }
+  if (s == "literal number 18!") {
+    return 18;
+  }
+  if (s == "literal number 19!") {
+    return 19;
+  }
+  if (s == "literal number 20!") {
+    return 20;
+  }
+  if (s == "literal number 21!") {
+    return 21;
+  }
+  if (s == "literal number 22!") {
+    return 22;
+  }
+  if (s == "literal number 23!") {
+    return 23;
+  }
+  if (s == "literal number 24!") {
+    return 24;
+  }
+  if (s == "literal number 25!") {
+    return 25;
+  }
+  if (s == "literal number 26!") {
+    return 26;
+  }
+  if (s == "literal number 27!") {
+    return 27;
+  }
+  if (s == "literal number 28!") {
+    return 28;
+  }
+  if (s == "literal number 29!") {
+    return 29;
+  }
+  if (s == "literal number 30!") {
+    return 30;
+  }
+  if (s == "literal number 31!") {
+    return 31;
+  }
+  if (s == "literal number 32!") {
+    return 32;
+  }
+  if (s == "literal number 33!") {
+    return 33;
+  }
+  if (s == "literal number 34!") {
+    return 34;
+  }
+  if (s == "literal number 35!") {
+    return 35;
+  }
+  if (s == "literal number 36!") {
+    return 36;
+  }
+  if (s == "literal number 37!") {
+    return 37;
+  }
+  if (s == "literal number 38!") {
+    return 38;
+  }
+  if (s == "literal number 39!") {
+    return 39;
+  }
+  if (s == "literal number 40!") {
+    return 40;
+  }
+  if (s == "literal number 41!") {
+    return 41;
+  }
+  if (s == "literal number 42!") {
+    return 42;
+  }
+  if (s == "literal number 43!") {
+    return 43;
+  }
+  if (s == "literal number 44!") {
+    return 44;
+  }
+  if (s == "literal number 45!") {
+    return 45;
+  }
+  if (s == "literal number 46!") {
+    return 46;
+  }
+  if (s == "literal number 47!") {
+    return 47;
+  }
+  if (s == "literal number 48!") {
+    return 48;
+  }
+  if (s == "literal number 49!") {
+    return 49;
+  }
+  if (s == "literal number 50!") {
+    return 50;
+  }
+  if (s == "literal number 51!") {
+    return 51;
+  }
+  if (s == "literal number 52!") {
+    return 52;
+  }
+  if (s == "literal number 53!") {
+    return 53;
+  }
+  if (s == "literal number 54!") {
+    return 54;
+  }
+  if (s == "literal number 55!") {
+    return 55;
+  }
+  if (s == "literal number 56!") {
+    return 56;
+  }
+  if (s == "literal number 57!") {
+    return 57;
+  }
+  if (s == "literal number 58!") {
+    return 58;
+  }
+  if (s == "literal number 59!") {
+    return 59;
+  }
+  if (s == "literal number 60!") {
+    return 60;
+  }
+  if (s == "literal number 61!") {
+    return 61;
+  }
+  if (s == "literal number 62!") {
+    return 62;
+  }
+  if (s == "literal number 63!") {
+    return 63;
+  }
+  if (s == "literal number 64!") {
+    return 64;
+  }
+  if (s == "literal number 65!") {
+    return 65;
+  }
+  if (s == "literal number 66!") {
+    return 66;
+  }
+  if (s == "literal number 67!") {
+    return 67;
+  }
+  if (s == "literal number 68!") {
+    return 68;
+  }
+  if (s == "literal number 69!") {
+    return 69;
+  }
+  return -1;
+}
+
+export fn literalKey(text: String): i32 {
+  let counts: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    counts.set(w.copy(), counts.get(w).unwrapOr(0) + 1);
+  }
+  return counts.get("b").unwrapOr(0) * 10 + counts.get("zz").unwrapOr(0);
+}

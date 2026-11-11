@@ -88,7 +88,11 @@ pub fn run_with_heap(
             let value = machine.call(id, &args)?;
             let report = HeapReport {
                 allocated: machine.allocated,
-                live: machine.heap.into_keys().collect(),
+                live: machine
+                    .heap
+                    .into_keys()
+                    .filter(|k| k & STATIC == 0)
+                    .collect(),
             };
             Ok((value, report))
         });
@@ -99,6 +103,11 @@ pub fn run_with_heap(
 }
 
 const MAX_DEPTH: usize = 5_000;
+
+/// The handles of static literals ([`crate::BufOp::Static`]): their index
+/// with this bit set, out of the range of the blocks a run allocates. They
+/// are never released, and never reported as left on the heap.
+const STATIC: u32 = 0x8000_0000;
 
 struct Machine<'a> {
     module: &'a Module,
@@ -256,7 +265,8 @@ impl Machine<'_> {
             Stmt::Release(local) => {
                 let slot = slot(locals, *local);
                 match slot.map(std::mem::take) {
-                    Some(Value::Handle(block)) if self.heap.remove(&block).is_some() => {}
+                    Some(Value::Handle(block))
+                        if block & STATIC == 0 && self.heap.remove(&block).is_some() => {}
                     _ => return Err(Trap::DoubleRelease),
                 }
                 Flow::Normal
@@ -399,6 +409,18 @@ impl Machine<'_> {
                 *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
             }
             (BufOp::New(_), _) => return Err(Trap::BadAlloc),
+            (BufOp::Static(index, _), []) => {
+                let key = STATIC | index;
+                if !self.heap.contains_key(&key) {
+                    let bytes = usize::try_from(index)
+                        .ok()
+                        .and_then(|i| self.module.data.get(i))
+                        .ok_or(Trap::Unreachable)?;
+                    let elements = bytes.iter().map(|&b| Value::I32(i32::from(b))).collect();
+                    self.heap.insert(key, elements);
+                }
+                Value::Handle(key)
+            }
             (BufOp::Literal(index), []) => {
                 let bytes = usize::try_from(index)
                     .ok()
@@ -431,6 +453,67 @@ impl Machine<'_> {
                 _ => 0,
             })
             .collect())
+    }
+
+    /// The runtime's `str_next_part`: the part of `s` from `from` to the next
+    /// `separator`, or to the end, written into `cursor`, a copy here of
+    /// what the runtime's view shows; where the next part starts, or -1 when
+    /// this one is the last.
+    /// The parts of `s` between each `separator`, as a new array of strings.
+    fn split(&mut self, s: &[u8], separator: &[u8]) -> Value {
+        let parts: Vec<Value> = crate::text::split(s, separator)
+            .iter()
+            .map(|p| self.string(p))
+            .collect();
+        self.allocated += 1;
+        self.heap.insert(self.allocated, parts);
+        self.deep.insert(self.allocated);
+        Value::Handle(self.allocated)
+    }
+
+    fn next_part(
+        &mut self,
+        s: &[u8],
+        separator: &[u8],
+        cursor: Option<Value>,
+        from: i32,
+    ) -> Result<Value, Trap> {
+        let Some(Value::Handle(cursor)) = cursor else {
+            return Err(Trap::Unreachable);
+        };
+        let from = usize::try_from(from).map_err(|_| Trap::Unreachable)?;
+        let rest = s.get(from..).ok_or(Trap::Unreachable)?;
+        if separator.is_empty() {
+            // One character: its lead byte and its continuation bytes.
+            let mut end = from + 1;
+            while end < s.len() && crate::text::continues(s, end) {
+                end += 1;
+            }
+            let bytes = s
+                .get(from..end)
+                .unwrap_or_default()
+                .iter()
+                .map(|&b| Value::I32(i32::from(b)))
+                .collect();
+            self.heap.insert(cursor, bytes);
+            let next = if end < s.len() {
+                i32::try_from(end).unwrap_or(-1)
+            } else {
+                -1
+            };
+            return Ok(Value::I32(next));
+        }
+        let at = rest.windows(separator.len()).position(|w| w == separator);
+        let (part, next) = match at {
+            Some(i) => (
+                rest.get(..i).unwrap_or_default(),
+                i32::try_from(from + i + separator.len()).unwrap_or(-1),
+            ),
+            None => (rest, -1),
+        };
+        let bytes = part.iter().map(|&b| Value::I32(i32::from(b))).collect();
+        self.heap.insert(cursor, bytes);
+        Ok(Value::I32(next))
     }
 
     /// A new string of these bytes.
@@ -721,15 +804,14 @@ impl Machine<'_> {
             // parts as `split`.
             F::Split | F::SplitViews => {
                 let separator = text(self, 1)?;
-                let parts: Vec<Value> = crate::text::split(&s, &separator)
-                    .iter()
-                    .map(|p| self.string(p))
-                    .collect();
-                self.allocated += 1;
-                self.heap.insert(self.allocated, parts);
-                self.deep.insert(self.allocated);
-                Value::Handle(self.allocated)
+                self.split(&s, &separator)
             }
+            F::StrCursor => self.string(&[]),
+            F::NextPart => {
+                let separator = text(self, 1)?;
+                self.next_part(&s, &separator, operands.get(2).copied(), int(3)?)?
+            }
+            F::ParseFloat => Value::F64(crate::text::parse_decimal(&s).unwrap_or(f64::NAN)),
             F::IsInt => Value::Bool(crate::text::parse_int(&s, int(1)?).is_some()),
             F::ParseInt => Value::I64(crate::text::parse_int(&s, 64).unwrap_or(0)),
             F::ArrSlice
@@ -942,6 +1024,9 @@ impl Machine<'_> {
 
     /// Releases a buffer, and the buffers it owns.
     fn free(&mut self, block: u32) -> Result<(), Trap> {
+        if block & STATIC != 0 {
+            return Err(Trap::DoubleRelease);
+        }
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
         if let Some(map) = self.maps.remove(&block) {
             self.free_entries(map.entries)?;

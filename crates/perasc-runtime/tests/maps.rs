@@ -105,6 +105,13 @@ fn runtime(wasm: &[u8]) -> Runtime {
             |_: Caller<'_, ()>, _: f64, _: i32, _: i32| 0_i32,
         )
         .unwrap_or_else(|e| unreachable!("{e}"));
+    linker
+        .func_wrap(
+            "peras",
+            "float_parse",
+            |_: Caller<'_, ()>, _: i32, _: i32| 0_f64,
+        )
+        .unwrap_or_else(|e| unreachable!("{e}"));
     let module = Module::new(&engine, wasm).unwrap_or_else(|e| unreachable!("{e}"));
     let instance: Instance = linker
         .instantiate_and_start(&mut store, &module)
