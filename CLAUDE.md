@@ -31,6 +31,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **Nothing that uses the processor during a measure**: no build, no test. Write, read, plan.
 - **A flawed run is kept with its flaw**, archived, and its correction listed as a departure from the protocol.
 - **Never say a thing is online, deployed or passing before seeing it**: read the workflow's run, not the workflow's file (M005).
+- **"All checks pass" means the CI of the last commit, read on GitHub**, and locally every `--check` script of `scripts/`, not only those of the files touched: a change of defaults breaks the scripts that relied on them (M007).
 
 ## Code: the traps already fallen into
 
