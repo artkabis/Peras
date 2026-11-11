@@ -11,6 +11,8 @@ bench/garden/results.json
 bench/data/RESULTS.md
 bench/data/results.json
 bench/data/run-1/
+bench/candle/RESULTS.md
+bench/candle/results.json
 bench/history/results.json
 bench/history/rows.json
 bench/garden/run-1/
