@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Résultats et journal ci-dessous._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Résultats et journal ci-dessous._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
@@ -169,3 +169,36 @@ Chacune sera mesurée de nouveau sous ce protocole, inchangé, comme exécution 
 
 - **La mémoire sous le pic du chargement n’est pas vue.** `VmHWM` ne monte qu’au-delà de son point le plus haut ; charger le fichier, comme réponse puis tampon, atteint déjà un pic. La requête de B reste en dessous à 1 000 000 et 4 000 000 lignes, et sa mémoire se lit 0 : pas rien, mais moins que le chargement des données. A et C le dépassent tous deux, ce qui garde H3 lisible.
 - Les autres limites sont celles enregistrées : données générées sans guillemets, versions écrites par les auteurs, une machine.
+
+### Exécution 2, au commit `6ef6283` : les résultats
+
+Mesuré le 2026-11-11 de 11:51 à 11:59 UTC, sur la même machine, sous le même protocole, inchangé ; le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md), celui de l’exécution 1 est gardé dans [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+**Ce qui a changé dans le compilateur depuis l’exécution 1**, chaque fois avec ses tests et consigné dans [les constats](../findings.md) : un `split` en `const` seulement lu garde des vues au lieu de copies, et `parseI32` lit ses chiffres une fois avec une seule division (F201, commit `19930d1`) ; une chaîne dont la casse change seulement pour être comparée est comparée octet par octet, sans être créée (F205, commit `51635c5`). La source de la version C n’a pas changé.
+
+| Hypothèse                                           | Exécution 1         | Exécution 2                                       | Verdict     |
+| --------------------------------------------------- | ------------------- | ------------------------------------------------- | ----------- |
+| H1, C au moins 2 fois A                             | 0,85 et 0,88        | **1,26** à 1 000 000 lignes, **1,23** à 4 000 000 | **réfutée** |
+| H2, C au moins 0,8 fois B                           | 0,10 et 0,09        | 0,13 et 0,12                                      | **réfutée** |
+| H3, la mémoire de C au plus la moitié de celle de A | 1,12                | 1,12                                              | **réfutée** |
+| H4, C au plus 3 fois les octets de A                | 15,4                | 15,1, 11 928 octets                               | **réfutée** |
+| H5, D au moins 2 fois C                             | impossible à écrire | impossible à écrire                               | **réfutée** |
+| H6, linéaire                                        | 4,17                | 3,80                                              | tient       |
+| H7, C au plus 1,25 fois les lignes de A             | 1,08                | 1,08                                              | tient       |
+
+À chaud, en millisecondes, médianes de 15 exécutions :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |   115,7 |   1 264,1 |   4 674,9 |
+| B. TypeScript, optimisé    |    14,7 |     135,0 |     475,5 |
+| C. Peras                   |    83,9 |   1 002,2 |   3 810,0 |
+
+**Peras simple est maintenant plus rapide que TypeScript simple**, là où l’exécution 1 le trouvait plus lent : 1,23 à 1,26 fois sa vitesse, en deçà des 2 enregistrés. À froid, son premier graphique arrive maintenant avant celui de A à 1 000 000 et 4 000 000 lignes (1,2 s contre 1,5 ; 4,6 contre 5,3). Les exécutions sont plus dispersées qu’à l’exécution 1 et se chevauchent à leurs extrémités (à 4 000 000 lignes, C de 3 607 à 4 672 ms, A de 4 259 à 5 597) : ce sont les médianes, pas des exécutions isolées, qui portent la comparaison. Les temps de A eux-mêmes sont 7 à 25 % plus lents qu’à l’exécution 1 sur la même machine : ce qui est comparé, ce sont les versions d’une même exécution entre elles, en alternance, comme le protocole l’a enregistré.
+
+**Ce qui n’a pas changé.** Le TypeScript optimisé reste 8 fois plus rapide que Peras simple ; Peras tient toujours le texte une seconde fois en mémoire (H3), livre son runtime (H4), et ne peut pas agréger sur plusieurs threads (H5). L’ordre du travail est celui qu’a donné l’exécution 1, F201 et F205 faits : les tables à clés textuelles (F202), pas de copie du texte (F204, qui demande `u8` compilé), l’agrégation sur les cœurs (F301), un runtime plus léger (F203).
+
+**Écarts au protocole.**
+
+- **Le commit du rapport est faux.** Le rapport nomme `93d4d25`, le commit à sa fin : le script le lisait alors, et un commit a été fait pendant l’exécution. Le compilateur mesuré a été construit au commit `6ef6283` ; `93d4d25` change trois fichiers de documentation et aucun code. Le script lit désormais le commit à son démarrage.
+- **Le processeur a été utilisé pendant l’exécution**, contre la règle de cette étude : un commit à 11:55 UTC, avec son formatage et sa vérification des traductions, quelques secondes, pendant les chargements à froid ou les mesures de mémoire. La mémoire, un pic par processus, n’est pas affectée par un autre processus ; un chargement à froid a pu être ralenti, et les temps à froid ne sont testés contre aucune hypothèse.

@@ -33,6 +33,12 @@ import ts from "typescript";
 import { minify } from "vite";
 
 const root = join(import.meta.dirname, "..");
+// The commit measured, read at the start: a commit made during the run is not
+// what was built (decision 0014, run 2).
+const commit = spawnSync("git", ["rev-parse", "--short=7", "HEAD"], {
+  cwd: root,
+  encoding: "utf8",
+}).stdout.trim();
 const dir = join(root, "bench", "data");
 const check = process.argv.includes("--check");
 const smoke = process.argv.includes("--smoke");
@@ -461,9 +467,6 @@ const verdicts = {
   H7: verdict(h.H7 <= 1.25),
 };
 
-const commit = spawnSync("git", ["rev-parse", "--short=7", "HEAD"], {
-  encoding: "utf8",
-}).stdout.trim();
 const results = {
   commit,
   machine: cpus()[0]?.model ?? "unknown",

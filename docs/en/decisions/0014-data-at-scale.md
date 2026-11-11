@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0014-data-at-scale.md](../../fr/decisions/0014-data-at-scale.md)._
 
-_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Results and record below._
+_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Run 2, at commit `6ef6283`, after three changes to the compiler: the same verdicts, and plain Peras now 1.23 to 1.26 times as fast as plain TypeScript, where it was slower. Results and record below._
 
 _Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
@@ -169,3 +169,36 @@ Each will be measured again under this protocol, unchanged, as a run 2 and furth
 
 - **Memory below the loading peak is not seen.** `VmHWM` rises only past its highest point; loading the file, as the response and its array buffer, already reaches a peak. B's query stays below it at 1,000,000 and 4,000,000 rows, and its memory reads 0: not nothing, but less than loading the data. A and C both go past it, which keeps H3 readable.
 - The other limits are those registered: generated data without quotes, versions written by the authors, one machine.
+
+### Run 2, at commit `6ef6283`: the results
+
+Measured on 2026-11-11 from 11:51 to 11:59 UTC, on the same machine, under the same protocol, unchanged; the report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md), run 1's is kept in [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+
+**What changed in the compiler since run 1**, each with its tests and recorded in [the findings](../findings.md): a `const` split only read holds views instead of copies, and `parseI32` reads its digits once with one division (F201, commit `19930d1`); a string whose case changes only to be compared is compared byte by byte, without being made (F205, commit `51635c5`). Version C's source did not change.
+
+| Hypothesis                         | Run 1             | Run 2                                             | Verdict     |
+| ---------------------------------- | ----------------- | ------------------------------------------------- | ----------- |
+| H1, C at least 2 times A           | 0.85 and 0.88     | **1.26** at 1,000,000 rows, **1.23** at 4,000,000 | **refuted** |
+| H2, C at least 0.8 times B         | 0.10 and 0.09     | 0.13 and 0.12                                     | **refuted** |
+| H3, C's memory at most half of A's | 1.12              | 1.12                                              | **refuted** |
+| H4, C at most 3 times A's bytes    | 15.4              | 15.1, 11,928 bytes                                | **refuted** |
+| H5, D at least 2 times C           | cannot be written | cannot be written                                 | **refuted** |
+| H6, linear                         | 4.17              | 3.80                                              | holds       |
+| H7, C at most 1.25 times A's lines | 1.08              | 1.08                                              | holds       |
+
+Warm, in milliseconds, medians of 15 runs:
+
+| Version                  | 100,000 | 1,000,000 | 4,000,000 |
+| ------------------------ | ------: | --------: | --------: |
+| A. TypeScript, idiomatic |   115.7 |   1,264.1 |   4,674.9 |
+| B. TypeScript, optimized |    14.7 |     135.0 |     475.5 |
+| C. Peras                 |    83.9 |   1,002.2 |   3,810.0 |
+
+**Plain Peras is now faster than plain TypeScript**, where run 1 found it slower: 1.23 to 1.26 times its speed, short of the 2 registered. Cold, its first chart now comes before A's at 1,000,000 and 4,000,000 rows (1.2 s against 1.5, 4.6 against 5.3). The runs spread more than in run 1 and overlap at their ends (at 4,000,000 rows, C from 3,607 to 4,672 ms, A from 4,259 to 5,597), so the medians, not single runs, carry the comparison. A's own times are 7 to 25 % slower than in run 1 on the same machine: what is compared is each run's versions against each other, alternating, as the protocol registered.
+
+**What did not change.** Optimized TypeScript is still 8 times faster than plain Peras; Peras still holds the text a second time in its memory (H3), ships its runtime (H4), and cannot aggregate on several threads (H5). The order of the work is the one run 1 gave, with F201 and F205 done: the maps keyed by strings (F202), no copy of the text (F204, which needs `u8` compiled), aggregation on the cores (F301), a lighter runtime (F203).
+
+**Departures from the protocol.**
+
+- **The commit in the report is wrong.** The report names `93d4d25`, the commit at its end: the script read it then, and a commit was made during the run. The compiler measured was built at `6ef6283`; `93d4d25` changes three documentation files and no code. The script now reads the commit when it starts.
+- **The processor was used during the run**, against the rule of this study: a commit at 11:55 UTC, with its formatting and translation check, a few seconds, during the cold loads or the memory runs. The memory, a peak per process, is not affected by another process; a cold load may have been slowed, and the cold times are tested against no hypothesis.
