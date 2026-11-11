@@ -2,7 +2,9 @@
 
 _French translation: [../../fr/decisions/0013-garden-of-apeiron.md](../../fr/decisions/0013-garden-of-apeiron.md)._
 
-_Status: protocol, registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
+_Status: protocol registered on 2026-11-11 at 05:21 UTC (commit `eb861d0`); study in progress, its second run under way; record below._
+
+_Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
 ## Context
 
@@ -66,3 +68,57 @@ Each with what refutes it. Sizes are of JavaScript and WebAssembly as shipped: m
 
 - `bench/garden`, `node scripts/bench-garden.mjs`, and its results under this protocol; a check in CI that the versions give the same pixels.
 - If the hypotheses hold, the garden becomes the second demo of the README, zoomed from the whole landscape to a single flower. If they do not, the results say so, and so does the README.
+
+## Record of the study
+
+A laboratory notebook: each step, dated, with the commit that holds it, what was decided after the protocol was registered, and what was observed. Nothing here changes the hypotheses or their thresholds.
+
+### Steps
+
+| When (UTC, 2026-11-11) | Commit    | Step                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 05:21                  | `eb861d0` | The protocol is registered, before any code of the scene and any measure.                                                                                                                                                                                                                                                             |
+| 05:23–05:50            | —         | The reference is written in TypeScript; the scene is drawn for the first time, at zooms 1, 8 and 64, to see that it draws. The script printed the time of these renders, 327 ms at 512 × 512 and zoom 1 in Node: an informal measure of the reference alone, before the other versions existed, after every threshold was registered. |
+| 05:50                  | —         | The versions in Peras and Rust, from the same specification; each gives the reference's bytes at 256 × 256 and zooms 1 to 64.                                                                                                                                                                                                         |
+| 05:54                  | `0fb61c9` | The versions and `scripts/bench-garden.mjs` are committed, with the first run kept in `bench/garden/run-1`, and its flaw.                                                                                                                                                                                                             |
+| 05:55                  | `f527ff2` | The reference's formatting, after the first run; its pixels unchanged. The second run starts on this commit.                                                                                                                                                                                                                          |
+
+### Decided after the registration, before the first measure
+
+The protocol fixes the structure of the scene, not every number of it. Before any measure, after looking at the first renders:
+
+- **Colours.** A sky of dawn rather than of noon, clouds thresholded at 0.56 rather than 0.5, mountains from violet to green, and a meadow whose edge undulates by noise instead of a straight line at _y_ = 0.74. Aesthetics only: no hypothesis depends on a colour.
+- **The zoom as a number.** `render` takes the zoom, not its logarithm, so that a video can zoom continuously; at the zooms of the protocol, powers of two, the computation is exact and the same in every version.
+
+### Parameters the protocol left open
+
+- The renders checked for the same pixels are centred on (0.37, 0.83), in the meadow, where the flowers of every level are.
+- H1 compresses the whole scene at zoom 1, centred on (0.5, 0.5).
+- H2 draws 8 tiles per zoom from a generator seeded with 13; at zoom 1 the only tile is the whole scene.
+- AVIF is encoded by libaom through FFmpeg, `-still-picture 1 -cpu-used 6`, the CRF searched by bisection from 0 to 63; WebP by libwebp, `-compression_level 6`.
+- SSIM and PSNR are FFmpeg's, on both images converted to YUV 4:4:4, the value of all three planes ("All").
+- H4 compares WebP at qualities 20, 50 and 80 and AVIF at CRF 50, 35 and 20, then the same files reduced 4 times by area averaging.
+- The times of H3 and H5 come from one Chromium page loading every version, the versions alternating within each run.
+
+### Run 1, at commit `0fb61c9`: kept, with a flaw
+
+[Results of run 1](../../../bench/garden/run-1/RESULTS.md). **The flaw.** The smallest AVIF of each tile of H2 was searched in 4:2:0 only, the subsampling that won at zoom 1. For some zoomed tiles, whose flowers are small and saturated, no AVIF in 4:2:0 reached an SSIM of 0.95, even at CRF 0; the search returned no size, the script wrote it as infinite and counted H2 as holding. H2 was undetermined by this run.
+
+**The correction**, at commit `0fb61c9`, on the method only: each tile's AVIF is searched in 4:4:4 and in 4:2:0, the smaller kept, as the protocol's "smallest AVIF" says; a tile no AVIF brings to 0.95 is counted as unreached, and a zoom with an unreached tile makes H2 undetermined.
+
+**What run 1 measured, which the flaw does not touch**, provisional until run 2:
+
+| Hypothesis  | Run 1        | Measured                                                                                                  |
+| ----------- | ------------ | --------------------------------------------------------------------------------------------------------- |
+| Same pixels | yes          | TypeScript, Peras, Peras in debug and Rust, at zooms 1, 4, 16, 64 at 1024 × 1024                          |
+| H1          | holds        | Peras ships 5,872 bytes; the smallest AVIF at SSIM 0.95, 9,774 (4:2:0, CRF 53)                            |
+| H2          | undetermined | the flaw above                                                                                            |
+| H3          | **refuted**  | Peras at 1.21 times TypeScript's speed, below the 1.3 registered; at 1.13 times Rust's                    |
+| H4          | holds        | for each of the six files, the SSIM is higher reduced 4 times, from 0.948 to 0.977 for WebP at quality 20 |
+| H5          | holds        | Peras in debug at 1.02 times its production time                                                          |
+
+One observation the hypotheses did not foresee, and which must go with H1: the same program in TypeScript ships in 1,119 bytes, five times fewer than Peras; it is the procedural scene that is smaller than its image, and Peras pays the weight of its WebAssembly runtime and loader.
+
+### Run 2, at commit `f527ff2`
+
+Under way. Its results replace run 1's above, and are reported whatever they are.
