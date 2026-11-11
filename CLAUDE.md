@@ -18,6 +18,7 @@ Read at the start of every session. It holds the rules of the project and the tr
 - Node: `export PATH=$(ls -d /opt/node*/bin | tail -1):$PATH`.
 - Chromium: never `playwright install`; set `PERAS_CHROMIUM=/opt/pw-browsers/chromium`, or `executablePath` in a script.
 - A script that imports the repository's packages runs from the repository, not from the scratchpad.
+- The CI installs browsers through `scripts/install-browser.mjs`, which retries: a job red at `Failed to install browsers` is the runner's network, not the code; read the log before saying which (F107).
 - GitHub Pages must be enabled by the owner (Settings, Pages, Source: GitHub Actions); until it is, nothing is online.
 
 ## Studies: the traps already fallen into
