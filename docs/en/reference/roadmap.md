@@ -63,7 +63,8 @@ export fn words(text: String): i32 {
 - ~~Rules that prevent the classic leaks: a listener or a timer is a resource, released with its owner, and a leak detector reports the ones that are not~~: done.
 - ~~Arrow functions with statements that capture what they use, and functions as values~~: done ([guide](../guide/managed.md#arrow-functions)); the case study keeps its state in the table it mounts, shown twice in one page.
 - ~~Replacing a resource releases the previous one~~: done, with a `Slot` of a group for an arrow function that replaces one ([browser reference](browser.md)); the case study searches after a delay.
-- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: `sortBy(key)`; `toFixed`; integer overflow stopped in debug, once its cost is measured; structures across `.apeiron` and `.peras`; elements owned by a group.
+- ~~`sortBy(key)`~~: done, `sortBy` and `sortByDescending` in both modes ([methods](methods.md#sorting-by-a-key)), 3 to 7 times TypeScript's speed by a number.
+- Next, in the order [decision 0011](../decisions/0011-what-to-build-next.md) measured: `toFixed`; integer overflow stopped in debug, once its cost is measured; structures across `.apeiron` and `.peras`; elements owned by a group.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

@@ -566,7 +566,10 @@ impl Checker<'_> {
                 // be one that can change.
                 let changes = match receiver {
                     Ty::Array(_) => {
-                        matches!(self.name(name.symbol), "push" | "pop" | "reverse" | "sort")
+                        matches!(
+                            self.name(name.symbol),
+                            "push" | "pop" | "reverse" | "sort" | "sortBy" | "sortByDescending"
+                        )
                     }
                     Ty::Map(..) | Ty::Set(_) => {
                         matches!(self.name(name.symbol), "set" | "add" | "delete" | "clear")

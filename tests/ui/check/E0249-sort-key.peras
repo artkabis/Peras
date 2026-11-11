@@ -1,0 +1,22 @@
+// A sort key is a number or a string.
+struct Order {
+  id: i32,
+  amount: f64,
+  paid: bool,
+}
+
+export fn sorted(orders: Array<Order>): Array<Order> {
+  let xs = orders.copy();
+  xs.sortBy((o) => o.amount);
+  xs.sortByDescending((o) => o.id);
+  xs.sortBy((o) => o.paid);
+  xs.sortBy((o) => o);
+  return xs;
+}
+
+// The array must be one that can change.
+export fn constant(orders: Array<Order>): i32 {
+  const xs = orders.copy();
+  xs.sortBy((o) => o.amount);
+  return xs.length;
+}

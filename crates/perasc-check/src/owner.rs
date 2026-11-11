@@ -596,7 +596,16 @@ impl<'c, 'a> Owner<'c, 'a> {
                 let method = self.checker.name(name.symbol);
                 if matches!(
                     method,
-                    "push" | "pop" | "reverse" | "sort" | "set" | "add" | "delete" | "clear"
+                    "push"
+                        | "pop"
+                        | "reverse"
+                        | "sort"
+                        | "sortBy"
+                        | "sortByDescending"
+                        | "set"
+                        | "add"
+                        | "delete"
+                        | "clear"
                 ) && let Some(root) = self.root(*base)
                 {
                     let span = self.checker.ast.expr(*base).span;

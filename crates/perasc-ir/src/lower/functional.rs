@@ -127,6 +127,10 @@ impl Lowering<'_> {
         state.pre = outer_pre;
         state.drops = outer_drops;
         state.pre.extend(lowered);
+        if let (Goal::Map(keys), "sortBy" | "sortByDescending") = (&goal, method) {
+            Self::sort_by_keys(state, keys, buffers, method == "sortByDescending");
+            return Some(Vec::new());
+        }
         let values = match goal {
             Goal::Keep(flags) => {
                 let taken = temporaries.unwrap_or_default();
@@ -149,6 +153,40 @@ impl Lowering<'_> {
             Goal::FindIndex(index) => Self::found(state, index, columns, buffers),
         };
         Some(Self::fresh(state, values, mode))
+    }
+
+    /// `sortBy`, after the loop computed the keys: the runtime gives their
+    /// order, and every column of the array is put in it, in place.
+    fn sort_by_keys(state: &mut FnState, keys: &[(LocalId, Elem)], buffers: &[Expr], desc: bool) {
+        use crate::RuntimeFn as F;
+        let Some(&(key, elem)) = keys.first() else {
+            return;
+        };
+        let kind = match elem {
+            Elem::I32 => 0,
+            Elem::I64 => 1,
+            Elem::F32 => 2,
+            Elem::F64 => 3,
+            _ => 4,
+        };
+        let order = state.owned_temp(Expr {
+            kind: ExprKind::Buf(
+                BufOp::Runtime(F::ArrSortIndex),
+                vec![super::heap::borrowed(key), int(kind), int(i64::from(desc))],
+            ),
+            ty: Ty::Owned,
+        });
+        for buffer in buffers {
+            state.pre.push(Stmt::Expr(Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(F::ArrPermute),
+                    vec![buffer.clone(), super::heap::borrowed(order)],
+                ),
+                ty: Ty::Void,
+            }));
+        }
+        state.drops.push(key);
+        state.drops.push(order);
     }
 
     /// `filter` on temporaries, after the loop gathered its flags: the
@@ -209,7 +247,8 @@ impl Lowering<'_> {
     ) -> Option<Goal> {
         let n_expr = n_expr.clone();
         Some(match method {
-            "map" => {
+            // `sortBy`: the keys, computed as `map` computes its values.
+            "map" | "sortBy" | "sortByDescending" => {
                 let value_ty = self.check_type(body).unwrap_or(CheckTy::Void);
                 let result = self.columns(Some(&CheckTy::Array(Box::new(value_ty))))?;
                 Goal::Map(
@@ -272,6 +311,15 @@ impl Lowering<'_> {
                 let values = this.value(state, body);
                 state.flush(out);
                 for ((local, elem), value) in result.iter().zip(values) {
+                    // A string lent by the element, as a key of `sortBy`: a copy.
+                    let value = if *elem == Elem::Handle && value.ty == Ty::Borrowed {
+                        Expr {
+                            kind: ExprKind::Buf(BufOp::Clone, vec![value]),
+                            ty: Ty::Owned,
+                        }
+                    } else {
+                        value
+                    };
                     out.push(push(*local, *elem, value));
                 }
             }

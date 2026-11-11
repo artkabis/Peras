@@ -542,6 +542,13 @@ pub enum RuntimeFn {
     ArrSort,
     /// `(strings, s) -> i32`: the index of the first string equal to `s`, or -1.
     ArrIndexOfStr,
+    /// `(keys, kind, desc) -> owned`: the indices of the keys in the order
+    /// of `sortBy`, an array of `i32`, stable; `kind` is 0 for `i32`, 1
+    /// `i64`, 2 `f32`, 3 `f64`, 4 strings; `desc` reverses the order of the
+    /// keys, not that of equal ones.
+    ArrSortIndex,
+    /// `(column, order)`: puts the element at `order[i]` at `i`, in place.
+    ArrPermute,
     /// `(n: i64) -> owned`: the decimal digits of `n`, after `-` if negative.
     FmtInt,
     /// `(b: bool) -> owned`: `true` or `false`.
@@ -618,7 +625,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 44] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -661,6 +668,8 @@ impl RuntimeFn {
         Self::MapNext,
         Self::MapKeyI,
         Self::MapKeyS,
+        Self::ArrSortIndex,
+        Self::ArrPermute,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -684,6 +693,8 @@ impl RuntimeFn {
             Self::ArrReverse => "arr_reverse",
             Self::ArrSort => "arr_sort",
             Self::ArrIndexOfStr => "arr_index_of_str",
+            Self::ArrSortIndex => "arr_sort_index",
+            Self::ArrPermute => "arr_permute",
             Self::FmtInt => "fmt_int",
             Self::FmtBool => "fmt_bool",
             Self::IsInt => "str_is_int",
@@ -740,10 +751,14 @@ impl RuntimeFn {
             | Self::ArrKeep
             | Self::MapFindS
             | Self::MapDeleteS
-            | Self::MapPutSLent => &[Ty::Borrowed],
-            Self::Slice | Self::ArrSlice | Self::MapValue | Self::MapValueF | Self::MapValueH => {
-                &[Ty::I32, Ty::I32]
-            }
+            | Self::MapPutSLent
+            | Self::ArrPermute => &[Ty::Borrowed],
+            Self::Slice
+            | Self::ArrSlice
+            | Self::ArrSortIndex
+            | Self::MapValue
+            | Self::MapValueF
+            | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
             | Self::Upper
             | Self::Lower
@@ -791,6 +806,7 @@ impl RuntimeFn {
             Self::MapValueF => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
+            | Self::ArrPermute
             | Self::ArrKeep
             | Self::MapStore
             | Self::MapStoreF
@@ -1341,6 +1357,8 @@ mod option_tests;
 mod own_tests;
 #[cfg(test)]
 mod parallel_tests;
+#[cfg(test)]
+mod sort_tests;
 #[cfg(test)]
 mod string_tests;
 #[cfg(test)]

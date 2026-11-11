@@ -1,0 +1,20 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0249-sort-key.peras
+---
+diagnostics:
+  error[E0249] check-sort-key { type: "bool" }
+    primary 12:20-12:26: check-sort-key-label { type: "bool" }
+    cause: check-sort-key-why
+    fix: check-sort-key-fix
+  error[E0249] check-sort-key { type: "Order" }
+    primary 13:20-13:21: check-sort-key-label { type: "Order" }
+    cause: check-sort-key-why
+    fix: check-sort-key-fix
+  error[E0205] check-immutable { kind: "const", name: "xs" }
+    primary 20:3-20:5: check-immutable-label
+    secondary 19:9-19:11: check-immutable-declared-label { kind: "const" }
+    cause: check-immutable-why
+    fix: check-immutable-fix-const { name: "xs" }
+      19:3-19:8 -> "let"

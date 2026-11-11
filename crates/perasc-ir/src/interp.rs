@@ -734,6 +734,8 @@ impl Machine<'_> {
             | F::ArrConcat
             | F::ArrReverse
             | F::ArrSort
+            | F::ArrSortIndex
+            | F::ArrPermute
             | F::ArrIndexOfStr
             | F::ArrKeep
             | F::FmtInt
@@ -758,6 +760,71 @@ impl Machine<'_> {
             // The maps' functions, answered by `map_runtime`.
             _ => return Err(Trap::Unreachable),
         })
+    }
+
+    /// `arr_sort_index` and `arr_permute`.
+    fn sorting(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
+        let operand = |i: usize| operands.get(i).copied().ok_or(Trap::Unreachable);
+        if f == crate::RuntimeFn::ArrPermute {
+            return self.permute(operand(0)?, operand(1)?);
+        }
+        let desc = operand(2)? != Value::I32(0);
+        self.sort_index(operand(0)?, desc)
+    }
+
+    /// `arr_sort_index`: the order of `sortBy`, as the runtime's: numbers as
+    /// `sort()` orders them, every NaN last; strings by their bytes, UTF-8,
+    /// the order of their code points. Stable; `desc` reverses the order of
+    /// the keys, not that of equal ones.
+    fn sort_index(&mut self, keys: Value, desc: bool) -> Result<Value, Trap> {
+        let keys = self.elements(keys)?.clone();
+        let mut texts = Vec::new();
+        for key in &keys {
+            texts.push(match key {
+                Value::Handle(_) => Some(self.bytes(*key)?),
+                _ => None,
+            });
+        }
+        let number = |v: &Value| match v {
+            Value::F32(x) if x.is_nan() => Value::F32(f32::NAN),
+            Value::F64(x) if x.is_nan() => Value::F64(f64::NAN),
+            other => *other,
+        };
+        let mut order: Vec<usize> = (0..keys.len()).collect();
+        order.sort_by(|&i, &j| {
+            let o = match (keys.get(i).map(number), keys.get(j).map(number)) {
+                (Some(Value::I32(x)), Some(Value::I32(y))) => x.cmp(&y),
+                (Some(Value::I64(x)), Some(Value::I64(y))) => x.cmp(&y),
+                (Some(Value::F32(x)), Some(Value::F32(y))) => x.total_cmp(&y),
+                (Some(Value::F64(x)), Some(Value::F64(y))) => x.total_cmp(&y),
+                _ => texts.get(i).cmp(&texts.get(j)),
+            };
+            if desc { o.reverse() } else { o }
+        });
+        let indices = order
+            .into_iter()
+            .map(|i| Value::I32(i32::try_from(i).unwrap_or(i32::MAX)))
+            .collect();
+        self.allocated += 1;
+        self.heap.insert(self.allocated, indices);
+        Ok(Value::Handle(self.allocated))
+    }
+
+    /// `arr_permute`: puts the element at `order[i]` at `i`.
+    fn permute(&mut self, column: Value, order: Value) -> Result<Value, Trap> {
+        let order = self.elements(order)?.clone();
+        let elements = self.elements(column)?;
+        let before = elements.clone();
+        for (slot, at) in elements.iter_mut().zip(order) {
+            let Value::I32(at) = at else {
+                return Err(Trap::Unreachable);
+            };
+            *slot = *usize::try_from(at)
+                .ok()
+                .and_then(|a| before.get(a))
+                .ok_or(Trap::Unreachable)?;
+        }
+        Ok(Value::Void)
     }
 
     /// The functions of the runtime on columns of arrays; `None` for the
@@ -815,6 +882,7 @@ impl Machine<'_> {
                 self.elements(first)?.reverse();
                 Value::Void
             }
+            F::ArrSortIndex | F::ArrPermute => self.sorting(f, operands)?,
             F::ArrKeep => {
                 let flags = self
                     .elements(*operands.get(1).ok_or(Trap::Unreachable)?)?

@@ -80,6 +80,21 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         "const $sort = (xs, Typed) => { const t = Typed.from(xs).sort(); for (let i = 0; i < t.length; i++) xs[i] = t[i]; };",
     ),
     (
+        "$sortBy",
+        &["$cmpKey", "$radixBy"],
+        "const $sortBy = (xs, f, desc, kind) => { const n = xs.length; if (n < 2) return; const s = desc ? -1 : 1; if (kind === 0 && n >= 256) { const ix = new Uint32Array(n); for (let i = 0; i < n; i++) ix[i] = i; $radixBy(xs, f, desc, ix); const c = xs.slice(); for (let i = 0; i < n; i++) xs[i] = c[ix[i]]; return; } if (kind === 2) { let wide = false; for (let i = 0; i < n && !wide; i++) { const k = f(xs[i]); for (let j = 0; j < k.length; j++) if (k.charCodeAt(j) >= 0xd800) { wide = true; break; } } if (!wide) { xs.sort((a, b) => { const x = f(a), y = f(b); return s * (x < y ? -1 : x > y ? 1 : 0); }); return; } } const d = new Array(n); for (let i = 0; i < n; i++) d[i] = { k: f(xs[i]), v: xs[i] }; d.sort((p, q) => s * $cmpKey(p.k, q.k, kind)); for (let i = 0; i < n; i++) xs[i] = d[i].v; };",
+    ),
+    (
+        "$cmpKey",
+        &[],
+        "const $cmpKey = (a, b, kind) => { if (kind === 2) { if (a === b) return 0; const n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) { let x = a.charCodeAt(i), y = b.charCodeAt(i); if (x !== y) { if (x >= 0xd800 && y >= 0xd800) { x = x >= 0xe000 ? x - 0x800 : x + 0x2000; y = y >= 0xe000 ? y - 0x800 : y + 0x2000; } return x - y; } } return a.length - b.length; } if (a < b) return -1; if (a > b) return 1; if (a === b) return a === 0 && kind === 0 ? (Object.is(a, -0) ? 0 : 1) - (Object.is(b, -0) ? 0 : 1) : 0; return (a !== a ? 1 : 0) - (b !== b ? 1 : 0); };",
+    ),
+    (
+        "$radixBy",
+        &[],
+        "const $radixBy = (xs, f, desc, out) => { let ix = out; const n = xs.length, kf = new Float64Array(n), u = new Uint32Array(kf.buffer); for (let i = 0; i < n; i++) kf[i] = f(xs[i]); let hi = new Uint32Array(n), lo = new Uint32Array(n), ix2 = new Uint32Array(n); for (let i = 0; i < n; i++) { let h = u[2 * i + 1], l = u[2 * i]; if (kf[i] !== kf[i]) { h = 0xffffffff; l = 0xffffffff; } else if (h & 0x80000000) { h = ~h; l = ~l; } else h |= 0x80000000; if (desc) { h = ~h; l = ~l; } hi[i] = h >>> 0; lo[i] = l >>> 0; } let hi2 = new Uint32Array(n), lo2 = new Uint32Array(n); const cnt = new Uint32Array(256); for (let p = 0; p < 8; p++) { const w = p < 4 ? lo : hi, sh = (p & 3) * 8; cnt.fill(0); for (let i = 0; i < n; i++) cnt[(w[i] >>> sh) & 255]++; if (cnt[(w[0] >>> sh) & 255] === n) continue; let s = 0; for (let b = 0; b < 256; b++) { const c = cnt[b]; cnt[b] = s; s += c; } for (let i = 0; i < n; i++) { const d = cnt[(w[i] >>> sh) & 255]++; hi2[d] = hi[i]; lo2[d] = lo[i]; ix2[d] = ix[i]; } let t = hi; hi = hi2; hi2 = t; t = lo; lo = lo2; lo2 = t; t = ix; ix = ix2; ix2 = t; } if (ix !== out) out.set(ix); };",
+    ),
+    (
         "$eq",
         &[],
         "const $eq = (a, b) => { if (a === b) return true; if (typeof a !== \"object\" || typeof b !== \"object\" || a === null || b === null) return false; if (a instanceof Map || a instanceof Set) { if (!(b instanceof a.constructor) || a.size !== b.size) return false; for (const [k, v] of a.entries()) if (!b.has(k) || !$eq(v, a instanceof Map ? b.get(k) : k)) return false; return true; } const ka = Object.keys(a); if (ka.length !== Object.keys(b).length) return false; for (const k of ka) if (!$eq(a[k], b[k])) return false; return true; };",

@@ -14,7 +14,7 @@ use crate::ty::{Bound, IntTy, Ty};
 use crate::{Checker, errors};
 
 /// The array methods that take an arrow function.
-pub const FUNCTION_METHODS: [&str; 7] = [
+pub const FUNCTION_METHODS: [&str; 9] = [
     "map",
     "filter",
     "reduce",
@@ -22,7 +22,19 @@ pub const FUNCTION_METHODS: [&str; 7] = [
     "findIndex",
     "some",
     "every",
+    "sortBy",
+    "sortByDescending",
 ];
+
+/// Whether `sortBy` orders by values of this type: `i32`, `i64`, `f32`,
+/// `f64` and strings.
+#[must_use]
+pub fn is_sort_key(ty: &Ty) -> bool {
+    matches!(
+        ty,
+        Ty::Int(IntTy::I32 | IntTy::I64) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit | Ty::String
+    )
+}
 
 impl Checker<'_> {
     /// A method of `Array<element>` that takes an arrow function, or `None`
@@ -62,6 +74,26 @@ impl Checker<'_> {
             "some" | "every" => {
                 self.arrow(f, std::slice::from_ref(element), Some(&Ty::Bool));
                 Ty::Bool
+            }
+            // `xs.sortBy((o) => o.amount)`: a key per element, a number or a
+            // string; the array is sorted in place, stably.
+            "sortBy" | "sortByDescending" => {
+                let key = self.arrow(f, std::slice::from_ref(element), None);
+                if !is_sort_key(&key) && key != Ty::Error {
+                    let at = match &self.ast.expr(f).kind {
+                        ExprKind::Lambda {
+                            body: LambdaBody::Expr(body),
+                            ..
+                        } => self.ast.expr(*body).span,
+                        _ => self.ast.expr(f).span,
+                    };
+                    self.report(errors::sort_key(at, &key));
+                }
+                // Code generation reads the key's type on the function.
+                let key = key.defaulted();
+                self.expr_types
+                    .insert(f, Ty::Callback(vec![element.clone()], Box::new(key)));
+                Ty::Void
             }
             // `reduce((acc, x) => …, start)`: the start gives the type.
             _ => {

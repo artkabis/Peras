@@ -800,6 +800,12 @@ check-floating-promise-label = s’exécute plus tard, et rien ne l’attend
 check-floating-promise-why = Appeler une fonction `async` lance son travail et rend une promesse de son résultat. Sans `await`, les instructions qui suivent l’appel s’exécutent avant que ce travail soit fini, et une erreur qu’il lève est perdue. Oublier `await` est l’un des bugs les plus courants du code asynchrone.
 check-floating-promise-fix = écrivez `await` devant l’appel, dans une fonction `async` ; pour la laisser tourner exprès, gardez-la : `const _saving = save();`
 
+# E0249
+check-sort-key = un tableau ne peut pas être trié par un `{ $type }`
+check-sort-key-label = un `{ $type }`, ni un nombre ni une chaîne
+check-sort-key-why = `sortBy` et `sortByDescending` calculent une clé par élément, une fois, puis trient les clés : les nombres dans l’ordre de `sort()`, -0 avant +0 et NaN en dernier, les chaînes dans l’ordre de leurs points de code Unicode. Les deux modes les trient sans appeler de fonction à chaque comparaison, en un temps proportionnel à la longueur pour les nombres. Une clé d’un autre type n’a pas d’ordre propre : quel champ d’abord, dans quel ordre, c’est au programme de le dire.
+check-sort-key-fix = triez par un nombre ou une chaîne : un champ, `(o) => o.amount`, ou une clé construite en texte
+
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures

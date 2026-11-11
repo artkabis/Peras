@@ -800,6 +800,12 @@ check-floating-promise-label = runs later, and nothing waits for it
 check-floating-promise-why = Calling an `async` function starts its work and gives a promise of its result. Without `await`, the statements after the call run before that work is done, and an error it throws is lost. Forgetting `await` is one of the commonest bugs of asynchronous code.
 check-floating-promise-fix = write `await` before the call, in an `async` function; to let it run on purpose, keep it: `const _saving = save();`
 
+# E0249
+check-sort-key = an array cannot be sorted by a `{ $type }`
+check-sort-key-label = a `{ $type }`, not a number or a string
+check-sort-key-why = `sortBy` and `sortByDescending` compute a key once per element, then sort the keys: numbers in the order of `sort()`, -0 before +0 and NaN last, strings in the order of their Unicode code points. Both modes sort them without calling a function at each comparison, in time proportional to the length for numbers. A key of another type has no order of its own: which field first, in which order, is for the program to say.
+check-sort-key-fix = sort by a number or a string: a field, `(o) => o.amount`, or a key built as text
+
 # E0900
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures

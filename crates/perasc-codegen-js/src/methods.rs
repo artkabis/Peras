@@ -38,6 +38,21 @@ impl Module<'_> {
             Ty::Int(int) => self.int_method(*int, name, &me, rest, &result, base),
             Ty::Float(float) => self.float_method(*float, name, &me, rest, &result, base),
             Ty::Bool => Some(format!("String({me})")),
+            Ty::Array(_) if name == "sortBy" || name == "sortByDescending" => {
+                let key = match args.first().map(|&f| self.ty(f)) {
+                    Some(Ty::Callback(_, key)) => *key,
+                    _ => Ty::Error,
+                };
+                // 0: numbers, sorted by their bits; 1: `i64`, as `bigint`s; 2: strings.
+                let kind = match key {
+                    Ty::Int(IntTy::I64) => 1,
+                    Ty::String => 2,
+                    _ => 0,
+                };
+                let helper = self.helper("$sortBy");
+                let desc = name == "sortByDescending";
+                Some(format!("{helper}({me}, {}, {desc}, {kind})", arg(0)))
+            }
             Ty::Array(element) => self.array_method(element, name, &me, rest),
             Ty::String => self.string_method(name, &me, rest),
             Ty::Map(_, value) => match name {

@@ -39,24 +39,12 @@ export fn summarize(orders: Array<Order>): Summary {
 export fn visible(orders: Array<Order>, text: String, up: bool): Array<Order> {
   const q = text.trim().toLowerCase();
   let kept = orders.filter((o) => o.customer.toLowerCase().includes(q));
-  // No sort with a comparison: an insertion sort, by hand.
-  for (let i = 1; i < kept.length; i++) {
-    let j = i;
-    while (j > 0 && before(kept[j], kept[j - 1], up)) {
-      const swap = kept[j];
-      kept[j] = kept[j - 1];
-      kept[j - 1] = swap;
-      j -= 1;
-    }
+  if (up) {
+    kept.sortBy((o) => o.amount);
+  } else {
+    kept.sortByDescending((o) => o.amount);
   }
   return kept;
-}
-
-fn before(a: Order, b: Order, up: bool): bool {
-  if (up) {
-    return a.amount < b.amount;
-  }
-  return a.amount > b.amount;
 }
 
 // The state belongs to each table: arrow functions capture it, so the

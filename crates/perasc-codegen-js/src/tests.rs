@@ -645,3 +645,26 @@ fn replacing_a_resource_releases_the_one_before() {
         "\"0 true 1\"",
     );
 }
+
+#[path = "../../perasc-driver/tests/fixtures/sort.rs"]
+mod sort;
+
+#[test]
+fn sort_by_gives_what_a_stable_sort_gives() {
+    // The program the WebAssembly and interpreter tests run, as a managed
+    // module: one `main` gives every case at every size.
+    let calls: Vec<String> = sort::CASES
+        .iter()
+        .flat_map(|(name, _)| sort::SIZES.iter().map(move |n| format!("{name}({n})")))
+        .collect();
+    let source = format!(
+        "{}\nexport fn main(): Array<i32> {{\n  return [{}];\n}}\n",
+        sort::PROGRAM,
+        calls.join(", ")
+    );
+    let expected: Vec<String> = sort::CASES
+        .iter()
+        .flat_map(|(_, model)| sort::SIZES.iter().map(|&n| model(n).to_string()))
+        .collect();
+    gives(&source, &format!("[{}]", expected.join(",")));
+}

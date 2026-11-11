@@ -116,6 +116,66 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
 }
 ```
 
+### Trier par une clé
+
+| Méthode               | Donne                                                                                | Statut                                       |
+| --------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `sortBy(f)`           | trie les éléments par la clé `f(x)`, croissante, sur place : le tableau est un `let` | <span class="status compiled">compilé</span> |
+| `sortByDescending(f)` | de même, décroissante                                                                | <span class="status compiled">compilé</span> |
+
+```peras build
+struct Order {
+  id: i32,
+  customer: String,
+  amount: f64,
+}
+
+export fn largest(orders: Array<Order>, count: i32): Array<Order> {
+  let sorted = orders.copy();
+  sorted.sortByDescending((o) => o.amount);
+  return sorted.slice(0, count);
+}
+```
+
+- **La clé** est un `i32`, un `i64`, un `f32`, un `f64` (`number`) ou une `String`, calculée une fois par élément ([E0249](../errors/E0249.md)). Les nombres sont dans l’ordre de `sort()` : -0 avant +0, NaN à la fin. Les chaînes sont dans l’ordre de leurs points de code Unicode, le même dans les deux modes ; le `<` de JavaScript compare des unités UTF-16, qui ne diffèrent qu’entre les caractères au-delà de U+FFFF et ceux de U+E000 à U+FFFF.
+- **Stable** : les éléments de clés égales gardent leur ordre, en décroissant aussi. `sortByDescending` renverse l’ordre des clés : NaN vient donc en premier.
+- **Rapide** : les nombres sont triés par leurs bits, un tri par base qui emporte les indices des éléments, en un temps proportionnel à la longueur ; les chaînes par comparaison. Mesuré contre le `sort((a, b) => a.amount - b.amount)` de TypeScript ([résultats](../../../bench/sort/RESULTS.md)) : par un nombre, 3 à 7 fois plus rapide dès 10 000 éléments, dans les deux modes ; par une chaîne, aussi rapide dans un module managed, 1,1 à 1,4 fois dans un module owned.
+
+En venant de TypeScript, chaque ligne du premier bloc s’écrit comme la même ligne du second :
+
+```ts
+xs.sort((a, b) => a.amount - b.amount);
+xs.sort((a, b) => b.amount - a.amount);
+xs.sort((a, b) => a.customer.localeCompare(b.customer));
+const ys = xs.toSorted((a, b) => a.amount - b.amount);
+xs.sort((a, b) => a.customer.localeCompare(b.customer) || a.amount - b.amount);
+```
+
+```peras build
+struct Order {
+  id: i32,
+  customer: String,
+  amount: f64,
+}
+
+export fn orders(xs: Array<Order>): Array<Order> {
+  let sorted = xs.copy();
+  sorted.sortBy((x) => x.amount);
+  sorted.sortByDescending((x) => x.amount);
+  // Par points de code, non selon les règles d’une langue.
+  sorted.sortBy((x) => x.customer);
+  let ys = sorted.copy();
+  ys.sortBy((x) => x.amount);
+  // Par client, puis par montant : la dernière clé d’abord, puisque chaque
+  // tri garde l’ordre du précédent pour les clés égales.
+  ys.sortBy((x) => x.amount);
+  ys.sortBy((x) => x.customer);
+  return ys;
+}
+```
+
+Une fonction de comparaison, `sort((a, b) => …)`, n’est pas proposée : une clé dit la même chose dans la plupart des programmes, ne peut pas être incohérente, et laisse le tri comparer les nombres par leurs bits au lieu d’appeler une fonction à chaque comparaison. Trier selon les règles d’une langue, comme le fait `localeCompare`, passe par un bloc `extern` vers `Intl.Collator`.
+
 ## `String`
 
 | Membre   | Donne                                  | État                                         |
