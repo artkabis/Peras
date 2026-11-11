@@ -234,27 +234,48 @@ fn build_links_the_allocator_asked_for() {
     );
     let heap_path = heap.to_string_lossy().into_owned();
     let mut loaders = Vec::new();
-    for allocator in ["debug", "tlsf"] {
-        let dir = out_dir(allocator);
+    let mut modules = Vec::new();
+    for (allocator, link) in [
+        ("debug", "on"),
+        ("tlsf", "on"),
+        ("debug", "off"),
+        ("tlsf", "off"),
+    ] {
+        let dir = out_dir(&format!("{allocator}-{link}"));
         let out_path = dir.to_string_lossy().into_owned();
         let (code, _, err) = cli(&[
             "build",
             &heap_path,
             "--allocator",
             allocator,
+            "--link",
+            link,
             "--out",
             &out_path,
         ]);
         assert_eq!((code, err.as_str()), (SUCCESS, ""));
         loaders.push(std::fs::read_to_string(dir.join("perasc-heap-tlsf.js")).unwrap_or_default());
+        modules.push(std::fs::read(dir.join("perasc-heap-tlsf.wasm")).unwrap_or_default());
         let _ = std::fs::remove_dir_all(&dir);
     }
-    // The allocator is inlined in the loader: the two differ, TLSF is smaller.
+    // Linked, the default: the allocator is in the module, which differs.
     assert!(
-        loaders.iter().all(|l| l.contains("const $allocator")),
+        loaders
+            .iter()
+            .take(2)
+            .all(|l| l.contains("linked into the module") && !l.contains("const $allocator")),
         "{loaders:?}"
     );
-    assert_ne!(loaders.first(), loaders.get(1));
+    assert_ne!(modules.first(), modules.get(1));
+    // Not linked: the allocator is inlined in the loader, which differs.
+    assert!(
+        loaders
+            .iter()
+            .skip(2)
+            .all(|l| l.contains("const $allocator")),
+        "{loaders:?}"
+    );
+    assert_ne!(loaders.get(2), loaders.get(3));
     let (code, _, err) = cli(&["build", source, "--allocator", "malloc"]);
     assert_eq!(code, USAGE_OR_IO);
     assert!(err.contains("`--allocator`"), "{err}");

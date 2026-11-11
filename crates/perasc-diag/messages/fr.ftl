@@ -19,6 +19,7 @@ cli-usage =
       --allocator <nom>  le build : debug (défaut, chaque bug mémoire et chaque débordement d’entier attrapés) ou tlsf (production, temps borné, les entiers bouclent)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
+      --link <on|off>    le runtime lié dans le .wasm du module, ses appels internes à un seul module (décision 0016) : on (par défaut) ou off
       --imports <mode>   imports de fichiers .peras dans un module .apeiron : built (par défaut, chacun compilé à côté) ou source (gardés pour un bundler comme Vite)
       --color <quand>    colore les diagnostics : auto (par défaut), always, never ; NO_COLOR est respecté
       -V, --version      affiche la version

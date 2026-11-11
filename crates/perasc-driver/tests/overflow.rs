@@ -22,6 +22,8 @@ fn add(checks: bool, a: i32, b: i32) -> Option<i32> {
         DirectOptions {
             allocator: Allocator::Debug,
             overflow_checks: checks,
+            // Instantiated beside its allocator, as the tests' host does.
+            link: false,
             ..DirectOptions::default()
         },
         &Localizer::new(Language::English),

@@ -154,6 +154,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             "--threads" => {
                 options.direct.threads = pick("--threads", value("--threads")?, &SIMD)?;
             }
+            "--link" => options.direct.link = pick("--link", value("--link")?, &SIMD)?,
             "--color" => options.color = pick("--color", value("--color")?, &COLORS)?,
             "--imports" => options.keep_imports = pick("--imports", value("--imports")?, &IMPORTS)?,
             other if other.starts_with('-') && other.len() > 1 => {

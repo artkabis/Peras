@@ -21,9 +21,11 @@
 //! traps. A site is the number perasc gives to a place in the source that
 //! allocates or releases; `0` means unknown.
 
+mod link;
 mod prune;
 mod threads;
 
+pub use link::{RUNTIME_EXPORT, link};
 pub use prune::{PruneError, prune};
 pub use threads::{import_memory, memory_flag};
 

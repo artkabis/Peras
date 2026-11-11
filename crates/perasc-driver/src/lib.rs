@@ -273,6 +273,10 @@ pub struct DirectOptions {
     ///
     /// [decision 0011]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0011-what-to-build-next.md
     pub overflow_checks: bool,
+    /// Links the runtime into the module's `.wasm`, so that its calls are
+    /// inside one module, which the engine can inline (decision 0016), the
+    /// default. Never with threads, whose runtime imports a shared memory.
+    pub link: bool,
 }
 
 impl Default for DirectOptions {
@@ -283,13 +287,15 @@ impl Default for DirectOptions {
             simd: true,
             threads: false,
             overflow_checks: true,
+            link: true,
         }
     }
 }
 
-/// The direct backend's output for a verified module. A module that uses the
-/// heap is linked to `allocator`, whose messages are in the language of
-/// `localizer`.
+/// The direct backend's output for a verified module, for a host that
+/// instantiates the runtime beside it, as the tests' does: a module that uses
+/// the heap imports `allocator`'s functions, whose messages are in the
+/// language of `localizer`, instead of having them linked in.
 #[must_use]
 pub fn emit_direct(
     module: &perasc_ir::Module,
@@ -299,6 +305,7 @@ pub fn emit_direct(
 ) -> DirectOutput {
     let options = DirectOptions {
         allocator,
+        link: false,
         ..DirectOptions::default()
     };
     emit_direct_for(module, wasm_file, options, localizer)
@@ -344,6 +351,7 @@ pub fn emit_direct_for(
             bounds: &bounds,
             overflow: &overflow,
             simd: needs_simd.then_some(simd.as_str()),
+            linked: options.link && !threads,
             threads: flags
                 .filter(|_| threads)
                 .map(|(runtime_flag, module_flag)| perasc_codegen_wasm::Threads {
@@ -364,10 +372,16 @@ pub fn emit_direct_for(
         .chain(called.iter().map(String::as_str))
         .collect();
     let allocator = perasc_runtime::prune(full, &keep).unwrap_or_else(|_| full.to_vec());
+    // Linked: one module, the runtime's functions called from inside it.
+    let wasm = if options.link && !threads && module.needs_runtime() {
+        perasc_runtime::link(&allocator, &compiled.wasm).unwrap_or(compiled.wasm)
+    } else {
+        compiled.wasm
+    };
     DirectOutput {
         js: loader(&allocator),
         dts: perasc_codegen_wasm::dts(module),
-        wasm: compiled.wasm,
+        wasm,
     }
 }
 

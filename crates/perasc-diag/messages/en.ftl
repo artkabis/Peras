@@ -19,6 +19,7 @@ cli-usage =
       --allocator <name> the build: debug (default, every memory bug and integer overflow caught) or tlsf (production, bounded time, integers wrap)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
+      --link <on|off>    the runtime linked into the module's .wasm, its calls inside one module (decision 0016): on (default) or off
       --imports <how>    imports of .peras files in a .apeiron module: built (default, each next to it) or source (kept for a bundler such as Vite)
       --color <when>     colour diagnostics: auto (default), always, never; NO_COLOR is honoured
       -V, --version      print the version

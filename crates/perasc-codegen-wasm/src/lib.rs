@@ -35,6 +35,9 @@ const fn val_type(ty: Ty) -> Option<ValType> {
 
 /// Module that a module using the heap imports its allocator from.
 pub const RUNTIME_MODULE: &str = "peras_rt";
+/// The prefix of the runtime's exports in a module the runtime is linked
+/// into (`perasc_runtime::RUNTIME_EXPORT`).
+pub const RUNTIME_EXPORT: &str = "peras_rt.";
 
 /// The functions a module using the heap imports from [`RUNTIME_MODULE`], in
 /// order: their indices come before the module's own functions.
@@ -1275,6 +1278,11 @@ pub struct Runtime<'a> {
     /// When the module runs its `parallel for` loops on threads: where the
     /// shared bit of each memory import is.
     pub threads: Option<Threads>,
+    /// The runtime is linked into the module's `.wasm` (`perasc_runtime::link`,
+    /// decision 0016): the loader reads it from the module's exports named
+    /// `peras_rt.`, instead of instantiating `allocator` first. Never with
+    /// threads.
+    pub linked: bool,
 }
 
 /// Where a module built with threads, and its runtime, declare their memory
@@ -1354,6 +1362,9 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
          {EXPORTS_MARKER}\n\
          const $wasm = $instance.exports;\n"
     );
+    if heap && runtime.is_some_and(|r| r.linked && r.threads.is_none()) {
+        js.push_str(&linked_runtime(module));
+    }
     if threads {
         js.push_str(&start_threads(module));
     }
@@ -1378,21 +1389,7 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
         }
     }
     if heap {
-        let threads_count = if threads {
-            "\n  threads: () => $threads.length + 1,"
-        } else if module.functions.iter().any(|f| f.job) {
-            "\n  threads: () => 1,"
-        } else {
-            ""
-        };
-        let _ = write!(
-            js,
-            "export const __perasHeap = {{\n  \
-             live: () => $runtime.live_count(),\n  \
-             checkLeaks: () => $runtime.check_leaks(),\n  \
-             array: $array,{threads_count}\n}};\n\
-             export {{ PerasArray }};\n",
-        );
+        js.push_str(&heap_export(module, threads));
     }
     if js.contains(HELPERS_MARKER) {
         let helpers = used_helpers(HEAP_HELPERS, &js);
@@ -2057,6 +2054,22 @@ fn runtime_imports(
         .chain(runtime.sites.iter().cloned())
         .map(|s| js_string(&s))
         .collect();
+    let linked = runtime.linked && runtime.threads.is_none();
+    let instantiate = if linked {
+        format!(
+            "// The runtime is linked into the module (decision 0016): read from its exports.\n\
+             const $bounds = (index, length) => {{\n  \
+             if (length === -1) throw new RangeError({overflow});\n  \
+             throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
+             }};\n\
+             const $imports = {{ peras: {{ fault: $fault, float_text: $floatText, float_parse: $floatParse }}, {module}: {{ bounds: $bounds }}, Math }};\n",
+            bounds = js_string(runtime.bounds),
+            overflow = js_string(runtime.overflow),
+            module = RUNTIME_MODULE,
+        )
+    } else {
+        String::new()
+    };
     let imports = format!(
         "// The allocator chosen at build time, inlined: debug (decision 0001) or TLSF\n\
          // (decision 0002). A memory fault throws a PerasMemoryError.\n\
@@ -2097,7 +2110,72 @@ fn runtime_imports(
          for (let i = 0; i < len; i++) text += String.fromCharCode($memoryBytes[at + i]);\n  \
          return Number(text);\n\
          }};\n\
-         const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
+         {separate}\
+",
+        faults = faults.join(", "),
+        sites = sites.join(", "),
+        separate = if linked {
+            instantiate
+        } else {
+            separate_runtime(runtime, used, maps, jobs)
+        },
+    );
+    imports + HELPERS_MARKER
+}
+
+/// `__perasHeap`: the blocks alive, the check of leaks, the arrays made in
+/// the module's memory, and the threads its loops run on.
+fn heap_export(module: &Module, threads: bool) -> String {
+    let threads_count = if threads {
+        "\n  threads: () => $threads.length + 1,"
+    } else if module.functions.iter().any(|f| f.job) {
+        "\n  threads: () => 1,"
+    } else {
+        ""
+    };
+    format!(
+        "export const __perasHeap = {{\n  \
+         live: () => $runtime.live_count(),\n  \
+         checkLeaks: () => $runtime.check_leaks(),\n  \
+         array: $array,{threads_count}\n}};\n\
+         export {{ PerasArray }};\n",
+    )
+}
+
+/// The runtime of a module it is linked into: its exports named
+/// [`RUNTIME_EXPORT`], read once the module is instantiated.
+fn linked_runtime(module: &Module) -> String {
+    format!(
+        "const $runtime = Object.fromEntries(Object.entries($wasm).filter(([k]) => k.startsWith(\"{RUNTIME_EXPORT}\")).map(([k, v]) => [k.slice({len}), v]));\n{seed}",
+        len = RUNTIME_EXPORT.len(),
+        seed = map_seed(&module.runtime_fns(), crosses_map(module)),
+    )
+}
+
+/// Whether the loader seeds the maps' hash: a map hashes its keys with a key
+/// of its own, drawn here, so that who chooses the keys of a map cannot
+/// choose their collisions.
+fn map_seed(used: &[RuntimeFn], maps: bool) -> &'static str {
+    if maps || used.contains(&RuntimeFn::MapNew) {
+        "if (globalThis.crypto?.getRandomValues) {\n  \
+         const k = globalThis.crypto.getRandomValues(new BigInt64Array(2));\n  \
+         $runtime.map_seed(k[0], k[1]);\n\
+         }\n"
+    } else {
+        ""
+    }
+}
+
+/// The runtime as its own instance, made before the module, and the imports
+/// it gives the module.
+fn separate_runtime(
+    runtime: &Runtime<'_>,
+    used: &[RuntimeFn],
+    maps: bool,
+    jobs: &[Vec<&'static str>],
+) -> String {
+    format!(
+        "const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
          {memory}\
          const $runtime = (await WebAssembly.instantiate($allocator, {{ peras: {{ fault: $fault, float_text: $floatText, float_parse: $floatParse }}{env} }})).instance.exports;\n\
          {seed}\
@@ -2106,26 +2184,14 @@ fn runtime_imports(
          throw new RangeError({bounds}.replace(\"{{index}}\", String(index)).replace(\"{{length}}\", String(length)));\n\
          }};\n\
          const $imports = {{ {module}: {{ alloc: $runtime.alloc, release: $runtime.release, buf_new: $runtime.buf_new, buf_reserve: $runtime.buf_reserve, buf_release: $runtime.buf_release, bounds: $bounds, buf_clone: $runtime.buf_clone, {strings}memory: $runtime.memory }}, Math{par} }};\n\
-         {pool}\
-",
+         {pool}",
         strings = used.iter().fold(String::new(), |mut out, f| {
             let _ = write!(out, "{name}: $runtime.{name}, ", name = f.name());
             out
         }),
-        // A map hashes its keys with a key of its own, drawn here: who
-        // chooses the keys of a map cannot choose their collisions.
-        seed = if maps || used.contains(&RuntimeFn::MapNew) {
-            "if (globalThis.crypto?.getRandomValues) {\n  \
-             const k = globalThis.crypto.getRandomValues(new BigInt64Array(2));\n  \
-             $runtime.map_seed(k[0], k[1]);\n\
-             }\n"
-        } else {
-            ""
-        },
+        seed = map_seed(used, maps),
         bounds = js_string(runtime.bounds),
         overflow = js_string(runtime.overflow),
-        faults = faults.join(", "),
-        sites = sites.join(", "),
         allocator = base64(runtime.allocator),
         module = RUNTIME_MODULE,
         memory = runtime
@@ -2142,8 +2208,7 @@ fn runtime_imports(
         pool = runtime
             .threads
             .map_or_else(String::new, |t| thread_pool(t.module_flag)),
-    );
-    imports + HELPERS_MARKER
+    )
 }
 
 /// The memory of a module built with threads: shared where the page can
