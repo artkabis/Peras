@@ -47,6 +47,7 @@ fn stop(t: Timer, e: Event): void {
   log(`${t == t}`);
 }
 
+// Replacing releases the resource replaced.
 export fn replaced(button: Element): Listener {
   let listener = button.on("click", (e) => noop(e));
   listener = button.on("focus", (e) => noop(e));

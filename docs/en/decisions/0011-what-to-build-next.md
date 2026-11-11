@@ -80,6 +80,7 @@ Built with this decision, because each closes a measured gap and costs little: [
 ## Progress
 
 - **Step 1, done**: arrow functions with statements, capturing what they use, and functions as values in managed modules ([guide](../guide/managed.md#arrow-functions)). The case study keeps its state in the table it mounts: points 1, 2 and 4 are gone, and the benchmark checks that two tables in one page keep their own state, which the version before failed. 97 lines instead of 101, 1,687 bytes gzip instead of 1,777; the bugs benchmark is unchanged, 2 silent.
+- **Step 2, done**: replacing the resource of a `let` variable releases the one it held. An arrow function cannot capture a resource, so a resource it must replace is kept in a `Slot` of a group, `group.slot()`: `slot.set(timer)` releases the timer before, and the slot is released with its group, which also holds the listeners that use it. The case study searches after a delay of 50 ms, as the TypeScript version: point 5 is gone. 100 lines, 1,858 bytes gzip, most of the increase the runtime's timers and slots. The restarted timer of the bugs benchmark is still refused at compile time, being in a module variable.
 
 ## Consequences
 

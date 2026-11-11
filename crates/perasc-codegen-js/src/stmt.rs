@@ -6,8 +6,8 @@ use perasc_syntax::ast::{
     StmtKind,
 };
 
-use crate::Module;
 use crate::expr::string_literal;
+use crate::{Module, NameKind};
 
 /// A place a value is written to.
 enum Place {
@@ -38,6 +38,9 @@ impl Module<'_> {
             },
             StmtKind::Expr(id) => self.effect(*id),
             StmtKind::Assign { target, op, value } => {
+                if self.replace_resource(*target, *value) {
+                    return;
+                }
                 let text = self.assignment(*target, *op, *value);
                 self.line(format!("{text};"));
             }
@@ -277,6 +280,31 @@ impl Module<'_> {
     }
 
     /// `target = value`, or `target op= value`, as an expression.
+    /// `timer = setTimeout(…)`: the new resource is made first, then the one
+    /// the variable held is released, if it still holds it.
+    fn replace_resource(&mut self, target: ExprId, value: ExprId) -> bool {
+        let Some((binding, NameKind::Local)) = self.bound(target) else {
+            return false;
+        };
+        let owns = self
+            .analysis
+            .bindings
+            .get(binding)
+            .is_some_and(|b| perasc_check::browser::is_resource(&b.ty));
+        if !owns {
+            return false;
+        }
+        let name = self.variable(binding);
+        let value = self.expr(value);
+        let t = self.temp();
+        let release = self.helper("$release");
+        self.line(format!("const {t} = {value};"));
+        self.line(format!("if ({name}$live) {release}({name});"));
+        self.line(format!("{name} = {t};"));
+        self.line(format!("{name}$live = true;"));
+        true
+    }
+
     fn assignment(&mut self, target: ExprId, op: AssignOp, value: ExprId) -> String {
         let ty = self.ty(target);
         let place = self.place(target);

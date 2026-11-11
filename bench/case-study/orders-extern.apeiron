@@ -79,13 +79,16 @@ export fn mount(root: Element, orders: Array<Order>): Group {
     summary.textContent = `${s.count} orders, ${s.total} total, ${s.unpaid} unpaid, top: ${s.top}`;
   };
 
-  // No delay before searching yet: a timer replaced at each keystroke
-  // needs step 2 of decision 0011.
+  // The search waits for the user to stop typing: the slot holds one timer,
+  // and each keystroke replaces it, releasing the one before.
+  const pending = group.slot();
   match (input.asInput()) {
     Some(field) => {
       group.add(field.on("input", (_e) => {
-        query = field.value;
-        render();
+        pending.set(setTimeout(50, () => {
+          query = field.value;
+          render();
+        }));
       }));
     }
     None => {}

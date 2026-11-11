@@ -163,7 +163,7 @@ export fn start(root: Element): Group {
 }
 ```
 
-`start` donne son groupe à son appelant, qui le libère quand la vue disparaît : `group.release()` en TypeScript, ou `using group = start(root)`. Une ressource peut être donnée une fois : rendue, ajoutée à un groupe, ou libérée par `release()`. Le compilateur refuse une ressource que rien ne garde, utilisée après avoir été donnée, ou gardée par un tableau ou une fonction fléchée, là où rien ne la libérerait ([E0245](../errors/E0245.md)).
+`start` donne son groupe à son appelant, qui le libère quand la vue disparaît : `group.release()` en TypeScript, ou `using group = start(root)`. Une ressource peut être donnée une fois : rendue, ajoutée à un groupe, ou libérée par `release()`. Remplacer la ressource d’une variable `let` libère celle qu’elle tenait, et un `Slot` d’un groupe, `group.slot()`, tient une ressource que des fonctions fléchées remplacent par `set`, comme le fait une recherche pour attendre que l’utilisateur ait fini de taper ([référence du navigateur](../reference/browser.md)). Le compilateur refuse une ressource que rien ne garde, utilisée après avoir été donnée, ou gardée par un tableau ou une fonction fléchée, là où rien ne la libérerait ([E0245](../errors/E0245.md)).
 
 En debug, le défaut de `perasc build` et du serveur de développement de Vite, une ressource ramassée sans avoir été libérée est signalée dans la console avec le fichier et la ligne qui l’ont créée.
 

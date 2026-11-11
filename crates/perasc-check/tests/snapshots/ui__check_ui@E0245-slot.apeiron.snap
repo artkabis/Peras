@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0245-slot.apeiron
+---
+diagnostics:
+  error[E0210] check-mismatch { expected: "Listener", found: "{integer}" }
+    primary 16:12-16:13: check-mismatch-label { found: "{integer}" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "Listener" }

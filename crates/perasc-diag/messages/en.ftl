@@ -736,7 +736,7 @@ check-resource = { $reason ->
     [capture] `{ $name }` is a resource, and an arrow function cannot keep it
     [holder] a resource cannot be kept in a structure, an array, an option or a map
     [lent] `{ $name }` is lent to this function, which cannot give it away
-    [reassign] `{ $name }` holds a resource, which cannot be replaced
+    [reassign] `{ $name }` is lent to this function, which cannot replace it
     [global] `{ $name }` is a module variable: nothing would release the resource it holds
    *[other] this resource cannot be used here
 }
@@ -751,15 +751,15 @@ check-resource-label = { $reason ->
     [global] kept for as long as the page
    *[other] here
 }
-check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, or released with `release()`; after that, its variable holds nothing. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
+check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, set in a `Slot`, or released with `release()`; after that, its variable holds nothing. Replacing the resource of a `let` variable releases the one it held. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
 check-resource-fix = { $reason ->
     [dropped] keep it in a variable, `const listener = …`, add it to a `Group`, or return it
     [moved] give it away last, or keep it in a `Group` and use the group
     [loop] add each one to a `Group` declared before the loop
-    [capture] keep the resource outside, and let the arrow function call a function
+    [capture] keep it in a `Slot` of a group, which an arrow function can use: `const pending = group.slot();`, then `pending.set(…)`
     [holder] keep it in a variable or a `Group`
     [lent] return it from the function that made it, or add it to a `Group` there
-    [reassign] declare a new `const` for the new resource
+    [reassign] return the new resource, or keep the resource in a `Slot` of a group: `slot.set(…)` replaces it
     [global] keep it in a function that returns it, or in a `Group` that one returns
    *[other] keep the resource in a variable
 }

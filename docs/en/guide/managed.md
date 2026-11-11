@@ -163,7 +163,7 @@ export fn start(root: Element): Group {
 }
 ```
 
-`start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
+`start` gives its group to its caller, which releases it when the view goes away: `group.release()` in TypeScript, or `using group = start(root)`. A resource can be given away once: returned, added to a group, or released with `release()`. Replacing the resource of a `let` variable releases the one it held, and a `Slot` of a group, `group.slot()`, holds one resource that arrow functions replace with `set`, as a search does to wait for the user to stop typing ([browser reference](../reference/browser.md)). The compiler refuses one kept by nothing, used after it was given away, or kept by an array or an arrow function, where nothing would release it ([E0245](../errors/E0245.md)).
 
 In debug, the default of `perasc build` and Vite's dev server, a resource collected without being released is reported in the console with the file and line that made it.
 

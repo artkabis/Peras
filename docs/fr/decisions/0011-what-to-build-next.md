@@ -80,6 +80,7 @@ Construit avec cette décision, parce que chacun ferme un écart mesuré et coû
 ## Avancement
 
 - **Étape 1, faite** : des fonctions fléchées à instructions, qui capturent ce qu’elles utilisent, et les fonctions comme valeurs dans les modules managed ([guide](../guide/managed.md#fonctions-fléchées)). L’étude de cas garde son état dans le tableau qu’elle monte : les points 1, 2 et 4 ont disparu, et le banc vérifie que deux tableaux dans une page gardent chacun leur état, ce que la version d’avant ne faisait pas. 97 lignes au lieu de 101, 1 687 octets gzip au lieu de 1 777 ; le banc de bugs ne bouge pas, 2 en silence.
+- **Étape 2, faite** : remplacer la ressource d’une variable `let` libère celle qu’elle tenait. Une fonction fléchée ne peut pas capturer une ressource ; une ressource qu’elle doit remplacer est donc gardée dans un `Slot` d’un groupe, `group.slot()` : `slot.set(timer)` libère le minuteur d’avant, et l’emplacement est libéré avec son groupe, qui tient aussi les écouteurs qui l’utilisent. L’étude de cas cherche après un délai de 50 ms, comme la version TypeScript : le point 5 a disparu. 100 lignes, 1 858 octets gzip, l’essentiel de la hausse étant les minuteurs et emplacements du runtime. Le minuteur relancé du banc de bugs reste refusé à la compilation, puisqu’il est dans une variable de module.
 
 ## Conséquences
 

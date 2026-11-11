@@ -140,7 +140,7 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
     (
         "$group",
         &["$Resource"],
-        "const $group = (where) => { const held = []; let open = true; const group = new $Resource(() => { open = false; while (held.length > 0) held.pop().release(); }, where); group.add = (r) => { if (open) held.push(r); else r.release(); }; return group; };",
+        "const $group = (where) => { const held = []; let open = true; const group = new $Resource(() => { open = false; while (held.length > 0) held.pop().release(); }, where); group.add = (r) => { if (open) held.push(r); else r.release(); }; group.slot = () => { let current; const slot = { set(r) { current?.release(); if (open) current = r; else { current = undefined; r.release(); } }, clear() { const r = current; current = undefined; r?.release(); } }; held.push({ release: () => slot.clear() }); return slot; }; return group; };",
     ),
     (
         "$sleep",

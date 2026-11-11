@@ -605,3 +605,43 @@ fn arrow_functions_return_break_and_try_on_their_own() {
         "[9,8,-1,3]",
     );
 }
+
+#[test]
+fn replacing_a_resource_releases_the_one_before() {
+    // The first interval is cleared when replaced; three calls to `later`
+    // leave one timeout; the one set before the group is released never runs.
+    gives(
+        "export async fn main(): Promise<String> {
+           let ticks = 0;
+           let timer = setInterval(5, () => {
+             ticks += 1;
+           });
+           timer = setInterval(5, () => {
+             ticks += 100;
+           });
+           await sleep(23);
+           timer.release();
+           const seen = ticks;
+           await sleep(20);
+           let group = Group.new();
+           const pending = group.slot();
+           let fired = 0;
+           const later = () => {
+             pending.set(setTimeout(10, () => {
+               fired += 1;
+             }));
+           };
+           later();
+           later();
+           later();
+           await sleep(30);
+           pending.set(setTimeout(10, () => {
+             fired += 10;
+           }));
+           group.release();
+           await sleep(20);
+           return `${seen % 100} ${ticks == seen} ${fired}`;
+         }",
+        "\"0 true 1\"",
+    );
+}

@@ -30,7 +30,7 @@ export async function measure(url, count) {
   const button = app.querySelector("button");
   input.value = "ada";
   input.dispatchEvent(new Event("input"));
-  // TypeScript searches after a delay of 50 ms; Peras at once.
+  // Both search after a delay of 50 ms.
   await new Promise((r) => setTimeout(r, 80));
   const shown = items();
   const summary = app.querySelector("p")?.textContent ?? "";

@@ -736,7 +736,7 @@ check-resource = { $reason ->
     [capture] `{ $name }` est une ressource, et une fonction fléchée ne peut pas la garder
     [holder] une ressource ne peut pas être gardée dans une structure, un tableau, une option ou une table
     [lent] `{ $name }` est prêté à cette fonction, qui ne peut pas le donner
-    [reassign] `{ $name }` tient une ressource, qui ne peut pas être remplacée
+    [reassign] `{ $name }` est prêté à cette fonction, qui ne peut pas le remplacer
     [global] `{ $name }` est une variable de module : rien ne libérerait la ressource qu’elle tient
    *[other] cette ressource ne peut pas être utilisée ici
 }
@@ -751,15 +751,15 @@ check-resource-label = { $reason ->
     [global] gardée aussi longtemps que la page
    *[other] ici
 }
-check-resource-why = Un écouteur, un minuteur et un groupe sont des ressources : chacun appartient à une variable, et est libéré quand cette variable sort de sa portée, pour que rien ne continue d’écouter ou de battre une fois son propriétaire parti. Une ressource peut être donnée une fois : rendue, ajoutée à un `Group`, ou libérée par `release()` ; ensuite, sa variable ne tient plus rien. Une ressource que rien ne garde serait libérée aussitôt, et une ressource gardée par une structure, un tableau ou une fonction fléchée n’aurait pas de propriétaire pour la libérer.
+check-resource-why = Un écouteur, un minuteur et un groupe sont des ressources : chacun appartient à une variable, et est libéré quand cette variable sort de sa portée, pour que rien ne continue d’écouter ou de battre une fois son propriétaire parti. Une ressource peut être donnée une fois : rendue, ajoutée à un `Group`, placée dans un `Slot`, ou libérée par `release()` ; ensuite, sa variable ne tient plus rien. Remplacer la ressource d’une variable `let` libère celle qu’elle tenait. Une ressource que rien ne garde serait libérée aussitôt, et une ressource gardée par une structure, un tableau ou une fonction fléchée n’aurait pas de propriétaire pour la libérer.
 check-resource-fix = { $reason ->
     [dropped] gardez-la dans une variable, `const listener = …`, ajoutez-la à un `Group`, ou rendez-la
     [moved] donnez-la en dernier, ou gardez-la dans un `Group` et utilisez le groupe
     [loop] ajoutez chacune à un `Group` déclaré avant la boucle
-    [capture] gardez la ressource à l’extérieur, et laissez la fonction fléchée appeler une fonction
+    [capture] gardez-la dans un `Slot` d’un groupe, qu’une fonction fléchée peut utiliser : `const pending = group.slot();`, puis `pending.set(…)`
     [holder] gardez-la dans une variable ou un `Group`
     [lent] rendez-la depuis la fonction qui l’a créée, ou ajoutez-la à un `Group` là-bas
-    [reassign] déclarez une nouvelle `const` pour la nouvelle ressource
+    [reassign] rendez la nouvelle ressource, ou gardez la ressource dans un `Slot` d’un groupe : `slot.set(…)` la remplace
     [global] gardez-la dans une fonction qui la rend, ou dans un `Group` que l’une rend
    *[other] gardez la ressource dans une variable
 }

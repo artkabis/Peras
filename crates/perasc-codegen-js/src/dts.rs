@@ -127,10 +127,16 @@ impl Types<'_> {
                 name
             }
             Ty::Host(h) => {
-                if h.is_resource() {
+                if h.is_resource() || *h == perasc_check::browser::Host::Slot {
                     self.named.insert(
                         "PerasResource".to_owned(),
                         "{ release(): void; [Symbol.dispose](): void }".to_owned(),
+                    );
+                }
+                if *h == perasc_check::browser::Host::Slot {
+                    self.named.insert(
+                        "PerasSlot".to_owned(),
+                        "{ set(r: PerasResource): void; clear(): void }".to_owned(),
                     );
                 }
                 h.ts_name().to_owned()

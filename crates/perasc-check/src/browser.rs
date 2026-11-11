@@ -36,11 +36,14 @@ pub enum Host {
     Timer,
     /// A resource that holds others, and releases them with it.
     Group,
+    /// A place of a group that holds one resource at a time: `group.slot()`.
+    /// Not a resource itself: the group owns what it holds.
+    Slot,
 }
 
 impl Host {
     /// Every type, in the order of the reference.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Document,
         Self::Element,
         Self::Input,
@@ -52,6 +55,7 @@ impl Host {
         Self::Listener,
         Self::Timer,
         Self::Group,
+        Self::Slot,
     ];
 
     /// Its name in Peras.
@@ -69,6 +73,7 @@ impl Host {
             Self::Listener => "Listener",
             Self::Timer => "Timer",
             Self::Group => "Group",
+            Self::Slot => "Slot",
         }
     }
 
@@ -85,6 +90,7 @@ impl Host {
             Self::Response => "Response",
             Self::Storage => "Storage",
             Self::Listener | Self::Timer | Self::Group => "PerasResource",
+            Self::Slot => "PerasSlot",
         }
     }
 
@@ -221,7 +227,13 @@ pub fn members(of: Host) -> Vec<(&'static str, Member)> {
         Host::Group => vec![
             // `add` takes any resource: checked apart.
             ("add", Method(vec![Ty::Error], Ty::Void)),
+            ("slot", Method(Vec::new(), Ty::Host(Host::Slot))),
             ("release", Method(Vec::new(), Ty::Void)),
+        ],
+        Host::Slot => vec![
+            // `set` takes any resource, and releases the one it replaces.
+            ("set", Method(vec![Ty::Error], Ty::Void)),
+            ("clear", Method(Vec::new(), Ty::Void)),
         ],
     }
 }

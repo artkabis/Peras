@@ -111,15 +111,35 @@ export async fn status(url: String): Promise<String> {
 | `set(key, value)` | `void`           | keeps `value` for `key`  |
 | `remove(key)`     | `void`           | forgets `key`            |
 
-## Resources: `Listener`, `Timer`, `Group`
+## Resources: `Listener`, `Timer`, `Group`, `Slot`
 
 A resource belongs to one variable, and is released when that variable goes out of scope: a listener is removed, a timer cleared, a group releases what it holds. It can be given away once, by returning it, adding it to a group, or releasing it early ([E0245](../errors/E0245.md)). In JavaScript, a resource has `release()` and `[Symbol.dispose]()`, so that TypeScript can release one a module returns, or hold it with `using`.
 
-| Member          | On        | Does                                        |
-| --------------- | --------- | ------------------------------------------- |
-| `Group.new()`   | `Group`   | an empty group                              |
-| `add(resource)` | `Group`   | takes the resource: released with the group |
-| `release()`     | all three | releases it now                             |
+| Member          | On        | Does                                         |
+| --------------- | --------- | -------------------------------------------- |
+| `Group.new()`   | `Group`   | an empty group                               |
+| `add(resource)` | `Group`   | takes the resource: released with the group  |
+| `slot()`        | `Group`   | a `Slot` of the group, holding nothing       |
+| `release()`     | all three | releases it now                              |
+| `set(resource)` | `Slot`    | takes the resource, releasing the one before |
+| `clear()`       | `Slot`    | releases the resource it holds               |
+
+Replacing the resource of a `let` variable releases the one it held: `timer = setTimeout(…)` clears the timer before. A `Slot` is not a resource but a place of its group: an arrow function may use it, where it could not keep a resource, and what it holds is released with the group. It is how a search waits for the user to stop typing:
+
+```apeiron build
+fn search(text: String): void {
+  log(text);
+}
+
+export fn watch(field: InputElement): Group {
+  let group = Group.new();
+  const pending = group.slot();
+  group.add(field.on("input", (_e) => {
+    pending.set(setTimeout(300, () => search(field.value)));
+  }));
+  return group;
+}
+```
 
 ```apeiron build
 fn clicked(e: Event): void {

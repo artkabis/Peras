@@ -58,7 +58,7 @@ Every built-in method, with its status, is in the [method reference](methods.md)
 | debug allocator, release verifier                                                                                  | in use in every module that allocates                                 |
 | `async`, `await`, `number`, in managed mode                                                                        | <span class="status compiled">compiled</span>                         |
 | the DOM, events, a canvas, timers, `fetch`, storage ([browser](browser.md))                                        | <span class="status compiled">compiled</span>, in managed mode        |
-| listeners and timers as resources, released with their owner, leaks reported in debug                              | <span class="status compiled">compiled</span>, in managed mode        |
+| listeners and timers as resources, released with their owner or when replaced, leaks reported in debug             | <span class="status compiled">compiled</span>, in managed mode        |
 | `extern` blocks: JavaScript and npm called with declared types, each value checked                                 | <span class="status compiled">compiled</span>, in managed mode        |
 | arrow functions with statements, capturing what they use, as values ([guide](../guide/managed.md#arrow-functions)) | <span class="status compiled">compiled</span>, in managed mode        |
 | editor support (LSP), formatter, test runner                                                                       | <span class="status planned">planned</span>                           |

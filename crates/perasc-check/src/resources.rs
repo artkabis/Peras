@@ -198,25 +198,7 @@ impl<'c, 'a> Resources<'c, 'a> {
                     self.expr(*id, Position::Use);
                 }
             }
-            StmtKind::Assign { target, value, .. } => {
-                let mut position = Position::Use;
-                // A module variable's resource is reported where it is declared.
-                if let Some(&b) = self.checker.resolved.get(target)
-                    && self.globals.contains(&b)
-                {
-                    position = Position::Owner;
-                } else if let Some(&b) = self.checker.resolved.get(target)
-                    && self.held.contains_key(&b)
-                {
-                    let span = self.checker.ast.expr(*target).span;
-                    let name = self.binding_name(b);
-                    self.report(span, "reassign", &name);
-                    // The new resource is reported once, with the variable.
-                    position = Position::Owner;
-                }
-                self.expr(*target, Position::Use);
-                self.expr(*value, position);
-            }
+            StmtKind::Assign { target, value, .. } => self.assign(*target, *value),
             StmtKind::Step { target, .. } => self.expr(*target, Position::Use),
             StmtKind::Block(block) => {
                 for s in &block.stmts {
@@ -265,6 +247,36 @@ impl<'c, 'a> Resources<'c, 'a> {
             }
             StmtKind::Break | StmtKind::Continue | StmtKind::Error => {}
         }
+    }
+
+    /// `target = value;`
+    fn assign(&mut self, target: ExprId, value: ExprId) {
+        let mut position = Position::Use;
+        let binding = self.checker.resolved.get(&target).copied();
+        // A module variable's resource is reported where it is declared.
+        if let Some(b) = binding
+            && self.globals.contains(&b)
+        {
+            position = Position::Owner;
+        } else if let Some(b) = binding
+            && let Some(&(_, depth)) = self.held.get(&b)
+        {
+            // Replacing a resource releases the one the variable held,
+            // if it still holds it; the variable then holds the new one.
+            self.expr(value, Position::Owner);
+            self.held.insert(b, (Held::Live, depth));
+            return;
+        } else if let Some(b) = binding
+            && self.lent.contains(&b)
+        {
+            let span = self.checker.ast.expr(target).span;
+            let name = self.binding_name(b);
+            self.report(span, "reassign", &name);
+            // The new resource is reported once, with the variable.
+            position = Position::Owner;
+        }
+        self.expr(target, Position::Use);
+        self.expr(value, position);
     }
 
     /// The statements of an arrow function: its own variables own their
@@ -363,13 +375,18 @@ impl<'c, 'a> Resources<'c, 'a> {
                 if let ExprKind::Field { base, name } = &ast.expr(*callee).kind {
                     let method = ast.name(name.symbol);
                     let receiver = self.ty(*base);
-                    // `r.release()` gives `r` away; `group.add(r)` gives `r` to the group.
+                    // `r.release()` gives `r` away; `group.add(r)` gives `r` to the
+                    // group, `slot.set(r)` to the slot's group.
                     if method == "release" && is_resource(&receiver) {
                         self.expr(*base, Position::Owner);
                         return;
                     }
-                    if method == "add" && matches!(receiver, Ty::Host(crate::browser::Host::Group))
-                    {
+                    let gives = matches!(
+                        (method, &receiver),
+                        ("add", Ty::Host(crate::browser::Host::Group))
+                            | ("set", Ty::Host(crate::browser::Host::Slot))
+                    );
+                    if gives {
                         self.expr(*base, Position::Use);
                         for &arg in args {
                             self.expr(arg, Position::Owner);
