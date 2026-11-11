@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0013-garden-of-apeiron.md](../../fr/decisions/0013-garden-of-apeiron.md)._
 
-_Status: protocol registered on 2026-11-11 at 05:21 UTC (commit `eb861d0`); study in progress, its second run under way; record below._
+_Status: protocol registered on 2026-11-11 at 05:21 UTC (commit `eb861d0`); study completed with its second run, at 06:02 UTC on commit `f527ff2`. Four hypotheses hold, one is refuted: H3, the speed. Results and record below._
 
 _Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
@@ -82,6 +82,7 @@ A laboratory notebook: each step, dated, with the commit that holds it, what was
 | 05:50                  | —         | The versions in Peras and Rust, from the same specification; each gives the reference's bytes at 256 × 256 and zooms 1 to 64.                                                                                                                                                                                                         |
 | 05:54                  | `0fb61c9` | The versions and `scripts/bench-garden.mjs` are committed, with the first run kept in `bench/garden/run-1`, and its flaw.                                                                                                                                                                                                             |
 | 05:55                  | `f527ff2` | The reference's formatting, after the first run; its pixels unchanged. The second run starts on this commit.                                                                                                                                                                                                                          |
+| 06:02                  | `f527ff2` | The second run ends; its results below.                                                                                                                                                                                                                                                                                               |
 
 ### Decided after the registration, before the first measure
 
@@ -119,6 +120,39 @@ The protocol fixes the structure of the scene, not every number of it. Before an
 
 One observation the hypotheses did not foresee, and which must go with H1: the same program in TypeScript ships in 1,119 bytes, five times fewer than Peras; it is the procedural scene that is smaller than its image, and Peras pays the weight of its WebAssembly runtime and loader.
 
-### Run 2, at commit `f527ff2`
+### Run 2, at commit `f527ff2`: the results
 
-Under way. Its results replace run 1's above, and are reported whatever they are.
+[Results of run 2](../../../bench/garden/RESULTS.md), [every number](../../../bench/garden/results.json). Finished at 06:02 UTC.
+
+| Hypothesis                                                   | Verdict     | Measured                                                                                                                            |
+| ------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Same pixels                                                  | yes         | TypeScript, Peras, Peras in debug and Rust, at zooms 1, 4, 16, 64 at 1024 × 1024                                                    |
+| H1, the program smaller than its image                       | **holds**   | Peras ships 5,872 bytes; the smallest AVIF at SSIM 0.95, 9,774 bytes (4:2:0, CRF 53); the lossless PNG, 482,545                     |
+| H2, a stored image grows with the zoom                       | **holds**   | at zoom 64, the whole scene needs 4,452 times the AVIF bytes of zoom 1, against 16 required                                         |
+| H3, Peras 1.3 times TypeScript's speed and 0.85 times Rust's | **refuted** | 769 ms a frame against 914 for TypeScript: 1.19 times; 855 ms for Rust: Peras 1.11 times as fast as Rust                            |
+| H4, the eye forgives from afar                               | **holds**   | the SSIM of each of the six files rises reduced 4 times: WebP at quality 20 from 0.948 to 0.977, AVIF at CRF 50 from 0.956 to 0.966 |
+| H5, no cost of safety at the frame                           | **holds**   | Peras in debug, its overflow checked, at 1.02 times its production time                                                             |
+
+### Analysis
+
+**H2 is robust to its sample.** Each zoom's bytes come from 8 tiles, whose costs spread widely: from 0.3 KiB for a tile of sky to 83 KiB for a tile of meadow at zoom 16. Even if every tile at zoom 64 cost the least observed, the whole scene would need 142 times the bytes of zoom 1, against 16 required: no draw of the sample could refute H2. At zooms 16 and 64 the growth follows _z_² closely, 288 against 256 and 4,452 against 4,096.
+
+**An anomaly, unexplained.** At zoom 4, the whole scene needed 0.9 times the bytes of zoom 1, not about 16 times as H2 predicted for every zoom; the eight tiles of zoom 4 all cost about 0.5 KiB. One explanation is that none fell in the meadow, a quarter of the plane: eight draws miss it with a probability of about 9 %. It is a hypothesis, not a finding; a later run with more tiles would say. The verdict of H2 rests on zoom 64, as registered.
+
+**Reproducible.** The two runs agree: the same pixels and bytes, and times within 1 %, Peras at 1.21 then 1.19 times TypeScript's speed.
+
+**H3, refuted twice.** Peras is faster than TypeScript, and than Rust, at every run, but not by the margin registered. V8 compiles this kind of code, floating-point arithmetic in plain loops, close to what WebAssembly does; the gap is the integer hash and the absence of bounds checks on the pixels. Peras's advantage is larger where it was measured before, on integers and on arrays of numbers ([browser benchmark](../../../bench/README.md#browser-benchmark-benchbrowser)); this scene is not of that kind. The margin of 1.3 was a guess made before measuring, and it was wrong.
+
+**What H1 does not say.** The same program in TypeScript ships in 1,119 bytes, five times fewer than Peras's 5,872, which carry the WebAssembly runtime and its loader; Rust ships 11,695. It is the procedural scene that is smaller than its image; among the three, TypeScript ships it smallest.
+
+### What it means
+
+- **The program as compression holds.** A scene of 6 KB of code gives what an image of 10 KB gives at one zoom, and what 42 MB of AVIF would give at zoom 64. Stretched, it does not blur: it adds detail, as no stored image can.
+- **The eye forgives from afar**, with the model of SSIM: each lossy format scores higher reduced 4 times, by 0.01 to 0.03. The owner's intuition holds; models closer to the eye, Butteraugli and SSIMULACRA2, are left to a later run.
+- **Safety costs nothing here**: the overflow checks of decision 0011 cost 2 % of a frame in debug, and nothing in production.
+- **Peras is not much faster than TypeScript on floating-point loops.** It renders the scene 1.2 times as fast, and 1.1 times as fast as Rust; that is the honest margin, smaller than hoped.
+- **Its runtime weighs.** 5 KB of the 6 Peras ships are its runtime and loader, which a scene this small does not need: shipping a module without heap arrays without them is a lead for later, measurable by this benchmark.
+
+### Limits
+
+One machine, headless, 4 cores; versions written by the Peras authors; a scene of noise, which suits the procedural, where a photograph has no short program; SSIM as the only model of the eye; 8 tiles per zoom for H2. None of these is hidden by the verdicts above.

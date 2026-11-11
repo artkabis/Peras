@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **The garden of Apeiron, a procedural scene measured under a registered protocol** ([decision 0013](docs/en/decisions/0013-garden-of-apeiron.md), `node scripts/bench-garden.mjs`, [results](bench/garden/RESULTS.md)). A sky, mountains and a meadow are drawn pixel by pixel, with detail that grows as the scene is zoomed. The scene is written in TypeScript, Peras and Rust; the three give the same pixels, bit for bit, using only the operations IEEE 754 defines exactly and an integer hash. Five hypotheses were registered before any measure:
+  - H1 holds: the 6 KB program is smaller than its smallest AVIF at SSIM 0.95 (10 KB);
+  - H2 holds: zoomed 64 times, a stored image needs 4,452 times more bytes;
+  - H4 holds: every lossy format scores higher seen from afar;
+  - H5 holds: overflow checks cost 2 %;
+  - H3 is refuted: Peras renders 1.19 times as fast as TypeScript, short of the 1.3 times registered, and 1.11 times as fast as Rust.
+
+  The first run is kept with the flaw of its method, and the correction is listed under the protocol, with a dated record of the study. CI checks the same pixels.
+
 - **Integer overflow stops the program in a debug build** (step 5 of [decision 0011](docs/en/decisions/0011-what-to-build-next.md), [types](docs/en/reference/types.md)): `+`, `-` and `*` on integers, `+=` and `++` included, throw a `RangeError` that names `wrappingAdd` and the others when the result does not fit, in both modes; a production build (`--allocator tlsf`) wraps as before, at no cost. A loop counter `i++` under `i < bound` that the body never assigns is not checked. Measured first on the demo: 25 % of a debug build's frame with every operation checked, 22 % with counters left out, nothing in production. `DirectOptions::overflow_checks`, `perasc_ir::lower_with`. The web bugs benchmark runs Peras as a debug build: 1 bug through silently instead of 2. The managed benchmark builds both modes for production, its wrapping sum written `wrappingAdd`.
 - **A demo at the top of the README** (`node scripts/demo.mjs`, [results](bench/demo/RESULTS.md)): the same animation of 1,500,000 particles in TypeScript with immutable objects, in TypeScript with typed arrays by hand, and in Peras compiled to WebAssembly, side by side, each drawing its frame rate and memory on one scale: 8, 47 and 58 frames a second; the first one's heap climbs past 1 GB at each collection, the other two stay flat at 50 MB.
 - **`toFixed(d)`** (step 4 of [decision 0011](docs/en/decisions/0011-what-to-build-next.md), [methods](docs/en/reference/methods.md#as-text)): on floats and integers of 32 bits or fewer, in both modes, the text JavaScript's `toFixed` writes, ties away from zero, a `RangeError` outside 0 to 100 decimals. A managed module calls JavaScript's own; an owned one asks the host, as `toString()` does. The interpreter's text is checked against Node on 80,000 values. The case study shows the same text as TypeScript, to the character, checked in CI.

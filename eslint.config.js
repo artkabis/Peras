@@ -37,13 +37,9 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            "*.js",
-            "vitest.config.ts",
-            "vitest.e2e.config.ts",
-            "scripts/*.mjs",
-          ],
-          // The root configs and the scripts: more than the default of 8.
+          allowDefaultProject: ["*.js", "vitest.config.ts", "vitest.e2e.config.ts"],
+          // The scripts have a project of their own, scripts/tsconfig.json:
+          // here only the root configs.
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
         tsconfigRootDir: import.meta.dirname,

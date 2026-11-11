@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0013-garden-of-apeiron.md](../../en/decisions/0013-garden-of-apeiron.md)._
 
-_Statut : protocole enregistré le 2026-11-11 à 05:21 UTC (commit `eb861d0`) ; étude en cours, sa seconde exécution lancée ; registre plus bas._
+_Statut : protocole enregistré le 2026-11-11 à 05:21 UTC (commit `eb861d0`) ; étude achevée avec sa seconde exécution, à 06:02 UTC au commit `f527ff2`. Quatre hypothèses tiennent, une est réfutée : H3, la vitesse. Résultats et registre plus bas._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera plus après la première mesure, et tout écart sera signalé comme tel._
 
@@ -82,6 +82,7 @@ Un cahier de laboratoire : chaque étape, datée, avec le commit qui la contient
 | 05:50                   | —         | Les versions en Peras et en Rust, d’après la même spécification ; chacune donne les octets de la référence en 256 × 256 et aux zooms 1 à 64.                                                                                                                                                                                                              |
 | 05:54                   | `0fb61c9` | Les versions et `scripts/bench-garden.mjs` sont commités, avec la première exécution conservée dans `bench/garden/run-1`, et son défaut.                                                                                                                                                                                                                  |
 | 05:55                   | `f527ff2` | Le formatage de la référence, après la première exécution ; ses pixels inchangés. La seconde exécution démarre sur ce commit.                                                                                                                                                                                                                             |
+| 06:02                   | `f527ff2` | La seconde exécution s’achève ; ses résultats plus bas.                                                                                                                                                                                                                                                                                                   |
 
 ### Décidé après l’enregistrement, avant la première mesure
 
@@ -119,6 +120,39 @@ Le protocole fixe la structure de la scène, pas chacun de ses nombres. Avant to
 
 Une observation que les hypothèses n’avaient pas prévue, et qui doit accompagner H1 : le même programme en TypeScript se livre en 1 119 octets, cinq fois moins que Peras ; c’est la scène procédurale qui est plus petite que son image, et Peras paie le poids de son runtime WebAssembly et de son chargeur.
 
-### Exécution 2, au commit `f527ff2`
+### Exécution 2, au commit `f527ff2` : les résultats
 
-En cours. Ses résultats remplacent ceux de l’exécution 1 ci-dessus, et sont rapportés quels qu’ils soient.
+[Résultats de l’exécution 2](../../../bench/garden/RESULTS.md), [chaque nombre](../../../bench/garden/results.json). Achevée à 06:02 UTC.
+
+| Hypothèse                                                                | Verdict     | Mesuré                                                                                                                        |
+| ------------------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Mêmes pixels                                                             | oui         | TypeScript, Peras, Peras en debug et Rust, aux zooms 1, 4, 16, 64 en 1024 × 1024                                              |
+| H1, le programme plus petit que son image                                | **tient**   | Peras livre 5 872 octets ; le plus petit AVIF à SSIM 0,95, 9 774 octets (4:2:0, CRF 53) ; le PNG sans perte, 482 545          |
+| H2, une image stockée grandit avec le zoom                               | **tient**   | au zoom 64, la scène entière demande 4 452 fois les octets AVIF du zoom 1, contre 16 requis                                   |
+| H3, Peras à 1,3 fois la vitesse de TypeScript et 0,85 fois celle de Rust | **réfutée** | 769 ms par image contre 914 pour TypeScript : 1,19 fois ; 855 ms pour Rust : Peras 1,11 fois plus rapide que Rust             |
+| H4, l’œil pardonne de loin                                               | **tient**   | le SSIM de chacun des six fichiers monte réduit 4 fois : WebP en qualité 20 de 0,948 à 0,977, AVIF au CRF 50 de 0,956 à 0,966 |
+| H5, aucun coût de la sûreté à l’image                                    | **tient**   | Peras en debug, son débordement vérifié, à 1,02 fois son temps de production                                                  |
+
+### Analyse
+
+**H2 résiste à son échantillon.** Les octets de chaque zoom viennent de 8 tuiles, aux coûts très dispersés : de 0,3 Kio pour une tuile de ciel à 83 Kio pour une tuile de prairie au zoom 16. Même si chaque tuile du zoom 64 coûtait le moins observé, la scène entière demanderait 142 fois les octets du zoom 1, contre 16 requis : aucun tirage de l’échantillon ne pouvait réfuter H2. Aux zooms 16 et 64, la croissance suit _z_² de près, 288 contre 256 et 4 452 contre 4 096.
+
+**Une anomalie, inexpliquée.** Au zoom 4, la scène entière a demandé 0,9 fois les octets du zoom 1, et non environ 16 fois comme H2 le prévoyait pour chaque zoom ; les huit tuiles du zoom 4 coûtent toutes environ 0,5 Kio. Une explication est qu’aucune ne soit tombée dans la prairie, un quart du plan : huit tirages la manquent avec une probabilité d’environ 9 %. C’est une hypothèse, pas un résultat ; une exécution ultérieure avec plus de tuiles le dirait. Le verdict de H2 repose sur le zoom 64, comme enregistré.
+
+**Reproductible.** Les deux exécutions concordent : les mêmes pixels et octets, et des temps à 1 % près, Peras à 1,21 puis 1,19 fois la vitesse de TypeScript.
+
+**H3, réfutée deux fois.** Peras est plus rapide que TypeScript, et que Rust, à chaque exécution, mais pas de la marge enregistrée. V8 compile ce genre de code, de l’arithmétique flottante en boucles simples, près de ce que fait WebAssembly ; l’écart vient de l’empreinte entière et de l’absence de vérifications d’indices sur les pixels. L’avantage de Peras est plus grand là où il a été mesuré avant, sur les entiers et les tableaux de nombres ([banc dans le navigateur](../../../bench/README.fr.md#banc-dessai-dans-le-navigateur-benchbrowser)) ; cette scène n’est pas de ce genre. La marge de 1,3 était une estimation faite avant de mesurer, et elle était fausse.
+
+**Ce que H1 ne dit pas.** Le même programme en TypeScript se livre en 1 119 octets, cinq fois moins que les 5 872 de Peras, qui portent le runtime WebAssembly et son chargeur ; Rust livre 11 695. C’est la scène procédurale qui est plus petite que son image ; des trois, TypeScript la livre la plus petite.
+
+### Ce que cela signifie
+
+- **Le programme comme compression tient.** Une scène de 6 Ko de code donne ce que donne une image de 10 Ko à un zoom, et ce que donneraient 42 Mo d’AVIF au zoom 64. Étirée, elle ne floute pas : elle ajoute des détails, ce qu’aucune image stockée ne peut.
+- **L’œil pardonne de loin**, selon le modèle de SSIM : chaque format avec perte gagne réduit 4 fois, de 0,01 à 0,03. L’intuition du propriétaire tient ; les modèles plus proches de l’œil, Butteraugli et SSIMULACRA2, sont laissés à une exécution ultérieure.
+- **La sûreté ne coûte rien ici** : les vérifications de débordement de la décision 0011 coûtent 2 % d’une image en debug, et rien en production.
+- **Peras n’est pas beaucoup plus rapide que TypeScript sur des boucles flottantes.** Il rend la scène 1,2 fois plus vite, et 1,1 fois plus vite que Rust ; c’est la marge honnête, plus petite qu’espéré.
+- **Son runtime pèse.** 5 Ko des 6 que livre Peras sont son runtime et son chargeur, dont une scène aussi petite n’a pas besoin : livrer sans eux un module sans tableaux sur le tas est une piste pour plus tard, mesurable par ce banc.
+
+### Limites
+
+Une seule machine, sans écran, 4 cœurs ; des versions écrites par les auteurs de Peras ; une scène de bruit, qui convient au procédural, là où une photographie n’a pas de programme court ; SSIM comme seul modèle de l’œil ; 8 tuiles par zoom pour H2. Aucune n’est cachée par les verdicts ci-dessus.
