@@ -47,3 +47,12 @@ Si 1 à 4 donnent chacun l’essentiel de ce que montre le profil, le calcul pas
 
 - Le protocole de 0015, ses versions A et B, et ses seuils. Le programme Peras de l’application n’est pas réécrit à la main pour gagner : le gain doit venir du compilateur, pour tout programme écrit simplement.
 - La sûreté : chaque changement garde les vérifications de l’allocateur de debug, le vérificateur de release et les tests des deux modes. Un bloc réutilisé reste un bloc dont le vérificateur peut rendre compte.
+
+## Mesuré après l’étape 1
+
+L’étape 1, les caractères de `split("")` parcourus au fil de l’eau, est faite : juste et testée, elle n’a fait gagner aucun temps (constat M013). Son profil a été refait, une chose retirée à la fois, et deux coûts qu’il cachait ont été mesurés :
+
+- **Les allocations** (F211). Le calcul alloue 7 blocs du tas par ligne et en libère 7 : un littéral de chaîne copié à chaque usage, la vue d’un `split`, un curseur, deux copies. Une allocation et sa libération coûtent environ 13 ns : environ 90 ns par ligne, un quart du temps.
+- **Les appels au runtime** (F212). Le runtime est sa propre instance ; un appel par un import coûte 2,06 ns dans Chromium, contre 0,73 pour un appel interne au module, que le moteur intègre (`node scripts/call-cost.mjs`). Le calcul fait 30 de ces appels par ligne : environ 40 ns, 11 % du temps.
+
+L’ordre change donc. D’abord, **les littéraux en blocs statiques** (F211) : prêtés sans copie, jamais libérés ; c’est petit, et cela retire trois des sept allocations de chaque ligne. Ensuite, **le runtime lié dans le module** (F212) : cela retire le surcoût de chaque appel, environ 11 %, et laisse le moteur intégrer les petites fonctions du runtime, ce qui peut donner plus ; cette part n’est pas encore mesurée. Puis les étapes ci-dessus, qui retirent chacune une allocation.

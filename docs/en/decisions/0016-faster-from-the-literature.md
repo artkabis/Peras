@@ -47,3 +47,12 @@ If 1 to 4 each give most of what the profile shows, the digest goes from about 3
 
 - The protocol of 0015, its versions A and B, and its thresholds. The app's Peras program is not rewritten by hand to win: the gain must come from the compiler, for every program that is written plainly.
 - Safety: every change keeps the debug allocator's checks, the release verifier and the tests of both modes. A block reused is still a block the verifier can account for.
+
+## Measured after step 1
+
+Step 1, the characters of `split("")` streamed, landed: correct and tested, it saved no time (finding M013). Its profile was redone, one thing removed at a time, and two costs it had hidden were measured:
+
+- **Allocations** (F211). The digest allocates 7 blocks of the heap per row and releases 7: a string literal copied at each use, the view of a `split`, a cursor, two copies. An allocation and its release cost about 13 ns: about 90 ns per row, a quarter of the time.
+- **Calls into the runtime** (F212). The runtime is its own instance; a call through an import costs 2.06 ns in Chromium, against 0.73 for a call inside the module, which the engine inlines (`node scripts/call-cost.mjs`). The digest makes 30 such calls per row: about 40 ns, 11 % of the time.
+
+So the order changes. First, **literals as static blocks** (F211): lent without a copy, never released; small, and it removes three of the seven allocations of each row. Then **the runtime linked into the module** (F212): it removes the extra cost of every call, about 11 %, and lets the engine inline the small functions of the runtime, which may give more; that part is not measured yet. Then the steps above, which each remove an allocation.
