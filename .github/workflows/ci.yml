@@ -149,6 +149,8 @@ jobs:
         run: node scripts/bench-sort.mjs --check
       - name: The three versions of the demo run and draw
         run: node scripts/demo.mjs --check
+      - name: The garden of Apeiron gives the same pixels in every version
+        run: node scripts/bench-garden.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

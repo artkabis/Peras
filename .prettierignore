@@ -6,6 +6,9 @@ bench/bugs/
 bench/web-bugs/
 bench/case-study/RESULTS.md
 bench/demo/RESULTS.md
+bench/garden/RESULTS.md
+bench/garden/results.json
+bench/garden/run-1/
 bench/backends/RESULTS.md
 bench/browser/RESULTS.md
 bench/browser/WORKERS.md

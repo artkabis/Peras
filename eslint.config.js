@@ -18,6 +18,8 @@ export default defineConfig(
       "bench/case-study/**",
       // The demo's TypeScript, measured as written (scripts/demo.mjs).
       "bench/demo/**",
+      // The garden's reference, measured as written (scripts/bench-garden.mjs).
+      "bench/garden/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",

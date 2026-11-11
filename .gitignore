@@ -1,6 +1,8 @@
 /target/
 # The Rust contender of the browser benchmark, built outside the workspace.
 /bench/browser/rust/target/
+# The Rust version of the garden of Apeiron (decision 0013), built the same way.
+/bench/garden/rust/target/
 node_modules/
 dist/
 *.log
