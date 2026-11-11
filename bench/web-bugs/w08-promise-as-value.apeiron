@@ -1,0 +1,14 @@
+// A promise used as the value it will give.
+struct User {
+  id: i32,
+  name: String,
+}
+
+extern from "./lib.js" {
+  async fn fetchUser(id: i32): Promise<User>;
+}
+
+export fn main(): String {
+  const user = fetchUser(1);
+  return user.name;
+}

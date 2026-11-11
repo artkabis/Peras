@@ -1,0 +1,19 @@
+// A new status is added and one function does not handle it.
+enum Status {
+  Idle,
+  Loading,
+  Failed,
+  Done,
+}
+
+fn label(s: Status): String {
+  return match (s) {
+    Idle => "Idle",
+    Loading => "Loading",
+    Failed => "Failed",
+  };
+}
+
+export fn main(): String {
+  return label(Status.Done);
+}

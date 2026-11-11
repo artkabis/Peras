@@ -1,0 +1,16 @@
+// An async save that is not awaited.
+let saved = false;
+
+async fn save(): Promise<void> {
+  await sleep(5);
+  saved = true;
+}
+
+export async fn main(): Promise<String> {
+  save();
+  await sleep(0);
+  if (saved) {
+    return "saved";
+  }
+  return "not saved yet";
+}

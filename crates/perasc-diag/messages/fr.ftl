@@ -726,6 +726,7 @@ check-resource = { $reason ->
     [holder] une ressource ne peut pas être gardée dans une structure, un tableau, une option ou une table
     [lent] `{ $name }` est prêté à cette fonction, qui ne peut pas le donner
     [reassign] `{ $name }` tient une ressource, qui ne peut pas être remplacée
+    [global] `{ $name }` est une variable de module : rien ne libérerait la ressource qu’elle tient
    *[other] cette ressource ne peut pas être utilisée ici
 }
 check-resource-label = { $reason ->
@@ -736,6 +737,7 @@ check-resource-label = { $reason ->
     [holder] gardée ici
     [lent] donné ici
     [reassign] remplacé ici
+    [global] gardée aussi longtemps que la page
    *[other] ici
 }
 check-resource-why = Un écouteur, un minuteur et un groupe sont des ressources : chacun appartient à une variable, et est libéré quand cette variable sort de sa portée, pour que rien ne continue d’écouter ou de battre une fois son propriétaire parti. Une ressource peut être donnée une fois : rendue, ajoutée à un `Group`, ou libérée par `release()` ; ensuite, sa variable ne tient plus rien. Une ressource que rien ne garde serait libérée aussitôt, et une ressource gardée par une structure, un tableau ou une fonction fléchée n’aurait pas de propriétaire pour la libérer.
@@ -747,6 +749,7 @@ check-resource-fix = { $reason ->
     [holder] gardez-la dans une variable ou un `Group`
     [lent] rendez-la depuis la fonction qui l’a créée, ou ajoutez-la à un `Group` là-bas
     [reassign] déclarez une nouvelle `const` pour la nouvelle ressource
+    [global] gardez-la dans une fonction qui la rend, ou dans un `Group` que l’une rend
    *[other] gardez la ressource dans une variable
 }
 
@@ -779,6 +782,12 @@ check-extern-fix = { $reason ->
     [async] déclarez son résultat comme `Promise<T>`
    *[other] vérifiez la déclaration
 }
+
+# E0248
+check-floating-promise = cette promesse n’est jamais attendue
+check-floating-promise-label = s’exécute plus tard, et rien ne l’attend
+check-floating-promise-why = Appeler une fonction `async` lance son travail et rend une promesse de son résultat. Sans `await`, les instructions qui suivent l’appel s’exécutent avant que ce travail soit fini, et une erreur qu’il lève est perdue. Oublier `await` est l’un des bugs les plus courants du code asynchrone.
+check-floating-promise-fix = écrivez `await` devant l’appel, dans une fonction `async` ; pour la laisser tourner exprès, gardez-la : `const _saving = save();`
 
 # E0900
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->

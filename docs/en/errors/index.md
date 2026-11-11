@@ -72,6 +72,7 @@ Codes `E0001` to `E0099` are reserved for the lexer, `E0100` to `E0199` for the 
 | [E0236](E0236.md) | Method that does not match its interface                        | names and types |
 | [E0237](E0237.md) | Interface used as a type                                        | names and types |
 | [E0238](E0238.md) | Arrow function where none can go                                | names and types |
+| [E0248](E0248.md) | A promise never awaited                                         | names and types |
 | [E0247](E0247.md) | An extern declaration that cannot be kept                       | names and types |
 | [E0246](E0246.md) | A property that can only be read                                | names and types |
 | [E0245](E0245.md) | A resource without an owner                                     | names and types |

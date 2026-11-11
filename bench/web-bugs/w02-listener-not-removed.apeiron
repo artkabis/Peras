@@ -1,0 +1,22 @@
+// A view adds a listener and nothing removes it when the view closes.
+let clicks = 0;
+
+fn clicked(e: Event): void {
+  clicks += 1;
+  e.stopPropagation();
+}
+
+fn mount(button: Element): void {
+  button.on("click", (e) => clicked(e));
+}
+
+export fn main(): String {
+  match (document.getElementById("save")) {
+    Some(button) => {
+      mount(button);
+      log("mounted");
+    }
+    None => log("no button"),
+  }
+  return `${clicks}`;
+}

@@ -21,6 +21,22 @@ Ce qu’il mesure, et ce qu’il ne mesure pas :
 
 `bench/bugs` contient du code volontairement faux : l’ESLint et le Prettier du dépôt l’ignorent.
 
+## Bugs d’applications web (`bench/web-bugs`)
+
+`node scripts/bench-web-bugs.mjs` prend dix-sept bugs d’applications web, chacun écrit comme on l’écrit naturellement en TypeScript et dans un module Peras managed, et trouve le premier moment où la chaîne d’outils arrête chacun : à la compilation (`tsc` au plus strict, puis le preset strict typé de typescript-eslint ; `perasc check`), à l’exécution par une erreur, dans Chromium, ou pas du tout ([résultats](web-bugs/RESULTS.md), [décision 0011](../docs/fr/decisions/0011-what-to-build-next.md)). La CI vérifie que Peras n’en laisse pas passer plus que ne l’a relevé la décision 0011.
+
+| Arrêtés                        | TypeScript | Peras |
+| ------------------------------ | ---------: | ----: |
+| à la compilation               |          7 |     9 |
+| à l’exécution, avec un message |          1 |     5 |
+| en silence                     |          8 |     2 |
+
+Peras est seul à arrêter les écouteurs et minuteurs laissés en marche et les bibliothèques qui mentent sur leurs types ; TypeScript est seul à arrêter à la compilation un indice au-delà de la fin, et garde exact un total au-delà de 2³¹ là où un `i32` se replie. Le corpus a été écrit par les auteurs de Peras, les deux versions aussi naturellement qu’ils le pouvaient : il couvre les bugs d’applications web qu’ils connaissent, pas tous les bugs.
+
+## Étude de cas (`bench/case-study`)
+
+`node scripts/bench-case-study.mjs` exécute un tableau de commandes, cherché après un délai, trié, avec un résumé, écrit en TypeScript ([orders.ts](case-study/orders.ts)) et dans un module Peras managed ([orders.apeiron](case-study/orders.apeiron)), dans Chromium : les mêmes lignes affichées, le temps de montage et de tri, rien ne réagissant une fois retiré ([résultats](case-study/RESULTS.md)). Une troisième version trie par un bloc `extern`, pour mesurer ce que changerait un tri avec comparaison en Peras. La décision 0011 liste ce que l’écriture en Peras a rencontré.
+
 ## Comparaison des backends (`bench/backends`)
 
 `bench/backends/kernels.peras` contient quatre noyaux : récursion, boucles entières, boucles flottantes et arithmétique 64 bits. `node scripts/bench-backends.mjs` les compile avec les deux générateurs (WebAssembly direct, et Rust via `cargo` et `wasm-bindgen`), vérifie que chaque build renvoie les mêmes résultats qu’une référence JavaScript, puis mesure le temps de build, la taille du module (brute, gzip, après `wasm-opt -O3`) et le temps d’exécution dans Node. Un build direct avec `--no-optimize` montre ce qu’apportent les optimisations de l’IR ; `--check` ne fait que comparer les résultats, pour la CI. Il demande `rustup` et `wasm-bindgen` 0.2.130 pour le backend Rust, et écrit [`backends/RESULTS.md`](backends/RESULTS.md). La décision [0001](../docs/fr/decisions/0001-webassembly-backend.md) discute les résultats.

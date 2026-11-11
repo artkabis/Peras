@@ -1,0 +1,8 @@
+// A 64-bit id from the server, read as a JavaScript number.
+extern from "./lib.js" {
+  fn parseId(text: String): i64;
+}
+
+export fn main(): String {
+  return `${parseId("{\"id\": 9007199254740993}")}`;
+}

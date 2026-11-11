@@ -141,6 +141,10 @@ jobs:
         run: node scripts/bench-maps.mjs --check
       - name: Managed and owned modules give what hand-written JavaScript gives
         run: node scripts/bench-managed.mjs --check
+      - name: Peras lets no more web bugs through than decision 0011 recorded
+        run: node scripts/bench-web-bugs.mjs --check
+      - name: The case study agrees in TypeScript and in Peras
+        run: node scripts/bench-case-study.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
         run: node scripts/bench-ab.mjs --a current --a-flags "--simd off" --b current --check
 

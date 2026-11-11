@@ -1,0 +1,10 @@
+// A resource in a module variable: nothing would release it.
+fn tick(): void {
+  log("tick");
+}
+
+let timer = setInterval(1000, () => tick());
+
+export fn restart(): void {
+  timer = setInterval(1000, () => tick());
+}

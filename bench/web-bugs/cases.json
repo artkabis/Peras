@@ -1,0 +1,19 @@
+[
+  { "id": "w01-missing-element", "kind": "null", "expected": "shown" },
+  { "id": "w02-listener-not-removed", "kind": "leak", "expected": "1" },
+  { "id": "w03-interval-not-cleared", "kind": "leak", "expected": "stopped" },
+  { "id": "w04-timer-restarted", "kind": "leak", "expected": "stopped" },
+  { "id": "w05-library-wrong-type", "kind": "boundary", "expected": "43" },
+  { "id": "w06-id-above-2-53", "kind": "boundary", "expected": "9007199254740993" },
+  { "id": "w07-forgotten-await", "kind": "async", "expected": "saved" },
+  { "id": "w08-promise-as-value", "kind": "async", "expected": "user 1" },
+  { "id": "w09-missing-case", "kind": "logic", "expected": "Done" },
+  { "id": "w10-storage-missing", "kind": "null", "expected": "LIGHT" },
+  { "id": "w11-off-by-one", "kind": "bounds", "expected": "ABC" },
+  { "id": "w12-integer-overflow", "kind": "numbers", "expected": "3000000000" },
+  { "id": "w13-remove-wrong-handler", "kind": "leak", "expected": "1" },
+  { "id": "w14-alias-mutates-input", "kind": "aliasing", "expected": "3,1,2" },
+  { "id": "w15-average-of-empty", "kind": "numbers", "expected": "average: 0" },
+  { "id": "w16-json-missing-field", "kind": "boundary", "expected": "Hello ?" },
+  { "id": "w17-read-only-property", "kind": "logic", "expected": "click" }
+]

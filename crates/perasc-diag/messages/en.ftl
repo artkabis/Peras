@@ -726,6 +726,7 @@ check-resource = { $reason ->
     [holder] a resource cannot be kept in a structure, an array, an option or a map
     [lent] `{ $name }` is lent to this function, which cannot give it away
     [reassign] `{ $name }` holds a resource, which cannot be replaced
+    [global] `{ $name }` is a module variable: nothing would release the resource it holds
    *[other] this resource cannot be used here
 }
 check-resource-label = { $reason ->
@@ -736,6 +737,7 @@ check-resource-label = { $reason ->
     [holder] kept here
     [lent] given away here
     [reassign] replaced here
+    [global] kept for as long as the page
    *[other] here
 }
 check-resource-why = A listener, a timer and a group are resources: each belongs to one variable, and is released when that variable goes out of scope, so that nothing keeps listening or ticking after its owner is gone. A resource can be given away once: returned, added to a `Group`, or released with `release()`; after that, its variable holds nothing. One that nothing keeps would be released at once, and one kept by a structure, an array or an arrow function would have no owner to release it.
@@ -747,6 +749,7 @@ check-resource-fix = { $reason ->
     [holder] keep it in a variable or a `Group`
     [lent] return it from the function that made it, or add it to a `Group` there
     [reassign] declare a new `const` for the new resource
+    [global] keep it in a function that returns it, or in a `Group` that one returns
    *[other] keep the resource in a variable
 }
 
@@ -779,6 +782,12 @@ check-extern-fix = { $reason ->
     [async] declare its result as `Promise<T>`
    *[other] check the declaration
 }
+
+# E0248
+check-floating-promise = this promise is never awaited
+check-floating-promise-label = runs later, and nothing waits for it
+check-floating-promise-why = Calling an `async` function starts its work and gives a promise of its result. Without `await`, the statements after the call run before that work is done, and an error it throws is lost. Forgetting `await` is one of the commonest bugs of asynchronous code.
+check-floating-promise-fix = write `await` before the call, in an `async` function; to let it run on purpose, keep it: `const _saving = save();`
 
 # E0900
 gen-unsupported = code generation does not support { $feature ->

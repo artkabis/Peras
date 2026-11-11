@@ -160,6 +160,8 @@ pub const RESOURCE: ErrorCode = ErrorCode::new(245);
 pub const READ_ONLY: ErrorCode = ErrorCode::new(246);
 /// A declaration of an `extern` block that cannot be kept.
 pub const EXTERN: ErrorCode = ErrorCode::new(247);
+/// A promise nobody awaits.
+pub const FLOATING_PROMISE: ErrorCode = ErrorCode::new(248);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -292,6 +294,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(RESOURCE, "check-resource", "E0245"),
     active!(READ_ONLY, "check-read-only", "E0246"),
     active!(EXTERN, "check-extern", "E0247"),
+    active!(FLOATING_PROMISE, "check-floating-promise", "E0248"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

@@ -1,0 +1,14 @@
+// Data from the server without a field the code expects.
+struct User {
+  id: i32,
+  name: String,
+}
+
+extern from "./lib.js" {
+  fn parseUser(text: String): User;
+}
+
+export fn main(): String {
+  const user = parseUser("{\"id\": 7}");
+  return `Hello ${user.name.toUpperCase()}`;
+}

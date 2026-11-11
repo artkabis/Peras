@@ -1,0 +1,12 @@
+// The average of an empty list.
+fn average(counts: Array<i32>): i32 {
+  let total = 0;
+  for (const c of counts) {
+    total += c;
+  }
+  return total / counts.length;
+}
+
+export fn main(): String {
+  return `average: ${average([])}`;
+}

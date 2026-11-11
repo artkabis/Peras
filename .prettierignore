@@ -3,6 +3,8 @@ pnpm-lock.yaml
 Cargo.lock
 crates/
 bench/bugs/
+bench/web-bugs/
+bench/case-study/RESULTS.md
 bench/backends/RESULTS.md
 bench/browser/RESULTS.md
 bench/browser/WORKERS.md

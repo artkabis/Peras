@@ -58,6 +58,8 @@ pub struct Resources<'c, 'a> {
     in_arrow: bool,
     /// Inside a value already reported for holding a resource.
     in_holder: bool,
+    /// Module variables holding a resource, already reported.
+    globals: HashSet<usize>,
 }
 
 impl<'c, 'a> Resources<'c, 'a> {
@@ -78,6 +80,7 @@ impl<'c, 'a> Resources<'c, 'a> {
             loops: 0,
             in_arrow: false,
             in_holder: false,
+            globals: HashSet::new(),
         }
     }
 
@@ -93,6 +96,20 @@ impl<'c, 'a> Resources<'c, 'a> {
                         self.checker
                             .report(errors::resource(field.ty.span, "holder", &name));
                     }
+                }
+            }
+        }
+        // A module variable lives as long as the page: nothing would release
+        // the resource it holds.
+        for item in &ast.items {
+            if let ItemKind::Global(local) = &item.kind {
+                let key = (local.name.span.start, local.name.span.end);
+                if let Some(&b) = self.declared.get(&key)
+                    && self.binding_ty(b).is_some_and(|t| is_resource(&t))
+                {
+                    self.globals.insert(b);
+                    let name = self.binding_name(b);
+                    self.report(local.name.span, "global", &name);
                 }
             }
         }
@@ -178,7 +195,12 @@ impl<'c, 'a> Resources<'c, 'a> {
             }
             StmtKind::Assign { target, value, .. } => {
                 let mut position = Position::Use;
+                // A module variable's resource is reported where it is declared.
                 if let Some(&b) = self.checker.resolved.get(target)
+                    && self.globals.contains(&b)
+                {
+                    position = Position::Owner;
+                } else if let Some(&b) = self.checker.resolved.get(target)
                     && self.held.contains_key(&b)
                 {
                     let span = self.checker.ast.expr(*target).span;

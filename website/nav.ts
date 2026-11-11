@@ -63,6 +63,7 @@ export const sections: Section[] = [
       "decisions/0008-managed-mode",
       "decisions/0009-browser-and-resources",
       "decisions/0010-calling-javascript",
+      "decisions/0011-what-to-build-next",
     ],
   },
 ];

@@ -1,0 +1,29 @@
+// A module-level timer is restarted without stopping the previous one.
+let ticks = 0;
+
+fn tick(): void {
+  ticks += 1;
+}
+
+let timer = setInterval(5, () => tick());
+
+fn start(): void {
+  timer = setInterval(5, () => tick());
+}
+
+fn stop(): void {
+  timer.release();
+}
+
+export async fn main(): Promise<String> {
+  start();
+  start();
+  stop();
+  await sleep(20);
+  const seen = ticks;
+  await sleep(30);
+  if (ticks == seen) {
+    return "stopped";
+  }
+  return "still ticking";
+}

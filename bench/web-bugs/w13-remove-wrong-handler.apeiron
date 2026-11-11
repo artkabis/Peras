@@ -1,0 +1,21 @@
+// A listener removed with another function than the one added: in Peras, a
+// listener is removed by releasing what `on` gave, not by a function.
+let clicks = 0;
+
+fn clicked(e: Event): void {
+  clicks += 1;
+  e.stopPropagation();
+}
+
+export fn main(): String {
+  match (document.getElementById("save")) {
+    Some(button) => {
+      const listener = button.on("click", (e) => clicked(e));
+      button.click();
+      listener.release();
+      button.click();
+    }
+    None => log("no button"),
+  }
+  return `${clicks}`;
+}

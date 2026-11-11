@@ -94,6 +94,7 @@ const fn why(code: ErrorCode) -> &'static str {
         245 => "check-resource-why",
         246 => "check-read-only-why",
         247 => "check-extern-why",
+        248 => "check-floating-promise-why",
         _ => "check-operator-why",
     }
 }
@@ -1160,5 +1161,16 @@ pub fn extern_decl(span: Span, reason: &str, name: &str) -> Diagnostic {
         span,
         Message::new("check-extern-label").text("reason", reason),
         Message::new("check-extern-fix").text("reason", reason),
+    )
+}
+
+/// `E0248`: a promise nobody awaits.
+pub fn floating_promise(span: Span) -> Diagnostic {
+    simple(
+        codes::FLOATING_PROMISE,
+        Message::new("check-floating-promise"),
+        span,
+        Message::new("check-floating-promise-label"),
+        Message::new("check-floating-promise-fix"),
     )
 }
