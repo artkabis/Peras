@@ -24,6 +24,8 @@ export default defineConfig(
       "bench/data/**",
       // The candle's TypeScript as often written, measured as written (scripts/candle.mjs).
       "bench/candle/**",
+      // The versions of decision 0015, measured as written (scripts/bench-stream.mjs).
+      "bench/stream/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",

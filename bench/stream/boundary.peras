@@ -1,0 +1,5 @@
+// Decision 0015: the cost of the boundary alone. The text crosses into the
+// module's memory and its length comes back; nothing is read.
+export fn bytes(text: String): i32 {
+  return text.length;
+}

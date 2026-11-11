@@ -157,6 +157,8 @@ jobs:
         run: node scripts/bench-garden.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
+      - name: The stream's three digests agree (decision 0015)
+        run: node scripts/bench-stream.mjs --check
       - name: The candle's three gardens give the same pixels
         run: node scripts/candle.mjs --check
       - name: The A/B benchmark runs, with SIMD and without
