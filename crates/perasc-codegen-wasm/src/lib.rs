@@ -16,9 +16,9 @@ use perasc_ir::{
     MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
-    BlockType, CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
-    Function as WasmFunction, FunctionSection, Ieee32, Ieee64, ImportSection, Instruction as I,
-    MemArg, MemArgTarget, MemoryType, TypeSection, ValType,
+    BlockType, CodeSection, ConstExpr, DataCountSection, DataSection, EntityType, ExportKind,
+    ExportSection, Function as WasmFunction, FunctionSection, Ieee32, Ieee64, ImportSection,
+    Instruction as I, MemArg, MemArgTarget, MemoryType, TypeSection, ValType,
 };
 
 /// The value type of an IR type; `None` for `void`.
@@ -51,6 +51,9 @@ const RUNTIME_FIRST: u32 = 7;
 /// Added to an element size: the elements are buffers the buffer owns
 /// (`perasc_runtime::DEEP`).
 const DEEP: i32 = 0x100;
+/// A buffer whose elements are in its header's block (`$INLINE` in
+/// `perasc-runtime/runtime/buffers.wat`).
+const INLINE: u32 = 0x200;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -259,6 +262,41 @@ pub fn jobs(module: &Module) -> Vec<u32> {
         .collect()
 }
 
+/// The data section and its number of segments, if any: each string literal
+/// as a passive segment, copied into a new buffer when used; then those only
+/// read, each an active segment that writes its header and bytes below the
+/// heap when the module is instantiated (decision 0016, finding F211).
+fn data_section(module: &Module) -> Option<(u32, DataSection)> {
+    let statics = module.statics();
+    let count = u32::try_from(module.data.len() + statics.len()).unwrap_or(u32::MAX);
+    if count == 0 {
+        return None;
+    }
+    let mut data = DataSection::new();
+    for bytes in &module.data {
+        data.passive(bytes.iter().copied());
+    }
+    for (index, at) in statics {
+        let bytes = module
+            .data
+            .get(usize::try_from(index).unwrap_or(usize::MAX))
+            .map_or(&[][..], Vec::as_slice);
+        let len = u32::try_from(bytes.len()).unwrap_or(0);
+        // len, capacity, data, then bytes of one byte each, inline.
+        let mut block = Vec::with_capacity(16 + bytes.len());
+        for word in [len, len, at + 16, 1 | INLINE] {
+            block.extend_from_slice(&word.to_le_bytes());
+        }
+        block.extend_from_slice(bytes);
+        data.active(
+            0,
+            &ConstExpr::i32_const(i32::try_from(at).unwrap_or(0)),
+            block,
+        );
+    }
+    Some((count, data))
+}
+
 /// [`compile_for`], with threads when `threads`: the memory imported with
 /// its maximum, so that the loader can share it between threads; each job
 /// exported as `__job0`, `__job1`…, and each call to one made to the
@@ -341,18 +379,15 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
         wasm.section(&imports);
     }
     wasm.section(&functions).section(&exports);
-    // String literals: passive segments, copied into a new buffer when used.
-    let segments = u32::try_from(module.data.len()).unwrap_or(u32::MAX);
-    if segments > 0 {
-        wasm.section(&DataCountSection { count: segments });
+    // String literals: passive segments, copied into a new buffer when used;
+    // then those only read, written below the heap (decision 0016).
+    let data = data_section(module);
+    if let Some((count, _)) = &data {
+        wasm.section(&DataCountSection { count: *count });
     }
     wasm.section(&code);
-    if segments > 0 {
-        let mut data = DataSection::new();
-        for bytes in &module.data {
-            data.passive(bytes.iter().copied());
-        }
-        wasm.section(&data);
+    if let Some((_, data)) = &data {
+        wasm.section(data);
     }
     Compiled {
         wasm: wasm.finish(),
@@ -735,6 +770,11 @@ impl<'a> FnEncoder<'a> {
                 let site = self.alloc_site();
                 self.emit(&I::I32Const(site));
                 self.emit(&I::Call(BUF_CLONE));
+            }
+            // A literal only read: its header, written when the module was
+            // instantiated (decision 0016).
+            (BufOp::Static(_, at), []) => {
+                self.emit(&I::I32Const(i32::try_from(at).unwrap_or(0)));
             }
             (BufOp::Literal(segment), []) => {
                 let len = self

@@ -88,7 +88,11 @@ pub fn run_with_heap(
             let value = machine.call(id, &args)?;
             let report = HeapReport {
                 allocated: machine.allocated,
-                live: machine.heap.into_keys().collect(),
+                live: machine
+                    .heap
+                    .into_keys()
+                    .filter(|k| k & STATIC == 0)
+                    .collect(),
             };
             Ok((value, report))
         });
@@ -99,6 +103,11 @@ pub fn run_with_heap(
 }
 
 const MAX_DEPTH: usize = 5_000;
+
+/// The handles of static literals ([`crate::BufOp::Static`]): their index
+/// with this bit set, out of the range of the blocks a run allocates. They
+/// are never released, and never reported as left on the heap.
+const STATIC: u32 = 0x8000_0000;
 
 struct Machine<'a> {
     module: &'a Module,
@@ -256,7 +265,8 @@ impl Machine<'_> {
             Stmt::Release(local) => {
                 let slot = slot(locals, *local);
                 match slot.map(std::mem::take) {
-                    Some(Value::Handle(block)) if self.heap.remove(&block).is_some() => {}
+                    Some(Value::Handle(block))
+                        if block & STATIC == 0 && self.heap.remove(&block).is_some() => {}
                     _ => return Err(Trap::DoubleRelease),
                 }
                 Flow::Normal
@@ -399,6 +409,18 @@ impl Machine<'_> {
                 *self.elements(*buf)?.get(index).ok_or(Trap::Unchecked)?
             }
             (BufOp::New(_), _) => return Err(Trap::BadAlloc),
+            (BufOp::Static(index, _), []) => {
+                let key = STATIC | index;
+                if !self.heap.contains_key(&key) {
+                    let bytes = usize::try_from(index)
+                        .ok()
+                        .and_then(|i| self.module.data.get(i))
+                        .ok_or(Trap::Unreachable)?;
+                    let elements = bytes.iter().map(|&b| Value::I32(i32::from(b))).collect();
+                    self.heap.insert(key, elements);
+                }
+                Value::Handle(key)
+            }
             (BufOp::Literal(index), []) => {
                 let bytes = usize::try_from(index)
                     .ok()
@@ -1002,6 +1024,9 @@ impl Machine<'_> {
 
     /// Releases a buffer, and the buffers it owns.
     fn free(&mut self, block: u32) -> Result<(), Trap> {
+        if block & STATIC != 0 {
+            return Err(Trap::DoubleRelease);
+        }
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
         if let Some(map) = self.maps.remove(&block) {
             self.free_entries(map.entries)?;

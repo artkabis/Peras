@@ -29,6 +29,9 @@ interface Words {
   countUntil(text: string, stop: string): number;
   nestedLengths(text: string): number;
   charsOf(text: string): string;
+  literalLength(): number;
+  whichLiteral(s: string): number;
+  literalKey(text: string): number;
   upperCount(text: string, stop: string): number;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
@@ -127,6 +130,18 @@ describe("strings in JavaScript", () => {
           expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
           expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
         }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`lends literals only read from a static header, and copies them past its room, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.literalLength()).toBe(6);
+      for (let i = 0; i < 70; i++)
+        expect(m.whichLiteral(`literal number ${String(i).padStart(2, "0")}!`)).toBe(i);
+      expect(m.whichLiteral("literal number 70!")).toBe(-1);
+      expect(m.literalKey("a b c b zz b")).toBe(31);
+      for (let k = 0; k < 1000; k++) m.literalLength();
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

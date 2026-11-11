@@ -67,6 +67,8 @@ pub fn lower_with(
         results: HashMap::new(),
         conventions: HashMap::new(),
         data: Vec::new(),
+        statics: HashMap::new(),
+        static_top: crate::STATIC_START,
         diagnostics: Vec::new(),
         current: String::new(),
         body_span: Span::new(0, 0),
@@ -186,6 +188,11 @@ struct Lowering<'a> {
     conventions: HashMap<FnId, Vec<Convention>>,
     /// The bytes of the string literals, each once.
     data: Vec<Vec<u8>>,
+    /// The literals only read, placed below the heap: each one's header
+    /// address, by its index in `data` ([`crate::BufOp::Static`]).
+    statics: HashMap<usize, u32>,
+    /// The first free address below the heap for the next one.
+    static_top: u32,
     diagnostics: Vec<Diagnostic>,
 }
 

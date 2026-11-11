@@ -90,6 +90,13 @@ pub struct FnId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalId(pub u32);
 
+/// The first address of the static literals' headers: address 0 is never a
+/// valid pointer.
+pub const STATIC_START: u32 = 16;
+/// The end of the static literals: both allocators leave the memory below
+/// 1024 unused.
+pub const STATIC_END: u32 = 1024;
+
 /// A compiled module.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -234,7 +241,22 @@ impl Module {
     /// to be linked in first.
     #[must_use]
     pub fn uses_heap(&self) -> bool {
-        self.functions.iter().any(Function::uses_heap)
+        self.functions.iter().any(Function::uses_heap) || !self.statics().is_empty()
+    }
+
+    /// The static literals the module lends ([`BufOp::Static`]): each one's
+    /// index in [`Module::data`] and header address, once, by address.
+    #[must_use]
+    pub fn statics(&self) -> Vec<(u32, u32)> {
+        let mut found = std::collections::BTreeMap::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if let ExprKind::Buf(BufOp::Static(index, at), _) = &e.kind {
+                    found.insert(*at, *index);
+                }
+            });
+        }
+        found.into_iter().map(|(at, index)| (index, at)).collect()
     }
 
     /// Whether the module is linked to the runtime: it uses the heap, or, in
@@ -513,6 +535,13 @@ pub enum BufOp {
     Get(Elem),
     /// `[]`: a new `owned` buffer of bytes holding [`Module::data`] at this index.
     Literal(u32),
+    /// `[]`: a `borrowed` buffer holding [`Module::data`] at the first index,
+    /// whose 16-byte header is at the address given, in memory below the
+    /// allocators' heap ([`STATIC_START`] to [`STATIC_END`]), written once
+    /// when the module is instantiated: a literal only read, neither copied
+    /// nor released (decision 0016, finding F211). Releasing it is an invalid
+    /// release, which both allocators catch.
+    Static(u32, u32),
     /// `[buffer]`: a new `owned` copy, with copies of the buffers it owns.
     Clone,
     /// `[buffer, index]`: the buffer element at a checked index, taken: the
@@ -906,6 +935,7 @@ impl BufOp {
             Self::Len => "buf.len".to_owned(),
             Self::Get(elem) => format!("buf.get.{}", elem.name()),
             Self::Literal(index) => format!("buf.literal #{index}"),
+            Self::Static(index, at) => format!("buf.static #{index} @{at}"),
             Self::Clone => "buf.clone".to_owned(),
             Self::Take => "buf.take".to_owned(),
             Self::Runtime(f) => f.name().to_owned(),

@@ -268,14 +268,39 @@ impl Lowering<'_> {
                 self.data.push(bytes);
                 self.data.len() - 1
             });
+        let segment = u32::try_from(index).unwrap_or(u32::MAX);
+        // Only read: lent from its static header, made when the module is
+        // instantiated, while there is room below the heap (decision 0016).
+        if mode == Mode::Borrow
+            && let Some(at) = self.static_literal(index)
+        {
+            return vec![Expr {
+                kind: ExprKind::Buf(BufOp::Static(segment, at), Vec::new()),
+                ty: Ty::Borrowed,
+            }];
+        }
         let literal = Expr {
-            kind: ExprKind::Buf(
-                BufOp::Literal(u32::try_from(index).unwrap_or(u32::MAX)),
-                Vec::new(),
-            ),
+            kind: ExprKind::Buf(BufOp::Literal(segment), Vec::new()),
             ty: Ty::Owned,
         };
         Self::fresh(state, vec![literal], mode)
+    }
+
+    /// The address of the static header of literal `index`, placed now if it
+    /// is not yet and fits: 16 bytes of header, then its bytes, rounded to 16.
+    fn static_literal(&mut self, index: usize) -> Option<u32> {
+        if let Some(&at) = self.statics.get(&index) {
+            return Some(at);
+        }
+        let len = u32::try_from(self.data.get(index)?.len()).ok()?;
+        let size = 16 + len.div_ceil(16) * 16;
+        let at = self.static_top;
+        if at + size > crate::STATIC_END {
+            return None;
+        }
+        self.static_top = at + size;
+        self.statics.insert(index, at);
+        Some(at)
     }
 
     /// `a + b` on strings: a new buffer with room for both, then each appended.
