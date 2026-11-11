@@ -20,6 +20,8 @@ export default defineConfig(
       "bench/demo/**",
       // The garden's reference, measured as written (scripts/bench-garden.mjs).
       "bench/garden/**",
+      // The versions of decision 0014, measured as written (scripts/bench-data.mjs).
+      "bench/data/**",
       "packages/*/e2e/fixtures/**",
       "website/.pages/**",
       "bench/browser/kernels.d.ts",
