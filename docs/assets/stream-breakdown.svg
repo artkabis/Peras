@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 332" width="720" height="332" role="img" aria-label="Where Peras's time goes"><style>
+  .bg{fill:#fcfcfb}.ink{fill:#0b0b0b}.muted{fill:#52514e}.grid{stroke:#e6e5df}.axis{stroke:#9a9890}
+  .A{fill:#eb6834;stroke:#eb6834}.B{fill:#1baf7a;stroke:#1baf7a}
+  .C{fill:#2a78d6;stroke:#2a78d6}.X{fill:#6250d6;stroke:#6250d6}
+  .threshold{stroke:#52514e;stroke-dasharray:4 3}
+  text{font-family:system-ui,sans-serif;font-size:12px;font-variant-numeric:tabular-nums}
+  .title{font-size:14px;font-weight:600}
+  @media (prefers-color-scheme: dark){
+    .bg{fill:#1a1a19}.ink{fill:#f0efec}.muted{fill:#c3c2b7}.grid{stroke:#2c2c2a}.axis{stroke:#6b6a63}
+    .A{fill:#d95926;stroke:#d95926}.B{fill:#199e70;stroke:#199e70}
+    .C{fill:#3987e5;stroke:#3987e5}.X{fill:#9085e9;stroke:#9085e9}
+    .threshold{stroke:#c3c2b7}
+  }
+</style><rect class="bg" width="720" height="332" rx="8"/><text class="ink title" x="20" y="28">Where Peras's time goes</text><rect class="X" x="20" y="43" width="12" height="12" rx="2"/><text class="ink" x="38" y="53">the boundary: the text into the module</text><rect class="C" x="330" y="43" width="12" height="12" rx="2"/><text class="ink" x="348" y="53">the digest itself</text><line class="grid" x1="150" x2="150" y1="70" y2="220"/><text class="muted" x="150" y="236" text-anchor="middle">0</text><line class="grid" x1="323.3" x2="323.3" y1="70" y2="220"/><text class="muted" x="323.3" y="236" text-anchor="middle">200</text><line class="grid" x1="496.7" x2="496.7" y1="70" y2="220"/><text class="muted" x="496.7" y="236" text-anchor="middle">400</text><line class="grid" x1="670" x2="670" y1="70" y2="220"/><text class="muted" x="670" y="236" text-anchor="middle">600</text><text class="ink" x="138" y="94" text-anchor="end">1,000 rows</text><rect class="X" x="150" y="80" width="17.3" height="22" rx="3"/><rect class="C" x="169.3" y="80" width="292.7" height="22" rx="3"/><text class="ink" x="470" y="95">360.0 ns/row, boundary 5.6 %</text><text class="ink" x="138" y="144" text-anchor="end">10,000 rows</text><rect class="X" x="150" y="130" width="14.9" height="22" rx="3"/><rect class="C" x="166.9" y="130" width="276.9" height="22" rx="3"/><text class="ink" x="451.8" y="145">339.0 ns/row, boundary 5.1 %</text><text class="ink" x="138" y="194" text-anchor="end">100,000 rows</text><rect class="X" x="150" y="180" width="18.3" height="22" rx="3"/><rect class="C" x="170.3" y="180" width="272.6" height="22" rx="3"/><text class="ink" x="450.9" y="195">338.0 ns/row, boundary 6.3 %</text><text class="muted" x="410" y="254" text-anchor="middle">nanoseconds per row (median)</text><text class="muted" x="20" y="296">The boundary is X, timed alone on the same text; the digest is C minus X. 10 browser processes; commit</text><text class="muted" x="20" y="312">9f9754b; Chromium 153.0.8010.12; Intel(R) Xeon(R) Processor @ 2.30GHz.</text></svg>

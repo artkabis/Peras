@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0015-stream-measured.md](../../en/decisions/0015-stream-measured.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `13921e6`), avant toute mesure. Exécution 1 au même commit : quatre hypothèses tiennent, une est indéterminée ; Peras est 1,5 à 1,7 fois plus rapide que le TypeScript tel qu’on l’écrit, et 0,87 à 0,96 fois aussi rapide que le TypeScript écrit pour la vitesse. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
+_Statut : protocole enregistré le 2026-11-11 (commit `13921e6`), avant toute mesure. Exécution 2, à `9f9754b`, après les littéraux statiques : Peras 1,11 à 1,21 fois plus rapide que le TypeScript écrit pour la vitesse, et 1,84 à 2,18 fois plus rapide que le TypeScript tel qu’on l’écrit. Exécution 1 au commit du protocole : quatre hypothèses tiennent, une est indéterminée ; Peras est 1,5 à 1,7 fois plus rapide que le TypeScript tel qu’on l’écrit, et 0,87 à 0,96 fois aussi rapide que le TypeScript écrit pour la vitesse. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
 
 ## Contexte
 
@@ -113,3 +113,25 @@ Mesurée au commit `13921e6`, celui du protocole, sans rien d’autre en marche 
 ![Le temps par ligne de C séparé entre la frontière, environ 20 ns, et le calcul, environ 420 ns](../../assets/stream-run-1-breakdown.svg)
 
 Pourquoi Peras n’est pas plus rapide est la question suivante ; elle est profilée dans [les constats](../findings.md), une étape retirée à la fois.
+
+## Exécution 2 : après les littéraux statiques
+
+Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compilateur : les littéraux de chaîne seulement lus sont prêtés depuis un en-tête statique au lieu d’être copiés à chaque usage (décision 0016, constat F211). L’exécution 1 est gardée dans [bench/stream/run-1](../../../bench/stream/run-1/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 2 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont de nouveau concordé sur chaque lot.
+
+| Hypothèse                                           | Exécution 1 | Exécution 2, intervalle à 95 %        | Verdict      |
+| --------------------------------------------------- | ----------- | ------------------------------------- | ------------ |
+| H1, C au moins 1,5 fois plus rapide que A           | 1,53 ; 1,70 | 1,97 [1,95, 1,99] ; 2,18 [2,15, 2,21] | tient        |
+| H2, C au moins 0,8 fois aussi rapide que B          | 0,89 ; 0,96 | 1,15 [1,14, 1,17] ; 1,21 [1,19, 1,24] | tient        |
+| H3, les petits lots coûtent peu de plus             | 0,94        | 0,94 [0,91, 0,96]                     | tient        |
+| H4, la frontière au plus 15 %                       | 5 %         | 6 % [6 %, 6 %]                        | tient        |
+| H5, le 99e centile de C au plus 1,5 fois sa médiane | 1,61        | 1,57 [1,40, 1,66]                     | indéterminée |
+
+**Ce que cela dit.** Peras traite maintenant le flux plus vite que le TypeScript écrit pour la vitesse, à chaque taille de lot : 1,11 fois à 1 000 lignes, 1,15 à 10 000, 1,21 à 100 000, chaque intervalle entièrement au-dessus de 1. Son temps par ligne est passé d’environ 440 à environ 338 ns ; A et B n’ont pas changé, à 2 % près. Les verdicts sont ceux de l’exécution 1, les seuils n’ayant pas été franchis autrement ; ce qui a changé, c’est le côté de 1 où se tient le rapport sur B. Ses appels lents restent indéterminés.
+
+![Lignes par seconde par taille de lot, exécution 2 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 2 : C sur A entre 1,84 et 2,18, C sur B entre 1,11 et 1,21](../../assets/stream-ratios.svg)
+
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 2 : C à gauche de B, A à droite](../../assets/stream-latency.svg)
+
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 2](../../assets/stream-breakdown.svg)
