@@ -105,3 +105,18 @@ On 2026-11-11, after the registration (commit `96e6c43`) and before any version 
 - The cold time to the first chart is kept as a measure, without a hypothesis.
 
 Because no measure had been taken, the amendment cannot have been guided by a result.
+
+## Record of the study
+
+### Decided after the registration, before the first measure
+
+Written with the versions and the script, in commit `b06da25`, before run 1 started:
+
+- **An empty line is a broken row.** The protocol says both "every other non-empty line after the header is broken" and lists "an empty line" among the broken rows; the list is followed. The `\n` that ends the last line starts no line.
+- **What C receives.** Peras's `split` and `parseI32` work on a `String`; an array of bytes cannot be read as text. C receives the text: the time of C includes decoding the bytes and the copy of the text into the module.
+- **D cannot be written.** `perasc` refuses `bench/data/dashboard-parallel.peras`: `error[E0241]: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map`. The file is kept as written; by the protocol, H5 is refuted.
+- **Lines of code.** The types of the summary are declared in `summary.ts` for A and B, which is not counted; C declares them in its own file, as `export struct`. They are left out of C's count alike.
+- **A collection before each timed run**, `gc()` with `--expose-gc`, so that a version does not pay for the garbage of the one before.
+- **Memory.** The largest `VmHWM` among the renderer processes of a browser launched for the run, the page being the only one open.
+- **The throttled network**, exploratory: 9 Mb/s down, 1.5 up, 170 ms of latency, at 100,000 rows only, 3 loads: at that speed, 140 MB would take two minutes a load.
+- **Two bugs of the compiler** were found by writing C, both refused by its release verifier rather than shipped, and fixed with a test each before the measure (commit `e1f58b4`; [findings](../findings.md), F001 and F002).

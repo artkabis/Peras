@@ -105,3 +105,18 @@ Le 2026-11-11, après l’enregistrement (commit `96e6c43`) et avant qu’aucune
 - Le temps jusqu’au premier graphique, à froid, reste une mesure, sans hypothèse.
 
 Aucune mesure n’ayant été prise, l’amendement ne peut pas avoir été guidé par un résultat.
+
+## Journal de l’étude
+
+### Décidé après l’enregistrement, avant la première mesure
+
+Écrit avec les versions et le script, dans le commit `b06da25`, avant le début de l’exécution 1 :
+
+- **Une ligne vide est une ligne cassée.** Le protocole dit à la fois « toute autre ligne non vide après l’en-tête est cassée » et range « une ligne vide » parmi les lignes cassées ; la liste est suivie. Le `\n` qui termine la dernière ligne n’en commence pas une.
+- **Ce que reçoit C.** Le `split` et le `parseI32` de Peras travaillent sur une `String` ; un tableau d’octets ne peut pas être lu comme du texte. C reçoit le texte : le temps de C comprend le décodage des octets et la copie du texte dans le module.
+- **D ne peut pas être écrite.** `perasc` refuse `bench/data/dashboard-parallel.peras` : `error[E0241]: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map`. Le fichier est gardé tel qu’écrit ; selon le protocole, H5 est réfutée.
+- **Lignes de code.** Les types du résumé sont déclarés dans `summary.ts` pour A et B, qui n’est pas compté ; C les déclare dans son propre fichier, en `export struct`. Ils sont exclus du compte de C de la même façon.
+- **Une collecte avant chaque exécution chronométrée**, `gc()` avec `--expose-gc`, pour qu’une version ne paie pas les déchets de la précédente.
+- **Mémoire.** Le plus grand `VmHWM` parmi les processus de rendu d’un navigateur lancé pour l’exécution, la page étant la seule ouverte.
+- **Le réseau bridé**, exploratoire : 9 Mb/s en réception, 1,5 en émission, 170 ms de latence, à 100 000 lignes seulement, 3 chargements : à cette vitesse, 140 Mo prendraient deux minutes par chargement.
+- **Deux bogues du compilateur** ont été trouvés en écrivant C, tous deux refusés par son vérificateur de libération plutôt que livrés, et corrigés avec un test chacun avant la mesure (commit `e1f58b4` ; [constats](../findings.md), F001 et F002).

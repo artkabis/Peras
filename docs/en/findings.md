@@ -1,0 +1,76 @@
+# Findings
+
+_French translation: [../fr/findings.md](../fr/findings.md)._
+
+What the work on Peras has taught, kept as it was found: the bugs of the compiler, what the language makes hard to write, what it makes slow, what it cannot do yet, and the errors of method in its own studies. A language is judged by how these change over time, not by its demos.
+
+## How it is kept
+
+- **Each finding is entered the day it is found**, with its evidence: a diagnostic, a measure, a commit, a test.
+- **Nothing is removed.** A finding fixed stays, with the commit that fixed it and the test or the measure that proves it; one that is a choice of the language says why.
+- **It is closed only by a proof**: a test that would have failed before, or a measure under a protocol. A fix without one stays open.
+- **Errors of method count as much as bugs**: a study that counted wrong, a claim made before it was checked. They are what makes the other figures trustworthy.
+
+## Where the language stands
+
+Counted from the entries below, on 2026-11-11.
+
+| Kind                       | Open | Closed |
+| -------------------------- | ---: | -----: |
+| Bug of the compiler        |    0 |      4 |
+| Friction in writing        |    5 |      0 |
+| Slowness                   |    3 |      0 |
+| Missing capability         |    3 |      0 |
+| Error of method in a study |    0 |      6 |
+
+The bugs found were caught before they could ship: the release verifier refused the code (F001, F002), a test failed (F003), a benchmark trapped (F004). What stays open is what the language costs to write and to run in a real program, found by writing one: decision 0014's dashboard.
+
+## Bugs of the compiler
+
+| Id   | Found      | Finding                                                                                                                           | Evidence                                                                                             | Status                                                                                             |
+| ---- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| F001 | 2026-11-11 | `?` in an argument after one that made a block, as `R(a.copy(), b.parseI32()?)`, did not release that block on the `None` return. | The release verifier refused the code: `%2 still holds a block when the function returns: it leaks`. | Closed: commit `e1f58b4`, test `option_tests::the_question_mark_releases_what_its_statement_made`. |
+| F002 | 2026-11-11 | A field read from a structure a call returns, as `make(n).n`, left the structure's other blocks unreleased.                       | The release verifier refused the code.                                                               | Closed: commit `e1f58b4`, test `struct_tests::a_field_of_a_temporary_releases_the_others`.         |
+| F003 | 2026-11-11 | A module of numbers only imported the bounds check of the runtime at an index out of range once integer overflow was checked.     | A test of decision 0011, step 5.                                                                     | Closed: commit `ff57e25`, `needs_runtime` separated from `uses_heap`.                              |
+| F004 | 2026-11-11 | The checks of integer overflow kept the SIMD loops from being vectorized.                                                         | The SIMD test of the benchmark.                                                                      | Closed: commit `ff57e25`, the option `overflow_checks`, off in the production builds.              |
+
+## Frictions in writing
+
+Found by writing decision 0014's dashboard as plainly as TypeScript (`bench/data/dashboard.peras`).
+
+| Id   | Found      | Finding                                                                                                                                                                                                     | Evidence                                               | Status                                                                   |
+| ---- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| F101 | 2026-11-11 | A `match` whose arm leaves the loop, `None => { continue; }`, cannot give a value: the whole `match` is typed `void`, and the message, `` `void` has no field or method `qty` `` (E0215), does not say why. | `perasc build`, in either order of the arms.           | Open. Written instead as `isNone()`, then `unwrapOr` with a placeholder. |
+| F102 | 2026-11-11 | A structure has no `copy()`: a value lent by a loop over a map is rebuilt field by field to be kept.                                                                                                        | E0215 on `e.1.copy()`.                                 | Open.                                                                    |
+| F103 | 2026-11-11 | `m.set(key, m.get(key).unwrapOr(0) + 1)` is refused: `key` is moved by the first argument before the second reads it (E0204), where TypeScript accepts it.                                                  | `perasc build`.                                        | Open. Written in two statements.                                         |
+| F104 | 2026-11-11 | `unwrapOr(fallback)` always evaluates its fallback: a fallback that makes a string allocates at each call, even when the value is there.                                                                    | The documentation of `Option`; a row of the dashboard. | Open: a choice of the language, its cost to be measured.                 |
+| F105 | 2026-11-11 | There is no `unwrap`, by choice, and no `let … else` to take a value or leave: each optional value takes a test and a placeholder.                                                                          | The dashboard's `parse`.                               | Open.                                                                    |
+
+## Slowness
+
+| Id   | Found      | Finding                                       | Evidence                                                                                           | Status |
+| ---- | ---------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
+| F201 | 2026-11-11 | `parseI32` costs about 150 ns per integer.    | 1,000,000 rows in Node: splitting into fields 126 ms, with two `parseI32` per row 434 ms.          | Open.  |
+| F202 | 2026-11-11 | A map keyed by strings built per row is slow. | The same profile: with a template key and a `get` and `set` per row, 793 ms.                       | Open.  |
+| F203 | 2026-11-11 | The runtime weighs on what a program ships.   | The garden: Peras 5,872 bytes, TypeScript 1,119. The dashboard, first measure: 12,169 against 788. | Open.  |
+
+Splitting a string is not among them: 126 ms against 586 ms for JavaScript's `split`, on the same million rows.
+
+## Missing capabilities
+
+| Id   | Found      | Finding                                                                                                                             | Evidence                                                                | Status                   |
+| ---- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------ |
+| F301 | 2026-11-11 | A `parallel for` cannot call a function, make a string or an array, or reduce: a dashboard cannot be aggregated on several threads. | E0241 on `bench/data/dashboard-parallel.peras`.                         | Open: decision 0014, H5. |
+| F302 | 2026-11-11 | `i8`, `i16`, `u8`, `u16`, `u32` and `u64` are checked but not compiled.                                                             | [Status](reference/status.md).                                          | Open: the next step.     |
+| F303 | 2026-11-11 | No audio: the loader fetches its module, which an AudioWorklet cannot, and the audio APIs are not typed.                            | The loader of `vite-plugin-peras`; [the browser](reference/browser.md). | Open.                    |
+
+## Errors of method in the studies
+
+| Id   | Found      | Finding                                                                                                                                                                    | Evidence                                       | Status                                                                                                                |
+| ---- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| M001 | 2026-11-11 | The garden's first run counted a size no AVIF reached, infinite, as H2 holding.                                                                                            | [Run 1](../../bench/garden/run-1/RESULTS.md).  | Closed: both chromas searched, unreached tiles counted, a verdict that can be undetermined; run 1 kept with its flaw. |
+| M002 | 2026-11-11 | The garden's TypeScript was committed unformatted, after the run had started.                                                                                              | The CI's format check.                         | Closed: run stopped, file formatted (commit `f527ff2`), run 2 measured on it.                                         |
+| M003 | 2026-11-11 | Decision 0014's protocol was registered with two rules that disagree: "every other non-empty line is broken" and "an empty line" as a kind of broken row.                  | Found writing version C, before any measure.   | Closed: an empty line is a broken row, as its list says; recorded in the decision before the first measure.           |
+| M004 | 2026-11-11 | Decision 0014 named a competitor, DuckDB-wasm, that would have brought a dependency outside Rust into the repository.                                                      | The owner's objection.                         | Closed: amended before any measure (commit `4910914`).                                                                |
+| M005 | 2026-11-11 | The playground and the site were announced online when GitHub Pages had never deployed: its workflow failed at `configure-pages` on its two runs, Pages not being enabled. | The logs of the "Documentation site" workflow. | Closed as a finding; Pages is for the owner to enable.                                                                |
+| M006 | 2026-11-11 | Decision 0014's count of lines counted the types of the result for Peras and not for TypeScript, where they are in another file.                                           | Found in a trial run, before any measure.      | Closed: left out alike, before the first measure.                                                                     |
