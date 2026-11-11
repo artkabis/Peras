@@ -62,6 +62,50 @@ Masmano, Ripoll, Crespo and Real, _TLSF: A New Dynamic Memory Allocator for Real
 - **Shows**: a family of pseudorandom functions fast on short inputs, designed for hash tables protected against hash flooding.
 - **In Peras**: maps and sets hash with SipHash-1-3 under a key drawn for each instance ([decision 0005](decisions/0005-maps-and-sets.md)).
 
+## Reading data fast
+
+**Decimal text to the nearest float.** Clinger, _How to Read Floating Point Numbers Accurately_, PLDI 1990 (pp. 92–101).
+
+- **Shows**: an algorithm that always finds the best binary approximation of a decimal number, a problem no arithmetic of fixed precision solves alone.
+- **In Peras**: `parseF64` computes the common case exactly in WebAssembly by its fast path, and asks the host's `Number` beyond it ([methods](reference/methods.md)).
+
+**Numbers parsed at a gigabyte per second.** Lemire, _Number Parsing at a Gigabyte per Second_, Software: Practice and Experience 51(8), 2021, pp. 1700–1727 ([DOI 10.1002/spe.2984](https://doi.org/10.1002/spe.2984)).
+
+- **Shows**: decimal text read into the nearest float at about a gigabyte per second on 64-bit processors, by optimizing the common case of at most 19 digits, without losing accuracy.
+- **In Peras**: the way to read every `parseF64` in WebAssembly, without asking the host ([decision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**Structure found many bytes at a time.** Langdale and Lemire, _Parsing Gigabytes of JSON per Second_, The VLDB Journal 28(6), 2019 ([DOI 10.1007/s00778-019-00578-5](https://doi.org/10.1007/s00778-019-00578-5)).
+
+- **Shows**: a validating JSON parser that processes gigabytes per second on one core, with a quarter or fewer of the instructions of a reference parser, by making extensive use of SIMD instructions.
+- **In Peras**: the way to search for a separator 16 bytes at a time in `split` ([decision 0016](decisions/0016-faster-from-the-literature.md)).
+
+## Removing work the program did not ask for
+
+**No intermediate list.** Coutts, Leshchinskiy and Stewart, _Stream Fusion: From Lists to Streams to Nothing at All_, ICFP 2007 (pp. 315–326).
+
+- **Shows**: an automatic deforestation, by equational transformations, that fuses a wider range of functions than earlier short-cut fusion, left folds and nested lists included.
+- **In Peras**: `for (const part of text.split(sep))` walks the parts without the array (finding F206); the characters of `split("")` are next ([decision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**A computation done twice, done once.** Morel and Renvoise, _Global Optimization by Suppression of Partial Redundancies_, Communications of the ACM 22(2), 1979.
+
+- **Shows**: redundancy elimination and loop-invariant code motion treated as one problem, the suppression of computations partially redundant, by data-flow analysis.
+- **In Peras**: one lookup for `has` or `get` followed by `get` or `set` of the same key (finding F210, [decision 0016](decisions/0016-faster-from-the-literature.md)).
+
+**Objects that do not escape.** Choi, Gupta, Serrano, Sreedhar and Midkiff, _Escape Analysis for Java_, OOPSLA 1999.
+
+- **Shows**: a data-flow analysis, on a connection graph, that finds the objects that do not outlive the method making them, so that they can be allocated on its stack.
+- **In Peras**: an array of views that does not leave a loop's body, and an `Option` returned and unwrapped at once, need no block of the heap each time (findings F208, F209).
+
+**Regions.** Tofte and Talpin, _Region-Based Memory Management_, Information and Computation 132(2), 1997, pp. 109–176.
+
+- **Shows**: memory allocated and freed in regions, the points of allocation and release inferred by a type and effect analysis, with no garbage collector.
+
+**Reuse.** Reinking, Xie, de Moura and Leijen, _Perceus: Garbage Free Reference Counting with Reuse_, PLDI 2021.
+
+- **Shows**: precise reference counting that keeps only live data, proved sound and garbage free, whose reuse analysis turns functional code into updates in place.
+- **Does not show**: anything about Peras's ownership, which counts no references; the reuse of a block freed just before an allocation of its size applies to it all the same.
+- **In Peras**: a loop's array reused from one iteration to the next (finding F208).
+
 ## Floats as text
 
 Adams, _Ryū: Fast Float-to-String Conversion_, PLDI 2018 ([DOI 10.1145/3192366.3192369](https://doi.org/10.1145/3192366.3192369)).
