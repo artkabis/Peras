@@ -353,6 +353,13 @@ impl Lowering<'_> {
             self.unsupported(span, "deep-equality");
             return int(0);
         }
+        // `x.toLowerCase() == y`: each byte of `x`, its case changed, against
+        // `y`'s, without making the new string (decision 0014, finding F205).
+        let (lhs, rhs, case) = match (self.case_of(lhs), self.case_of(rhs)) {
+            (Some((x, case)), None) => (x, rhs, Some(case)),
+            (None, Some((y, case))) => (y, lhs, Some(case)),
+            _ => (lhs, rhs, None),
+        };
         let a = self.value_as(state, lhs, Mode::Borrow);
         let b = self.value_as(state, rhs, Mode::Borrow);
         let (Some(a0), Some(b0)) = (a.first(), b.first()) else {
@@ -375,11 +382,12 @@ impl Lowering<'_> {
             .zip(&b)
             .zip(&columns)
             .map(|((x, y), &elem)| {
-                super::binary(
-                    BinOp::Eq,
-                    get(x, i_expr.clone(), elem),
-                    get(y, i_expr.clone(), elem),
-                )
+                let xb = get(x, i_expr.clone(), elem);
+                let yb = get(y, i_expr.clone(), elem);
+                match case {
+                    None => super::binary(BinOp::Eq, xb, yb),
+                    Some(lower) => case_equal(xb, yb, lower),
+                }
             })
             .reduce(|acc, e| super::binary(BinOp::And, acc, e))
             .unwrap_or(Expr {
@@ -520,6 +528,29 @@ impl Lowering<'_> {
         match buffer {
             Some(buffer) => len(&buffer),
             None => int(0),
+        }
+    }
+
+    /// The string whose case `id` changes and how, when `id` is
+    /// `x.toLowerCase()` (true) or `x.toUpperCase()` (false) on a string.
+    fn case_of(&self, id: ExprId) -> Option<(ExprId, bool)> {
+        match &self.ast.expr(id).kind {
+            AstExpr::Paren(inner) => self.case_of(*inner),
+            AstExpr::Call { callee, args, .. } if args.is_empty() => {
+                match &self.ast.expr(*callee).kind {
+                    AstExpr::Field { base, name }
+                        if matches!(self.check_type(*base), Some(CheckTy::String)) =>
+                    {
+                        match self.ast.name(name.symbol) {
+                            "toLowerCase" => Some((*base, true)),
+                            "toUpperCase" => Some((*base, false)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 
@@ -1191,4 +1222,33 @@ fn fill_breaks(stmts: Vec<Stmt>, releases: &mut impl Iterator<Item = Vec<Stmt>>)
         }
     }
     out
+}
+
+/// Whether byte `x`, in lower case (`lower`) or upper case, is byte `y`: an
+/// ASCII letter of the other case changes by 32, every other byte stays.
+fn case_equal(x: Expr, y: Expr, lower: bool) -> Expr {
+    let (from, to, shift) = if lower { (65, 90, 32) } else { (97, 122, -32) };
+    let letter = super::binary(
+        BinOp::And,
+        super::binary(BinOp::Ge, x.clone(), int(from)),
+        super::binary(BinOp::Le, x.clone(), int(to)),
+    );
+    let changed = super::binary(
+        BinOp::Eq,
+        super::binary(BinOp::Add, x.clone(), int(shift)),
+        y.clone(),
+    );
+    let kept = super::binary(BinOp::Eq, x, y);
+    super::binary(
+        BinOp::Or,
+        super::binary(BinOp::And, letter.clone(), changed),
+        super::binary(
+            BinOp::And,
+            Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(letter)),
+                ty: Ty::Bool,
+            },
+            kept,
+        ),
+    )
 }

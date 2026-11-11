@@ -20,6 +20,9 @@ interface Words {
   firstKept(line: string): string;
   afterChange(line: string): string;
   partsOf(line: string): string[];
+  sameLower(a: string, b: string): boolean;
+  sameUpper(a: string, b: string): boolean;
+  notLower(a: string, b: string): boolean;
   __perasHeap: { live(): number; checkLeaks(): void };
 }
 
@@ -32,6 +35,43 @@ async function load(allocator: "debug" | "tlsf"): Promise<Words> {
 
 describe("strings in JavaScript", () => {
   for (const allocator of ["debug", "tlsf"] as const) {
+    it(`compare a string whose case changes as JavaScript's ASCII rule does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const words = [
+        "",
+        "A",
+        "a",
+        "Z",
+        "z",
+        "@",
+        "[",
+        "`",
+        "{",
+        "AbC-9",
+        "abc-9",
+        "ABC-9",
+        "é",
+        "É",
+        "ÉA",
+        "éa",
+        "ab",
+        "abc",
+        "US",
+        "us",
+      ];
+      // Peras changes the case of ASCII letters only, as its documentation says.
+      const lower = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+      const upper = (s: string) => s.replace(/[a-z]/g, (c) => c.toUpperCase());
+      for (const a of words)
+        for (const b of words) {
+          expect(m.sameLower(a, b), `${a}.toLowerCase() == ${b}`).toBe(lower(a) === b);
+          expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
+          expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
+        }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
     it(`split into a constant only read gives views, and copies where it must, on ${allocator}`, async () => {
       const m = await load(allocator);
       expect(m.csvSum("1,ab,xyz\n2,c,de\nbad\n")).toBe(10);

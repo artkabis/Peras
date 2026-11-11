@@ -56,3 +56,17 @@ export fn partsOf(line: String): Array<String> {
   const parts = line.split(",");
   return parts;
 }
+
+// A string whose case changes, compared at once: compared byte by byte,
+// without making it (decision 0014, finding F205).
+export fn sameLower(a: String, b: String): bool {
+  return a.toLowerCase() == b;
+}
+
+export fn sameUpper(a: String, b: String): bool {
+  return b == a.toUpperCase();
+}
+
+export fn notLower(a: String, b: String): bool {
+  return a.toLowerCase() != b;
+}
