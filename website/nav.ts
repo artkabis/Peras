@@ -62,6 +62,7 @@ export const sections: Section[] = [
       "decisions/0007-threads-over-shared-memory",
       "decisions/0008-managed-mode",
       "decisions/0009-browser-and-resources",
+      "decisions/0010-calling-javascript",
     ],
   },
 ];

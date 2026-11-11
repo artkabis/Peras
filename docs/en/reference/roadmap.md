@@ -75,7 +75,7 @@ export async fn render(canvas: HTMLCanvasElement): Promise<void> {
 ## Phase 5: modules and packages
 
 - `import` and `export` between Peras modules.
-- Typed use of JavaScript libraries, from their `.d.ts` declarations.
+- ~~Typed use of JavaScript libraries~~: done with `extern` blocks, each value from JavaScript checked against the types declared ([decision 0010](../decisions/0010-calling-javascript.md)); `extern` blocks proposed from `.d.ts` declarations next.
 - Packages: a manifest, versions, a registry.
 
 ## Phase 6: graphics and performance
@@ -104,7 +104,7 @@ An outside review of the project, in November 2026, advised against using it in 
 - **Version 0.0.1, no stability promise**: until 1.0, any version may break the language. A written policy, saying what may change and how a change is announced, comes before any outside user.
 - **Half of the design was missing**: `.apeiron` modules now compile to JavaScript and call owned modules ([managed modules](../guide/managed.md)), but the browser is not typed yet (phase 4), and `std/` holds only its README.
 - **One maintainer**: the project depends on one person, helped by an AI assistant; it has no community yet.
-- **No libraries of its own**: the plan is to use those of npm through their declarations (phase 5), not to rewrite them; until then, a Peras module does one job inside a TypeScript application.
+- **No libraries of its own**: the plan is to use those of npm, not to rewrite them; a managed module calls them through `extern` blocks, each declared by hand ([decision 0010](../decisions/0010-calling-javascript.md)).
 - **Workers, but no shared memory; no GPU**: a module runs in Web Workers as it is, one instance each, measured 2.6 to 2.9 times faster on 4 cores where the work outweighs copying the data and slower where it does not ([Web Workers](../../../bench/README.md#web-workers)); memory shared between workers is not built yet (decision [0003](../decisions/0003-runtime-proved-at-compile-time.md) plans moves between threads), nor WebGPU (phase 6).
 - **Ownership is learned**: diagnostics explain every refusal, with the value's history and the fix, but there is no community knowledge to lean on yet.
 - **Compared with Rust and AssemblyScript as usually written, not yet with their experts**: Peras runs at the speed of idiomatic Rust, ahead where its compiler does more (SIMD loops with branches, radix sort, text crossing), and 2.4 to 7.3 times faster than AssemblyScript where it allocates or loops ([against Rust and AssemblyScript](../../../bench/README.md#against-rust-and-assemblyscript)).

@@ -167,9 +167,42 @@ export fn start(root: Element): Group {
 
 In debug, the default of `perasc build` and Vite's dev server, a resource collected without being released is reported in the console with the file and line that made it.
 
+## Calling JavaScript
+
+Anything else, the rest of the DOM or an npm package, is declared in an `extern` block, with Peras types ([decision 0010](../decisions/0010-calling-javascript.md)):
+
+```apeiron build
+extern from "./chart.js" {
+  type Chart;
+  fn makeChart(canvas: CanvasElement): Chart;
+  fn plot(self: Chart, values: Array<number>): i32;
+  fn onPoint(self: Chart, f: (i32, number) => void): void;
+  async fn load(url: String): Promise<Array<number>>;
+}
+
+fn picked(i: i32, value: number): void {
+  log(`${i}: ${value}`);
+}
+
+export async fn show(canvas: CanvasElement): Promise<i32> {
+  const chart = makeChart(canvas);
+  chart.onPoint((i, value) => picked(i, value));
+  return chart.plot(await load("/values.json"));
+}
+```
+
+- `type Chart;` is a value JavaScript makes, which Peras only passes along.
+- A function whose first parameter is `self` of such a type is a method: `chart.plot(values)` calls `plot` on the object JavaScript gave.
+- A parameter of a function type, `(i32, number) => void`, takes an arrow function.
+
+Peras checks every value JavaScript gives back against the type declared, in production too: what a function returns, what its promise gives, what JavaScript passes to a callback. A library that gives a string where `i32` is declared throws a `TypeError` that names the function, `peras: Chart.plot(…) returned the string "3" where its declaration says i32`, before any Peras code sees the value. A declaration that is wrong is found where it is wrong. A resource cannot be given to JavaScript, which would never release it ([E0247](../errors/E0247.md)).
+
+The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as JavaScript imports it: Vite resolves it, and `perasc build` keeps it as written.
+
 ## Not yet
 
-- **More of the browser**: forms, `requestAnimationFrame`, WebSockets and workers, added as programs need them.
+- **More of the browser, typed**: forms, `requestAnimationFrame`, WebSockets and workers, until then declared in an `extern` block.
+- **Generic `extern` functions**, default exports, and reading `.d.ts` files to propose `extern` blocks.
 - **Arrays of resources**, and a request as a resource cancelled with its owner.
 - **Functions as values**, outside the arrow functions given to array methods and to `on`, `setTimeout` and `setInterval`; arrow functions with statements.
 - **Structures and enumerations across an import.**

@@ -167,9 +167,42 @@ export fn start(root: Element): Group {
 
 En debug, le défaut de `perasc build` et du serveur de développement de Vite, une ressource ramassée sans avoir été libérée est signalée dans la console avec le fichier et la ligne qui l’ont créée.
 
+## Appeler JavaScript
+
+Tout le reste, le reste du DOM ou un paquet npm, se déclare dans un bloc `extern`, avec des types Peras ([décision 0010](../decisions/0010-calling-javascript.md)) :
+
+```apeiron build
+extern from "./chart.js" {
+  type Chart;
+  fn makeChart(canvas: CanvasElement): Chart;
+  fn plot(self: Chart, values: Array<number>): i32;
+  fn onPoint(self: Chart, f: (i32, number) => void): void;
+  async fn load(url: String): Promise<Array<number>>;
+}
+
+fn picked(i: i32, value: number): void {
+  log(`${i} : ${value}`);
+}
+
+export async fn show(canvas: CanvasElement): Promise<i32> {
+  const chart = makeChart(canvas);
+  chart.onPoint((i, value) => picked(i, value));
+  return chart.plot(await load("/values.json"));
+}
+```
+
+- `type Chart;` est une valeur que crée JavaScript, et que Peras ne fait que passer.
+- Une fonction dont le premier paramètre est un `self` d’un tel type est une méthode : `chart.plot(values)` appelle `plot` sur l’objet que JavaScript a donné.
+- Un paramètre de type fonction, `(i32, number) => void`, prend une fonction fléchée.
+
+Peras vérifie chaque valeur que JavaScript rend contre le type déclaré, en production aussi : ce que rend une fonction, ce que donne sa promesse, ce que JavaScript passe à un rappel. Une bibliothèque qui donne une chaîne là où `i32` est déclaré lève une `TypeError` qui nomme la fonction, `peras: Chart.plot(…) returned the string "3" where its declaration says i32`, avant qu’aucun code Peras ne voie la valeur. Une déclaration fausse est trouvée là où elle est fausse. Une ressource ne peut pas être donnée à JavaScript, qui ne la libérerait jamais ([E0247](../errors/E0247.md)).
+
+Le chemin est un fichier, `"./chart.js"`, ou un paquet npm, `"date-fns"`, importé comme JavaScript l’importe : Vite le résout, et `perasc build` le garde tel qu’il est écrit.
+
 ## Pas encore
 
-- **Davantage du navigateur** : les formulaires, `requestAnimationFrame`, les WebSockets et les workers, ajoutés quand des programmes en ont besoin.
+- **Davantage du navigateur, typé** : les formulaires, `requestAnimationFrame`, les WebSockets et les workers, d’ici là déclarés dans un bloc `extern`.
+- **Les fonctions `extern` génériques**, les exports par défaut, et la lecture des fichiers `.d.ts` pour proposer des blocs `extern`.
 - **Les tableaux de ressources**, et une requête comme ressource annulée avec son propriétaire.
 - **Les fonctions comme valeurs**, hors des fonctions fléchées données aux méthodes des tableaux et à `on`, `setTimeout` et `setInterval` ; les fonctions fléchées à instructions.
 - **Les structures et les énumérations à travers un import.**
