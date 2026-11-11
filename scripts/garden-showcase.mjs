@@ -7,7 +7,7 @@
 // Usage: node scripts/garden-showcase.mjs
 // Writes docs/assets/garden-before-after.webp, and .fr.webp with French labels.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -100,6 +100,8 @@ sh("ffmpeg", [
   avif,
 ]);
 const avifBytes = statSync(avif).size;
+// Kept for the playground (examples/garden), which enlarges it beside the program.
+copyFileSync(avif, join(root, "docs", "assets", "garden-stored.avif"));
 // The program as shipped: its loader minified, and its module, gzip.
 const programBytes =
   gzipSync((await minify("garden.js", readFileSync(join(work, "garden.js"), "utf8"))).code, {

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 // and a Chromium (`pnpm exec playwright install chromium`, or PERAS_CHROMIUM).
 export default defineConfig({
   test: {
-    include: ["packages/*/e2e/**/*.test.ts"],
+    include: ["packages/*/e2e/**/*.test.ts", "examples/*/e2e/**/*.test.ts"],
     testTimeout: 60_000,
     hookTimeout: 60_000,
   },

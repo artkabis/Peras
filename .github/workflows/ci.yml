@@ -133,6 +133,8 @@ jobs:
       - name: Install the Chromium of the pinned Playwright
         run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run e2e
+      - name: The garden's playground builds for production
+        run: pnpm --filter peras-example-garden build
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
       - name: Split across Web Workers, the kernels give what they give directly

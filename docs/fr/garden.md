@@ -12,6 +12,10 @@ C’est aussi une mesure. Le plus court programme qui dessine une image est sa m
 
 Le même coin du jardin, zoomé 8 puis 64 fois. À gauche, l’image stockée : le plus petit AVIF de la scène entière qui paraît juste en pleine taille, 9,5 Ko, agrandi comme un visualiseur l’agrandit ; à ×64, 16 de ses pixels remplissent le cadre. À droite, le programme, 5,7 Ko, dessinant la fenêtre à ce zoom. Leur ressemblance, par le SSIM, est de 0,22 à ×8 et de 0,20 à ×64. Même le PNG sans perte, 471 Ko, n’a que 16 pixels de large à ×64 : aucune image stockée ne peut dessiner les fleurs qu’elle ne contient pas.
 
+## Zoomer soi-même
+
+Le [playground](https://artkabis.github.io/Peras/playground/?lang=fr) montre la même fenêtre deux fois, l’AVIF stocké agrandi à gauche et le programme qui la dessine à droite ; glissez pour vous déplacer, molette ou pincement pour zoomer, jusqu’à 65 536 fois. Le programme est celui que le banc a mesuré, `bench/garden/garden.peras`, exécuté dans un Web Worker, et un test dans Chromium vérifie que son canvas contient les pixels de la référence, octet pour octet. Ses chiffres sont lus dans les résultats, et l’URL garde l’endroit, pour le partager. Pour le lancer depuis le dépôt : `cargo build --release -p perasc`, puis `pnpm --filter peras-example-garden dev` ([source](../../examples/garden)).
+
 ## Trois zooms
 
 ![Le jardin aux zooms 1, 8 et 64 : le paysage à l’aube ; la prairie pleine de fleurs ; des fleurs seules avec leurs pétales et leurs cœurs](../assets/garden.webp)

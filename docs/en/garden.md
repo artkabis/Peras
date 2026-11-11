@@ -12,6 +12,10 @@ It is also a measure. The shortest program that draws an image is the image's be
 
 The same corner of the garden, zoomed 8 then 64 times. Left, the stored image: the smallest AVIF of the whole scene that looks right at full size, 9.5 KB, enlarged as a viewer enlarges it; at ×64, 16 of its pixels fill the frame. Right, the program, 5.7 KB, drawing the window at that zoom. Their likeness, by SSIM, is 0.22 at ×8 and 0.20 at ×64. Even the lossless PNG, 471 KB, has 16 pixels across at ×64: no stored image can draw the flowers it does not hold.
 
+## Zoom into it yourself
+
+The [playground](https://artkabis.github.io/Peras/playground/) shows the same window twice, the stored AVIF enlarged on the left and the program drawing it on the right; drag to move, scroll or pinch to zoom, down to 65,536 times. The program is the one the benchmark measured, `bench/garden/garden.peras`, run in a Web Worker, and a test in Chromium checks that its canvas holds the reference's pixels, byte for byte. Its figures are read from the results, and the URL keeps the place, to share it. To run it from the repository: `cargo build --release -p perasc`, then `pnpm --filter peras-example-garden dev` ([source](../../examples/garden)).
+
 ## Three zooms
 
 ![The garden at zooms 1, 8 and 64: the landscape at dawn; the meadow full of flowers; single flowers with their petals and hearts](../assets/garden.webp)
