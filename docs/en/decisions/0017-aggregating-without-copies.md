@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0017-aggregating-without-copies.md](../../fr/decisions/0017-aggregating-without-copies.md)._
 
-_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2` (see [Measured after step 1](#measured-after-step-1) and [after step 2](#measured-after-step-2)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
+_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2`, step 3 at `a497971` (see [Measured after step 1](#measured-after-step-1), [after step 2](#measured-after-step-2) and [after step 3](#measured-after-step-3)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
 
 ## Context
 
@@ -124,3 +124,26 @@ Step 2 landed at commit `02ff9c2`, in two parts, each its own small change.
 - looks each key of the pairs and of the products up once, with `map_put_at_s` and `map_put_at_i` in place of `map_put_s` and `map_put_i`.
 
 **The gain: 8.5 to 13.5 %.** Two profiles run an hour apart could not show it. `full` went from 304 to 310 ms, but the variants this step does not touch slowed down as much: the walk over the lines alone went from 21 to 24 ms. The machine had slowed between the two (finding M017). So the two compilers were compared in one process with `node scripts/ab-data.mjs 037bb74 02ff9c2`: the same text summarized by each in turn, the order alternating, and the ratio taken round by round. Over four such runs, before / after was 1.085, 1.097, 1.104 and 1.135 at the median. The summaries were the same.
+
+## Measured after step 3
+
+Step 3 landed at commit `a497971`, in a form other than the one planned. Before building the key in pieces (technique 2), a profile by removal asked what the key costs. `` `${country}|` `` instead of `` `${country}|${category}` `` saved 25 ms of 32. That variant pointed at the integer: `${category}` was made a string of its own, copied into the key, then released.
+
+**The change.** An integer in a template is evaluated in its place:
+
+- `fmt_int_len` counts its bytes, so that the template's string is sized once;
+- `fmt_int_append` writes its digits into that string.
+
+So every template does one allocation and one release fewer for each of its integers. This is general, not only for keys, and smaller than technique 2.
+
+**What guards it.**
+
+- An end-to-end test compares templates of `i32` and `i64` at their bounds with JavaScript's own templates, on both allocators.
+- The differential test gains templates of negative, zero and wide integers. 2,000 seeds pass.
+- Two mutations each fail it: a digit miscounted, and the sign written wrong. The end-to-end test catches the sign too.
+
+**It is taken.** In `--calls`, `fmt_int` is gone, and each row kept releases a block 9 times instead of 10.
+
+**The gain: 1.3 to 7.4 %, less than the profile gave.** `node scripts/ab-data.mjs f989a03 a497971` gave a median before / after of 1.074, 1.034 and 1.013 over three runs, the same summaries.
+
+The variant had changed two things, which is finding M013 again. Without the category, the map held one key per country instead of up to twelve: a smaller map, more often in the cache. The 25 ms were the integer's cost and the smaller map's together, and only the first is what this step removes. Technique 2, the key not built at all, is not pursued now. The key is built once per row kept, and building it is now one allocation.

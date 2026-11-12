@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0017-aggregating-without-copies.md](../../en/decisions/0017-aggregating-without-copies.md)._
 
-_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74`, l’étape 2 à `02ff9c2` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1) et [après l’étape 2](#mesuré-après-létape-2)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
+_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74`, l’étape 2 à `02ff9c2`, l’étape 3 à `a497971` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1), [après l’étape 2](#mesuré-après-létape-2) et [après l’étape 3](#mesuré-après-létape-3)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
 
 ## Contexte
 
@@ -124,3 +124,26 @@ L’étape 2 est arrivée au commit `02ff9c2`, en deux parties, chacune un petit
 - cherche chaque clé des paires et des produits une seule fois, avec `map_put_at_s` et `map_put_at_i` à la place de `map_put_s` et `map_put_i`.
 
 **Le gain : 8,5 à 13,5 %.** Deux profils lancés à une heure d’écart ne pouvaient pas le montrer. `full` est passé de 304 à 310 ms, mais les variantes que cette étape ne touche pas ont ralenti autant : le seul parcours des lignes est passé de 21 à 24 ms. La machine avait ralenti entre les deux (constat M017). Les deux compilateurs ont donc été comparés dans un même processus avec `node scripts/ab-data.mjs 037bb74 02ff9c2` : le même texte résumé par chacun à tour de rôle, l’ordre alterné, et le rapport pris tour par tour. Sur quatre telles exécutions, avant / après valait 1,085, 1,097, 1,104 et 1,135 en médiane. Les résumés étaient identiques.
+
+## Mesuré après l’étape 3
+
+L’étape 3 est arrivée au commit `a497971`, sous une autre forme que prévu. Avant de construire la clé par morceaux (technique 2), un profil par retrait a demandé ce que coûte la clé. `` `${country}|` `` à la place de `` `${country}|${category}` `` faisait gagner 25 ms sur 32. Cette variante désignait l’entier : `${category}` devenait une chaîne à part, copiée dans la clé, puis libérée.
+
+**Le changement.** Un entier d’un gabarit est évalué à sa place :
+
+- `fmt_int_len` compte ses octets, pour que la chaîne du gabarit soit dimensionnée une fois ;
+- `fmt_int_append` écrit ses chiffres dans cette chaîne.
+
+Chaque gabarit fait donc une allocation et une libération de moins pour chacun de ses entiers. C’est général, pas seulement pour les clés, et plus petit que la technique 2.
+
+**Ce qui la garde.**
+
+- Un test de bout en bout compare des gabarits d’`i32` et d’`i64` à leurs bornes avec les gabarits de JavaScript lui-même, sur les deux allocateurs.
+- Le test différentiel gagne des gabarits d’entiers négatifs, nuls et larges. 2 000 graines passent.
+- Deux mutations le font chacune échouer : un chiffre mal compté, et le signe mal écrit. Le test de bout en bout attrape aussi le signe.
+
+**Elle est prise.** Dans `--calls`, `fmt_int` a disparu, et chaque ligne gardée libère un bloc 9 fois au lieu de 10.
+
+**Le gain : 1,3 à 7,4 %, moins que ce qu’annonçait le profil.** `node scripts/ab-data.mjs f989a03 a497971` a donné une médiane avant / après de 1,074, 1,034 et 1,013 sur trois exécutions, les mêmes résumés.
+
+La variante avait changé deux choses, ce qui est encore le constat M013. Sans la catégorie, la table tenait une clé par pays au lieu de jusqu’à douze : une table plus petite, plus souvent en cache. Les 25 ms étaient le coût de l’entier et celui de la table plus petite ensemble, et seul le premier est ce que retire cette étape. La technique 2, la clé pas construite du tout, n’est pas poursuivie maintenant. La clé est construite une fois par ligne gardée, et la construire ne fait plus qu’une allocation.
