@@ -3,9 +3,10 @@
 // and the time it saves is that thing's cost. Not a measure under a protocol:
 // a profile, to choose what the compiler should do next (decision 0017). A
 // variant changes what the dashboard computes; only its time is read.
-// Usage: node scripts/profile-data.mjs [--calls]
-// Prints, for 1,000,000 rows, the median of 9 rounds of each variant, the
-// variants alternating, and what each saves. With --calls, instead: the
+// Usage: node scripts/profile-data.mjs [--calls] [--rows N] [--only a,b,c]
+// Prints, for 1,000,000 rows (or N), the median of 9 rounds of each variant
+// (or of those named, `full` always among them), the variants alternating,
+// and what each saves. With --calls, instead: the
 // dashboard built with the runtime beside it (--link off), and each call
 // into the runtime counted, per row, on 100,000 rows.
 import { spawnSync } from "node:child_process";
@@ -90,7 +91,7 @@ const parseOnly = [
 ];
 
 /** Each variant: its name, what it shows, and its replacements. @type {[string, string, [string, string][]][]} */
-const variants = [
+const allVariants = [
   ["full", "the dashboard as written", []],
   [
     "boundary",
@@ -200,6 +201,17 @@ const variants = [
   ],
 ];
 
+/** The value given after `flag`, if any. @param {string} flag */
+const option = (flag) => {
+  const at = process.argv.indexOf(flag);
+  return at < 0 ? undefined : process.argv[at + 1];
+};
+const only = option("--only")?.split(",");
+const variants = allVariants.filter(
+  ([name]) => only === undefined || name === "full" || only.includes(name),
+);
+const rows = Number(option("--rows") ?? 1_000_000);
+
 for (const [name, , replacements] of variants) {
   let text = source;
   for (const [from, to] of replacements) {
@@ -223,7 +235,8 @@ for (const [name, , replacements] of variants) {
 const generator = /** @type {{ generate: (rows: number) => Uint8Array }} */ (
   await load(join(root, "bench", "data", "generate.ts"))
 );
-const text = new TextDecoder().decode(generator.generate(1_000_000));
+const text = new TextDecoder().decode(generator.generate(rows));
+console.log(`${rows.toLocaleString("en")} rows`);
 /** @type {Record<string, Module>} */
 const modules = {};
 for (const [name] of variants)
