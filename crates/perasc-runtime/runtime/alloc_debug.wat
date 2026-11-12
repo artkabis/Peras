@@ -222,6 +222,11 @@
   ;; The buffers, shared with the production allocator.
   ;; @include buffers.wat
 
+  ;; Nothing is kept for reuse here: a block released waits in quarantine,
+  ;; where a write into it is caught. The TLSF allocator's `trim` gives back
+  ;; what it keeps; here there is nothing to give.
+  (func (export "trim"))
+
   (func (export "live_count") (result i32) (global.get $live_count))
   (func (export "live_bytes") (result i32) (global.get $live_bytes))
   ;; Allocations made since the start.
