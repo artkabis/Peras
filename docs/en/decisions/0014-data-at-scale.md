@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0014-data-at-scale.md](../../fr/decisions/0014-data-at-scale.md)._
 
-_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Run 2, at commit `6ef6283`, after three changes to the compiler: the same verdicts, and plain Peras now 1.23 to 1.26 times as fast as plain TypeScript, where it was slower. Run 3, at commit `df51da3`, after decision 0016: H1 holds, plain Peras 2.06 to 2.36 times as fast as plain TypeScript; H6 refuted by 0.02; on another machine (a departure, the ratios compared). Results and record below._
+_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Run 2, at commit `6ef6283`, after three changes to the compiler: the same verdicts, and plain Peras now 1.23 to 1.26 times as fast as plain TypeScript, where it was slower. Run 3, at commit `df51da3`, after decision 0016: H1 holds, plain Peras 2.06 to 2.36 times as fast as plain TypeScript; H6 refuted by 0.02; on another machine (a departure, the ratios compared). Run 4, at commit `d9fbe35`, after steps 1 to 3 of decision 0017: plain Peras 2.39 to 2.63 times as fast as plain TypeScript, 0.26 to 0.31 times as fast as optimized TypeScript; H6 refuted further, 4.88. Results and record below._
 
 _Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
@@ -244,3 +244,37 @@ Warm, in milliseconds, medians of 15 runs:
 **H6 is refuted by 0.02.** C's time grows 4.42 times from 1,000,000 to 4,000,000 rows, against at most 4.4. The rule registered is applied as it stands: a threshold missed by a little is missed. Runs 1 and 2 gave 4.17 and 3.80, so the growth is close to the bound in every run. It is not shown to be worse.
 
 **Departure from the protocol: the machine changed.** Runs 1 and 2 ran on an Intel Xeon at 2.10 GHz, run 3 on an Intel Xeon at 2.30 GHz, both with 4 cores. The cloud gives a new container to a new session, and its processor is not chosen. A's own times are 31 to 38 % lower than in run 2. So a version's milliseconds are not compared from one run to the next. What the protocol compares is each run's versions against each other, alternating, on one machine: the ratios. Those stand (finding M016).
+
+### Run 4, at commit `d9fbe35`: the results
+
+Measured on 2026-11-12 from 07:45 to 07:49 UTC, Chromium headless, under the same protocol, unchanged; nothing else ran. The machine is the same model as run 3's, an Intel Xeon at 2.30 GHz with 4 cores. The report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md); run 3's is kept in [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+
+**What changed in the compiler since run 3.** Steps 1 to 3 of [decision 0017](0017-aggregating-without-copies.md):
+
+- a fallback that copies is made only when needed;
+- a map entry taken out, changed and put back is looked up once;
+- a template's integers are written into its string.
+
+Version C's source did not change, nor did A, B or the data.
+
+| Hypothesis                         | Run 2             | Run 3             | Run 4                                             | Verdict     |
+| ---------------------------------- | ----------------- | ----------------- | ------------------------------------------------- | ----------- |
+| H1, C at least 2 times A           | 1.26 and 1.23     | 2.36 and 2.06     | **2.63** at 1,000,000 rows, **2.39** at 4,000,000 | **holds**   |
+| H2, C at least 0.8 times B         | 0.13 and 0.12     | 0.28 and 0.25     | 0.31 and 0.26                                     | **refuted** |
+| H3, C's memory at most half of A's | 1.12              | 0.78              | 0.78                                              | **refuted** |
+| H4, C at most 3 times A's bytes    | 15.1              | 12.5              | 12.5, 9,853 bytes                                 | **refuted** |
+| H5, D at least 2 times C           | cannot be written | cannot be written | cannot be written                                 | **refuted** |
+| H6, linear, at most 4.4            | 3.80              | 4.42              | 4.88                                              | **refuted** |
+| H7, C at most 1.25 times A's lines | 1.08              | 1.08              | 1.08                                              | holds       |
+
+Warm, in milliseconds, medians of 15 runs:
+
+| Version                  | 100,000 | 1,000,000 | 4,000,000 |
+| ------------------------ | ------: | --------: | --------: |
+| A. TypeScript, idiomatic |    62.8 |     779.8 |   3,460.6 |
+| B. TypeScript, optimized |    10.7 |      93.0 |     374.2 |
+| C. Peras                 |    27.4 |     296.9 |   1,448.1 |
+
+**What it says.** Plain Peras computes the dashboard 2.39 to 2.63 times as fast as plain TypeScript, against 2.06 to 2.36 in run 3. Against TypeScript optimized by hand, it goes from 0.25–0.28 to 0.26–0.31. Run 3 and run 4 had the same processor, so C's milliseconds compare too, with caution (M016). At 1,000,000 rows C goes from 334.1 to 296.9 ms, 11 % less; at 4,000,000 rows from 1,477.7 to 1,448.1, 2 % less.
+
+**The gain is smaller on the larger file, and H6 moves further from its bound**: 3.80, 4.42, then 4.88, against at most 4.4. Decision 0017 removed work done per row, which shows at 1,000,000 rows. What grows faster than the rows does not depend on that work. At 4,000,000 rows, the maps of pairs, products and users are larger and less often in the cache (F215). This is a reading of the figures, not a measure of its cause. It is the first thing to profile at 4,000,000 rows before the next decision on the dashboard.

@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0017-aggregating-without-copies.md](../../fr/decisions/0017-aggregating-without-copies.md)._
 
-_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2`, step 3 at `a497971`; step 4 examined and not done (see [Step 4, examined](#step-4-examined-not-done) and [Measured after step 1](#measured-after-step-1), [after step 2](#measured-after-step-2) and [after step 3](#measured-after-step-3)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
+_Status: proposed on 2026-11-12, closed the same day (see [Outcome](#outcome)). Step 1 landed at `037bb74`, step 2 at `02ff9c2`, step 3 at `a497971`; step 4 examined and not done (see [Step 4, examined](#step-4-examined-not-done) and [Measured after step 1](#measured-after-step-1), [after step 2](#measured-after-step-2) and [after step 3](#measured-after-step-3)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
 
 ## Context
 
@@ -163,3 +163,32 @@ What the reading costs was measured instead, by removal. `node scripts/profile-d
 | The walk over the lines alone               | 21 ms  |               |
 
 The five integers cost about 6.6 ns each. The split into views and the copy of the country cost about 34 ms, the check of the letters about 21. None of these is large alone. The step that would remove them together is the one technique 4 led to in the profile of the optimized TypeScript: reading the fields of a line straight from its bytes, without its views, as B does (Langdale and Lemire, 2019).
+
+## Outcome
+
+Closed on 2026-11-12. Steps 1 to 3 landed; step 4 was examined and not built (M019); step 5, the index keeping a hash's bits, was not tried. Its gain was a guess, and decision 0014's run 4 points elsewhere first: at what grows faster than the rows.
+
+| Step | What                                                        | Measured, an A/B in one process | Commit    |
+| ---- | ----------------------------------------------------------- | ------------------------------- | --------- |
+| 1    | A fallback that copies, made only when needed               | 322 to 304 ms, 8 to 28 ms       | `037bb74` |
+| 2    | A map entry taken out, changed and put back, looked up once | 8.5 to 13.5 % faster            | `02ff9c2` |
+| 3    | A template's integers written into its string               | 1.3 to 7.4 % faster             | `a497971` |
+| 4    | One call per integer                                        | not built: no second pass       | (M019)    |
+
+Under decision 0014's protocol, run 4 against run 3, the same processor:
+
+- plain Peras goes from 2.06–2.36 to 2.39–2.63 times as fast as plain TypeScript;
+- against TypeScript optimized by hand, it goes from 0.25–0.28 to 0.26–0.31;
+- in milliseconds, 11 % less at 1,000,000 rows, 2 % less at 4,000,000.
+
+The hope written above was about 200 ms per 1,000,000 rows in Node and 0.45 of B. It is not reached: about 280 ms, and 0.26 to 0.31 of B. Step 4 rested on a cost that did not exist, and step 3's profile counted two changes at once (M013).
+
+**What this decision taught about the optimized TypeScript.** About 130 ms of its lead comes from what it knows of the data: a bitmap of users, dense arrays of country codes and products. A compiler cannot infer that from code written plainly. About 70 ms comes from reading the bytes in one pass, which is the compiler's to take.
+
+**What comes next.**
+
+- **The dashboard at 4,000,000 rows, profiled.** The gain at 4,000,000 rows is a fifth of the gain at 1,000,000, and H6 moves further from its bound.
+- **Then the reading.** The fields of a line read straight from its bytes, without views: the split, the copy of the country and the integers cost about 88 ms per 1,000,000 rows.
+- **A way for a program to say what it knows of its data** would be a change to the language. It is weighed separately.
+
+Each of these is a decision of its own.

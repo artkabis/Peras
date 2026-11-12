@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Exécution 3, au commit `df51da3`, après la décision 0016 : H1 tient, Peras simple 2,06 à 2,36 fois plus rapide que TypeScript simple ; H6 réfutée de 0,02 ; sur une autre machine (un écart, les rapports comparés). Résultats et journal ci-dessous._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Exécution 3, au commit `df51da3`, après la décision 0016 : H1 tient, Peras simple 2,06 à 2,36 fois plus rapide que TypeScript simple ; H6 réfutée de 0,02 ; sur une autre machine (un écart, les rapports comparés). Exécution 4, au commit `d9fbe35`, après les étapes 1 à 3 de la décision 0017 : Peras simple 2,39 à 2,63 fois plus rapide que TypeScript simple, 0,26 à 0,31 fois aussi rapide que TypeScript optimisé ; H6 réfutée plus nettement, 4,88. Résultats et journal ci-dessous._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
@@ -244,3 +244,37 @@ Le source de la version C n’a pas changé, ni A, ni B, ni les données.
 **H6 est réfutée de 0,02.** Le temps de C croît de 4,42 fois de 1 000 000 à 4 000 000 de lignes, pour au plus 4,4. La règle enregistrée s’applique telle quelle : un seuil manqué de peu est manqué. Les exécutions 1 et 2 donnaient 4,17 et 3,80, donc la croissance est proche de la borne à chaque exécution. Rien ne montre qu’elle se soit dégradée.
 
 **Écart au protocole : la machine a changé.** Les exécutions 1 et 2 ont tourné sur un Intel Xeon à 2,10 GHz, l’exécution 3 sur un Intel Xeon à 2,30 GHz, tous deux à 4 cœurs. Le cloud donne un nouveau conteneur à une nouvelle session, et son processeur n’est pas choisi. Les temps de A eux-mêmes sont 31 à 38 % plus bas qu’à l’exécution 2. Donc les millisecondes d’une version ne se comparent pas d’une exécution à l’autre. Ce que compare le protocole, ce sont les versions d’une même exécution entre elles, en alternance, sur une même machine : les rapports. Ceux-ci tiennent (constat M016).
+
+### Exécution 4, au commit `d9fbe35` : les résultats
+
+Mesurée le 2026-11-12 de 07:45 à 07:49 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. La machine est du même modèle que celle de l’exécution 3, un Intel Xeon à 2,30 GHz à 4 cœurs. Le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) ; celui de l’exécution 3 est gardé dans [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+**Ce qui a changé dans le compilateur depuis l’exécution 3.** Les étapes 1 à 3 de la [décision 0017](0017-aggregating-without-copies.md) :
+
+- un repli qui copie n’est construit que s’il sert ;
+- une entrée de table sortie, changée et remise n’est cherchée qu’une fois ;
+- les entiers d’un gabarit sont écrits dans sa chaîne.
+
+Le source de la version C n’a pas changé, ni A, ni B, ni les données.
+
+| Hypothèse                                  | Exéc. 2             | Exéc. 3             | Exéc. 4                                              | Verdict     |
+| ------------------------------------------ | ------------------- | ------------------- | ---------------------------------------------------- | ----------- |
+| H1, C au moins 2 fois A                    | 1,26 et 1,23        | 2,36 et 2,06        | **2,63** à 1 000 000 de lignes, **2,39** à 4 000 000 | **tient**   |
+| H2, C au moins 0,8 fois B                  | 0,13 et 0,12        | 0,28 et 0,25        | 0,31 et 0,26                                         | **réfutée** |
+| H3, la mémoire de C au plus la moitié de A | 1,12                | 0,78                | 0,78                                                 | **réfutée** |
+| H4, C au plus 3 fois les octets de A       | 15,1                | 12,5                | 12,5, 9 853 octets                                   | **réfutée** |
+| H5, D au moins 2 fois C                    | ne peut être écrite | ne peut être écrite | ne peut être écrite                                  | **réfutée** |
+| H6, linéaire, au plus 4,4                  | 3,80                | 4,42                | 4,88                                                 | **réfutée** |
+| H7, C au plus 1,25 fois les lignes de A    | 1,08                | 1,08                | 1,08                                                 | tient       |
+
+À chaud, en millisecondes, médianes de 15 passes :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |    62,8 |     779,8 |   3 460,6 |
+| B. TypeScript, optimisé    |    10,7 |      93,0 |     374,2 |
+| C. Peras                   |    27,4 |     296,9 |   1 448,1 |
+
+**Ce que cela dit.** Peras écrit simplement calcule le tableau de bord 2,39 à 2,63 fois plus vite que TypeScript simple, contre 2,06 à 2,36 à l’exécution 3. Face au TypeScript optimisé à la main, il passe de 0,25–0,28 à 0,26–0,31. Les exécutions 3 et 4 avaient le même processeur, donc les millisecondes de C se comparent aussi, avec prudence (M016). À 1 000 000 de lignes, C passe de 334,1 à 296,9 ms, 11 % de moins ; à 4 000 000 de lignes, de 1 477,7 à 1 448,1, 2 % de moins.
+
+**Le gain est plus petit sur le plus grand fichier, et H6 s’éloigne de sa borne** : 3,80, 4,42, puis 4,88, pour au plus 4,4. La décision 0017 a retiré du travail fait à chaque ligne, ce qui se voit à 1 000 000 de lignes. Ce qui croît plus vite que les lignes ne dépend pas de ce travail. À 4 000 000 de lignes, les tables des paires, des produits et des utilisateurs sont plus grandes et moins souvent en cache (F215). C’est une lecture des chiffres, pas une mesure de sa cause. C’est la première chose à profiler à 4 000 000 de lignes avant la prochaine décision sur le tableau de bord.
