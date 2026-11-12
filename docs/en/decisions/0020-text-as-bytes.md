@@ -67,3 +67,12 @@ The change landed at commit `39728be`, and run 5 of decision 0014 measured it at
 **Kept.** A mutation that accepts surrogates fails the end-to-end test on both allocators. The declarations of `String` parameters say `string | Uint8Array`; two tests that read them were updated.
 
 **What it does not do.** The module still copies the text, about 122 MiB at 4,000,000 rows, because a WebAssembly module reads only its own memory. Run 5's 49.4 MiB is the peak decision 0014's protocol sees above the loading of the data (M008), not all that C holds. Removing that copy would take the data written into the module's memory from the start, as a page that reads a file or a response straight into it. That is a change of how a page hands data to Peras, for another decision.
+
+## Corrected after it was kept: the byte order mark
+
+The criterion of correctness was met by a test that compared what the module gave back. That test missed two differences (finding F217):
+
+- Bytes starting with a byte order mark, `EF BB BF`, kept it as a character, where a `TextDecoder` drops it. A CSV file saved with one would have had its first header wrong.
+- A string given back that started with U+FEFF lost it, because the loader's own decoder took that character for a mark.
+
+Both are fixed. The loader drops one mark at the start of bytes, and decodes what it gives back with `ignoreBOM`. The end-to-end test now also compares what the module computes from the bytes and from the same text decoded: its length, its characters, and whether it starts with `a`. Each fix, taken out on purpose, fails it.

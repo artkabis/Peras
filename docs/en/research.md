@@ -62,6 +62,11 @@ Masmano, Ripoll, Crespo and Real, _TLSF: A New Dynamic Memory Allocator for Real
 - **Shows**: a family of pseudorandom functions fast on short inputs, designed for hash tables protected against hash flooding.
 - **In Peras**: maps and sets hash with SipHash-1-3 under a key drawn for each instance ([decision 0005](decisions/0005-maps-and-sets.md)).
 
+**Metadata beside the slots.** Kulukundis, _Designing a Fast, Efficient, Cache-friendly Hash Table, Step by Step_, CppCon 2017 (Abseil's Swiss tables).
+
+- **Shows**: a hash table that keeps a few bits of each hash next to its slots, so that most probes are decided without reading the entries, with SIMD over groups of slots.
+- **In Peras**: tried for maps with keys of 32 bits, the key kept in the index; 4 to 11 % faster on the dashboard at 4,000,000 rows, below the criterion registered, and taken back ([decision 0018](decisions/0018-large-maps.md)).
+
 ## Reading data fast
 
 **Decimal text to the nearest float.** Clinger, _How to Read Floating Point Numbers Accurately_, PLDI 1990 (pp. 92–101).
@@ -79,6 +84,11 @@ Masmano, Ripoll, Crespo and Real, _TLSF: A New Dynamic Memory Allocator for Real
 - **Shows**: a validating JSON parser that processes gigabytes per second on one core, with a quarter or fewer of the instructions of a reference parser, by making extensive use of SIMD instructions.
 - **In Peras**: the way to search for a separator 16 bytes at a time in `split` ([decision 0016](decisions/0016-faster-from-the-literature.md)).
 
+**UTF-8 validated fast.** Keiser and Lemire, _Validating UTF-8 in less than one instruction per byte_, Software: Practice and Experience 51(5), 2021 ([DOI 10.1002/spe.2940](https://doi.org/10.1002/spe.2940)). The rule itself: the Unicode Standard, chapter 3, table 3-7, _Well-Formed UTF-8 Byte Sequences_.
+
+- **Shows**: UTF-8 validated with SIMD at less than one instruction per byte, the common case of ASCII the fastest.
+- **In Peras**: bytes given where a `String` is expected are checked by table 3-7, sixteen ASCII bytes at a time ([decision 0020](decisions/0020-text-as-bytes.md)).
+
 ## Removing work the program did not ask for
 
 **No intermediate list.** Coutts, Leshchinskiy and Stewart, _Stream Fusion: From Lists to Streams to Nothing at All_, ICFP 2007 (pp. 315–326).
@@ -89,7 +99,7 @@ Masmano, Ripoll, Crespo and Real, _TLSF: A New Dynamic Memory Allocator for Real
 **A computation done twice, done once.** Morel and Renvoise, _Global Optimization by Suppression of Partial Redundancies_, Communications of the ACM 22(2), 1979.
 
 - **Shows**: redundancy elimination and loop-invariant code motion treated as one problem, the suppression of computations partially redundant, by data-flow analysis.
-- **In Peras**: one lookup for `has` or `get` followed by `get` or `set` of the same key (finding F210, [decision 0016](decisions/0016-faster-from-the-literature.md)).
+- **In Peras**: one lookup for `has` or `get` followed by `get` or `set` of the same key (finding F210, [decision 0016](decisions/0016-faster-from-the-literature.md)); a `set` given the entry the lookup found ([decision 0017](decisions/0017-aggregating-without-copies.md)).
 
 **Objects that do not escape.** Choi, Gupta, Serrano, Sreedhar and Midkiff, _Escape Analysis for Java_, OOPSLA 1999.
 
@@ -105,6 +115,16 @@ Masmano, Ripoll, Crespo and Real, _TLSF: A New Dynamic Memory Allocator for Real
 - **Shows**: precise reference counting that keeps only live data, proved sound and garbage free, whose reuse analysis turns functional code into updates in place.
 - **Does not show**: anything about Peras's ownership, which counts no references; the reuse of a block freed just before an allocation of its size applies to it all the same.
 - **In Peras**: a loop's array reused from one iteration to the next (finding F208).
+
+**Reuse within a frame.** Lorenzen and Leijen, _Reference Counting with Frame Limited Reuse_, ICFP 2022.
+
+- **Shows**: a value taken apart and rebuilt as an update of the same memory, the reuse limited to what a function's frame can prove.
+- **In Peras**: `let p = m.get(k).unwrapOr(…)`, changes, then `m.set(k, p)`: the entry read where it is and updated with one lookup (finding F216, [decision 0017](decisions/0017-aggregating-without-copies.md)).
+
+**Deforestation.** Wadler, _Deforestation: Transforming Programs to Eliminate Trees_, Theoretical Computer Science 73(2), 1990, pp. 231–248.
+
+- **Shows**: a transformation that removes the intermediate structures a program builds only to consume them.
+- **In Peras**: a template's integers written into its string with no string of their own ([decision 0017](decisions/0017-aggregating-without-copies.md)); a key built only to be looked up is not built yet.
 
 ## Floats as text
 

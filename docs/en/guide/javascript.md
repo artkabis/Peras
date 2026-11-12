@@ -14,16 +14,16 @@ For `geometry.peras`:
 
 ## Types across the boundary
 
-| Peras                 | JavaScript                                                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `i32`, `f32`, `f64`   | `number`                                                                                                   |
-| `i64`                 | `bigint`                                                                                                   |
-| `bool`                | `boolean`                                                                                                  |
-| a structure           | a plain object, declared as an `interface`                                                                 |
-| `Option<T>`           | the value, or `undefined`                                                                                  |
-| `Array<T>`            | an array, of objects for structures, copied in and out                                                     |
-| `String`              | a string, copied as UTF-8                                                                                  |
-| `Map<K, V>`, `Set<K>` | a `Map` or a `Set`, copied in insertion order, in and out; an `inout` one gets the function's entries back |
+| Peras                 | JavaScript                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `i32`, `f32`, `f64`   | `number`                                                                                                                          |
+| `i64`                 | `bigint`                                                                                                                          |
+| `bool`                | `boolean`                                                                                                                         |
+| a structure           | a plain object, declared as an `interface`                                                                                        |
+| `Option<T>`           | the value, or `undefined`                                                                                                         |
+| `Array<T>`            | an array, of objects for structures, copied in and out                                                                            |
+| `String`              | a string, copied as UTF-8; as a parameter, also a `Uint8Array` of UTF-8 bytes, copied as they are ([below](#text-given-as-bytes)) |
+| `Map<K, V>`, `Set<K>` | a `Map` or a `Set`, copied in insertion order, in and out; an `inout` one gets the function's entries back                        |
 
 ```peras build
 export struct Rect {
@@ -48,6 +48,22 @@ big({ width: 30, height: 4 }); // true
 ```
 
 The loader converts at the boundary: an object passed in is copied field by field, so Peras never keeps a reference to it, and changes made by Peras never reach it. An array is copied the same way, element by element; only an `inout` parameter is copied back into the array passed ([collections](collections.md#in-javascript)).
+
+## Text given as bytes
+
+Data often arrives as bytes: a response's `arrayBuffer()`, a file, a binary message. A parameter of type `String` takes such bytes as a `Uint8Array`, with no string made in between ([decision 0020](../decisions/0020-text-as-bytes.md)):
+
+```ts
+import { summarize } from "./dashboard.peras";
+
+const bytes = new Uint8Array(await (await fetch("/sales.csv")).arrayBuffer());
+const summary = summarize(bytes); // no TextDecoder, no JavaScript string
+```
+
+- **The bytes must be UTF-8.** They are checked as `new TextDecoder("utf-8", { fatal: true })` checks them. Bytes that are not UTF-8 throw a `TypeError`, and nothing is left allocated. A decoder that is not fatal would put `\uFFFD` in their place instead; to get that, decode them yourself and pass the string.
+- **A byte order mark at the start is dropped,** as a decoder drops it. A U+FEFF anywhere else is a character.
+- **The bytes are copied into the module.** Changing the `Uint8Array` afterwards changes nothing in Peras.
+- **For memory.** Passing the bytes saves the JavaScript string a `TextDecoder` would make, as large as the text, and the time to decode it then encode it again. In decision 0014's dashboard, at 4,000,000 rows, Peras's peak memory went from 171.6 to 49.4 MiB.
 
 ## Arrays without a copy
 

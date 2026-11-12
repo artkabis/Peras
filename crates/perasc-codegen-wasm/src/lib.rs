@@ -2424,7 +2424,9 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          };\n\
          // Strings cross as UTF-8 bytes.\n\
          const $encoder = new TextEncoder();\n\
-         const $decoder = new TextDecoder(\"utf-8\", { fatal: true });\n\
+         // A string given back keeps every character, a U+FEFF at its start\n\
+         // included: it is text, not a file (finding F217).\n\
+         const $decoder = new TextDecoder(\"utf-8\", { fatal: true, ignoreBOM: true });\n\
          // Written straight into the module's memory: room for one byte per\n\
          // character and an eighth more first, enough for English or French\n\
          // in one block; then, if needed, for 3 bytes per character left.\n\
@@ -2449,8 +2451,11 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          }\n\
          };\n\
          const $bytesStr = (given) => {\n  \
+         // A byte order mark at the start is no character, as a TextDecoder\n  \
+         // drops it (finding F217).\n  \
+         const text = given.length >= 3 && given[0] === 0xef && given[1] === 0xbb && given[2] === 0xbf ? given.subarray(3) : given;\n  \
          // A view of the module's own memory would be detached as it grows.\n  \
-         const bytes = given.buffer === $runtime.memory.buffer ? given.slice() : given;\n  \
+         const bytes = text.buffer === $runtime.memory.buffer ? text.slice() : text;\n  \
          const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
          new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \

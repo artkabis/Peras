@@ -67,3 +67,12 @@ Le changement est arrivé au commit `39728be`, et l’exécution 5 de la décisi
 **Gardé.** Une mutation qui accepte les demi-paires de substitution fait échouer le test de bout en bout sur les deux allocateurs. Les déclarations des paramètres `String` disent `string | Uint8Array` ; deux tests qui les lisent ont été mis à jour.
 
 **Ce qu’il ne fait pas.** Le module copie toujours le texte, environ 122 Mio à 4 000 000 de lignes, parce qu’un module WebAssembly ne lit que sa propre mémoire. Les 49,4 Mio de l’exécution 5 sont le pic que le protocole de la décision 0014 voit au-delà du chargement des données (M008), pas tout ce que C tient. Retirer cette copie demanderait des données écrites dès le départ dans la mémoire du module, comme une page qui lit un fichier ou une réponse directement dedans. C’est un changement de la façon dont une page donne ses données à Peras, pour une autre décision.
+
+## Corrigé après avoir été gardé : la marque d’ordre des octets
+
+Le critère de justesse a été tenu par un test qui comparait ce que le module rendait. Ce test a manqué deux différences (constat F217) :
+
+- Des octets commençant par une marque d’ordre des octets, `EF BB BF`, la gardaient comme un caractère, là où un `TextDecoder` la retire. Un fichier CSV enregistré avec elle aurait eu son premier en-tête faux.
+- Une chaîne rendue qui commençait par U+FEFF le perdait, parce que le décodeur du chargeur prenait ce caractère pour une marque.
+
+Les deux sont corrigées. Le chargeur retire une marque au début des octets, et décode ce qu’il rend avec `ignoreBOM`. Le test de bout en bout compare aussi maintenant ce que le module calcule à partir des octets et à partir du même texte décodé : sa longueur, ses caractères, et s’il commence par `a`. Chaque correction, retirée exprès, le fait échouer.
