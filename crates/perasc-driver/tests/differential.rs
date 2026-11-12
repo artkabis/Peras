@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 32 } else { 33 };
+    let choices = if depth == 0 { 33 } else { 34 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -124,6 +124,9 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         30 => "acc += ((i.toF64() * 1.5 - 7.25) % 4.0 * 100.0).toI32() + (i.toF32() % -2.5).toI32();".to_owned(),
         // `==` on arrays of strings and of arrays, deep in the runtime.
         31 => "const a = s.split(\",\"); const b = `${k},${s}`.split(\",\"); if (a == b) { acc += 5; } if (a != \"x,yy\".split(\",\")) { acc += 1; } if ([[i % 3, 1], [2]] == [[1, 1], [2]]) { acc += 3; } if ([[0.0 / 0.0]] == [[0.0 / 0.0]] || [[-0.0]] != [[0.0]]) { acc += 7; }".to_owned(),
+        // `reduce` keeping a string or an array: the previous one released
+        // at each turn, the accumulator read in the body.
+        32 => "const j = `${k},${s},${i}`.split(\",\").reduce((a, w) => a.slice(0, 6) + w + \"|\", k.copy()); const d = [i, acc % 9].reduce((a, x) => a.concat([x, a.length]), [1]); acc += j.length + d.length + d[d.length - 1];".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

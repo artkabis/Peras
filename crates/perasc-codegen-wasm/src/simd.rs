@@ -363,21 +363,28 @@ fn assigned_in(stmts: &[Stmt], out: &mut Vec<LocalId>) {
 }
 
 /// How many times `stmts` read `local`; a statement the plan refuses counts
-/// as many.
+/// as many. Counts saturate: several refused statements stay "many", where
+/// a sum that wrapped could read as few (finding F219).
 fn reads_in(stmts: &[Stmt], local: LocalId) -> usize {
     stmts
         .iter()
         .map(|stmt| match stmt {
             Stmt::Set(_, e) => count_reads(e, local),
-            Stmt::Buf(_, args) => args.iter().map(|a| count_reads(a, local)).sum(),
+            Stmt::Buf(_, args) => saturating_sum(args.iter().map(|a| count_reads(a, local))),
             Stmt::If {
                 cond,
                 then,
                 otherwise,
-            } => count_reads(cond, local) + reads_in(then, local) + reads_in(otherwise, local),
+            } => count_reads(cond, local)
+                .saturating_add(reads_in(then, local))
+                .saturating_add(reads_in(otherwise, local)),
             _ => usize::MAX / 4,
         })
-        .sum()
+        .fold(0, usize::saturating_add)
+}
+
+fn saturating_sum(counts: impl Iterator<Item = usize>) -> usize {
+    counts.fold(0, usize::saturating_add)
 }
 
 fn count_reads(e: &Expr, local: LocalId) -> usize {
@@ -388,9 +395,9 @@ fn count_reads(e: &Expr, local: LocalId) -> usize {
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => count_reads(x, local),
-        ExprKind::Binary(_, a, b) => count_reads(a, local) + count_reads(b, local),
+        ExprKind::Binary(_, a, b) => count_reads(a, local).saturating_add(count_reads(b, local)),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
-            args.iter().map(|a| count_reads(a, local)).sum()
+            saturating_sum(args.iter().map(|a| count_reads(a, local)))
         }
     }
 }
@@ -742,4 +749,23 @@ fn scalar_op(op: BinOp) -> Option<I<'static>> {
 /// only.
 const fn memarg() -> MemArg {
     crate::mem(0, 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use perasc_ir::{Expr, ExprKind, LocalId, Stmt, Ty};
+
+    /// Four statements the plan refuses and five reads: many, never the one
+    /// read that a sum wrapping around gave (finding F219).
+    #[test]
+    fn refused_statements_keep_the_count_high() {
+        let local = LocalId(0);
+        let read = Expr {
+            kind: ExprKind::Local(local),
+            ty: Ty::I32,
+        };
+        let mut stmts = vec![Stmt::Break; 4];
+        stmts.extend((0..5).map(|_| Stmt::Set(LocalId(1), read.clone())));
+        assert!(super::reads_in(&stmts, local) > 1);
+    }
 }

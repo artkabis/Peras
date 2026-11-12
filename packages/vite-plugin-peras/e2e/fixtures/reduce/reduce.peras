@@ -1,0 +1,34 @@
+// `reduce` with an accumulator that holds a string or an array (decision
+// 0021, finding F307): the accumulator owns its value, the previous one is
+// released at each turn.
+export struct Tally {
+  text: String;
+  count: i32;
+}
+
+export fn joined(words: Array<String>): String {
+  return words.reduce((acc, w) => acc + w + ";", "");
+}
+
+// The start a copy of a parameter; the body gives a copy of the element.
+export fn last(words: Array<String>, start: String): String {
+  return words.reduce((acc, w) => w.copy(), start.copy()) + start;
+}
+
+// The accumulator read in the body, then given back.
+export fn widest(words: Array<String>): String {
+  return words.reduce((acc, w) => acc.slice(0, 2) + w.slice(0, 1), "--");
+}
+
+export fn doubled(xs: Array<i32>): Array<i32> {
+  return xs.reduce((acc, x) => acc.concat([x, x]), [0]);
+}
+
+export fn tally(words: Array<String>): Tally {
+  return words.reduce((acc, w) => Tally(acc.text + w.toUpperCase(), acc.count + w.length), Tally("", 0));
+}
+
+// The result read, not kept: released at the end of the statement.
+export fn total(words: Array<String>): i32 {
+  return words.reduce((acc, w) => acc + w, "").length;
+}

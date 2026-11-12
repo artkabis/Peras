@@ -833,7 +833,6 @@ gen-unsupported = code generation does not support { $feature ->
     [option] `Option` values
     [method] this method
     [integer-type] integer types other than `i32` and `i64`
-    [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
     [map-value] maps whose values have more than 24 scalars
     [nested-option] in a managed module, options of options, whose `Some(None)` JavaScript cannot tell from `None`

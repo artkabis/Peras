@@ -833,7 +833,6 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [option] les valeurs `Option`
     [method] cette méthode
     [integer-type] les types entiers autres que `i32` et `i64`
-    [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
     [map-value] les tables dont les valeurs ont plus de 24 scalaires
     [nested-option] dans un module managed, les options d’options, dont JavaScript ne distingue pas `Some(None)` de `None`

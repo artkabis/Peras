@@ -208,7 +208,12 @@ impl Module<'_> {
         self.current.in_lambda = outer;
         let params = format!("({})", names.join(", "));
         if lines.is_empty() {
-            format!("{params} => {value}")
+            // An object, a structure made, is not read as a block.
+            if value.starts_with('{') {
+                format!("{params} => ({value})")
+            } else {
+                format!("{params} => {value}")
+            }
         } else {
             let indent = "  ".repeat(self.current.depth + 1);
             let close = "  ".repeat(self.current.depth);
