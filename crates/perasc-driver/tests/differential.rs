@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 26 } else { 27 };
+    let choices = if depth == 0 { 30 } else { 31 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -111,6 +111,15 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // zero, wide.
         24 => "const t = `${i - 3}:${acc - 99}|${k}`; acc += t.length; if (t.startsWith(\"-\")) { acc += 1; }".to_owned(),
         25 => "const t = `${(i - 5).toI64() * 1000000000000}${true}${i}`; acc += t.length;".to_owned(),
+        // A set of `i32` that grows, keys negative among them, kept in its
+        // index (decision 0018).
+        26 => "ids.add((i * 37) % 1000 - 300); ids.add(i - 2147483647);".to_owned(),
+        27 => "if (ids.has(i - 20)) { ids.delete(i - 20); acc += 1; } if (nums.has(i % 5)) { acc += 2; }".to_owned(),
+        // Keys of 64 bits that share their low 32 bits: never kept in an
+        // index of 32 bits.
+        28 => "wide.set(i.toI64() * 4294967296 + 5, i); acc += wide.get((i % 3).toI64() * 4294967296 + 5).unwrapOr(7) + wide.size;".to_owned(),
+        // Integers read at and past the bounds of 32 and 64 bits.
+        29 => "const w = `${i - 20}`; acc += w.parseI32().unwrapOr(-1) + \"2147483647\".parseI32().unwrapOr(1) % 7 + \"2147483650\".parseI32().unwrapOr(3) + \"-2147483648\".parseI32().unwrapOr(4) % 5; if (\"-9223372036854775809\".parseI64().isSome() || \"9223372036854775807\".parseI64().isNone()) { acc += 11; }".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -155,6 +164,8 @@ export fn f(n: i32): i32 {{
   let m: Map<String, i32> = Map.new();
   let pairs: Map<String, Pair> = Map.new();
   let nums: Map<i32, i32> = Map.new();
+  let ids: Set<i32> = Set.new();
+  let wide: Map<i64, i32> = Map.new();
   let names: Map<i32, String> = Map.new();
   let k = \"a\";
   let s = \"\";
@@ -168,7 +179,10 @@ export fn f(n: i32): i32 {{
   for (const e of nums) {{
     acc += e.0 * e.1;
   }}
-  return acc + m.size * 1000 + names.size * 100 + s.length + k.length;
+  for (const x of ids) {{
+    acc = (acc + x % 1000) % 100003;
+  }}
+  return acc + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
 }}
 "
     )

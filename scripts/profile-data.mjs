@@ -132,6 +132,18 @@ const allVariants = [
     [parseOnly, ["  if (f.length != 6 || !isCountry(f[2])) {", "  if (f.length != 6) {"]],
   ],
   [
+    "parse-split-only",
+    "parse-only, the line split and its fields counted, none read",
+    [
+      parseOnly,
+      [
+        "  if (f.length != 6 || !isCountry(f[2])) {\n    return None;\n  }\n  return Some(Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?));",
+        '  if (f.length != 6) {\n    return None;\n  }\n  return Some(Row(line.length, 1, "FR", 2, 3, 1));',
+      ],
+      ["fn isCountry(", "export fn isCountry("],
+    ],
+  ],
+  [
     "parse-no-split",
     "parse-only, parse returns a row made of the line's length, no split",
     [

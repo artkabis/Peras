@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0018-large-maps.md](../../en/decisions/0018-large-maps.md)._
 
-_Statut : proposée le 2026-11-12. Chaque changement est décidé par un A/B de deux compilateurs dans un même processus à 4 000 000 de lignes (constat M017), puis mesuré par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé._
+_Statut : proposée le 2026-11-12 ; l’index gardant les clés de 32 bits a été construit, mesuré sous son critère enregistré, et retiré le même jour (voir [Mesuré : retiré](#mesuré--retiré)). Chaque changement est décidé par un A/B de deux compilateurs dans un même processus à 4 000 000 de lignes (constat M017), puis mesuré par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé._
 
 ## Contexte
 
@@ -46,3 +46,40 @@ L’ordre d’insertion est gardé tel quel, dans les entrées. Le parcours ne c
 - SipHash, la protection contre des clés choisies pour entrer en collision (F215).
 - Le protocole de la 0014, et `dashboard.peras`, qui n’est pas réécrit.
 - Le test différentiel (M015) : 2 000 graines, et une fois avec le changement cassé exprès.
+
+## Critères, enregistrés avant tout code
+
+Enregistrés le 2026-11-12, avant que le changement soit écrit. Le nouvel index n’est gardé que si les trois tiennent :
+
+1. **4 000 000 de lignes.** `node scripts/ab-data.mjs` à 4 000 000 de lignes donne une médiane avant / après d’au moins 1,10 à chacune de trois exécutions.
+2. **1 000 000 de lignes.** Le même A/B à 1 000 000 de lignes donne une médiane d’au moins 0,98 à chacune de trois exécutions : pas de perte de plus de 2 %.
+3. **Mémoire.** Une nouvelle exécution de la décision 0014 donne H3, le pic de mémoire de C sur celui de A à 4 000 000 de lignes, au plus 0,90. Il valait 0,78 aux exécutions 3 et 4.
+
+Si l’un échoue, le changement est retiré : le commit annulé, les mesures gardées, le constat écrit.
+
+## Mesuré : retiré
+
+L’index qui garde les clés de 32 bits a été écrit et testé au commit `61ef836`.
+
+- Un test de modèle du runtime avec des clés négatives et aux bornes d’un `i32`, des suppressions, la croissance, un vidage et une copie, sur les deux allocateurs.
+- Le test différentiel, qui gagne un `Set<i32>` qui grandit et une `Map<i64, i32>` dont les clés partagent leurs 32 bits de poids faible. 2 000 graines passent.
+- Deux mutations font chacune échouer les tests : la clé non gardée dans l’index, et des clés de 64 bits recevant le nouvel index.
+- Chaque `--check` de `scripts/` et les 120 tests de bout en bout passent.
+
+Il a ensuite été mesuré contre les critères enregistrés avant le code, avec `node scripts/ab-data.mjs 1b92494 61ef836` :
+
+| Critère                                            | Exécutions (médiane avant / après) | Verdict    |
+| -------------------------------------------------- | ---------------------------------- | ---------- |
+| 1. À 4 000 000 de lignes, au moins 1,10, à chacune | 1,112, 1,038, 1,091                | **échoue** |
+| 2. À 1 000 000 de lignes, au moins 0,98, à chacune | 1,016, 0,994, 1,009                | tient      |
+| 3. H3 au plus 0,90                                 | pas mesuré : 1 échoue déjà         |            |
+
+**Le changement est retiré**, comme enregistré : le runtime, le compilateur et le test du runtime tels qu’ils étaient avant `61ef836`. Ce qui reste est utile sans lui : les nouvelles tables du test différentiel, `--rows` dans `scripts/ab-data.mjs`, et ces mesures.
+
+**Ce que cela dit.**
+
+- **Le gain était réel mais petit** : 4 à 11 % à 4 000 000 de lignes, rien à 1 000 000. Garder la clé dans l’index a retiré la lecture de l’entrée, mais pas l’essentiel de ce qui croît.
+- **L’autre défaut de cache reste.** La case de l’index elle-même est hors du cache pour un grand ensemble, et doubler sa taille fait tenir moins de cases.
+- **Ce que le profil ne pouvait pas dire.** Il montrait que l’`add` croît de 6,1 fois de 1 000 000 à 4 000 000 de lignes. Il ne pouvait pas dire quelle part en revient à l’entrée, à la case, ou à la croissance de l’ensemble. L’estimation était le plus que ce changement pouvait retirer ; il a retiré moins.
+
+La prochaine étape sur ce coût n’est pas une autre disposition de l’index. C’est de savoir où va le temps dans l’`add`. Il faut pour cela une mesure de ses parties, le sondage, la croissance de l’ensemble et la copie de ses entrées quand il grandit, à 4 000 000 de lignes.

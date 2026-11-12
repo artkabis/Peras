@@ -74,6 +74,8 @@ export const sections: Section[] = [
       "decisions/0016-faster-from-the-literature",
       "decisions/0017-aggregating-without-copies",
       "decisions/0018-large-maps",
+      "decisions/0019-reading-fields",
+      "decisions/0020-text-as-bytes",
     ],
   },
 ];
