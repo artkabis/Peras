@@ -48,9 +48,9 @@ fn negative_literals_are_folded_including_the_smallest() {
 #[test]
 fn every_unsupported_construct_is_reported_with_its_name() {
     for (source, feature) in [
-        // A structure is compiled; one holding a type that is not, is reported.
+        // Arrays of strings and of arrays are compared; of maps, not yet.
         (
-            "fn f(a: Array<String>, b: Array<String>): bool { return a == b; }",
+            "fn f(a: Array<Map<String, i32>>, b: Array<Map<String, i32>>): bool { return a == b; }",
             "deep-equality",
         ),
         // A module constant is compiled; a module variable is not yet.

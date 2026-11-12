@@ -560,8 +560,29 @@ impl Machine<'_> {
         Ok(at)
     }
 
-    /// The entry of `wanted` in map `table`, its key lent as `given`: copied
-    /// when it is new, left alone otherwise, as the runtime does.
+    /// [`crate::RuntimeFn::BufEqual`]: the same elements, by `==` on each, a
+    /// handle's buffer compared one level down (decision 0021). The shape the
+    /// runtime is given is not needed: the interpreter's values carry theirs.
+    fn buf_equal(&mut self, a: Value, b: Value) -> Result<bool, Trap> {
+        let xs = self.elements(a)?.clone();
+        let ys = self.elements(b)?.clone();
+        if xs.len() != ys.len() {
+            return Ok(false);
+        }
+        for (x, y) in xs.into_iter().zip(ys) {
+            let same = match (x, y) {
+                (Value::Handle(_), Value::Handle(_)) => self.buf_equal(x, y)?,
+                (Value::F32(p), Value::F32(q)) => p == q,
+                (Value::F64(p), Value::F64(q)) => p == q,
+                _ => x == y,
+            };
+            if !same {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// `set` of a key given, or lent.
     fn put_given(
         &mut self,
@@ -835,6 +856,12 @@ impl Machine<'_> {
             let value = *operands.get(i).ok_or(Trap::Unreachable)?;
             this.bytes(value)
         };
+        if f == crate::RuntimeFn::BufEqual {
+            let (Some(a), Some(b)) = (operands.first(), operands.get(1)) else {
+                return Err(Trap::Unreachable);
+            };
+            return Ok(Value::Bool(self.buf_equal(*a, *b)?));
+        }
         if let Some(value) = self.array_runtime(f, operands)? {
             return Ok(value);
         }

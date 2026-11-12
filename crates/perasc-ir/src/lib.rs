@@ -483,6 +483,20 @@ pub enum Elem {
 }
 
 impl Elem {
+    /// Its kind in a shape of [`RuntimeFn::BufEqual`].
+    #[must_use]
+    pub const fn shape(self) -> u32 {
+        match self {
+            Self::U8 => 1,
+            Self::I32 => 2,
+            Self::I64 => 3,
+            Self::F32 => 4,
+            Self::F64 => 5,
+            Self::Bool => 6,
+            Self::Handle => 7,
+        }
+    }
+
     /// Its size in bytes.
     #[must_use]
     pub const fn size(self) -> u32 {
@@ -635,6 +649,14 @@ pub enum RuntimeFn {
     /// `x`, exactly, as JavaScript's `%` and C's `fmod` give it; WebAssembly
     /// has no instruction for it (decision 0021, finding F304).
     FloatRem,
+    /// `(a, b, shape: i32) -> bool`: whether two buffers hold the same
+    /// elements, by `==` on each: bytes and integers by value, floats as
+    /// floats compare, a handle's buffer by the same rule, one level down.
+    /// `shape` says the kind of the elements in its low four bits, then the
+    /// kind of a handle's elements in the next four, and so on: 1 a byte,
+    /// 2 an `i32`, 3 an `i64`, 4 an `f32`, 5 an `f64`, 6 a `bool`, 7 a
+    /// handle (decision 0021, finding F305).
+    BufEqual,
     /// `(s, n: i64)`: the digits of `n` appended to the string `s`, as
     /// [`Self::FmtInt`] writes them, without a string of their own: a
     /// template's integers (decision 0017).
@@ -741,7 +763,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 54] = [
+    pub const ALL: [Self; 55] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -796,6 +818,7 @@ impl RuntimeFn {
         Self::FmtIntLen,
         Self::FmtIntAppend,
         Self::FloatRem,
+        Self::BufEqual,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -844,6 +867,7 @@ impl RuntimeFn {
             Self::FmtIntLen => "fmt_int_len",
             Self::FmtIntAppend => "fmt_int_append",
             Self::FloatRem => "f64_rem",
+            Self::BufEqual => "buf_equal",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -877,7 +901,7 @@ impl RuntimeFn {
     pub const fn operands(self) -> &'static [Ty] {
         match self {
             Self::NextPart | Self::NextChar => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
-            Self::IndexOf => &[Ty::Borrowed, Ty::I32],
+            Self::IndexOf | Self::BufEqual => &[Ty::Borrowed, Ty::I32],
             Self::StartsWith
             | Self::EndsWith
             | Self::Split
@@ -950,7 +974,8 @@ impl RuntimeFn {
             | Self::EndsWith
             | Self::IsInt
             | Self::MapDeleteI
-            | Self::MapDeleteS => Ty::Bool,
+            | Self::MapDeleteS
+            | Self::BufEqual => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
             Self::MapValueF | Self::ParseFloat | Self::FloatRem => Ty::F64,

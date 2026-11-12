@@ -32,6 +32,38 @@ impl Lowering<'_> {
         self.leaves_in(ty, 0)
     }
 
+    /// The shape of each leaf of `ty`, in the order of [`Self::leaves`], as
+    /// [`crate::RuntimeFn::BufEqual`] compares a column of it: a number, a
+    /// string, an array of them, a structure of them. `None` for what it does
+    /// not describe: an option, an enumeration, a map, nesting deeper than
+    /// seven buffers (decision 0021, finding F305).
+    pub(super) fn shapes(&self, ty: &CheckTy) -> Option<Vec<u32>> {
+        const HANDLE: u32 = 7;
+        const DEEPEST: u32 = 1 << 24;
+        let nested = |inner: Vec<u32>| -> Option<Vec<u32>> {
+            inner
+                .into_iter()
+                .map(|s| (s < DEEPEST).then_some(HANDLE | (s << 4)))
+                .collect()
+        };
+        match ty {
+            CheckTy::Struct(id, _) => {
+                let (_, fields) = self.analysis.structs.get(id.0)?;
+                let mut out = Vec::new();
+                for (_, field) in fields {
+                    out.extend(self.shapes(field)?);
+                }
+                Some(out)
+            }
+            CheckTy::Array(inner) => nested(self.shapes(inner)?),
+            CheckTy::String => Some(vec![HANDLE | (Elem::U8.shape() << 4)]),
+            other => {
+                let elem = Elem::of(Self::ir_type(other)?)?;
+                (elem != Elem::Handle).then_some(vec![elem.shape()])
+            }
+        }
+    }
+
     /// [`Self::leaves`], `depth` types deep: a type that contains itself,
     /// through an array as in `struct Tree { children: Array<Tree> }`, has no
     /// end, and is not compiled yet.

@@ -826,7 +826,7 @@ gen-unsupported = code generation does not support { $feature ->
     [heap-option] options holding an array or a string
     [inout-string] `inout` strings in exported functions, which JavaScript cannot change
     [inout-export] `inout` numbers and options in exported functions: JavaScript passes them by value
-    [deep-equality] `==` on arrays of strings or of arrays
+    [deep-equality] `==` on arrays of maps, sets, or options that hold strings or arrays
     [field] fields
     [index] indexing
     [try] the `?` operator

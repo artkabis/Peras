@@ -1673,6 +1673,51 @@
     (global.set $negative (i32.eq (local.get $c) (i32.const 45)))
     (i32.or (global.get $negative) (i32.eq (local.get $c) (i32.const 43))))
 
+  ;; Whether buffers `a` and `b` hold the same elements, by `==` on each
+  ;; (decision 0021, finding F305): `shape`'s low four bits say their kind,
+  ;; 1 a byte, 2 an `i32`, 3 an `i64`, 4 an `f32`, 5 an `f64`, 6 a `bool`,
+  ;; 7 a handle, whose buffers are compared with the shape's next four bits.
+  ;; Bytes and integers compare as bytes; floats as floats, NaN unequal to
+  ;; itself and 0 equal to -0.
+  (func $buf_equal (export "buf_equal") (param $a i32) (param $b i32) (param $shape i32) (result i32)
+    (local $n i32) (local $kind i32) (local $da i32) (local $db i32) (local $i i32)
+    (local.set $n (i32.load (local.get $a)))
+    (if (i32.ne (local.get $n) (i32.load (local.get $b))) (then (return (i32.const 0))))
+    (local.set $kind (i32.and (local.get $shape) (i32.const 0xf)))
+    (local.set $da (i32.load offset=8 (local.get $a)))
+    (local.set $db (i32.load offset=8 (local.get $b)))
+    (if (i32.eq (local.get $kind) (i32.const 1))
+      (then (return (call $same (local.get $da) (local.get $db) (local.get $n)))))
+    (if (i32.or (i32.eq (local.get $kind) (i32.const 2)) (i32.eq (local.get $kind) (i32.const 6)))
+      (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 2))))))
+    (if (i32.eq (local.get $kind) (i32.const 3))
+      (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 3))))))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (if (i32.eq (local.get $kind) (i32.const 4))
+          (then
+            (if (f32.ne
+                  (f32.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 2))))
+                  (f32.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 2)))))
+              (then (return (i32.const 0))))))
+        (if (i32.eq (local.get $kind) (i32.const 5))
+          (then
+            (if (f64.ne
+                  (f64.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 3))))
+                  (f64.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 3)))))
+              (then (return (i32.const 0))))))
+        (if (i32.eq (local.get $kind) (i32.const 7))
+          (then
+            (if (i32.eqz (call $buf_equal
+                  (i32.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 2))))
+                  (i32.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 2))))
+                  (i32.shr_u (local.get $shape) (i32.const 4))))
+              (then (return (i32.const 0))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const 1))
+
   ;; `x % y` on floats, exactly as JavaScript's `%` and C's `fmod`: the
   ;; remainder of `x / y` with the sign of `x`, computed on the bits of both,
   ;; as musl's `fmod` does (decision 0021, finding F304). NaN when `y` is

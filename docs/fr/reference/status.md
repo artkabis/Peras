@@ -28,20 +28,20 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 
 ## Instructions et expressions
 
-| Fonctionnalité                                                                               | État                                                                                                               |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `let`, `const`, affectations, `+=` et les autres, `++`, `--`                                 | <span class="status compiled">compilé</span>                                                                       |
-| opérateurs arithmétiques, de comparaison, bit à bit et logiques, `%` sur les flottants aussi | <span class="status compiled">compilé</span>                                                                       |
-| `if`, `while`, `for`, `break`, `continue`                                                    | <span class="status compiled">compilé</span>                                                                       |
-| `for…of`                                                                                     | <span class="status compiled">compilé</span>                                                                       |
-| `parallel for`, sur des fils avec `--threads on`                                             | <span class="status compiled">compilé</span>                                                                       |
-| fonctions, récursion, `export`                                                               | <span class="status compiled">compilé</span>                                                                       |
-| paramètres `sink`                                                                            | <span class="status compiled">compilé</span>                                                                       |
-| paramètres `inout`, `&` à l’appel                                                            | <span class="status compiled">compilé</span>                                                                       |
-| possession : déplacements, emprunts, alias refusés, libérations                              | <span class="status compiled">compilé</span>                                                                       |
-| `const` au niveau du module                                                                  | <span class="status compiled">compilé</span>                                                                       |
-| `let` au niveau du module                                                                    | <span class="status checked">vérifié</span>                                                                        |
-| `import` de fonctions, structures et énumérations possédées dans un module géré              | <span class="status compiled">compilé</span>, nombres, chaînes, structures, énumérations et collections de ceux-ci |
+| Fonctionnalité                                                                                                                                | État                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `let`, `const`, affectations, `+=` et les autres, `++`, `--`                                                                                  | <span class="status compiled">compilé</span>                                                                       |
+| opérateurs arithmétiques, de comparaison, bit à bit et logiques, `%` sur les flottants aussi, `==` sur des tableaux de chaînes et de tableaux | <span class="status compiled">compilé</span>                                                                       |
+| `if`, `while`, `for`, `break`, `continue`                                                                                                     | <span class="status compiled">compilé</span>                                                                       |
+| `for…of`                                                                                                                                      | <span class="status compiled">compilé</span>                                                                       |
+| `parallel for`, sur des fils avec `--threads on`                                                                                              | <span class="status compiled">compilé</span>                                                                       |
+| fonctions, récursion, `export`                                                                                                                | <span class="status compiled">compilé</span>                                                                       |
+| paramètres `sink`                                                                                                                             | <span class="status compiled">compilé</span>                                                                       |
+| paramètres `inout`, `&` à l’appel                                                                                                             | <span class="status compiled">compilé</span>                                                                       |
+| possession : déplacements, emprunts, alias refusés, libérations                                                                               | <span class="status compiled">compilé</span>                                                                       |
+| `const` au niveau du module                                                                                                                   | <span class="status compiled">compilé</span>                                                                       |
+| `let` au niveau du module                                                                                                                     | <span class="status checked">vérifié</span>                                                                        |
+| `import` de fonctions, structures et énumérations possédées dans un module géré                                                               | <span class="status compiled">compilé</span>, nombres, chaînes, structures, énumérations et collections de ceux-ci |
 
 ## Méthodes
 

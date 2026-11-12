@@ -1,0 +1,29 @@
+// `==` on arrays of strings and of arrays: elements compared one level down
+// at a time, as JavaScript would compare them one by one (decision 0021).
+
+export struct Item {
+  name: String;
+  n: i32;
+  scores: Array<f64>;
+}
+
+export fn sameStrings(a: Array<String>, b: Array<String>): bool {
+  return a == b;
+}
+
+export fn differentGrids(a: Array<Array<f64>>, b: Array<Array<f64>>): bool {
+  return a != b;
+}
+
+export fn sameWords(a: Array<Array<String>>, b: Array<Array<String>>): bool {
+  return a == b;
+}
+
+export fn sameItems(a: Array<Item>, b: Array<Item>): bool {
+  return a == b;
+}
+
+// Parts of a split, views of their text, against an array built.
+export fn splitsAs(text: String, parts: Array<String>): bool {
+  return text.split(",") == parts;
+}

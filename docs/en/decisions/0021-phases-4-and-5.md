@@ -67,3 +67,8 @@ _Each step is recorded here as it lands._
   - The checker's UI tests: a structure imported and used, a generic one refused, a name that clashes.
   - An end-to-end test, on both allocators: a nested structure with an array of strings, an enumeration each way and an array of structures, the result compared and nothing left alive.
   - The fields of a structure taken in out of order, on purpose, fail it.
+
+**Step 2, small gaps: in progress.**
+
+- **`%` on floats (F304): landed.** `f64_rem`, a function of the runtime written after musl's `fmod`; an `f32` computed as an `f64`. Tested against Rust's `%` on 2,000,000 random pairs and the edges of IEEE 754, against JavaScript's end to end, and in the differential test. A module that calls the runtime without any buffer now imports it (F218).
+- **`==` on arrays of strings and of arrays (F305): landed.** `buf_equal`, a function of the runtime, given each column's shape: its kind of element, and for a string or an array, the shape of what it holds. It compares lengths, then elements, going down into each; floats compare as numbers. Tested end to end against JavaScript on both allocators, and in the differential test with 2,000 seeds; floats compared as bytes, on purpose, fail both. Arrays of maps, sets, or options that hold memory are still reported.

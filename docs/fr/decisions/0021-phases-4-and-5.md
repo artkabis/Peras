@@ -67,3 +67,8 @@ _Chaque étape est consignée ici quand elle arrive._
   - Les tests UI du vérificateur : une structure importée et utilisée, une générique refusée, un nom en conflit.
   - Un test de bout en bout, sur les deux allocateurs : une structure imbriquée avec un tableau de chaînes, une énumération dans chaque sens et un tableau de structures, le résultat comparé et rien ne restant vivant.
   - Les champs d’une structure pris dans le désordre, exprès, le font échouer.
+
+**Étape 2, les petites lacunes : en cours.**
+
+- **`%` sur les flottants (F304) : arrivé.** `f64_rem`, une fonction du runtime écrite d’après le `fmod` de musl ; un `f32` calculé en `f64`. Testé contre le `%` de Rust sur 2 000 000 de paires aléatoires et les cas limites d’IEEE 754, contre celui de JavaScript de bout en bout, et dans le test différentiel. Un module qui appelle le runtime sans aucun tampon l’importe désormais (F218).
+- **`==` sur des tableaux de chaînes et de tableaux (F305) : arrivé.** `buf_equal`, une fonction du runtime, à qui l’on donne la forme de chaque colonne : son type d’élément, et pour une chaîne ou un tableau, la forme de ce qu’il contient. Elle compare les longueurs, puis les éléments, en descendant dans chacun ; les flottants se comparent comme des nombres. Testé de bout en bout contre JavaScript sur les deux allocateurs, et dans le test différentiel sur 2 000 graines ; des flottants comparés comme des octets, exprès, les font échouer. Les tableaux de tables, d’ensembles, ou d’options qui contiennent de la mémoire restent signalés.
