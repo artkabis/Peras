@@ -378,3 +378,131 @@ export fn literalKey(text: String): i32 {
   }
   return counts.get("b").unwrapOr(0) * 10 + counts.get("zz").unwrapOr(0);
 }
+
+// unwrapOr whose fallback only makes literals: made only when the option is
+// empty (decision 0016, finding F209); any other fallback runs first.
+struct Tag {
+  name: String;
+  weight: i32;
+}
+
+fn findTag(s: String): Option<Tag> {
+  if (s.length > 2) {
+    return Some(Tag(s.copy(), s.length));
+  }
+  return None;
+}
+
+export fn tagOr(s: String): String {
+  const t = findTag(s);
+  const r = t.unwrapOr(Tag("none", -1));
+  return `${r.name}:${r.weight}`;
+}
+
+export fn tagOrGiven(s: String, fallback: String): String {
+  const t = findTag(s);
+  const r = t.unwrapOr(Tag(fallback.copy(), 0));
+  return `${r.name}:${r.weight}`;
+}
+
+export fn intOr(s: String): i32 {
+  return s.parseI32().unwrapOr(-7);
+}
+
+// A map lookup done once (decision 0016, finding F210), and the cases where
+// the answer must be looked up again.
+export fn countWords(text: String): String {
+  let index: Map<String, i32> = Map.new();
+  let counts: Array<i32> = [];
+  for (const w of text.split(" ")) {
+    if (!index.has(w)) {
+      index.set(w.copy(), counts.length);
+      counts.push(0);
+    }
+    const at = index.get(w).unwrapOr(-1);
+    counts[at] += 1;
+  }
+  let out = "";
+  for (const c of counts) {
+    out += `${c},`;
+  }
+  return out;
+}
+
+export fn renumbered(n: i32): i32 {
+  let m: Map<String, i32> = Map.new();
+  m.set("a", 1);
+  m.set("b", 2);
+  m.set("c", 3);
+  const had = m.has("c");
+  m.delete("a");
+  for (let i = 0; i < n; i++) {
+    m.set(`k${i}`, i);
+  }
+  const c = m.get("c").unwrapOr(-1);
+  if (had) {
+    return c;
+  }
+  return -2;
+}
+
+export fn changedKey(): i32 {
+  let m: Map<String, i32> = Map.new();
+  m.set("ab", 7);
+  m.set("a", 5);
+  let k = "a";
+  const first = m.get(k).unwrapOr(-1);
+  k += "b";
+  const second = m.get(k).unwrapOr(-1);
+  return first * 10 + second;
+}
+
+export fn putBetween(): i32 {
+  let m: Map<String, i32> = Map.new();
+  let k = "x";
+  const before = m.has(k);
+  m.set("y", 1);
+  m.set(k.copy(), 9);
+  const after = m.get(k).unwrapOr(-1);
+  if (before) {
+    return -1;
+  }
+  return after;
+}
+
+struct Tally {
+  first: String;
+  n: i32;
+}
+
+// A value taken out of a map, changed and put back: one lookup, the entry
+// changed where it is (decision 0017). A word deleted in between is looked
+// up again.
+export fn tallies(text: String, drop: String): String {
+  let m: Map<String, Tally> = Map.new();
+  let byLength: Map<i32, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    let t = m.get(w).unwrapOr(Tally(w.copy(), 0));
+    t.n += 1;
+    if (w == drop) {
+      m.delete(w);
+    }
+    m.set(w.copy(), t);
+    const len = w.length;
+    byLength.set(len, byLength.get(len).unwrapOr(0) + 1);
+  }
+  let out = "";
+  for (const e of m) {
+    out += `${e.0}=${e.1.first}:${e.1.n},`;
+  }
+  for (const e of byLength) {
+    out += `${e.0}#${e.1},`;
+  }
+  return out;
+}
+
+// Integers written into a template's string, with no string of their own
+// (decision 0017): the same text as JavaScript's template.
+export fn intTemplate(a: i32, b: i64): String {
+  return `${a}|${b}|${a}${b}:${0}`;
+}

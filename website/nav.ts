@@ -72,6 +72,7 @@ export const sections: Section[] = [
       "decisions/0014-data-at-scale",
       "decisions/0015-stream-measured",
       "decisions/0016-faster-from-the-literature",
+      "decisions/0017-aggregating-without-copies",
     ],
   },
 ];

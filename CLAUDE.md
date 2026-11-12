@@ -29,6 +29,8 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A value that could not be measured makes a verdict undetermined**, never a hypothesis that holds (M001).
 - **Check every competitor against the rules of the project** before naming it in a protocol (M004).
 - **Count alike**: what is left out of one version's count is left out of every version's (M006).
+- **Compare runs by their ratios, never by their milliseconds**: a new session may get another processor; read the machine in each `results.json` (M016).
+- **Decide a change by an A/B in one process, not by two profiles**: the machine drifts within a session; `node scripts/ab-data.mjs <ref>` alternates both compilers and takes the ratio round by round (M017).
 - **`pnpm run check` is the last command before a commit**, after every build and test: a build rewrites the files it generates (M012).
 - **Format, lint and commit before a measure**, so that the run is at a known commit; a run started on code that changes afterwards is stopped and run again (M002).
 - **Nothing that uses the processor during a measure**: no build, no test. Write, read, plan.
@@ -43,6 +45,8 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **The release verifier is right until proven otherwise.** When it refuses code, reduce the case to a few lines, add it as a test that fails, then fix the lowering (F001, F002).
 - **A test that passes here and fails in CI is a race until proven otherwise.** Reproduce it by changing the timing (a smaller or larger workload), trace the messages, and make the code wait for an explicit signal rather than raising a timeout (F106).
 - **Profile by removing, not by guessing.** A profile that adds steps one at a time can blame the step added when the cost is in what it forces (F201: `parseI32` blamed, the copies of a stored `split` guilty). Compare variants that differ by one thing, and check that an optimization is taken before crediting it with a gain. A variant that removes a step and its calls together blames the step for the calls' cost (M013).
+- **The end-to-end tests use `target/release/perasc`**: `cargo build --release -p perasc` before `pnpm run e2e`, or they test the compiler as it was (M018).
+- **An optimization passes the differential test before it lands** (`crates/perasc-driver/tests/differential.rs`): once with `PERAS_DIFFERENTIAL_SEEDS=2000`, and once with the optimization broken on purpose, to see the test fail (M015). Extend its generator with what the optimization touches.
 - **Write Peras as a user would before claiming what it can do.** The frictions found that way go to the findings, with the diagnostic as evidence.
 
 ## Peras as it is today

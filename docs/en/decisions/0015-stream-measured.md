@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0015-stream-measured.md](../../fr/decisions/0015-stream-measured.md)._
 
-_Status: protocol registered on 2026-11-11 (commit `13921e6`), before any measure. Run 3, at `7470d08`, after the runtime is linked into the module: Peras 1.26 to 1.41 times as fast as TypeScript written for speed, H5 refuted. Run 2, at `9f9754b`, after static literals: Peras 1.11 to 1.21 times as fast as TypeScript written for speed, and 1.84 to 2.18 times as fast as TypeScript as written. Run 1 at the protocol's commit: four hypotheses hold, one is undetermined; Peras is 1.5 to 1.7 times as fast as TypeScript as written, and 0.87 to 0.96 times as fast as TypeScript written for speed. The results will be added below it, whether they confirm the hypotheses or not; the protocol will not change after the first measure, and any departure from it will be listed as such._
+_Status: protocol registered on 2026-11-11 (commit `13921e6`), before any measure. Run 6, at `9dc9566`: Peras 2.01 to 2.27 times as fast as TypeScript written for speed, 3.36 to 4.04 times as fast as TypeScript as written, H5 refuted. Run 5, at `82641f4`, after a map key is looked up once: Peras 1.83 to 2.04 times as fast as TypeScript written for speed, H5 undetermined. Run 4, at `99f9202`, after a quiet fallback and small blocks kept for reuse: Peras 1.70 to 1.94 times as fast as TypeScript written for speed, H5 refuted. Run 3, at `7470d08`, after the runtime is linked into the module: Peras 1.26 to 1.41 times as fast as TypeScript written for speed, H5 refuted. Run 2, at `9f9754b`, after static literals: Peras 1.11 to 1.21 times as fast as TypeScript written for speed, and 1.84 to 2.18 times as fast as TypeScript as written. Run 1 at the protocol's commit: four hypotheses hold, one is undetermined; Peras is 1.5 to 1.7 times as fast as TypeScript as written, and 0.87 to 0.96 times as fast as TypeScript written for speed. The results will be added below it, whether they confirm the hypotheses or not; the protocol will not change after the first measure, and any departure from it will be listed as such._
 
 ## Context
 
@@ -138,7 +138,7 @@ Measured at commit `9f9754b`, with the protocol unchanged, after one change to t
 
 ## Run 3: after the runtime is linked into the module
 
-Measured at commit `7470d08`, the protocol unchanged, after a second change to the compiler: the runtime is linked into the module, so that its calls are calls inside one module (decision 0016, finding F212). Run 2 is kept in [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md); run 3's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch.
+Measured at commit `7470d08`, the protocol unchanged, after a second change to the compiler: the runtime is linked into the module, so that its calls are calls inside one module (decision 0016, finding F212). Run 2 is kept in [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md); run 3's [report](../../../bench/stream/run-3/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-3/results.json). The three digests agreed on every batch.
 
 **A departure.** During the run, one file was edited, not built: `fuzz/fuzz_targets/pipeline.rs`, to add the field `link` its CI build was missing. The fuzz target is not part of what is measured, and nothing was compiled until the run ended; the script read the tree as clean when it started.
 
@@ -152,10 +152,80 @@ Measured at commit `7470d08`, the protocol unchanged, after a second change to t
 
 **What it says.** Peras is now 1.26, 1.31 and 1.41 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 2.10 to 2.46 times as fast as TypeScript as written; its time per row went from about 338 to about 305 ns, A and B unchanged within 4 %. H5 is refuted, narrowly: the lower end of its interval, 1.502, is just above its threshold. Its median fell and its slowest calls did not: at 100,000 rows the 99th percentile is 53 ms in run 2 and in run 3, while the median went from 33.8 to 30.5 ms. What the slowest calls hold, the garbage collector of the page or the growth of the module's memory, is not measured here.
 
-![Rows per second by batch size, run 3: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size, run 3: C highest at every size, B below it, A lowest](../../assets/stream-run-3-throughput.svg)
 
-![The speed ratios with their 95 % intervals, run 3: C over A between 2.10 and 2.46, C over B between 1.26 and 1.41](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals, run 3: C over A between 2.10 and 2.46, C over B between 1.26 and 1.41](../../assets/stream-run-3-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows, run 3: C to the left of B, A to the right](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows, run 3: C to the left of B, A to the right](../../assets/stream-run-3-latency.svg)
 
-![C's time per row split into the boundary and the digest, run 3](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary and the digest, run 3](../../assets/stream-run-3-breakdown.svg)
+
+## Run 4: after a quiet fallback made only when needed, and small blocks kept for reuse
+
+Measured at commit `99f9202`, the protocol unchanged, after two more changes: `unwrapOr` makes a fallback that only makes literals only when the option is empty (finding F209), and the TLSF allocator keeps small released blocks for the next allocation of their size (finding F213). Run 3 is kept in [bench/stream/run-3](../../../bench/stream/run-3/RESULTS.md); run 4's [report](../../../bench/stream/run-4/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-4/results.json). The three digests agreed on every batch; nothing else ran during the run.
+
+| Hypothesis                                           | Run 1      | Run 2      | Run 3      | Run 4, 95 % interval                 | Verdict |
+| ---------------------------------------------------- | ---------- | ---------- | ---------- | ------------------------------------ | ------- |
+| H1, C at least 1.5 times as fast as A                | 1.53; 1.70 | 1.97; 2.18 | 2.22; 2.46 | 2.96 [2.92, 3.01]; 3.35 [3.30, 3.40] | holds   |
+| H2, C at least 0.8 times as fast as B                | 0.89; 0.96 | 1.15; 1.21 | 1.31; 1.41 | 1.78 [1.74, 1.84]; 1.94 [1.87, 2.00] | holds   |
+| H3, small batches cost little more                   | 0.94       | 0.94       | 0.94       | 0.91 [0.87, 0.94]                    | holds   |
+| H4, the boundary at most 15 %                        | 5 %        | 6 %        | 7 %        | 10 % [10 %, 10 %]                    | holds   |
+| H5, C's 99th percentile at most 1.5 times its median | 1.61       | 1.57       | 1.75       | 1.79 [1.57, 1.85]                    | refuted |
+
+**What it says.** Peras is now 1.70, 1.78 and 1.94 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 2.81 to 3.35 times as fast as TypeScript as written; its time per row went from about 305 to about 218 ns, A and B unchanged within 5 %. Since run 1, Peras's time per row has halved, from about 440 ns, with the TypeScript versions and the protocol unchanged. The boundary's share grew to 10 %, since what is around it got faster, not it. H5 stays refuted: the slowest calls fell, the 99th percentile from 53 to 39 ms, but less than the median, from 30.5 to 21.8 ms.
+
+![Rows per second by batch size, run 4: C highest at every size, B below it, A lowest](../../assets/stream-run-4-throughput.svg)
+
+![The speed ratios with their 95 % intervals, run 4: C over A between 2.81 and 3.35, C over B between 1.70 and 1.94](../../assets/stream-run-4-ratios.svg)
+
+![The share of calls done within a time per row at 100,000 rows, run 4: C well to the left of B, A to the right](../../assets/stream-run-4-latency.svg)
+
+![C's time per row split into the boundary and the digest, run 4](../../assets/stream-run-4-breakdown.svg)
+
+## Run 5: after a map key is looked up once
+
+Measured at commit `82641f4`, the protocol unchanged, after one more change: a pass over the IR looks a map key up once where the map cannot have changed between two lookups (finding F210). Run 4 is kept in [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md); run 5's [report](../../../bench/stream/run-5/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-5/results.json). The three digests agreed on every batch; nothing else ran during the run.
+
+| Hypothesis                                           | Run 1      | Run 4      | Run 5, 95 % interval                 | Verdict      |
+| ---------------------------------------------------- | ---------- | ---------- | ------------------------------------ | ------------ |
+| H1, C at least 1.5 times as fast as A                | 1.53; 1.70 | 2.96; 3.35 | 3.22 [3.17, 3.29]; 3.61 [3.55, 3.68] | holds        |
+| H2, C at least 0.8 times as fast as B                | 0.89; 0.96 | 1.78; 1.94 | 1.90 [1.87, 1.92]; 2.04 [1.99, 2.07] | holds        |
+| H3, small batches cost little more                   | 0.94       | 0.91       | 0.93 [0.88, 0.95]                    | holds        |
+| H4, the boundary at most 15 %                        | 5 %        | 10 %       | 11 % [10 %, 11 %]                    | holds        |
+| H5, C's 99th percentile at most 1.5 times its median | 1.61       | 1.79       | 1.71 [1.42, 2.02]                    | undetermined |
+
+**What it says.** Peras is 1.83, 1.90 and 2.04 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 3.05 to 3.61 times as fast as TypeScript as written; about 204 ns per row, from 218 in run 4 and 440 in run 1. H5 is undetermined again: its interval now holds its threshold, its slowest calls varying more from one process to the next.
+
+![Rows per second by batch size, run 5: C highest at every size, B below it, A lowest](../../assets/stream-run-5-throughput.svg)
+
+![The speed ratios with their 95 % intervals, run 5: C over A between 3.05 and 3.61, C over B between 1.83 and 2.04](../../assets/stream-run-5-ratios.svg)
+
+![The share of calls done within a time per row at 100,000 rows, run 5](../../assets/stream-run-5-latency.svg)
+
+![C's time per row split into the boundary and the digest, run 5](../../assets/stream-run-5-breakdown.svg)
+
+## Run 6: after the split's SIMD search and a character step of its own
+
+Measured at commit `9dc9566`, the protocol unchanged, after two more changes: a split's separator is looked for sixteen bytes at a time and a split by one byte makes one block, and the characters of `split("")` are stepped through by a function of their own (decision 0016, findings F207, F208). Run 5 is kept in [bench/stream/run-5](../../../bench/stream/run-5/RESULTS.md); run 6's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch; nothing else ran during the run.
+
+| Hypothesis                                           | Run 1      | Run 5      | Run 6, 95 % interval                 | Verdict |
+| ---------------------------------------------------- | ---------- | ---------- | ------------------------------------ | ------- |
+| H1, C at least 1.5 times as fast as A                | 1.53; 1.70 | 3.22; 3.61 | 3.60 [3.55, 3.64]; 4.04 [4.00, 4.08] | holds   |
+| H2, C at least 0.8 times as fast as B                | 0.89; 0.96 | 1.90; 2.04 | 2.12 [2.10, 2.13]; 2.27 [2.23, 2.31] | holds   |
+| H3, small batches cost little more                   | 0.94       | 0.93       | 0.91 [0.89, 0.94]                    | holds   |
+| H4, the boundary at most 15 %                        | 5 %        | 11 %       | 12 % [11 %, 12 %]                    | holds   |
+| H5, C's 99th percentile at most 1.5 times its median | 1.61       | 1.71       | 1.74 [1.66, 1.81]                    | refuted |
+
+**What it says.** Peras is 2.01, 2.12 and 2.27 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 3.36 to 4.04 times as fast as TypeScript as written; about 182 ns per row, against 439 in run 1, 2.4 times less, with the same data, TypeScript and protocol. H5 stays refuted: the slowest calls fall less than the median. The boundary's share, 12 %, is now what changes least.
+
+![Rows per second by batch size, run 6: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+
+![The speed ratios with their 95 % intervals, run 6: C over A between 3.36 and 4.04, C over B between 2.01 and 2.27](../../assets/stream-ratios.svg)
+
+![The share of calls done within a time per row at 100,000 rows, run 6](../../assets/stream-latency.svg)
+
+![C's time per row split into the boundary and the digest, run 6](../../assets/stream-breakdown.svg)
+
+### The six runs
+
+![How many times faster Peras is, run after run, at 100,000 rows: over TypeScript as written from 1.70 to 4.04, over TypeScript written for speed from 0.96 to 2.27](../../assets/stream-history.svg)

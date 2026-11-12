@@ -562,6 +562,42 @@ impl Machine<'_> {
 
     /// The entry of `wanted` in map `table`, its key lent as `given`: copied
     /// when it is new, left alone otherwise, as the runtime does.
+    /// `set` of a key given, or lent.
+    fn put_given(
+        &mut self,
+        table: u32,
+        wanted: MapKey,
+        given: Value,
+        lent: bool,
+    ) -> Result<usize, Trap> {
+        if lent {
+            return self.map_put_lent(table, wanted, given);
+        }
+        let handle = match given {
+            Value::Handle(h) => Some(h),
+            _ => None,
+        };
+        self.map_put(table, wanted, handle)
+    }
+
+    /// Traps unless `at` is the entry of `wanted`, or -1 when it is missing:
+    /// the entry a lookup pass gave to a `set` (decision 0017).
+    fn check_entry(&self, table: u32, wanted: &MapKey, at: Value) -> Result<(), Trap> {
+        let Value::I32(at) = at else {
+            return Err(Trap::Unreachable);
+        };
+        let map = self.maps.get(&table).ok_or(Trap::UseAfterRelease)?;
+        let found = map
+            .entries
+            .iter()
+            .position(|e| e.as_ref().is_some_and(|e| &e.key == wanted));
+        if found.map_or(-1, |e| i32::try_from(e).unwrap_or(-1)) == at {
+            Ok(())
+        } else {
+            Err(Trap::Unchecked)
+        }
+    }
+
     fn map_put_lent(&mut self, table: u32, wanted: MapKey, given: Value) -> Result<usize, Trap> {
         let there = self
             .maps
@@ -687,19 +723,20 @@ impl Machine<'_> {
                         .position(|e| e.as_ref().is_some_and(|e| e.key == wanted)),
                 )
             }
-            F::MapPutSLent => {
+            F::MapPutI | F::MapPutS | F::MapPutSLent => {
                 let given = operand(1)?;
                 let wanted = key(self, given)?;
-                entry(Some(self.map_put_lent(block()?, wanted, given)?))
+                let lent = f == F::MapPutSLent;
+                entry(Some(self.put_given(block()?, wanted, given, lent)?))
             }
-            F::MapPutI | F::MapPutS => {
-                let given = operand(1)?;
+            // The entry a lookup gave: checked to hold the key, so that a
+            // lookup pass that proved wrong traps here (decision 0017).
+            F::MapPutAtI | F::MapPutAtS | F::MapPutAtSLent => {
+                let given = operand(2)?;
                 let wanted = key(self, given)?;
-                let handle = match given {
-                    Value::Handle(h) => Some(h),
-                    _ => None,
-                };
-                entry(Some(self.map_put(block()?, wanted, handle)?))
+                self.check_entry(block()?, &wanted, operand(1)?)?;
+                let lent = f == F::MapPutAtSLent;
+                entry(Some(self.put_given(block()?, wanted, given, lent)?))
             }
             F::MapStore | F::MapStoreF | F::MapStoreH => {
                 let stored = operand(3)?;
@@ -745,6 +782,39 @@ impl Machine<'_> {
         Ok(Some(value))
     }
 
+    /// The functions of the runtime that write numbers and booleans as text.
+    fn format_runtime(
+        &mut self,
+        f: crate::RuntimeFn,
+        operands: &[Value],
+    ) -> Result<Option<Value>, Trap> {
+        use crate::RuntimeFn as F;
+        Ok(Some(match (f, operands.first()) {
+            (F::FmtInt, Some(Value::I64(n))) => self.string(n.to_string().as_bytes()),
+            (F::FmtIntLen, Some(Value::I64(n))) => {
+                Value::I32(i32::try_from(n.to_string().len()).unwrap_or(0))
+            }
+            (F::FmtIntAppend, Some(&buf)) => {
+                let Some(Value::I64(n)) = operands.get(1) else {
+                    return Err(Trap::Unreachable);
+                };
+                let digits = n.to_string();
+                self.elements(buf)?
+                    .extend(digits.bytes().map(|b| Value::I32(i32::from(b))));
+                Value::Void
+            }
+            (F::FmtBool, Some(Value::Bool(b))) => self.string(b.to_string().as_bytes()),
+            (F::FmtFloat, Some(Value::F64(x))) => {
+                let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
+                self.string(text?.as_bytes())
+            }
+            (F::FmtInt | F::FmtIntLen | F::FmtIntAppend | F::FmtBool | F::FmtFloat, _) => {
+                return Err(Trap::Unreachable);
+            }
+            _ => return Ok(None),
+        }))
+    }
+
     /// A function of the runtime on strings.
     fn runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
         use crate::RuntimeFn as F;
@@ -764,17 +834,8 @@ impl Machine<'_> {
         if let Some(value) = self.map_runtime(f, operands)? {
             return Ok(value);
         }
-        match (f, operands.first()) {
-            (F::FmtInt, Some(Value::I64(n))) => return Ok(self.string(n.to_string().as_bytes())),
-            (F::FmtBool, Some(Value::Bool(b))) => {
-                return Ok(self.string(b.to_string().as_bytes()));
-            }
-            (F::FmtFloat, Some(Value::F64(x))) => {
-                let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
-                return Ok(self.string(text?.as_bytes()));
-            }
-            (F::FmtInt | F::FmtBool | F::FmtFloat, _) => return Err(Trap::Unreachable),
-            _ => {}
+        if let Some(value) = self.format_runtime(f, operands)? {
+            return Ok(value);
         }
         let s = text(self, 0)?;
         Ok(match f {
@@ -807,7 +868,7 @@ impl Machine<'_> {
                 self.split(&s, &separator)
             }
             F::StrCursor => self.string(&[]),
-            F::NextPart => {
+            F::NextPart | F::NextChar => {
                 let separator = text(self, 1)?;
                 self.next_part(&s, &separator, operands.get(2).copied(), int(3)?)?
             }
@@ -823,6 +884,8 @@ impl Machine<'_> {
             | F::ArrIndexOfStr
             | F::ArrKeep
             | F::FmtInt
+            | F::FmtIntLen
+            | F::FmtIntAppend
             | F::FmtBool
             | F::FmtFloat => {
                 return Err(Trap::Unreachable);

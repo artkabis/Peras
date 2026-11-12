@@ -544,6 +544,11 @@ impl Lowering<'_> {
                 None => Vec::new(),
             };
         }
+        if method == "unwrapOr"
+            && let Some(values) = self.map_get_or(state, base, args, mode)
+        {
+            return values;
+        }
         let fields = self.value_as(state, base, Mode::Borrow);
         // A result is read as an option of its `Ok` data: present when the tag
         // is 0.
@@ -592,13 +597,48 @@ impl Lowering<'_> {
     fn unwrap_or_values(
         &mut self,
         state: &mut FnState,
-        mut fields: Vec<Expr>,
+        fields: Vec<Expr>,
         args: &[ExprId],
         mode: Mode,
     ) -> Vec<Expr> {
         // The receiver, then the fallback; then the value is chosen.
         let mark = state.pre.len();
+        let drops = state.drops.len();
         let fallback = self.arguments(state, None, args);
+        if Self::quiet_since(state, mark, drops, &fallback) {
+            let making = state.pre.split_off(mark);
+            return Self::unwrap_or_lazily(state, fields, fallback, making, true, mode);
+        }
+        Self::unwrap_or_eagerly(state, fields, fallback, mark, mode)
+    }
+
+    /// Whether the fallback lowered since `mark`, with no drop registered
+    /// since `drops`, is quiet: a fallback that only makes literals and
+    /// copies, and reads values, cannot be seen to run, so it is made only
+    /// when the option is empty (decisions 0016 and 0017, finding F209).
+    /// Anything else runs first, as written.
+    pub(super) fn quiet_since(
+        state: &FnState,
+        mark: usize,
+        drops: usize,
+        fallback: &[Expr],
+    ) -> bool {
+        state.drops.len() == drops
+            && state.pre[mark..]
+                .iter()
+                .all(|s| matches!(s, Stmt::Set(_, e) if quiet_value(e)))
+            && fallback.iter().all(quiet_value)
+    }
+
+    /// `unwrapOr` whose fallback, lowered since `mark`, runs first: the
+    /// value when there is one, else the fallback.
+    pub(super) fn unwrap_or_eagerly(
+        state: &mut FnState,
+        mut fields: Vec<Expr>,
+        fallback: Vec<Expr>,
+        mark: usize,
+        mode: Mode,
+    ) -> Vec<Expr> {
         state.keep_before(mark, &mut fields);
         let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
         let Some((some, payload)) = fields.split_first() else {
@@ -642,6 +682,70 @@ impl Lowering<'_> {
             cond: some.clone(),
             then,
             otherwise: Vec::new(),
+        });
+        Self::fresh(state, out, mode)
+    }
+
+    /// `unwrapOr` whose fallback, made by the statements `making`, is quiet:
+    /// the value when there is one, else the fallback, made only then. With
+    /// `spill`, the value is evaluated before the choice; without, it is read
+    /// only when there is one, as the entry of a map that `get` found.
+    pub(super) fn unwrap_or_lazily(
+        state: &mut FnState,
+        fields: Vec<Expr>,
+        fallback: Vec<Expr>,
+        making: Vec<Stmt>,
+        spill: bool,
+        mode: Mode,
+    ) -> Vec<Expr> {
+        let fields: Vec<Expr> = if spill {
+            fields.into_iter().map(|e| state.spill(e)).collect()
+        } else {
+            fields
+        };
+        let Some((some, payload)) = fields.split_first() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut then = Vec::new();
+        let mut otherwise = making;
+        for (value, fallback) in payload.iter().zip(fallback) {
+            // A fallback read from a variable that keeps it: a copy.
+            let fallback = if fallback.ty == Ty::Borrowed {
+                Expr {
+                    kind: ExprKind::Buf(crate::BufOp::Clone, vec![fallback]),
+                    ty: Ty::Owned,
+                }
+            } else {
+                fallback
+            };
+            if fallback.ty == Ty::Owned {
+                // A buffer: a copy of the one inside, or the fallback.
+                let temp = state.temp(Ty::Owned);
+                state.live.insert(temp.0);
+                then.push(Stmt::Set(
+                    temp,
+                    Expr {
+                        kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
+                        ty: Ty::Owned,
+                    },
+                ));
+                otherwise.push(Stmt::Set(temp, fallback));
+                out.push(Expr {
+                    kind: ExprKind::Local(temp),
+                    ty: Ty::Owned,
+                });
+                continue;
+            }
+            let temp = state.temp(fallback.ty);
+            then.push(Stmt::Set(temp, value.clone()));
+            otherwise.push(Stmt::Set(temp, fallback));
+            out.push(super::local_expr(state, temp));
+        }
+        state.pre.push(Stmt::If {
+            cond: some.clone(),
+            then,
+            otherwise,
         });
         Self::fresh(state, out, mode)
     }
@@ -962,6 +1066,22 @@ impl Lowering<'_> {
             }
         }
     }
+}
+
+/// A value whose making cannot be seen: pure, a literal or an empty
+/// buffer made, or a block moved out of a temporary.
+/// A value whose making cannot be seen: a read, a literal, a new buffer, or a
+/// copy of a value read (decision 0017, step 1). Each only allocates, which a
+/// program cannot observe, and reads what is not changed before the choice.
+fn quiet_value(e: &Expr) -> bool {
+    heap::pure(e)
+        || matches!(
+            &e.kind,
+            ExprKind::Buf(
+                crate::BufOp::Literal(_) | crate::BufOp::New(_) | crate::BufOp::Clone,
+                args
+            ) if args.iter().all(heap::pure)
+        )
 }
 
 impl FnState {

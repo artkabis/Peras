@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0015-stream-measured.md](../../en/decisions/0015-stream-measured.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `13921e6`), avant toute mesure. Exécution 3, à `7470d08`, après le runtime lié dans le module : Peras 1,26 à 1,41 fois plus rapide que le TypeScript écrit pour la vitesse, H5 réfutée. Exécution 2, à `9f9754b`, après les littéraux statiques : Peras 1,11 à 1,21 fois plus rapide que le TypeScript écrit pour la vitesse, et 1,84 à 2,18 fois plus rapide que le TypeScript tel qu’on l’écrit. Exécution 1 au commit du protocole : quatre hypothèses tiennent, une est indéterminée ; Peras est 1,5 à 1,7 fois plus rapide que le TypeScript tel qu’on l’écrit, et 0,87 à 0,96 fois aussi rapide que le TypeScript écrit pour la vitesse. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
+_Statut : protocole enregistré le 2026-11-11 (commit `13921e6`), avant toute mesure. Exécution 6, à `9dc9566` : Peras 2,01 à 2,27 fois plus rapide que le TypeScript écrit pour la vitesse, 3,36 à 4,04 fois plus rapide que le TypeScript tel qu’on l’écrit, H5 réfutée. Exécution 5, à `82641f4`, après une clé de table cherchée une fois : Peras 1,83 à 2,04 fois plus rapide que le TypeScript écrit pour la vitesse, H5 indéterminée. Exécution 4, à `99f9202`, après une valeur de repli silencieuse et les petits blocs gardés : Peras 1,70 à 1,94 fois plus rapide que le TypeScript écrit pour la vitesse, H5 réfutée. Exécution 3, à `7470d08`, après le runtime lié dans le module : Peras 1,26 à 1,41 fois plus rapide que le TypeScript écrit pour la vitesse, H5 réfutée. Exécution 2, à `9f9754b`, après les littéraux statiques : Peras 1,11 à 1,21 fois plus rapide que le TypeScript écrit pour la vitesse, et 1,84 à 2,18 fois plus rapide que le TypeScript tel qu’on l’écrit. Exécution 1 au commit du protocole : quatre hypothèses tiennent, une est indéterminée ; Peras est 1,5 à 1,7 fois plus rapide que le TypeScript tel qu’on l’écrit, et 0,87 à 0,96 fois aussi rapide que le TypeScript écrit pour la vitesse. Les résultats seront ajoutés en dessous, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
 
 ## Contexte
 
@@ -138,7 +138,7 @@ Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compi
 
 ## Exécution 3 : après le runtime lié dans le module
 
-Mesurée au commit `7470d08`, protocole inchangé, après un second changement du compilateur : le runtime est lié dans le module, pour que ses appels soient internes à un seul module (décision 0016, constat F212). L’exécution 2 est gardée dans [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 3 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont concordé sur chaque lot.
+Mesurée au commit `7470d08`, protocole inchangé, après un second changement du compilateur : le runtime est lié dans le module, pour que ses appels soient internes à un seul module (décision 0016, constat F212). L’exécution 2 est gardée dans [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md) ; le [rapport](../../../bench/stream/run-3/RESULTS.md) de l’exécution 3 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-3/results.json). Les trois calculs ont concordé sur chaque lot.
 
 **Un écart.** Pendant l’exécution, un fichier a été modifié, sans être compilé : `fuzz/fuzz_targets/pipeline.rs`, pour ajouter le champ `link` qui manquait à sa compilation dans le CI. La cible de fuzzing ne fait pas partie de ce qui est mesuré, et rien n’a été compilé avant la fin de l’exécution ; le script a lu l’arbre comme propre à son départ.
 
@@ -152,10 +152,80 @@ Mesurée au commit `7470d08`, protocole inchangé, après un second changement d
 
 **Ce que cela dit.** Peras est maintenant 1,26, 1,31 et 1,41 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 2,10 à 2,46 fois plus rapide que le TypeScript tel qu’on l’écrit ; son temps par ligne est passé d’environ 338 à environ 305 ns, A et B inchangés à 4 % près. H5 est réfutée, de justesse : le bas de son intervalle, 1,502, est juste au-dessus de son seuil. Sa médiane a baissé, ses appels les plus lents non : à 100 000 lignes, le 99e centile vaut 53 ms à l’exécution 2 comme à la 3, quand la médiane est passée de 33,8 à 30,5 ms. Ce que contiennent les appels les plus lents, le ramasse-miettes de la page ou la croissance de la mémoire du module, n’est pas mesuré ici.
 
-![Lignes par seconde par taille de lot, exécution 3 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+![Lignes par seconde par taille de lot, exécution 3 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-3-throughput.svg)
 
-![Les rapports de vitesse avec leur intervalle à 95 %, exécution 3 : C sur A entre 2,10 et 2,46, C sur B entre 1,26 et 1,41](../../assets/stream-ratios.svg)
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 3 : C sur A entre 2,10 et 2,46, C sur B entre 1,26 et 1,41](../../assets/stream-run-3-ratios.svg)
 
-![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 3 : C à gauche de B, A à droite](../../assets/stream-latency.svg)
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 3 : C à gauche de B, A à droite](../../assets/stream-run-3-latency.svg)
 
-![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 3](../../assets/stream-breakdown.svg)
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 3](../../assets/stream-run-3-breakdown.svg)
+
+## Exécution 4 : après une valeur de repli construite seulement si besoin, et les petits blocs gardés pour réutilisation
+
+Mesurée au commit `99f9202`, protocole inchangé, après deux autres changements : `unwrapOr` ne construit une valeur de repli qui ne fait que créer des littéraux que si l’option est vide (constat F209), et l’allocateur TLSF garde les petits blocs libérés pour la prochaine allocation de leur taille (constat F213). L’exécution 3 est gardée dans [bench/stream/run-3](../../../bench/stream/run-3/RESULTS.md) ; le [rapport](../../../bench/stream/run-4/RESULTS.md) de l’exécution 4 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-4/results.json). Les trois calculs ont concordé sur chaque lot ; rien d’autre n’a tourné pendant l’exécution.
+
+| Hypothèse                                           | Exéc. 1     | Exéc. 2     | Exéc. 3     | Exéc. 4, intervalle à 95 %            | Verdict |
+| --------------------------------------------------- | ----------- | ----------- | ----------- | ------------------------------------- | ------- |
+| H1, C au moins 1,5 fois plus rapide que A           | 1,53 ; 1,70 | 1,97 ; 2,18 | 2,22 ; 2,46 | 2,96 [2,92, 3,01] ; 3,35 [3,30, 3,40] | tient   |
+| H2, C au moins 0,8 fois aussi rapide que B          | 0,89 ; 0,96 | 1,15 ; 1,21 | 1,31 ; 1,41 | 1,78 [1,74, 1,84] ; 1,94 [1,87, 2,00] | tient   |
+| H3, les petits lots coûtent peu de plus             | 0,94        | 0,94        | 0,94        | 0,91 [0,87, 0,94]                     | tient   |
+| H4, la frontière au plus 15 %                       | 5 %         | 6 %         | 7 %         | 10 % [10 %, 10 %]                     | tient   |
+| H5, le 99e centile de C au plus 1,5 fois sa médiane | 1,61        | 1,57        | 1,75        | 1,79 [1,57, 1,85]                     | réfutée |
+
+**Ce que cela dit.** Peras est maintenant 1,70, 1,78 et 1,94 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 2,81 à 3,35 fois plus rapide que le TypeScript tel qu’on l’écrit ; son temps par ligne est passé d’environ 305 à environ 218 ns, A et B inchangés à 5 % près. Depuis l’exécution 1, le temps par ligne de Peras a été divisé par deux, depuis environ 440 ns, les versions TypeScript et le protocole inchangés. La part de la frontière a grandi jusqu’à 10 %, parce que ce qui l’entoure est devenu plus rapide, pas elle. H5 reste réfutée : les appels les plus lents ont baissé, le 99e centile de 53 à 39 ms, mais moins que la médiane, de 30,5 à 21,8 ms.
+
+![Lignes par seconde par taille de lot, exécution 4 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-4-throughput.svg)
+
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 4 : C sur A entre 2,81 et 3,35, C sur B entre 1,70 et 1,94](../../assets/stream-run-4-ratios.svg)
+
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 4 : C nettement à gauche de B, A à droite](../../assets/stream-run-4-latency.svg)
+
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 4](../../assets/stream-run-4-breakdown.svg)
+
+## Exécution 5 : après une clé de table cherchée une fois
+
+Mesurée au commit `82641f4`, protocole inchangé, après un changement de plus : une passe sur l’IR cherche une clé une fois là où la table ne peut pas avoir changé entre deux recherches (constat F210). L’exécution 4 est gardée dans [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md) ; le [rapport](../../../bench/stream/run-5/RESULTS.md) de l’exécution 5 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-5/results.json). Les trois calculs ont concordé sur chaque lot ; rien d’autre n’a tourné pendant l’exécution.
+
+| Hypothèse                                           | Exéc. 1     | Exéc. 4     | Exéc. 5, intervalle à 95 %            | Verdict      |
+| --------------------------------------------------- | ----------- | ----------- | ------------------------------------- | ------------ |
+| H1, C au moins 1,5 fois plus rapide que A           | 1,53 ; 1,70 | 2,96 ; 3,35 | 3,22 [3,17, 3,29] ; 3,61 [3,55, 3,68] | tient        |
+| H2, C au moins 0,8 fois aussi rapide que B          | 0,89 ; 0,96 | 1,78 ; 1,94 | 1,90 [1,87, 1,92] ; 2,04 [1,99, 2,07] | tient        |
+| H3, les petits lots coûtent peu de plus             | 0,94        | 0,91        | 0,93 [0,88, 0,95]                     | tient        |
+| H4, la frontière au plus 15 %                       | 5 %         | 10 %        | 11 % [10 %, 11 %]                     | tient        |
+| H5, le 99e centile de C au plus 1,5 fois sa médiane | 1,61        | 1,79        | 1,71 [1,42, 2,02]                     | indéterminée |
+
+**Ce que cela dit.** Peras est 1,83, 1,90 et 2,04 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 3,05 à 3,61 fois plus rapide que le TypeScript tel qu’on l’écrit ; environ 204 ns par ligne, contre 218 à l’exécution 4 et 440 à l’exécution 1. H5 est de nouveau indéterminée : son intervalle contient maintenant son seuil, ses appels les plus lents variant davantage d’un processus à l’autre.
+
+![Lignes par seconde par taille de lot, exécution 5 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-5-throughput.svg)
+
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 5 : C sur A entre 3,05 et 3,61, C sur B entre 1,83 et 2,04](../../assets/stream-run-5-ratios.svg)
+
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 5](../../assets/stream-run-5-latency.svg)
+
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 5](../../assets/stream-run-5-breakdown.svg)
+
+## Exécution 6 : après la recherche SIMD du split et un pas de caractère à part
+
+Mesurée au commit `9dc9566`, protocole inchangé, après deux autres changements : le séparateur d’un split est cherché seize octets à la fois et un split sur un octet crée un seul bloc, et les caractères de `split("")` sont parcourus par une fonction à part (décision 0016, constats F207, F208). L’exécution 5 est gardée dans [bench/stream/run-5](../../../bench/stream/run-5/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 6 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont concordé sur chaque lot ; rien d’autre n’a tourné pendant l’exécution.
+
+| Hypothèse                                           | Exéc. 1     | Exéc. 5     | Exéc. 6, intervalle à 95 %            | Verdict |
+| --------------------------------------------------- | ----------- | ----------- | ------------------------------------- | ------- |
+| H1, C au moins 1,5 fois plus rapide que A           | 1,53 ; 1,70 | 3,22 ; 3,61 | 3,60 [3,55, 3,64] ; 4,04 [4,00, 4,08] | tient   |
+| H2, C au moins 0,8 fois aussi rapide que B          | 0,89 ; 0,96 | 1,90 ; 2,04 | 2,12 [2,10, 2,13] ; 2,27 [2,23, 2,31] | tient   |
+| H3, les petits lots coûtent peu de plus             | 0,94        | 0,93        | 0,91 [0,89, 0,94]                     | tient   |
+| H4, la frontière au plus 15 %                       | 5 %         | 11 %        | 12 % [11 %, 12 %]                     | tient   |
+| H5, le 99e centile de C au plus 1,5 fois sa médiane | 1,61        | 1,71        | 1,74 [1,66, 1,81]                     | réfutée |
+
+**Ce que cela dit.** Peras est 2,01, 2,12 et 2,27 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 3,36 à 4,04 fois plus rapide que le TypeScript tel qu’on l’écrit ; environ 182 ns par ligne, contre 439 à l’exécution 1, 2,4 fois moins, avec les mêmes données, le même TypeScript et le même protocole. H5 reste réfutée : les appels les plus lents baissent moins que la médiane. La part de la frontière, 12 %, est maintenant ce qui change le moins.
+
+![Lignes par seconde par taille de lot, exécution 6 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 6 : C sur A entre 3,36 et 4,04, C sur B entre 2,01 et 2,27](../../assets/stream-ratios.svg)
+
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 6](../../assets/stream-latency.svg)
+
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 6](../../assets/stream-breakdown.svg)
+
+### Les six exécutions
+
+![Combien de fois Peras est plus rapide, exécution après exécution, à 100 000 lignes : sur le TypeScript tel qu’on l’écrit de 1,70 à 4,04, sur le TypeScript écrit pour la vitesse de 0,96 à 2,27](../../assets/stream-history.svg)

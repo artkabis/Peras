@@ -11,12 +11,16 @@ bench/garden/results.json
 bench/data/RESULTS.md
 bench/data/results.json
 bench/data/run-1/
+bench/data/run-2/
 bench/candle/RESULTS.md
 bench/candle/results.json
 bench/stream/RESULTS.md
 bench/stream/results.json
 bench/stream/run-1/
 bench/stream/run-2/
+bench/stream/run-3/
+bench/stream/run-4/
+bench/stream/run-5/
 bench/history/results.json
 bench/history/rows.json
 bench/garden/run-1/

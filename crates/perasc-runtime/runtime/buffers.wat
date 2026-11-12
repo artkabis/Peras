@@ -515,13 +515,16 @@
           (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
-    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
-    (local.set $block
-      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    ;; One block: the array's header, a handle per part, then the parts'
+    ;; headers; INLINE, so that releasing the array releases it whole.
+    (local.set $parts (call $alloc
+      (i32.add (i32.const 16) (call $bytes (local.get $n) (i32.const 20) (i32.const 0))) (i32.const 0)))
+    (local.set $block (i32.add (local.get $parts) (i32.const 16)))
     (i32.store (local.get $parts) (local.get $n))
     (i32.store offset=4 (local.get $parts) (local.get $n))
     (i32.store offset=8 (local.get $parts) (local.get $block))
-    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (i32.store offset=12 (local.get $parts)
+      (i32.or (i32.or (i32.const 4) (global.get $VIEWS)) (global.get $INLINE)))
     (local.set $handle (local.get $block))
     (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
     (local.set $start (local.get $data))
@@ -582,13 +585,16 @@
           (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
-    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
-    (local.set $block
-      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    ;; One block: the array's header, a handle per part, then the parts'
+    ;; headers; INLINE, so that releasing the array releases it whole.
+    (local.set $parts (call $alloc
+      (i32.add (i32.const 16) (call $bytes (local.get $n) (i32.const 20) (i32.const 0))) (i32.const 0)))
+    (local.set $block (i32.add (local.get $parts) (i32.const 16)))
     (i32.store (local.get $parts) (local.get $n))
     (i32.store offset=4 (local.get $parts) (local.get $n))
     (i32.store offset=8 (local.get $parts) (local.get $block))
-    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (i32.store offset=12 (local.get $parts)
+      (i32.or (i32.or (i32.const 4) (global.get $VIEWS)) (global.get $INLINE)))
     ;; Handles at the start of the block, headers after them.
     (local.set $handle (local.get $block))
     (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
@@ -626,14 +632,79 @@
     (i32.store offset=12 (local.get $c) (i32.or (i32.const 1) (global.get $INLINE)))
     (local.get $c))
 
+;; @simd
+  ;; The first index at or after `from`, below `len`, where the bytes at
+  ;; `data` hold `byte`, or -1: sixteen bytes compared at once while sixteen
+  ;; are left, then one at a time (decision 0016, technique 5).
+  (func $find_byte (param $data i32) (param $from i32) (param $len i32) (param $byte i32) (result i32)
+    (local $i i32) (local $splat v128) (local $m i32)
+    (local.set $i (local.get $from))
+    (local.set $splat (i8x16.splat (local.get $byte)))
+    (block $wide
+      (loop $next
+        (br_if $wide (i32.gt_u (i32.add (local.get $i) (i32.const 16)) (local.get $len)))
+        (local.set $m (i8x16.bitmask (i8x16.eq
+          (v128.load align=1 (i32.add (local.get $data) (local.get $i))) (local.get $splat))))
+        (if (local.get $m)
+          (then (return (i32.add (local.get $i) (i32.ctz (local.get $m))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 16)))
+        (br $next)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $i))) (local.get $byte))
+          (then (return (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const -1))
+
+  ;; @scalar
+  ;; The first index at or after `from`, below `len`, where the bytes at
+  ;; `data` hold `byte`, or -1: one byte at a time.
+  (func $find_byte (param $data i32) (param $from i32) (param $len i32) (param $byte i32) (result i32)
+    (local $i i32)
+    (local.set $i (local.get $from))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $i))) (local.get $byte))
+          (then (return (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const -1))
+
+  ;; @end
+
+  ;; `str_next_part` with an empty separator: points the view `c` at the
+  ;; character of `h` at `from`, its lead byte and its continuation bytes, and
+  ;; gives where the next one starts, or -1 after the last. A function of its
+  ;; own, small enough for the engine to inline into the loop (decision 0016).
+  (func (export "str_next_char") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
+    (local $len i32) (local $data i32) (local $end i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $end (i32.add (local.get $from) (i32.const 1)))
+    (block $whole
+      (loop $more
+        (br_if $whole (i32.ge_u (local.get $end) (local.get $len)))
+        (br_if $whole
+          (i32.ne
+            (i32.and (i32.load8_u (i32.add (local.get $data) (local.get $end))) (i32.const 192))
+            (i32.const 128)))
+        (local.set $end (i32.add (local.get $end) (i32.const 1)))
+        (br $more)))
+    (i32.store (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=4 (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=8 (local.get $c) (i32.add (local.get $data) (local.get $from)))
+    (select (local.get $end) (i32.const -1) (i32.lt_u (local.get $end) (local.get $len))))
+
   ;; Points the view `c` at the part of `h` from `from` to the next
   ;; `separator`, or to the end; gives where the next part starts, or -1 when
-  ;; this one is the last. A separator of one byte is looked for byte by byte,
-  ;; the usual case. An empty separator gives the characters one by one, as
+  ;; this one is the last. A separator of one byte, the usual case, is looked
+  ;; for by `$find_byte`. An empty separator gives the characters one by one, as
   ;; `split("")` does: a lead byte and its continuation bytes (F207).
   (func (export "str_next_part") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
     (local $len i32) (local $data i32) (local $k i32) (local $at i32) (local $end i32) (local $next i32)
-    (local $byte i32)
     (local.set $len (i32.load (local.get $h)))
     (local.set $data (i32.load offset=8 (local.get $h)))
     (local.set $k (i32.load (local.get $separator)))
@@ -656,15 +727,8 @@
         (return (select (local.get $end) (i32.const -1) (i32.lt_u (local.get $end) (local.get $len))))))
     (if (i32.eq (local.get $k) (i32.const 1))
       (then
-        (local.set $byte (i32.load8_u (i32.load offset=8 (local.get $separator))))
-        (local.set $end (local.get $from))
-        (block $found
-          (loop $next
-            (br_if $found (i32.ge_u (local.get $end) (local.get $len)))
-            (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $end))) (local.get $byte))
-              (then (local.set $at (local.get $end)) (br $found)))
-            (local.set $end (i32.add (local.get $end) (i32.const 1)))
-            (br $next))))
+        (local.set $at (call $find_byte (local.get $data) (local.get $from) (local.get $len)
+          (i32.load8_u (i32.load offset=8 (local.get $separator))))))
       (else (local.set $at (call $str_index_of (local.get $h) (local.get $separator) (local.get $from)))))
     (if (i32.lt_s (local.get $at) (i32.const 0))
       (then
@@ -1527,6 +1591,48 @@
     (i32.store (local.get $h) (local.get $n))
     (local.get $h))
 
+  ;; The number of bytes `fmt_int` writes for `x`: its digits, and `-` before
+  ;; them when it is negative (decision 0017).
+  (func $fmt_int_len (export "fmt_int_len") (param $x i64) (result i32)
+    (local $n i32)
+    (local.set $n (i32.const 1))
+    (if (i64.lt_s (local.get $x) (i64.const 0))
+      (then
+        (local.set $n (i32.const 2))
+        ;; The magnitude, unsigned: right for the smallest `i64` too.
+        (local.set $x (i64.sub (i64.const 0) (local.get $x)))))
+    (block $done
+      (loop $more
+        (br_if $done (i64.lt_u (local.get $x) (i64.const 10)))
+        (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+        (local.set $n (i32.add (local.get $n) (i32.const 1)))
+        (br $more)))
+    (local.get $n))
+
+  ;; The digits of `x` appended to the string `h`, written from their end,
+  ;; with no string of their own: a template's integers (decision 0017).
+  ;; Room is made when the string has too little, which a template sized by
+  ;; `fmt_int_len` never needs.
+  (func (export "fmt_int_append") (param $h i32) (param $x i64)
+    (local $n i32) (local $p i32) (local $neg i32)
+    (local.set $n (call $fmt_int_len (local.get $x)))
+    (call $buf_reserve (local.get $h) (local.get $n) (i32.const 1) (i32.const 0))
+    (local.set $p (i32.add (i32.load offset=8 (local.get $h))
+      (i32.add (i32.load (local.get $h)) (local.get $n))))
+    (i32.store (local.get $h) (i32.add (i32.load (local.get $h)) (local.get $n)))
+    (if (i64.lt_s (local.get $x) (i64.const 0))
+      (then
+        (local.set $neg (i32.const 1))
+        (local.set $x (i64.sub (i64.const 0) (local.get $x)))))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p)
+        (i32.add (i32.const 48) (i32.wrap_i64 (i64.rem_u (local.get $x) (i64.const 10)))))
+      (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+      (br_if $digit (i64.ne (local.get $x) (i64.const 0))))
+    (if (local.get $neg)
+      (then (i32.store8 (i32.sub (local.get $p) (i32.const 1)) (i32.const 45)))))
+
   ;; `true` or `false`, their bytes stored as one word, little-endian.
   (func (export "fmt_bool") (param $b i32) (result i32)
     (local $h i32) (local $at i32)
@@ -1989,6 +2095,37 @@
 
   (func (export "map_put_s_lent") (param $m i32) (param $key i32) (result i32)
     (call $map_put (local.get $m) (i64.extend_i32_u (local.get $key)) (i32.const 1)))
+
+  ;; `map_put` when a lookup of `key` gave entry `e`, -1 when it was missing,
+  ;; with nothing changed since (decision 0017): the old value's buffers and
+  ;; a string key released, without looking the key up again. An entry that
+  ;; does not hold the key, which the compiler should never give, is looked
+  ;; up as usual.
+  (func $map_put_at (param $m i32) (param $e i32) (param $key i64) (param $lent i32) (result i32)
+    (local $entry i32)
+    (if (i32.and
+          (i32.ge_s (local.get $e) (i32.const 0))
+          (i32.lt_u (local.get $e) (i32.load offset=4 (local.get $m))))
+      (then
+        (local.set $entry (call $map_entry (local.get $m) (local.get $e)))
+        (if (i32.and
+              (i32.load offset=4 (local.get $entry))
+              (call $map_same (local.get $m) (i64.load offset=8 (local.get $entry)) (local.get $key)))
+          (then
+            (call $map_release_values (i32.load offset=28 (local.get $m)) (local.get $entry))
+            (if (i32.and (call $map_strings (local.get $m)) (i32.eqz (local.get $lent)))
+              (then (call $buf_release (i32.wrap_i64 (local.get $key)) (i32.const 0))))
+            (return (local.get $e))))))
+    (call $map_put (local.get $m) (local.get $key) (local.get $lent)))
+
+  (func (export "map_put_at_i") (param $m i32) (param $e i32) (param $key i64) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (local.get $key) (i32.const 0)))
+
+  (func (export "map_put_at_s") (param $m i32) (param $e i32) (param $key i32) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (i64.extend_i32_u (local.get $key)) (i32.const 0)))
+
+  (func (export "map_put_at_s_lent") (param $m i32) (param $e i32) (param $key i32) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (i64.extend_i32_u (local.get $key)) (i32.const 1)))
 
   ;; The address of value slot `slot` of entry `e`.
   (func $map_at (param $m i32) (param $e i32) (param $slot i32) (result i32)

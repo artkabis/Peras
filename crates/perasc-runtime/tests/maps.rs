@@ -76,6 +76,9 @@ struct Runtime {
     find_s: TypedFunc<(i32, i32), i32>,
     put_i: TypedFunc<(i32, i64), i32>,
     put_s: TypedFunc<(i32, i32), i32>,
+    put_at_i: TypedFunc<(i32, i32, i64), i32>,
+    put_at_s: TypedFunc<(i32, i32, i32), i32>,
+    put_at_s_lent: TypedFunc<(i32, i32, i32), i32>,
     store_value: TypedFunc<(i32, i32, i32, i64), ()>,
     store_h: TypedFunc<(i32, i32, i32, i32), ()>,
     value: TypedFunc<(i32, i32, i32), i64>,
@@ -138,6 +141,9 @@ fn runtime(wasm: &[u8]) -> Runtime {
         find_s: f!("map_find_s"),
         put_i: f!("map_put_i"),
         put_s: f!("map_put_s"),
+        put_at_i: f!("map_put_at_i"),
+        put_at_s: f!("map_put_at_s"),
+        put_at_s_lent: f!("map_put_at_s_lent"),
         store_value: f!("map_store"),
         store_h: f!("map_store_h"),
         value: f!("map_value"),
@@ -607,6 +613,135 @@ fn a_copied_map_owns_its_keys_and_values() {
         }
         rt.release
             .call(&mut rt.store, (copy, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// The entry a lookup gave, most of the time, or -1, or one that does not
+/// hold the key, which the compiler never gives.
+fn entry_given(random: &mut Random, found: i32, past: u64) -> i32 {
+    match random.next(4) {
+        0 => -1,
+        1 => i32::try_from(random.next(past)).unwrap_or(0),
+        _ => found,
+    }
+}
+
+/// `map_put_at_i`, given the entry a lookup found, or -1, or one that does
+/// not hold the key: every way, the map ends as `put` would leave it, and no
+/// block is left alive (decision 0017).
+#[test]
+fn a_set_given_its_entry_ends_as_a_set() {
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let mut random = Random(0x9e37_79b9_7f4a_7c15);
+        // Integer keys, one value each.
+        let m = rt
+            .map_new
+            .call(&mut rt.store, (0, 1))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let mut model = Model::default();
+        for _ in 0..3000 {
+            let key = i64::try_from(random.next(40)).unwrap_or(0);
+            let value = i64::try_from(random.next(1000)).unwrap_or(0);
+            let found = rt
+                .find_i
+                .call(&mut rt.store, (m, key))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let entry = entry_given(&mut random, found, 60);
+            if random.next(9) == 0 {
+                let removed = rt
+                    .delete_i
+                    .call(&mut rt.store, (m, key))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+                assert_eq!(removed == 1, model.delete(key));
+                continue;
+            }
+            let e = rt
+                .put_at_i
+                .call(&mut rt.store, (m, entry, key))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            rt.store_value
+                .call(&mut rt.store, (m, e, 0, value))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            model.put(key, value);
+            let again = rt
+                .find_i
+                .call(&mut rt.store, (m, key))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(again, e, "the entry given back is the key's");
+        }
+        let (keys, size) = rt.keys(m);
+        assert_eq!(keys, model.order, "insertion order");
+        assert_eq!(usize::try_from(size).unwrap_or(0), model.order.len());
+        rt.release
+            .call(&mut rt.store, (m, 0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// `map_put_at_s` and `map_put_at_s_lent`, string keys and string values,
+/// the same way.
+#[test]
+fn a_set_of_a_string_given_its_entry_ends_as_a_set() {
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let mut random = Random(0x9e37_79b9_7f4a_7c15);
+        let m = rt
+            .map_new
+            .call(&mut rt.store, (1, 1 | (1 << 8)))
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let mut texts: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        for round in 0..2000 {
+            let word = format!("k{}", random.next(30)).into_bytes();
+            let key = rt.string(&word);
+            let found = rt
+                .find_s
+                .call(&mut rt.store, (m, key))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let entry = entry_given(&mut random, found, 40);
+            let lent = random.next(2) == 0;
+            let e = if lent {
+                rt.put_at_s_lent
+                    .call(&mut rt.store, (m, entry, key))
+                    .unwrap_or_else(|e| unreachable!("{e}"))
+            } else {
+                rt.put_at_s
+                    .call(&mut rt.store, (m, entry, key))
+                    .unwrap_or_else(|e| unreachable!("{e}"))
+            };
+            if lent {
+                rt.release
+                    .call(&mut rt.store, (key, 0))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+            }
+            let value = format!("v{round}").into_bytes();
+            let h = rt.string(&value);
+            rt.store_h
+                .call(&mut rt.store, (m, e, 0, h))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            texts.insert(word, value);
+        }
+        for (word, want) in &texts {
+            let key = rt.string(word);
+            let e = rt
+                .find_s
+                .call(&mut rt.store, (m, key))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert!(e >= 0, "a key lost");
+            let got = rt
+                .value_h
+                .call(&mut rt.store, (m, e, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(&rt.text(got), want);
+            rt.release
+                .call(&mut rt.store, (key, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+        }
+        rt.release
+            .call(&mut rt.store, (m, 0))
             .unwrap_or_else(|e| unreachable!("{e}"));
         assert_eq!(rt.live_count(), 0, "blocks left alive");
     }

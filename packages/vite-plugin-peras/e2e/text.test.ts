@@ -29,6 +29,15 @@ interface Words {
   countUntil(text: string, stop: string): number;
   nestedLengths(text: string): number;
   charsOf(text: string): string;
+  countWords(text: string): string;
+  renumbered(n: number): number;
+  changedKey(): number;
+  putBetween(): number;
+  tallies(text: string, drop: string): string;
+  intTemplate(a: number, b: bigint): string;
+  tagOr(s: string): string;
+  tagOrGiven(s: string, fallback: string): string;
+  intOr(s: string): number;
   literalLength(): number;
   whichLiteral(s: string): number;
   literalKey(text: string): number;
@@ -130,6 +139,58 @@ describe("strings in JavaScript", () => {
           expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
           expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
         }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`looks a key up once where the map cannot have changed, and again where it can, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.countWords("a b a c b a")).toBe("3,2,1,");
+      expect(m.countWords("x")).toBe("1,");
+      // A delete then sets that grow the map renumber its entries.
+      for (const n of [0, 1, 5, 40]) expect(m.renumbered(n)).toBe(3);
+      expect(m.changedKey()).toBe(57);
+      expect(m.putBetween()).toBe(9);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`writes a template's integers as JavaScript does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const cases: [number, bigint][] = [
+        [0, 0n],
+        [-1, -1n],
+        [9, 10n],
+        [-10, 99n],
+        [2147483647, 9223372036854775807n],
+        [-2147483648, -9223372036854775808n],
+      ];
+      for (const [a, b] of cases) {
+        expect(m.intTemplate(a, b)).toBe(`${String(a)}|${String(b)}|${String(a)}${String(b)}:0`);
+      }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`changes a map's entry in place where it was just found, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.tallies("a bb a c bb a", "")).toBe("a=a:3,bb=bb:2,c=c:1,1#4,2#2,");
+      // A word deleted between the lookup and the set goes to the end.
+      expect(m.tallies("a bb a c bb a", "a")).toBe("bb=bb:2,c=c:1,a=a:3,1#4,2#2,");
+      expect(m.tallies("", "")).toBe("=:1,0#1,");
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`makes a quiet fallback of unwrapOr only when the option is empty, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.tagOr("abcd")).toBe("abcd:4");
+      expect(m.tagOr("ab")).toBe("none:-1");
+      expect(m.tagOrGiven("abcde", "x")).toBe("abcde:5");
+      expect(m.tagOrGiven("a", "given")).toBe("given:0");
+      expect(m.intOr("42")).toBe(42);
+      expect(m.intOr("4x")).toBe(-7);
+      for (let i = 0; i < 500; i++) m.tagOr(i % 2 === 0 ? "abc" : "z");
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

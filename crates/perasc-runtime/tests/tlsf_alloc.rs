@@ -43,6 +43,7 @@ struct Heap {
     live_bytes: TypedFunc<(), i32>,
     check_leaks: TypedFunc<(), ()>,
     end_fn: TypedFunc<(), i32>,
+    trim_fn: TypedFunc<(), ()>,
     buf_new: TypedFunc<(i32, i32, i32), i32>,
     buf_reserve: TypedFunc<(i32, i32, i32, i32), ()>,
     buf_release: TypedFunc<(i32, i32), ()>,
@@ -108,6 +109,7 @@ impl Heap {
             live_bytes: instance.get_typed_func(&store, "live_bytes")?,
             check_leaks: instance.get_typed_func(&store, "check_leaks")?,
             end_fn: instance.get_typed_func(&store, "heap_end")?,
+            trim_fn: instance.get_typed_func(&store, "trim")?,
             buf_new: instance.get_typed_func(&store, "buf_new")?,
             buf_reserve: instance.get_typed_func(&store, "buf_reserve")?,
             buf_release: instance.get_typed_func(&store, "buf_release")?,
@@ -171,6 +173,11 @@ impl Heap {
         let count = self.live_count.call(&mut self.store, ()).unwrap_or(-1);
         let bytes = self.live_bytes.call(&mut self.store, ()).unwrap_or(-1);
         (u(count), u(bytes))
+    }
+
+    /// Gives the small blocks kept for reuse back to the heap.
+    fn trim(&mut self) {
+        assert!(self.trim_fn.call(&mut self.store, ()).is_ok());
     }
 
     /// The first byte the heap's blocks do not use.
@@ -316,6 +323,8 @@ fn neighbours_merge_so_that_a_larger_block_fits_where_two_were() {
     assert_eq!(heap.release(c, 7), Ok(()));
     assert_eq!(heap.end(), a - 16 + 2016);
     assert_eq!(heap.release(big, 8), Ok(()));
+    // The small blocks kept for reuse given back, the heap is empty.
+    heap.trim();
     assert_eq!(heap.end(), HEAP_BASE);
     assert_eq!(heap.live(), (0, 0));
     assert_eq!(heap.check_leaks(), Ok(()));
@@ -391,6 +400,8 @@ fn buffers_grow_and_release_the_buffers_they_own() {
     }
     assert_eq!(heap.buf_release(outer), Ok(()));
     assert_eq!(heap.live(), (0, 0));
+    // The small blocks kept for reuse given back, the heap is empty.
+    heap.trim();
     assert_eq!(heap.end(), HEAP_BASE);
 }
 
@@ -466,6 +477,26 @@ fn a_random_run_matches_the_model_and_leaves_an_empty_heap() {
         assert_eq!(heap.release(ptr, 0), Ok(()));
     }
     assert_eq!(heap.live(), (0, 0));
+    // The small blocks kept for reuse given back, the heap is empty.
+    heap.trim();
     assert_eq!(heap.end(), HEAP_BASE);
     assert_eq!(heap.walk(), Vec::new());
+}
+
+#[test]
+fn a_small_block_released_is_given_to_the_next_allocation_of_its_size() {
+    let mut heap = heap();
+    let a = heap.alloc(40, 0).unwrap_or(0);
+    let b = heap.alloc(40, 0).unwrap_or(0);
+    assert_eq!(heap.release(a, 0), Ok(()));
+    // Kept, not free: alive no more, and given back first.
+    assert_eq!(heap.live().0, 1);
+    assert_eq!(heap.alloc(40, 0), Ok(a));
+    assert_eq!(heap.release(a, 0), Ok(()));
+    // Released twice while kept: caught.
+    assert_eq!(
+        heap.release(a, 0).map_err(|r| r.fault),
+        Err(Some(Fault::DoubleRelease))
+    );
+    let _ = b;
 }

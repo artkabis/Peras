@@ -22,6 +22,8 @@
 ;;   0 .. 1024       never used: address 0 is never a valid pointer
 ;;   1024 .. 1120    second-level bitmaps, one i32 per first level
 ;;   2048 .. 3584    free-list heads, 24 first levels * 16 classes
+;;   3584 .. 3648    heads of the blocks kept for reuse, one per size of 32 to 256
+;;   3648 .. 3712    how many each holds
 ;;   4096 ..         the heap, growing upward
 ;;
 ;; A block is a 16-byte header, then the user's bytes; the pointer given to
@@ -51,6 +53,16 @@
   (global $serial (mut i32) (i32.const 0))
   (global $live_count (mut i32) (i32.const 0))
   (global $live_bytes (mut i32) (i32.const 0))
+
+  ;; A small block released is kept for the next allocation of its size, the
+  ;; last kept the first given (decision 0016): a released block of 32 to 256
+  ;; bytes goes to the list of its size, at most 64 per size, marked KEPT. It
+  ;; is not free, so its neighbours do not merge with it; released again, it
+  ;; is caught. Allocating and releasing a small block then costs a few loads
+  ;; and stores, instead of a search of the free lists and a merge. `trim`
+  ;; gives the kept blocks back.
+  (global $KEPT i32 (i32.const 2))
+  (global $KEEP_MAX i32 (i32.const 64))
 
   ;; Fault kinds (see `Fault` in lib.rs).
   (global $OUT_OF_MEMORY i32 (i32.const 1))
@@ -181,7 +193,7 @@
 
   ;; Allocates `size` bytes; the pointer is 16-byte aligned.
   (func $alloc (export "alloc") (param $size i32) (param $site i32) (result i32)
-    (local $need i32) (local $block i32) (local $have i32) (local $rest i32)
+    (local $need i32) (local $block i32) (local $have i32) (local $rest i32) (local $kept i32)
     (if (i32.gt_u (local.get $size) (i32.const 0x40000000))
       (then (call $raise (global.get $TOO_LARGE) (local.get $size) (local.get $site) (i32.const 0))))
     ;; The user's bytes rounded up to 16, and the header; 32 bytes at least,
@@ -189,6 +201,23 @@
     (local.set $need (i32.add (i32.and (i32.add (local.get $size) (i32.const 15)) (i32.const -16)) (i32.const 16)))
     (if (i32.lt_u (local.get $need) (i32.const 32))
       (then (local.set $need (i32.const 32))))
+    ;; A block of this size kept from a release: given at once.
+    (if (i32.le_u (local.get $need) (i32.const 256))
+      (then
+        (local.set $kept (i32.add (i32.const 3584)
+          (i32.shl (i32.sub (i32.shr_u (local.get $need) (i32.const 4)) (i32.const 2)) (i32.const 2))))
+        (local.set $block (i32.load (local.get $kept)))
+        (if (local.get $block)
+          (then
+            (i32.store (local.get $kept) (i32.load offset=8 (local.get $block)))
+            (i32.store offset=64 (local.get $kept)
+              (i32.sub (i32.load offset=64 (local.get $kept)) (i32.const 1)))
+            (i32.store (local.get $block) (local.get $need))
+            (global.set $serial (i32.add (global.get $serial) (i32.const 1)))
+            (global.set $live_count (i32.add (global.get $live_count) (i32.const 1)))
+            (global.set $live_bytes (i32.add (global.get $live_bytes)
+              (i32.sub (local.get $need) (i32.const 16))))
+            (return (i32.add (local.get $block) (i32.const 16)))))))
     (local.set $block (call $find (local.get $need)))
     (if (local.get $block)
       (then
@@ -218,14 +247,14 @@
 
   ;; Releases the block at `ptr`, merged at once with its free neighbours.
   (func $release (export "release") (param $ptr i32) (param $site i32)
-    (local $block i32) (local $size i32) (local $next i32) (local $prev i32)
+    (local $block i32) (local $size i32) (local $kept i32)
     (if (i32.or (i32.or
           (i32.lt_u (local.get $ptr) (i32.const 4112))
           (i32.ge_u (local.get $ptr) (global.get $top)))
           (i32.and (local.get $ptr) (i32.const 15)))
       (then (call $raise (global.get $INVALID_RELEASE) (local.get $ptr) (i32.const 0) (local.get $site))))
     (local.set $block (i32.sub (local.get $ptr) (i32.const 16)))
-    (if (call $is_free (local.get $block))
+    (if (i32.and (i32.load (local.get $block)) (i32.or (i32.const 1) (global.get $KEPT)))
       (then (call $raise (global.get $DOUBLE_RELEASE) (local.get $ptr) (i32.const 0) (local.get $site))))
     (local.set $size (call $size (local.get $block)))
     (if (i32.or (i32.lt_u (local.get $size) (i32.const 32))
@@ -233,6 +262,25 @@
       (then (call $raise (global.get $INVALID_RELEASE) (local.get $ptr) (i32.const 0) (local.get $site))))
     (global.set $live_count (i32.sub (global.get $live_count) (i32.const 1)))
     (global.set $live_bytes (i32.sub (global.get $live_bytes) (i32.sub (local.get $size) (i32.const 16))))
+    ;; Small: kept for the next allocation of its size, while there is room.
+    (if (i32.le_u (local.get $size) (i32.const 256))
+      (then
+        (local.set $kept (i32.add (i32.const 3584)
+          (i32.shl (i32.sub (i32.shr_u (local.get $size) (i32.const 4)) (i32.const 2)) (i32.const 2))))
+        (if (i32.lt_u (i32.load offset=64 (local.get $kept)) (global.get $KEEP_MAX))
+          (then
+            (i32.store (local.get $block) (i32.or (local.get $size) (global.get $KEPT)))
+            (i32.store offset=8 (local.get $block) (i32.load (local.get $kept)))
+            (i32.store (local.get $kept) (local.get $block))
+            (i32.store offset=64 (local.get $kept)
+              (i32.add (i32.load offset=64 (local.get $kept)) (i32.const 1)))
+            (return)))))
+    (call $give_back (local.get $block) (local.get $size)))
+
+  ;; The block at `block`, of `size` bytes, made free, merged at once with its
+  ;; free neighbours.
+  (func $give_back (param $block i32) (param $size i32)
+    (local $next i32) (local $prev i32)
     ;; The free block after it.
     (local.set $next (i32.add (local.get $block) (local.get $size)))
     (if (i32.lt_u (local.get $next) (global.get $top))
@@ -258,6 +306,25 @@
         (return)))
     (i32.store offset=4 (i32.add (local.get $block) (local.get $size)) (local.get $block))
     (call $insert (local.get $block) (local.get $size)))
+
+  ;; Gives the blocks kept for reuse back to the heap, which shrinks to what
+  ;; is alive: what a release did before blocks were kept.
+  (func (export "trim")
+    (local $kept i32) (local $block i32)
+    (local.set $kept (i32.const 3584))
+    (block $done
+      (loop $class
+        (br_if $done (i32.ge_u (local.get $kept) (i32.const 3644)))
+        (block $empty
+          (loop $next
+            (local.set $block (i32.load (local.get $kept)))
+            (br_if $empty (i32.eqz (local.get $block)))
+            (i32.store (local.get $kept) (i32.load offset=8 (local.get $block)))
+            (call $give_back (local.get $block) (call $size (local.get $block)))
+            (br $next)))
+        (i32.store offset=64 (local.get $kept) (i32.const 0))
+        (local.set $kept (i32.add (local.get $kept) (i32.const 4)))
+        (br $class))))
 
   ;; @include buffers.wat
 

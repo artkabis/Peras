@@ -963,7 +963,12 @@ impl Lowering<'_> {
             at,
             Expr {
                 kind: ExprKind::Buf(
-                    BufOp::Runtime(crate::RuntimeFn::NextPart),
+                    // The characters: a step of its own, small (decision 0016).
+                    BufOp::Runtime(if characters {
+                        crate::RuntimeFn::NextChar
+                    } else {
+                        crate::RuntimeFn::NextPart
+                    }),
                     vec![source, sep, borrowed(cursor), at_expr.clone()],
                 ),
                 ty: Ty::I32,
