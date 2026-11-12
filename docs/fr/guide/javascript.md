@@ -14,16 +14,16 @@ Pour `geometry.peras` :
 
 ## Les types à la frontière
 
-| Peras                 | JavaScript                                                                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `i32`, `f32`, `f64`   | `number`                                                                                                                                   |
-| `i64`                 | `bigint`                                                                                                                                   |
-| `bool`                | `boolean`                                                                                                                                  |
-| une structure         | un simple objet, déclaré comme `interface`                                                                                                 |
-| `Option<T>`           | la valeur, ou `undefined`                                                                                                                  |
-| `Array<T>`            | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie                                                                  |
-| `String`              | une chaîne, copiée en UTF-8                                                                                                                |
-| `Map<K, V>`, `Set<K>` | une `Map` ou un `Set`, copiés dans l’ordre d’insertion, à l’entrée et à la sortie ; un `inout` reçoit en retour les entrées de la fonction |
+| Peras                 | JavaScript                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `i32`, `f32`, `f64`   | `number`                                                                                                                                    |
+| `i64`                 | `bigint`                                                                                                                                    |
+| `bool`                | `boolean`                                                                                                                                   |
+| une structure         | un simple objet, déclaré comme `interface`                                                                                                  |
+| `Option<T>`           | la valeur, ou `undefined`                                                                                                                   |
+| `Array<T>`            | un tableau, d’objets pour des structures, copié à l’entrée et à la sortie                                                                   |
+| `String`              | une chaîne, copiée en UTF-8 ; en paramètre, aussi un `Uint8Array` d’octets UTF-8, copiés tels quels ([plus bas](#le-texte-donné-en-octets)) |
+| `Map<K, V>`, `Set<K>` | une `Map` ou un `Set`, copiés dans l’ordre d’insertion, à l’entrée et à la sortie ; un `inout` reçoit en retour les entrées de la fonction  |
 
 ```peras build
 export struct Rect {
@@ -48,6 +48,22 @@ big({ width: 30, height: 4 }); // true
 ```
 
 Le chargeur convertit à la frontière : un objet passé en argument est copié champ par champ, si bien que Peras n’en garde jamais de référence, et que les modifications faites par Peras ne l’atteignent jamais. Un tableau est copié de la même façon, élément par élément ; seul un paramètre `inout` est recopié dans le tableau passé ([collections](collections.md#en-javascript)).
+
+## Le texte donné en octets
+
+Les données arrivent souvent en octets : le `arrayBuffer()` d’une réponse, un fichier, un message binaire. Un paramètre de type `String` prend de tels octets sous forme de `Uint8Array`, sans qu’aucune chaîne ne soit construite entre les deux ([décision 0020](../decisions/0020-text-as-bytes.md)) :
+
+```ts
+import { summarize } from "./dashboard.peras";
+
+const bytes = new Uint8Array(await (await fetch("/sales.csv")).arrayBuffer());
+const summary = summarize(bytes); // pas de TextDecoder, pas de chaîne JavaScript
+```
+
+- **Les octets doivent être de l’UTF-8.** Ils sont vérifiés comme les vérifie `new TextDecoder("utf-8", { fatal: true })`. Des octets qui ne sont pas de l’UTF-8 lèvent une `TypeError`, et rien ne reste alloué. Un décodeur non strict mettrait `\uFFFD` à leur place ; pour obtenir cela, décodez-les vous-même et passez la chaîne.
+- **Une marque d’ordre des octets au début est retirée,** comme un décodeur la retire. Un U+FEFF ailleurs est un caractère.
+- **Les octets sont copiés dans le module.** Changer le `Uint8Array` ensuite ne change rien dans Peras.
+- **Pour la mémoire.** Passer les octets épargne la chaîne JavaScript qu’un `TextDecoder` construirait, aussi grande que le texte, et le temps de la décoder puis de la réencoder. Dans le tableau de bord de la décision 0014, à 4 000 000 de lignes, le pic de mémoire de Peras est passé de 171,6 à 49,4 Mio.
 
 ## Des tableaux sans copie
 

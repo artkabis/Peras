@@ -62,6 +62,11 @@ Masmano, Ripoll, Crespo et Real, _TLSF: A New Dynamic Memory Allocator for Real-
 - **Montre** : une famille de fonctions pseudo-aléatoires rapides sur les entrées courtes, conçue pour les tables de hachage protégées contre l’inondation de hachage.
 - **Dans Peras** : les tables et les ensembles hachent avec SipHash-1-3 sous une clé tirée pour chaque instance ([décision 0005](decisions/0005-maps-and-sets.md)).
 
+**Des métadonnées à côté des cases.** Kulukundis, _Designing a Fast, Efficient, Cache-friendly Hash Table, Step by Step_, CppCon 2017 (les tables suisses d’Abseil).
+
+- **Montre** : une table de hachage qui garde quelques bits de chaque hachage à côté de ses cases, pour que la plupart des sondages se décident sans lire les entrées, en SIMD sur des groupes de cases.
+- **Dans Peras** : essayé pour les tables à clés de 32 bits, la clé gardée dans l’index ; 4 à 11 % plus rapide sur le tableau de bord à 4 000 000 de lignes, sous le critère enregistré, et retiré ([décision 0018](decisions/0018-large-maps.md)).
+
 ## Lire les données vite
 
 **Du texte décimal au flottant le plus proche.** Clinger, _How to Read Floating Point Numbers Accurately_, PLDI 1990 (p. 92–101).
@@ -79,6 +84,11 @@ Masmano, Ripoll, Crespo et Real, _TLSF: A New Dynamic Memory Allocator for Real-
 - **Montre** : un analyseur JSON qui valide et traite des gigaoctets par seconde sur un cœur, avec un quart ou moins des instructions d’un analyseur de référence, en utilisant largement les instructions SIMD.
 - **Dans Peras** : la voie pour chercher un séparateur 16 octets à la fois dans `split` ([décision 0016](decisions/0016-faster-from-the-literature.md)).
 
+**L’UTF-8 validé vite.** Keiser et Lemire, _Validating UTF-8 in less than one instruction per byte_, Software: Practice and Experience 51(5), 2021 ([DOI 10.1002/spe.2940](https://doi.org/10.1002/spe.2940)). La règle elle-même : le standard Unicode, chapitre 3, table 3-7, _Well-Formed UTF-8 Byte Sequences_.
+
+- **Montre** : l’UTF-8 validé en SIMD à moins d’une instruction par octet, le cas courant de l’ASCII le plus rapide.
+- **Dans Peras** : des octets donnés là où un `String` est attendu sont vérifiés par la table 3-7, seize octets ASCII à la fois ([décision 0020](decisions/0020-text-as-bytes.md)).
+
 ## Retirer le travail que le programme n’a pas demandé
 
 **Pas de liste intermédiaire.** Coutts, Leshchinskiy et Stewart, _Stream Fusion: From Lists to Streams to Nothing at All_, ICFP 2007 (p. 315–326).
@@ -89,7 +99,7 @@ Masmano, Ripoll, Crespo et Real, _TLSF: A New Dynamic Memory Allocator for Real-
 **Un calcul fait deux fois, fait une fois.** Morel et Renvoise, _Global Optimization by Suppression of Partial Redundancies_, Communications of the ACM 22(2), 1979.
 
 - **Montre** : l’élimination des redondances et la sortie des invariants de boucle traitées comme un seul problème, la suppression des calculs partiellement redondants, par analyse de flot de données.
-- **Dans Peras** : une seule recherche pour `has` ou `get` suivi de `get` ou `set` de la même clé (constat F210, [décision 0016](decisions/0016-faster-from-the-literature.md)).
+- **Dans Peras** : une seule recherche pour `has` ou `get` suivi de `get` ou `set` de la même clé (constat F210, [décision 0016](decisions/0016-faster-from-the-literature.md)) ; un `set` qui reçoit l’entrée trouvée par la recherche ([décision 0017](decisions/0017-aggregating-without-copies.md)).
 
 **Les objets qui ne s’échappent pas.** Choi, Gupta, Serrano, Sreedhar et Midkiff, _Escape Analysis for Java_, OOPSLA 1999.
 
@@ -105,6 +115,16 @@ Masmano, Ripoll, Crespo et Real, _TLSF: A New Dynamic Memory Allocator for Real-
 - **Montre** : un comptage de références précis qui ne garde que les données vivantes, prouvé sûr et sans déchets, dont l’analyse de réutilisation change du code fonctionnel en mises à jour sur place.
 - **Ne montre pas** : quoi que ce soit sur la possession de Peras, qui ne compte pas de références ; la réutilisation d’un bloc libéré juste avant une allocation de sa taille s’y applique tout de même.
 - **Dans Peras** : le tableau d’une boucle réutilisé d’une itération à l’autre (constat F208).
+
+**La réutilisation dans un cadre.** Lorenzen et Leijen, _Reference Counting with Frame Limited Reuse_, ICFP 2022.
+
+- **Montre** : une valeur défaite puis refaite comme une mise à jour de la même mémoire, la réutilisation limitée à ce que le cadre d’une fonction peut prouver.
+- **Dans Peras** : `let p = m.get(k).unwrapOr(…)`, des changements, puis `m.set(k, p)` : l’entrée lue là où elle est et mise à jour avec une seule recherche (constat F216, [décision 0017](decisions/0017-aggregating-without-copies.md)).
+
+**La déforestation.** Wadler, _Deforestation: Transforming Programs to Eliminate Trees_, Theoretical Computer Science 73(2), 1990, p. 231–248.
+
+- **Montre** : une transformation qui retire les structures intermédiaires qu’un programme ne construit que pour les consommer.
+- **Dans Peras** : les entiers d’un gabarit écrits dans sa chaîne sans chaîne à eux ([décision 0017](decisions/0017-aggregating-without-copies.md)) ; une clé construite seulement pour être cherchée ne l’est pas encore.
 
 ## Les flottants en texte
 

@@ -54,8 +54,9 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 
 What a program can rely on, and what it cannot yet; the details and their evidence are in the findings and in [the status](docs/en/reference/status.md).
 
-- `Option`: `isSome()`, `isNone()`, `unwrapOr(x)` (always evaluates `x`), and `?`. No `unwrap`, no `let … else`; a `match` whose arm leaves a loop gives no value (F101, F104, F105).
+- `Option`: `isSome()`, `isNone()`, `unwrapOr(x)` (evaluates `x` whenever doing so can be seen; a quiet fallback, literals, reads and copies, is made only when needed: F209), and `?`. No `unwrap`, no `let … else`; a `match` whose arm leaves a loop gives no value (F101, F104, F105).
 - Structures have no `copy()` (F102). An argument moved is not readable by a later argument of the same call (F103).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).
 - Integers: `i32` and `i64` compiled; `i8`, `i16`, `u8`, `u16`, `u32`, `u64` checked only (F302).
-- Slow: `parseI32`, maps keyed by strings built per row (F201, F202). Fast: `split`, sorts by a key.
+- A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).
+- Slow: adding to a large `Set` (F215), a key built per row only to be looked up (F202). Fast: `split`, sorts by a key, `get` then `set` of one key (F216).
