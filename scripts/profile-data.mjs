@@ -83,6 +83,12 @@ const countryBlock = `    if (!countries.has(country)) {
     users[countries.get(country).unwrapOr(0)].add(user);
 `;
 
+/** The lines parsed and filtered, nothing aggregated. @type {[string, string]} */
+const parseOnly = [
+  "    kept += 1;\n",
+  "    kept += 1;\n    if (kept > 0) {\n      continue;\n    }\n",
+];
+
 /** Each variant: its name, what it shows, and its replacements. @type {[string, string, [string, string][]][]} */
 const variants = [
   ["full", "the dashboard as written", []],
@@ -105,6 +111,37 @@ const variants = [
     "parse-only",
     "the lines parsed and filtered, nothing aggregated",
     [["    kept += 1;\n", "    kept += 1;\n    if (kept > 0) {\n      continue;\n    }\n"]],
+  ],
+  // The reading alone, each variant on top of parse-only: what a variant
+  // changes in which rows are kept changes nothing after the filter.
+  [
+    "parse-no-ints",
+    "parse-only, the five integers their lengths, not parsed",
+    [
+      parseOnly,
+      [
+        "Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?)",
+        "Row(f[0].length, f[1].length, f[2].copy(), f[3].length, f[4].length, f[5].length)",
+      ],
+    ],
+  ],
+  [
+    "parse-no-check",
+    "parse-only, without the check of the country's letters",
+    [parseOnly, ["  if (f.length != 6 || !isCountry(f[2])) {", "  if (f.length != 6) {"]],
+  ],
+  [
+    "parse-no-split",
+    "parse-only, parse returns a row made of the line's length, no split",
+    [
+      parseOnly,
+      ['  const f = line.split(",");\n', ""],
+      [
+        "  if (f.length != 6 || !isCountry(f[2])) {\n    return None;\n  }\n  return Some(Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?));",
+        '  if (line.length == 0) {\n    return None;\n  }\n  return Some(Row(line.length, 1, "FR", 2, 3, 1));',
+      ],
+      ["fn isCountry(", "export fn isCountry("],
+    ],
   ],
   [
     "no-country-check",

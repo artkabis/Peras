@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0017-aggregating-without-copies.md](../../fr/decisions/0017-aggregating-without-copies.md)._
 
-_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2`, step 3 at `a497971` (see [Measured after step 1](#measured-after-step-1), [after step 2](#measured-after-step-2) and [after step 3](#measured-after-step-3)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
+_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2`, step 3 at `a497971`; step 4 examined and not done (see [Step 4, examined](#step-4-examined-not-done) and [Measured after step 1](#measured-after-step-1), [after step 2](#measured-after-step-2) and [after step 3](#measured-after-step-3)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
 
 ## Context
 
@@ -147,3 +147,19 @@ So every template does one allocation and one release fewer for each of its inte
 **The gain: 1.3 to 7.4 %, less than the profile gave.** `node scripts/ab-data.mjs f989a03 a497971` gave a median before / after of 1.074, 1.034 and 1.013 over three runs, the same summaries.
 
 The variant had changed two things, which is finding M013 again. Without the category, the map held one key per country instead of up to twelve: a smaller map, more often in the cache. The 25 ms were the integer's cost and the smaller map's together, and only the first is what this step removes. Technique 2, the key not built at all, is not pursued now. The key is built once per row kept, and building it is now one allocation.
+
+## Step 4, examined: not done
+
+Step 4 rested on a claim this decision made without reading the runtime: "`parseI32` asks the runtime whether the text is an integer, then asks it for the integer: two passes over the same bytes." That is not what the runtime does. Since finding F201, `str_is_int` reads the value in the same pass that checks it, and keeps it in a global. `str_parse_int` only returns that global, a call the engine inlines now that the runtime is linked into the module. So the step would have removed almost nothing, and it was not built (finding M019).
+
+What the reading costs was measured instead, by removal. `node scripts/profile-data.mjs` gains variants on top of `parse-only`, where nothing after the filter runs, so a variant that changes which rows are kept changes nothing else. The figures are for 1,000,000 rows, in one run, at commit `ad8803f`.
+
+| The reading, with one thing removed         | Time   | What it costs |
+| ------------------------------------------- | ------ | ------------- |
+| Parsed and filtered, nothing aggregated     | 135 ms |               |
+| The five integers their lengths, not parsed | 102 ms | about 33 ms   |
+| Without the check of the country's letters  | 114 ms | about 21 ms   |
+| No split: a row made of the line's length   | 47 ms  | about 88 ms   |
+| The walk over the lines alone               | 21 ms  |               |
+
+The five integers cost about 6.6 ns each. The split into views and the copy of the country cost about 34 ms, the check of the letters about 21. None of these is large alone. The step that would remove them together is the one technique 4 led to in the profile of the optimized TypeScript: reading the fields of a line straight from its bytes, without its views, as B does (Langdale and Lemire, 2019).
