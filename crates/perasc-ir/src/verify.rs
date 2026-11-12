@@ -300,6 +300,7 @@ impl<'a> Verifier<'a> {
 
     fn stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::SetGlobal(global, value) => self.set_global(*global, value),
             Stmt::Set(local, value) => {
                 match self.local_type(local.0) {
                     Some(Ty::Owned) => self.handed_over(value),
@@ -455,6 +456,30 @@ impl<'a> Verifier<'a> {
         Some(callee)
     }
 
+    /// `variable = value`: a value of the variable's type.
+    fn set_global(&mut self, global: crate::GlobalId, value: &Expr) {
+        self.expr(value);
+        match self.global_type(global) {
+            Some(ty) if ty == value.ty => {}
+            Some(ty) => self.problem(&format!(
+                "module variable #{} is {} but receives {}",
+                global.0,
+                ty.name(),
+                value.ty.name()
+            )),
+            None => self.problem(&format!("module variable #{} does not exist", global.0)),
+        }
+    }
+
+    /// The type of a module variable, a number or a boolean (decision 0023).
+    fn global_type(&self, global: crate::GlobalId) -> Option<Ty> {
+        let ty = usize::try_from(global.0)
+            .ok()
+            .and_then(|i| self.module.globals.get(i))?
+            .ty;
+        (ty.is_int() || ty.is_float() || ty == Ty::Bool).then_some(ty)
+    }
+
     fn condition(&mut self, cond: &Expr) {
         self.expr(cond);
         if cond.ty != Ty::Bool {
@@ -472,6 +497,11 @@ impl<'a> Verifier<'a> {
                 };
                 if !fits {
                     self.problem(&format!("constant {c:?} typed {}", e.ty.name()));
+                }
+            }
+            ExprKind::Global(global) => {
+                if self.global_type(*global) != Some(e.ty) {
+                    self.problem(&format!("module variable #{} read as {}", global.0, e.ty.name()));
                 }
             }
             ExprKind::Local(local) => {

@@ -1,0 +1,10 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/E0900-module-variable.peras
+---
+diagnostics:
+  error[E0900] gen-unsupported { feature: "global-heap" }
+    primary 3:5-3:9: gen-unsupported-label { feature: "global-heap" }
+    cause: gen-unsupported-why
+    fix: gen-unsupported-fix

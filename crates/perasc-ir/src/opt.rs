@@ -101,8 +101,10 @@ pub fn is_simple(e: &Expr) -> bool {
         ExprKind::Binary(op, a, b) => {
             !matches!(op, BinOp::Div | BinOp::Rem) && is_simple(a) && is_simple(b)
         }
-        // A call, an allocation or a change of owner is never moved.
-        ExprKind::Call(..)
+        // A call, an allocation or a change of owner is never moved, nor a
+        // read of a module variable, which a call may change (decision 0023).
+        ExprKind::Global(_)
+        | ExprKind::Call(..)
         | ExprKind::Alloc(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
@@ -347,7 +349,7 @@ fn self_call_args<'a>(stmts: &'a [Stmt], id: FnId, ret: Ty, out: &mut Vec<&'a [E
 /// Whether an expression reads a local.
 fn reads(e: &Expr, target: LocalId) -> bool {
     match &e.kind {
-        ExprKind::Const(_) => false,
+        ExprKind::Const(_) | ExprKind::Global(_) => false,
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => *l == target,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)

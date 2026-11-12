@@ -1,0 +1,51 @@
+// Module variables (decision 0023): a counter, a float sum, a flag and a
+// structure, each kept from one call from JavaScript to the next.
+const START = 10;
+
+struct Point {
+  x: i32;
+  y: f64;
+}
+
+let count = START * 2;
+let total = 0.5;
+let on = false;
+let origin = Point(1, 2.5);
+
+export fn bump(): i32 {
+  count += 1;
+  count++;
+  return count;
+}
+
+export fn add(x: f64): f64 {
+  total = total + x;
+  return total;
+}
+
+export fn toggle(): bool {
+  on = !on;
+  return on;
+}
+
+// Assigned whole, its fields swapped, then by field.
+export fn swap(): f64 {
+  origin = Point(origin.y.toI32(), origin.x.toF64());
+  origin.x += 10;
+  return origin.x.toF64() + origin.y;
+}
+
+// A loop that calls a function changing a variable it reads.
+fn bumped(): i32 {
+  count += 3;
+  return count;
+}
+
+export fn twice(n: i32): i32 {
+  let seen = 0;
+  for (let i = 0; i < n; i++) {
+    const before = count;
+    seen += bumped() - before;
+  }
+  return seen + count;
+}

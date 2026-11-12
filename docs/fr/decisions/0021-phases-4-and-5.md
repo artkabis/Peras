@@ -77,3 +77,5 @@ _Chaque étape est consignée ici quand elle arrive._
 - **Trouvé en chemin.** Le vectoriseur additionnait ses comptes de lectures en faisant le tour (F219), et une fonction fléchée d’un module managed qui construit une structure était écrite comme un bloc ; les deux corrigés, chacun avec un test qui échoue sans le correctif.
 
 **Étape 3, `import` et `export` entre modules `.peras` : arrivée** pour les fonctions, structures et énumérations non génériques, comme la [décision 0022](0022-owned-modules.md) l’a conçue et le consigne.
+
+**Étape 4, le `let` de module (F306) : arrivé** pour les nombres, les booléens, et les structures, énumérations et options de ceux-ci, comme la [décision 0023](0023-module-variables.md) l’a conçu et le consigne. `u8` à `u64` (F302), un champ déplacé hors d’une structure (F214) et une fonction comme valeur (F308) suivent.

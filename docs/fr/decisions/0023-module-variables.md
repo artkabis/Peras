@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0023-module-variables.md](../../en/decisions/0023-module-variables.md)._
 
-_État : proposée le 2026-11-12, avec ses critères enregistrés avant tout code ; étape 4 de la [décision 0021](0021-phases-4-and-5.md), constat F306._
+_État : proposée le 2026-11-12, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour ; construite, ses critères tenus (voir [Registre](#registre)) ; étape 4 de la [décision 0021](0021-phases-4-and-5.md), constat F306._
 
 ## Contexte
 
@@ -46,3 +46,20 @@ L’étape n’arrive qu’avec tous ceux-ci, en plus des [critères de la déci
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+**Les variables de module de nombres et de booléens : arrivées.**
+
+- **Ce qui a changé.**
+  - L’IR gagne `Global`, une lecture, et `SetGlobal`, une écriture, et le module une liste de ses variables, chacune avec son type et sa valeur initiale constante. En WebAssembly, chacune est un global mutable ; dans le backend Rust, une cellule de son thread, sans `unsafe` ; dans l’interpréteur, une valeur de la machine.
+  - La valeur initiale est abaissée, puis exécutée par l’interpréteur de l’IR, pour que son arithmétique, dépassements compris, soit celle du module. Le vérificateur la tient à la règle des constantes de module (`E0233`) dans un module owned.
+  - Chaque passe a été lue pour ce qu’une variable de module change. `is_simple` tient une lecture pour jamais déplaçable, donc ni la sortie des invariants des boucles ni le déroulement de la récursion ne la font passer un appel. Le vectoriseur refuse une boucle qui en lit ou en écrit une. Le vérificateur de la release refuse un bloc rangé dans une.
+  - Une variable refusée là où elle est déclarée reste connue, pour que ses usages ne répètent pas la cause.
+- **Les tests, critère par critère.**
+  1. `globals.test.ts`, sur les deux allocateurs : un compteur, une somme flottante, un drapeau, une structure affectée en entier (ses champs échangés) et par champ, et une boucle qui appelle une fonction changeant une variable qu’elle lit, contre le même module en JavaScript ; une seconde instance repart des valeurs initiales.
+  2. Tests UI : une chaîne dans une variable de module (`E0900`, `global-heap`), une valeur initiale qui appelle une fonction (`E0233`), une `parallel for` qui en lit une (`E0241`, `global`). Le test des constructions non prises en charge de l’IR couvre une variable passée en `inout` (`global-inout`).
+  3. Le test différentiel gagne `tally`, changé par `bumped`, qu’une boucle de `spun`, une fonction qui n’utilise pas de mémoire, appelle entre deux lectures. Il passe 2 000 graines, la version en deux fichiers comprise. Laisser exprès une lecture de variable de module sortir de sa boucle le fait échouer à la graine 6.
+  4. Les deux backends : les mêmes appels, construits par `perasc build --backend rust` et par le backend direct, ont donné les mêmes résultats, `22 24 1.75 2.75 true false 13 23`. C’était fait à la main : le job « backends agree » de la CI mesure `bench/backends/kernels.peras`, qui n’a pas de variable de module, et un test qui lance `cargo` et `wasm-bindgen` serait une étape à part. Un test unitaire tient le Rust que le backend écrit pour elles, sans `unsafe`.
+  5. La page des valeurs du guide gagne les variables de module ; l’état, `E0241`, `E0900` et `E0233` sont mis à jour.
+- **Écarts au texte ci-dessus.**
+  - Une `parallel for` qui lit ou écrit une variable de module est refusée avec `E0241`, raison `global`, là où l’est tout refus d’une boucle parallèle, plutôt qu’avec `E0900` comme écrit plus haut. Son message dit pourquoi : chaque thread a sa propre copie.
+  - Une variable de module passée en `inout` est refusée (`E0900`, `global-inout`), un cas que le texte ci-dessus ne nommait pas.

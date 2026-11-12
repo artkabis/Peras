@@ -25,8 +25,8 @@ use perasc_syntax::ast::{
 };
 
 use crate::{
-    BinOp, Const, Expr, ExprKind, FnId, Function, JsShape, Local, LocalId, MathOp, Module, Stmt,
-    Ty, UnOp,
+    BinOp, Const, Expr, ExprKind, FnId, Function, GlobalId, JsShape, Local, LocalId, MathOp,
+    Module, Stmt, Ty, UnOp,
 };
 
 /// Lowers a checked module to the IR, or reports what code generation does not support yet.
@@ -88,6 +88,8 @@ struct Names {
     /// Its exported functions that are not generic, as other units import
     /// them.
     exported: HashMap<String, FnId>,
+    /// Its module variables: one global per scalar (decision 0023).
+    globals: HashMap<Symbol, Vec<GlobalId>>,
 }
 
 /// Lowers the files of a build into one module ([decision 0022]): each file
@@ -107,6 +109,7 @@ pub fn lower_units(
     let Some(first) = units.first() else {
         return Ok(Module {
             functions: Vec::new(),
+            globals: Vec::new(),
             data: Vec::new(),
         });
     };
@@ -116,6 +119,8 @@ pub fn lower_units(
         ast: first.ast,
         analysis: first.analysis,
         root: true,
+        globals: HashMap::new(),
+        module_globals: Vec::new(),
         fns: HashMap::new(),
         by_index: HashMap::new(),
         constants: HashMap::new(),
@@ -160,6 +165,7 @@ pub fn lower_units(
     if failed.is_empty() {
         Ok(Module {
             functions,
+            globals: lowering.module_globals,
             data: lowering.data,
         })
     } else {
@@ -254,11 +260,21 @@ impl<'a> Lowering<'a> {
                     Some(init) if !local.mutable => {
                         self.constants.insert(local.name.symbol, init);
                     }
+                    _ if local.mutable => {}
                     _ => self.unsupported(local.name.span, "global"),
                 }
             }
         }
+        // Module variables, whose initial values may name the constants.
+        for item in &unit.ast.items {
+            if let ItemKind::Global(local) = &item.kind
+                && local.mutable
+            {
+                self.module_variable(local);
+            }
+        }
         table.constants = std::mem::take(&mut self.constants);
+        table.globals = std::mem::take(&mut self.globals);
         table
     }
 
@@ -308,6 +324,171 @@ impl<'a> Lowering<'a> {
         functions
     }
 
+    /// A module-level `let`: one global per scalar, its initial value
+    /// computed here, as the module computes it (decision 0023). A string, an
+    /// array, a map or a set in one is not compiled yet.
+    fn module_variable(&mut self, local: &perasc_syntax::ast::Local) {
+        let span = local.name.span;
+        // Known even when refused: its uses do not report the cause again.
+        self.globals.insert(local.name.symbol, Vec::new());
+        let Some(init) = local.init else {
+            self.unsupported(span, "global");
+            return;
+        };
+        let ty = match &local.ty {
+            Some(t) => self.typed(t),
+            None => self.check_type(init),
+        };
+        let Some(ty) = ty else {
+            return;
+        };
+        let leaves = match self.leaves(&ty) {
+            Ok(leaves) => leaves,
+            Err(feature) => {
+                self.unsupported(span, feature);
+                return;
+            }
+        };
+        if leaves
+            .iter()
+            .any(|(_, t)| !(t.is_int() || t.is_float() || *t == Ty::Bool))
+        {
+            self.unsupported(span, "global-heap");
+            return;
+        }
+        // The initial value, a constant: lowered, then run by the
+        // interpreter, so that its arithmetic is the module's.
+        let mut state = FnState::new();
+        let values = self.value(&mut state, init);
+        let pre = std::mem::take(&mut state.pre);
+        let name = self.ast.name(local.name.symbol).to_owned();
+        let mut ids = Vec::with_capacity(leaves.len());
+        for ((path, leaf), value) in leaves.iter().zip(values) {
+            let mut body = pre.clone();
+            body.push(Stmt::Return(Some(value)));
+            let function = Function {
+                name: "init".to_owned(),
+                exported: false,
+                job: false,
+                param_count: 0,
+                locals: state.locals.clone(),
+                ret: *leaf,
+                more: Vec::new(),
+                shape: None,
+                body,
+            };
+            let module = Module {
+                functions: vec![function],
+                globals: self.module_globals.clone(),
+                data: self.data.clone(),
+            };
+            let init = match crate::interp::run(&module, FnId(0), &[]) {
+                Ok(crate::interp::Value::I32(v)) => Const::Int(i64::from(v)),
+                Ok(crate::interp::Value::I64(v)) => Const::Int(v),
+                Ok(crate::interp::Value::F32(v)) => Const::Float(f64::from(v)),
+                Ok(crate::interp::Value::F64(v)) => Const::Float(v),
+                Ok(crate::interp::Value::Bool(v)) => Const::Bool(v),
+                _ => {
+                    self.unsupported(span, "global-init");
+                    return;
+                }
+            };
+            ids.push(GlobalId(
+                u32::try_from(self.module_globals.len()).unwrap_or(u32::MAX),
+            ));
+            self.module_globals.push(crate::Global {
+                name: if path.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{name}_{path}")
+                },
+                ty: *leaf,
+                init,
+            });
+        }
+        self.globals.insert(local.name.symbol, ids);
+    }
+
+    /// A read of module variable `id`.
+    fn global_expr(&self, id: GlobalId) -> Expr {
+        let ty = usize::try_from(id.0)
+            .ok()
+            .and_then(|i| self.module_globals.get(i))
+            .map_or(Ty::Void, |g| g.ty);
+        Expr {
+            kind: ExprKind::Global(id),
+            ty,
+        }
+    }
+
+    /// The globals an assignment or increment writes: a module variable, or
+    /// a field of one; `None` when the target is not one.
+    fn global_place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<GlobalId>> {
+        match &self.ast.expr(target).kind {
+            AstExpr::Name(symbol) if state.lookup(*symbol).is_none() => {
+                self.globals.get(symbol).cloned()
+            }
+            AstExpr::Paren(inner) => self.global_place(state, *inner),
+            AstExpr::Field { base, name } => {
+                let globals = self.global_place(state, *base)?;
+                let base_ty = self.check_type(*base)?;
+                let (offset, len, _) = self.field(&base_ty, self.ast.name(name.symbol))?;
+                Some(globals.into_iter().skip(offset).take(len).collect())
+            }
+            _ => None,
+        }
+    }
+
+    /// `target = value` or `target op= value` on a module variable: every
+    /// value computed before any is written, so that `p = P(p.y, p.x)` swaps.
+    fn assign_globals(
+        &mut self,
+        state: &mut FnState,
+        globals: &[GlobalId],
+        op: AssignOp,
+        value: ExprId,
+        out: &mut Vec<Stmt>,
+    ) {
+        let values = self.value(state, value);
+        state.flush(out);
+        if let (Some(op), [global], [value]) = (assign_op(op), globals, values.as_slice()) {
+            let current = self.global_expr(*global);
+            let value = self.arith(state, op, current, value.clone());
+            state.flush(out);
+            out.push(Stmt::SetGlobal(*global, value));
+            return;
+        }
+        let held: Vec<Expr> = values
+            .into_iter()
+            .map(|v| {
+                let temp = state.temp(v.ty);
+                out.push(Stmt::Set(temp, v));
+                local_expr(state, temp)
+            })
+            .collect();
+        for (global, value) in globals.iter().zip(held) {
+            out.push(Stmt::SetGlobal(*global, value));
+        }
+    }
+
+    /// `variable++` or `variable--` on a module variable of one scalar.
+    fn step_global(
+        &mut self,
+        state: &mut FnState,
+        globals: &[GlobalId],
+        op: BinOp,
+        out: &mut Vec<Stmt>,
+    ) {
+        let Some(&global) = globals.first() else {
+            return;
+        };
+        let current = self.global_expr(global);
+        let one = one(current.ty);
+        let value = self.arith(state, op, current, one);
+        state.flush(out);
+        out.push(Stmt::SetGlobal(global, value));
+    }
+
     /// Makes `unit` the one being lowered, with its names.
     fn enter(&mut self, unit: &Unit<'a>, names: &Names, root: bool) {
         self.ast = unit.ast;
@@ -316,6 +497,7 @@ impl<'a> Lowering<'a> {
         self.fns.clone_from(&names.fns);
         self.by_index.clone_from(&names.by_index);
         self.constants.clone_from(&names.constants);
+        self.globals.clone_from(&names.globals);
         self.generic.clone_from(&names.generic);
         self.instances.clone_from(&names.instances);
     }
@@ -327,6 +509,11 @@ struct Lowering<'a> {
     /// The unit being lowered is the root of the build: its exported
     /// functions are JavaScript's (decision 0022).
     root: bool,
+    /// The module variables of the unit being lowered, by name: one global
+    /// per scalar (decision 0023).
+    globals: HashMap<Symbol, Vec<GlobalId>>,
+    /// Every module variable of the build, by its [`GlobalId`].
+    module_globals: Vec<crate::Global>,
     ast: &'a Ast,
     analysis: &'a Analysis,
     /// The name of the function being lowered, which its jobs carry.
@@ -571,6 +758,14 @@ impl Lowering<'_> {
     /// A name that is not a local: a module constant, or `E0900` for a
     /// function used as a value or a module variable.
     fn not_a_local(&mut self, state: &mut FnState, symbol: Symbol, span: Span, ty: Ty) -> Expr {
+        // A module variable of one scalar (decision 0023); one refused where
+        // it is declared reads as zero, reported once.
+        if let Some(globals) = self.globals.get(&symbol) {
+            return match globals.as_slice() {
+                [global] => self.global_expr(*global),
+                _ => zero(ty),
+            };
+        }
         // A constant: its value, lowered here.
         if let Some(&init) = self.constants.get(&symbol) {
             return self.expr(state, init);
@@ -965,6 +1160,15 @@ impl Lowering<'_> {
                 self.index_assign(state, *target, Some(op), None, out);
             }
             StmtKind::Step { target, op } => {
+                if let Some(globals) = self.global_place(state, *target) {
+                    let op = if *op == StepOp::Increment {
+                        BinOp::Add
+                    } else {
+                        BinOp::Sub
+                    };
+                    self.step_global(state, &globals, op, out);
+                    return;
+                }
                 let Some(locals) = self.place(state, *target) else {
                     return;
                 };
@@ -1223,6 +1427,10 @@ impl Lowering<'_> {
             self.append(state, target, value, out);
             return;
         }
+        if let Some(globals) = self.global_place(state, target) {
+            self.assign_globals(state, &globals, op, value, out);
+            return;
+        }
         let Some(locals) = self.place(state, target) else {
             return;
         };
@@ -1281,6 +1489,14 @@ impl Lowering<'_> {
     pub(super) fn place(&mut self, state: &FnState, target: ExprId) -> Option<Vec<LocalId>> {
         let expr = self.ast.expr(target);
         match &expr.kind {
+            // A module variable is assigned by `global_place`; passed `inout`,
+            // it is not compiled yet (decision 0023).
+            AstExpr::Name(symbol)
+                if state.lookup(*symbol).is_none() && self.globals.contains_key(symbol) =>
+            {
+                self.unsupported(expr.span, "global-inout");
+                None
+            }
             AstExpr::Name(symbol) => match state.lookup(*symbol)? {
                 Binding::Scalar(local) => Some(vec![local]),
                 Binding::Struct(locals) => Some(locals),

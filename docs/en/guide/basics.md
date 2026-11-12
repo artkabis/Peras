@@ -40,7 +40,31 @@ export fn describe(): i32 {
 }
 ```
 
-A module `let`, a variable shared by all functions, is checked but not compiled yet. <span class="status checked">checked</span>
+## Module variables
+
+A `let` outside any function is a module variable: the module's functions share it, and it keeps its value from one call to the next, for as long as the module's instance lives ([decision 0023](../decisions/0023-module-variables.md)). In an owned module, its initial value is a constant, as a module constant's is ([E0233](../errors/E0233.md)): it is set before any call, and no code runs when the module loads. <span class="status compiled">compiled</span>
+
+```peras build
+const START: i32 = 10;
+
+struct Point {
+  x: i32;
+  y: f64;
+}
+
+let count = START;
+let origin = Point(0, 0.5);
+
+export fn next(): i32 {
+  count++;
+  origin.x += count;
+  return origin.x;
+}
+```
+
+- It holds numbers and booleans, or structures, enumerations and options of them. One holding a string, an array, a map or a set is checked but not compiled yet ([E0900](../errors/E0900.md)), nor one passed `inout`.
+- A `parallel for` cannot read or write one: each thread has its own copy ([E0241](../errors/E0241.md)).
+- Two pages, or two workers, each load their own instance of the module, so each has its own values. A managed module's `let` is a JavaScript `let`.
 
 ## Numbers
 

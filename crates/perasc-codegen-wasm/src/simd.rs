@@ -323,7 +323,7 @@ fn first_get(e: &Expr) -> Option<Ty> {
 fn reads_any(e: &Expr, locals: &[LocalId]) -> bool {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => locals.contains(l),
-        ExprKind::Const(_) => false,
+        ExprKind::Const(_) | ExprKind::Global(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
@@ -390,7 +390,7 @@ fn saturating_sum(counts: impl Iterator<Item = usize>) -> usize {
 fn count_reads(e: &Expr, local: LocalId) -> usize {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => usize::from(*l == local),
-        ExprKind::Const(_) => 0,
+        ExprKind::Const(_) | ExprKind::Global(_) => 0,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)

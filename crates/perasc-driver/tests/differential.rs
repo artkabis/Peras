@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 34 } else { 35 };
+    let choices = if depth == 0 { 35 } else { 36 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -130,6 +130,10 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // `copy()` of structures: one a loop over a map lends, one read
         // out of it, changed without changing the map.
         33 => format!("for (const e of pairs) {{ let c = e.1.copy(); c.name += \"q\"; acc += c.name.length + c.count; }} let d = pairs.get({k}).unwrapOr(Pair(\"d\", 2)).copy(); d.count += 1; acc += d.count;"),
+        // A module variable, which a call changes: a value read before the
+        // call is not the value after it (decision 0023).
+        // `spun` uses no memory: the optimizations run on its loop.
+        34 => "for (let j = 0; j < 3; j++) { const before = tally; acc += bumped(j + i) - before % 50; } if (tally % 2 == 0) { tally += 1; } acc += tally % 7 + spun(i);".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -170,6 +174,22 @@ fn made(i: i32): Pair {{
   return Pair(\"m\", i % 4);
 }}
 
+let tally = 0;
+
+fn bumped(i: i32): i32 {{
+  tally += i % 3 + 1;
+  return tally % 50;
+}}
+
+fn spun(n: i32): i32 {{
+  let total = 0;
+  for (let j = 0; j < n % 5 + 1; j++) {{
+    const before = tally;
+    total += bumped(j) - before % 50;
+  }}
+  return total;
+}}
+
 export fn f(n: i32): i32 {{
   let m: Map<String, i32> = Map.new();
   let pairs: Map<String, Pair> = Map.new();
@@ -192,7 +212,7 @@ export fn f(n: i32): i32 {{
   for (const x of ids) {{
     acc = (acc + x % 1000) % 100003;
   }}
-  return acc + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
+  return acc + tally % 1000 + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
 }}
 "
     )

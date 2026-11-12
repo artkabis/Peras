@@ -333,6 +333,9 @@ impl Lowering<'_> {
                         .collect()
                 } else if let Some(super::Binding::Lent(values)) = state.lookup(*symbol) {
                     values
+                } else if let Some(globals) = self.globals.get(symbol).cloned() {
+                    // A module variable: its scalars, read (decision 0023).
+                    globals.into_iter().map(|g| self.global_expr(g)).collect()
                 } else if let Some(&init) = self.constants.get(symbol) {
                     // A constant: its value, made here.
                     self.value_as(state, init, mode)
@@ -1286,7 +1289,7 @@ fn force(state: &mut FnState, value: Expr) -> Expr {
 fn reads(e: &Expr, local: LocalId) -> bool {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => *l == local,
-        ExprKind::Const(_) => false,
+        ExprKind::Const(_) | ExprKind::Global(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)

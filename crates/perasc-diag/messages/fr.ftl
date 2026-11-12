@@ -587,9 +587,9 @@ check-alias-cycle-why = Un alias est un autre nom pour un type : le remplacer pa
 check-alias-cycle-fix = fais-en une structure ou une énumération
 
 # E0233
-check-not-constant = la valeur d’une constante de module doit être connue à la compilation
+check-not-constant = la valeur d’une constante de module, ou la valeur initiale d’une variable de module dans un module owned, doit être connue à la compilation
 check-not-constant-label = calculé quand le programme s’exécute
-check-not-constant-why = Une `const` de module est écrite dans le code partout où elle sert : sa valeur est faite de littéraux, d’autres constantes, d’opérateurs, de tableaux, de tuples, de structures, d’options et de variantes. Un appel ne s’exécute que quand le programme tourne.
+check-not-constant-why = Une `const` de module est écrite dans le code partout où elle sert, et un `let` de module d’un module owned est posé avant tout appel (décision 0023) : leurs valeurs sont faites de littéraux, d’autres constantes, d’opérateurs, de tableaux, de tuples, de structures, d’options et de variantes. Un appel ne s’exécute que quand le programme tourne.
 check-not-constant-fix = calcule-la dans une fonction, ou écris sa valeur
 
 # E0234
@@ -657,6 +657,7 @@ check-parallel = cette boucle ne peut pas tourner en parallèle : { $reason ->
     [calls] elle appelle une fonction
     [heap] elle crée, agrandit, déplace ou libère une chaîne, un tableau ou une table
     [exits] elle sort de la boucle par `break` ou `return`
+    [global] elle lit ou écrit une variable de module, dont chaque thread a sa propre copie
    *[other] ses tours pourraient se voir
 }
 check-parallel-label = des tours qui peuvent tourner en même temps
@@ -825,6 +826,9 @@ check-sort-key-fix = triez par un nombre ou une chaîne : un champ, `(o) => o.am
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures
     [global] les constantes et variables de module
+    [global-heap] les variables de module qui tiennent une chaîne, un tableau, une table ou un ensemble
+    [global-init] cette valeur initiale d’une variable de module
+    [global-inout] une variable de module passée en `inout`
     [inout] les paramètres `inout`
     [for-of] les boucles `for…of`
     [place] les affectations de champs et d’éléments

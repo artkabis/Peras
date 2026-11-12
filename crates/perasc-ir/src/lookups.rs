@@ -148,9 +148,11 @@ fn children(e: &Expr) -> Vec<&Expr> {
         }
         ExprKind::Binary(_, a, b) => vec![a, b],
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().collect(),
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {
-            Vec::new()
-        }
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => Vec::new(),
     }
 }
 
@@ -222,7 +224,11 @@ fn reuse(e: &mut Expr, known: &[Known]) {
                 reuse(arg, known);
             }
         }
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => {}
     }
 }
 
@@ -252,7 +258,11 @@ fn take_lookup(e: &mut Expr, holder: LocalId) -> Option<(Expr, u32, Key)> {
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
             args.iter_mut().find_map(|arg| take_lookup(arg, holder))
         }
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => None,
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => None,
     }
 }
 
@@ -447,6 +457,12 @@ impl Pass<'_> {
                     reuse(&mut e, &known);
                     forget_maps(&mut known, &e);
                     out.push(Stmt::Expr(e));
+                }
+                // A module variable is never a map nor a key kept here.
+                Stmt::SetGlobal(g, mut e) => {
+                    reuse(&mut e, &known);
+                    forget_maps(&mut known, &e);
+                    out.push(Stmt::SetGlobal(g, e));
                 }
                 Stmt::CallMany {
                     targets,

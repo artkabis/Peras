@@ -84,6 +84,11 @@ pub fn run_with_heap(
                 deep: std::collections::BTreeSet::new(),
                 allocated: 0,
                 maps: std::collections::BTreeMap::new(),
+                globals: module
+                    .globals
+                    .iter()
+                    .map(|g| constant(g.init, g.ty))
+                    .collect(),
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
@@ -121,6 +126,20 @@ struct Machine<'a> {
     /// The entries of each map, in insertion order, by its block: its block's
     /// elements, one per live entry, give its `size`.
     maps: std::collections::BTreeMap<u32, Table>,
+    /// The module variables, from their initial values (decision 0023).
+    globals: Vec<Value>,
+}
+
+/// A constant of type `ty`, as a value.
+fn constant(c: Const, ty: Ty) -> Value {
+    match (c, ty) {
+        (Const::Int(v), Ty::I64) => Value::I64(v),
+        (Const::Int(v), _) => Value::I32(i32::try_from(v).unwrap_or(i32::MIN)),
+        #[allow(clippy::cast_possible_truncation)]
+        (Const::Float(v), Ty::F32) => Value::F32(v as f32),
+        (Const::Float(v), _) => Value::F64(v),
+        (Const::Bool(v), _) => Value::Bool(v),
+    }
 }
 
 /// A key of a map: an integer, or a string's bytes.
@@ -212,6 +231,48 @@ impl Machine<'_> {
         Ok(Flow::Normal)
     }
 
+    /// A loop: its condition, its body, then its step, until it ends.
+    fn run_loop(
+        &mut self,
+        cond: Option<&Expr>,
+        body: &[Stmt],
+        step: &[Stmt],
+        locals: &mut Vec<Value>,
+    ) -> Result<Flow, Trap> {
+        Ok(loop {
+            self.fuel = self.fuel.checked_sub(1).ok_or(Trap::Fuel)?;
+            if let Some(cond) = cond
+                && self.expr(cond, locals)? != Value::Bool(true)
+            {
+                break Flow::Normal;
+            }
+            match self.stmts(body, locals)? {
+                Flow::Break => break Flow::Normal,
+                flow @ (Flow::Return(_) | Flow::Leave(_)) => break flow,
+                Flow::Normal | Flow::Continue => {}
+            }
+            if let flow @ (Flow::Return(_) | Flow::Leave(_)) = self.stmts(step, locals)? {
+                break flow;
+            }
+        })
+    }
+
+    /// `variable = value` on a module variable.
+    fn set_global(
+        &mut self,
+        global: crate::GlobalId,
+        value: &Expr,
+        locals: &mut Vec<Value>,
+    ) -> Result<(), Trap> {
+        let v = self.expr(value, locals)?;
+        let slot = usize::try_from(global.0)
+            .ok()
+            .and_then(|i| self.globals.get_mut(i))
+            .ok_or(Trap::Unreachable)?;
+        *slot = v;
+        Ok(())
+    }
+
     fn stmt(&mut self, stmt: &Stmt, locals: &mut Vec<Value>) -> Result<Flow, Trap> {
         self.fuel = self.fuel.checked_sub(1).ok_or(Trap::Fuel)?;
         Ok(match stmt {
@@ -223,6 +284,10 @@ impl Machine<'_> {
                 {
                     *slot = v;
                 }
+                Flow::Normal
+            }
+            Stmt::SetGlobal(global, value) => {
+                self.set_global(*global, value, locals)?;
                 Flow::Normal
             }
             Stmt::Expr(e) => {
@@ -240,22 +305,7 @@ impl Machine<'_> {
                     self.stmts(otherwise, locals)?
                 }
             }
-            Stmt::Loop { cond, body, step } => loop {
-                self.fuel = self.fuel.checked_sub(1).ok_or(Trap::Fuel)?;
-                if let Some(cond) = cond
-                    && self.expr(cond, locals)? != Value::Bool(true)
-                {
-                    break Flow::Normal;
-                }
-                match self.stmts(body, locals)? {
-                    Flow::Break => break Flow::Normal,
-                    flow @ (Flow::Return(_) | Flow::Leave(_)) => break flow,
-                    Flow::Normal | Flow::Continue => {}
-                }
-                if let flow @ (Flow::Return(_) | Flow::Leave(_)) = self.stmts(step, locals)? {
-                    break flow;
-                }
-            },
+            Stmt::Loop { cond, body, step } => self.run_loop(cond.as_ref(), body, step, locals)?,
             Stmt::Block(body) => match self.stmts(body, locals)? {
                 Flow::Leave(0) => Flow::Normal,
                 Flow::Leave(depth) => Flow::Leave(depth - 1),
@@ -316,14 +366,12 @@ impl Machine<'_> {
 
     fn expr(&mut self, e: &Expr, locals: &mut Vec<Value>) -> Result<Value, Trap> {
         Ok(match &e.kind {
-            ExprKind::Const(c) => match (c, e.ty) {
-                (Const::Int(v), Ty::I64) => Value::I64(*v),
-                (Const::Int(v), _) => Value::I32(i32::try_from(*v).unwrap_or(i32::MIN)),
-                #[allow(clippy::cast_possible_truncation)]
-                (Const::Float(v), Ty::F32) => Value::F32(*v as f32),
-                (Const::Float(v), _) => Value::F64(*v),
-                (Const::Bool(v), _) => Value::Bool(*v),
-            },
+            ExprKind::Const(c) => constant(*c, e.ty),
+            ExprKind::Global(g) => usize::try_from(g.0)
+                .ok()
+                .and_then(|i| self.globals.get(i))
+                .copied()
+                .ok_or(Trap::Unreachable)?,
             ExprKind::Local(local) => {
                 let value = slot(locals, *local).map_or(Value::Void, |v| *v);
                 self.live(value)?

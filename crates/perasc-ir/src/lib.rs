@@ -105,10 +105,29 @@ pub const STATIC_END: u32 = 1024;
 pub struct Module {
     /// Functions, in source order.
     pub functions: Vec<Function>,
+    /// The module's variables, by their [`GlobalId`]: one per scalar of each
+    /// module-level `let` (decision 0023).
+    pub globals: Vec<Global>,
     /// The bytes of each string literal, which [`BufOp::Literal`] copies into a
     /// new buffer.
     pub data: Vec<Vec<u8>>,
 }
+
+/// A module variable: one scalar of a module-level `let`, kept between
+/// calls, its initial value a constant (decision 0023).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Global {
+    /// Its name in source, a field's path after it: `origin_x`.
+    pub name: String,
+    /// Its type: a number or a boolean.
+    pub ty: Ty,
+    /// Its value before any call.
+    pub init: Const,
+}
+
+/// The number of a module variable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GlobalId(pub u32);
 
 /// A function.
 #[derive(Debug, Clone, PartialEq)]
@@ -364,6 +383,8 @@ pub struct Local {
 pub enum Stmt {
     /// `local = value`
     Set(LocalId, Expr),
+    /// `variable = value`, for a module variable.
+    SetGlobal(GlobalId, Expr),
     /// A value computed for its effect, then dropped.
     Expr(Expr),
     /// `if (cond) { then } else { otherwise }`
@@ -457,6 +478,8 @@ pub enum ExprKind {
     Move(LocalId),
     /// Lends the block of an `owned` local, as a `borrowed` argument.
     Borrow(LocalId),
+    /// Reads a module variable, which any call may have changed.
+    Global(GlobalId),
     /// A value computed from a buffer: see [`BufOp`].
     Buf(BufOp, Vec<Expr>),
 }
@@ -1304,7 +1327,9 @@ impl Module {
 fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
     for stmt in stmts {
         match stmt {
-            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => each_in(e, visit),
+            Stmt::Set(_, e) | Stmt::SetGlobal(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {
+                each_in(e, visit);
+            }
             Stmt::If {
                 cond,
                 then,
@@ -1357,7 +1382,11 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
                 each_in(a, visit);
             }
         }
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => {}
     }
 }
 
@@ -1367,6 +1396,15 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
 
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, global) in self.globals.iter().enumerate() {
+            writeln!(
+                f,
+                "global @{i} {}: {} = {:?}",
+                global.name,
+                global.ty.name(),
+                global.init
+            )?;
+        }
         for function in &self.functions {
             let params: Vec<String> = function
                 .params()
@@ -1403,6 +1441,9 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
         match stmt {
             Stmt::Set(local, value) => {
                 let _ = writeln!(out, "{pad}%{} = {}", local.0, expr(value));
+            }
+            Stmt::SetGlobal(global, value) => {
+                let _ = writeln!(out, "{pad}@{} = {}", global.0, expr(value));
             }
             Stmt::Expr(e) => {
                 let _ = writeln!(out, "{pad}{}", expr(e));
@@ -1483,6 +1524,7 @@ fn expr(e: &Expr) -> String {
         ExprKind::Const(Const::Float(v)) => format!("{v:?}:{ty}"),
         ExprKind::Const(Const::Bool(v)) => v.to_string(),
         ExprKind::Local(l) => format!("%{}", l.0),
+        ExprKind::Global(g) => format!("@{}", g.0),
         ExprKind::Unary(op, operand) => {
             let op = match op {
                 UnOp::Neg => "neg",

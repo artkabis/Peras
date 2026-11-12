@@ -77,3 +77,5 @@ _Each step is recorded here as it lands._
 - **Found on the way.** The vectorizer summed its counts of reads with wrapping (F219), and an arrow function of a managed module that makes a structure was emitted as a block; both fixed, each with a test that fails without the fix.
 
 **Step 3, `import` and `export` between `.peras` modules: landed** for functions, structures and enumerations that are not generic, as [decision 0022](0022-owned-modules.md) designed and records.
+
+**Step 4, module-level `let` (F306): landed** for numbers, booleans, and structures, enumerations and options of them, as [decision 0023](0023-module-variables.md) designed and records. `u8` to `u64` (F302), a field moved out of a structure (F214) and a function as a value (F308) are next.

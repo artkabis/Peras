@@ -54,6 +54,7 @@ fn map_exprs(stmts: Vec<Stmt>, f: &mut impl FnMut(Expr) -> Expr) -> Vec<Stmt> {
         .into_iter()
         .map(|stmt| match stmt {
             Stmt::Set(l, e) => Stmt::Set(l, map_expr(e, f)),
+            Stmt::SetGlobal(g, e) => Stmt::SetGlobal(g, map_expr(e, f)),
             Stmt::Expr(e) => Stmt::Expr(map_expr(e, f)),
             Stmt::Return(e) => Stmt::Return(e.map(|e| map_expr(e, f))),
             Stmt::ReturnMany(values) => {
@@ -109,7 +110,8 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         kind @ (ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
-        | ExprKind::Borrow(_)) => kind,
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_)) => kind,
     };
     f(Expr { kind, ty: e.ty })
 }
@@ -221,7 +223,9 @@ fn count_sets(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
 fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
     for stmt in stmts {
         match stmt {
-            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => count_expr_reads(e, out),
+            Stmt::Set(_, e) | Stmt::SetGlobal(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {
+                count_expr_reads(e, out);
+            }
             Stmt::ReturnMany(values)
             | Stmt::CallMany { args: values, .. }
             | Stmt::Buf(_, values) => {
@@ -257,7 +261,7 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
 
 fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
     match &e.kind {
-        ExprKind::Const(_) => {}
+        ExprKind::Const(_) | ExprKind::Global(_) => {}
         ExprKind::Local(LocalId(l)) | ExprKind::Move(LocalId(l)) | ExprKind::Borrow(LocalId(l)) => {
             *out.entry(*l).or_default() += 1;
         }

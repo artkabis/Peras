@@ -1013,7 +1013,9 @@ impl<'a> Checker<'a> {
 
     fn global(&mut self, local: &Local) {
         let ty = self.local_type(local);
-        if !local.mutable
+        // A constant, and in an owned module a variable too, which is set
+        // before any call (decision 0023).
+        if (!local.mutable || !self.managed)
             && let Some(init) = local.init
         {
             self.check_constant(init);

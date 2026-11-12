@@ -1,0 +1,17 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/module-variables.peras
+---
+ir:
+global @0 count: i32 = Int(20)
+global @1 origin_x: i32 = Int(1)
+global @2 origin_y: f64 = Float(2.5)
+export fn bump() -> i32
+  local %0 tmp: i32
+  local %1 tmp: f64
+  @0 = (i32.+ @0 1:i32)
+  @1 = (i32.+ @1 @0)
+  %0 = @1
+  %1 = @2
+  return %0

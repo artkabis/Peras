@@ -1,0 +1,17 @@
+// Module variables: one global per scalar, set to its constant initial value,
+// read and written by the functions (decision 0023).
+const START = 10;
+
+struct Point {
+  x: i32;
+  y: f64;
+}
+
+let count = START * 2;
+let origin = Point(1, 2.5);
+
+export fn bump(): i32 {
+  count++;
+  origin.x += count;
+  return origin.x;
+}

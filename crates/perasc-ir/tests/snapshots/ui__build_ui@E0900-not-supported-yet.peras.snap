@@ -4,14 +4,6 @@ expression: out
 input_file: tests/ui/build/E0900-not-supported-yet.peras
 ---
 diagnostics:
-  error[E0900] gen-unsupported { feature: "global" }
-    primary 2:5-2:10: gen-unsupported-label { feature: "global" }
-    cause: gen-unsupported-why
-    fix: gen-unsupported-fix
-  error[E0900] gen-unsupported { feature: "global" }
-    primary 7:31-7:36: gen-unsupported-label { feature: "global" }
-    cause: gen-unsupported-why
-    fix: gen-unsupported-fix
   error[E0900] gen-unsupported { feature: "integer-type" }
     primary 10:21-10:30: gen-unsupported-label { feature: "integer-type" }
     cause: gen-unsupported-why

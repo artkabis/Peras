@@ -19,6 +19,8 @@ Read at the start of every session. It holds the rules of the project and the tr
 - Chromium: never `playwright install`; set `PERAS_CHROMIUM=/opt/pw-browsers/chromium`, or `executablePath` in a script.
 - A script that imports the repository's packages runs from the repository, not from the scratchpad.
 - The CI installs browsers through `scripts/install-browser.mjs`, which needs the browser's download and only tries its system packages: a job red at `Failed to install browsers` is the runner's network, not the code; read the log before saying which (F107).
+- A linker that dies on `signal 7 [Bus error]` means a full disk: `df -h .`, then remove `target/debug` (M023).
+- A filter on the output of `cargo test` keeps `^error` lines: a test that does not compile prints no failed result (M023).
 - GitHub Pages must be enabled by the owner (Settings, Pages, Source: GitHub Actions); until it is, nothing is online.
 
 ## Studies: the traps already fallen into
@@ -59,6 +61,7 @@ What a program can rely on, and what it cannot yet; the details and their eviden
 - `Option`: `isSome()`, `isNone()`, `unwrapOr(x)` (evaluates `x` whenever doing so can be seen; a quiet fallback, literals, reads and copies, is made only when needed: F209), and `?`. No `unwrap`, no `let … else`; a `match` whose arm leaves a loop gives no value (F101, F104, F105).
 - Structures have `copy()` (F102), unless they hold a resource, a JavaScript value or a function. An argument moved is not readable by a later argument of the same call (F103).
 - Modules: a `.peras` file imports functions, structures and enumerations of other `.peras` files, compiled into one module; not generics, not the methods of an imported structure, no `as`, no cycle (decision 0022).
+- Module variables (`let` at the top of a `.peras`): numbers, booleans, and structures, enumerations and options of them, a constant initial value; not strings or arrays, not `inout`, not in a `parallel for` (decision 0023).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).
 - Integers: `i32` and `i64` compiled; `i8`, `i16`, `u8`, `u16`, `u32`, `u64` checked only (F302).
 - A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).

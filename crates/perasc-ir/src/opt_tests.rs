@@ -314,6 +314,7 @@ fn variables_read_before_assignment_start_at_zero_again() {
     ]);
     for (function, inputs) in [(function, -2..=40), (twice, -2..=12)] {
         let before = Module {
+            globals: Vec::new(),
             functions: vec![function],
             data: Vec::new(),
         };

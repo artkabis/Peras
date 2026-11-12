@@ -587,9 +587,9 @@ check-alias-cycle-why = An alias is another name for a type: replacing it by wha
 check-alias-cycle-fix = make it a structure or an enumeration
 
 # E0233
-check-not-constant = the value of a module constant must be known when compiling
+check-not-constant = the value of a module constant, or the initial value of a module variable in an owned module, must be known when compiling
 check-not-constant-label = computed when the program runs
-check-not-constant-why = A module `const` is written into the code wherever it is used: its value is made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
+check-not-constant-why = A module `const` is written into the code wherever it is used, and a module `let` of an owned module is set before any call (decision 0023): their values are made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
 check-not-constant-fix = compute it in a function, or write its value
 
 # E0234
@@ -657,6 +657,7 @@ check-parallel = this loop cannot run in parallel: { $reason ->
     [calls] it calls a function
     [heap] it makes, grows, moves or releases a string, an array or a map
     [exits] it leaves the loop with `break` or `return`
+    [global] it reads or writes a module variable, of which each thread has its own copy
    *[other] its turns could see each other
 }
 check-parallel-label = turns that may run at the same time
@@ -825,6 +826,9 @@ check-sort-key-fix = sort by a number or a string: a field, `(o) => o.amount`, o
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
     [global] module-level constants and variables
+    [global-heap] module variables holding a string, an array, a map or a set
+    [global-init] this initial value of a module variable
+    [global-inout] a module variable passed `inout`
     [inout] `inout` parameters
     [for-of] `for…of` loops
     [place] assignments to fields and elements

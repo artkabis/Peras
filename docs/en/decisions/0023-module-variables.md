@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0023-module-variables.md](../../fr/decisions/0023-module-variables.md)._
 
-_Status: proposed on 2026-11-12, with its criteria registered before any code; step 4 of [decision 0021](0021-phases-4-and-5.md), finding F306._
+_Status: proposed on 2026-11-12, with its criteria registered before any code; accepted by the owner the same day; built, its criteria met (see [Record](#record)); step 4 of [decision 0021](0021-phases-4-and-5.md), finding F306._
 
 ## Context
 
@@ -46,3 +46,20 @@ The step lands only with all of these, in addition to [decision 0021's criteria]
 ## Record
 
 _Each part is recorded here as it lands._
+
+**Module variables of numbers and booleans: landed.**
+
+- **What changed.**
+  - The IR gains `Global`, a read, and `SetGlobal`, a write, and the module a list of its variables, each with its type and constant initial value. In WebAssembly each is a mutable global; in the Rust backend, a cell of its thread, with no `unsafe`; in the interpreter, a value of the machine.
+  - The initial value is lowered, then run by the interpreter of the IR, so that its arithmetic, overflow included, is the module's. The checker holds it to the rule of module constants (`E0233`) in an owned module.
+  - Every pass was read for what a module variable changes. `is_simple` takes a read as never movable, so neither the hoisting out of loops nor the unrolling of recursion moves it past a call. The vectorizer refuses a loop that reads or writes one. The release verifier refuses a block stored in one.
+  - A variable refused where it is declared is still known, so its uses do not report the cause again.
+- **Tests, each criterion in turn.**
+  1. `globals.test.ts`, on both allocators: a counter, a float sum, a flag, a structure assigned whole (its fields swapped) and by field, and a loop calling a function that changes a variable it reads, against the same module in JavaScript; a second instance starts from the initial values.
+  2. UI tests: a string in a module variable (`E0900`, `global-heap`), an initial value that calls a function (`E0233`), a `parallel for` reading one (`E0241`, `global`). The IR's own test of unsupported constructs covers one passed `inout` (`global-inout`).
+  3. The differential test gains `tally`, changed by `bumped`, which a loop of `spun`, a function that uses no memory, calls between two reads. It passes 2,000 seeds, the two files version included. Letting a read of a module variable leave its loop, on purpose, fails it at seed 6.
+  4. Both backends: the same calls, built by `perasc build --backend rust` and by the direct backend, gave the same results, `22 24 1.75 2.75 true false 13 23`. This was run by hand: the CI's "backends agree" job measures `bench/backends/kernels.peras`, which has no module variable, and a test that runs `cargo` and `wasm-bindgen` would be its own step. A unit test holds the Rust that the backend writes for them, with no `unsafe`.
+  5. The guide's page of values gains module variables; the status, `E0241`, `E0900` and `E0233` are updated.
+- **Departures from the text above.**
+  - A `parallel for` that reads or writes a module variable is refused with `E0241`, reason `global`, where every refusal of a parallel loop is, rather than with `E0900` as written above. Its message says why: each thread has its own copy.
+  - A module variable passed `inout` is refused (`E0900`, `global-inout`), a case the text above did not name.
