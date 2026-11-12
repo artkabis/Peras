@@ -29,6 +29,10 @@ interface Words {
   countUntil(text: string, stop: string): number;
   nestedLengths(text: string): number;
   charsOf(text: string): string;
+  countWords(text: string): string;
+  renumbered(n: number): number;
+  changedKey(): number;
+  putBetween(): number;
   tagOr(s: string): string;
   tagOrGiven(s: string, fallback: string): string;
   intOr(s: string): number;
@@ -133,6 +137,18 @@ describe("strings in JavaScript", () => {
           expect(m.sameUpper(a, b), `${b} == ${a}.toUpperCase()`).toBe(b === upper(a));
           expect(m.notLower(a, b), `${a}.toLowerCase() != ${b}`).toBe(lower(a) !== b);
         }
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`looks a key up once where the map cannot have changed, and again where it can, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.countWords("a b a c b a")).toBe("3,2,1,");
+      expect(m.countWords("x")).toBe("1,");
+      // A delete then sets that grow the map renumber its entries.
+      for (const n of [0, 1, 5, 40]) expect(m.renumbered(n)).toBe(3);
+      expect(m.changedKey()).toBe(57);
+      expect(m.putBetween()).toBe(9);
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

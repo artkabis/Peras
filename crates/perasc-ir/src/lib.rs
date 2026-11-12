@@ -15,6 +15,7 @@ mod inline;
 #[cfg(test)]
 mod interp;
 mod licm;
+mod lookups;
 mod lower;
 mod opt;
 mod own;

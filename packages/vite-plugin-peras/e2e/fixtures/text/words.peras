@@ -408,3 +408,64 @@ export fn tagOrGiven(s: String, fallback: String): String {
 export fn intOr(s: String): i32 {
   return s.parseI32().unwrapOr(-7);
 }
+
+// A map lookup done once (decision 0016, finding F210), and the cases where
+// the answer must be looked up again.
+export fn countWords(text: String): String {
+  let index: Map<String, i32> = Map.new();
+  let counts: Array<i32> = [];
+  for (const w of text.split(" ")) {
+    if (!index.has(w)) {
+      index.set(w.copy(), counts.length);
+      counts.push(0);
+    }
+    const at = index.get(w).unwrapOr(-1);
+    counts[at] += 1;
+  }
+  let out = "";
+  for (const c of counts) {
+    out += `${c},`;
+  }
+  return out;
+}
+
+export fn renumbered(n: i32): i32 {
+  let m: Map<String, i32> = Map.new();
+  m.set("a", 1);
+  m.set("b", 2);
+  m.set("c", 3);
+  const had = m.has("c");
+  m.delete("a");
+  for (let i = 0; i < n; i++) {
+    m.set(`k${i}`, i);
+  }
+  const c = m.get("c").unwrapOr(-1);
+  if (had) {
+    return c;
+  }
+  return -2;
+}
+
+export fn changedKey(): i32 {
+  let m: Map<String, i32> = Map.new();
+  m.set("ab", 7);
+  m.set("a", 5);
+  let k = "a";
+  const first = m.get(k).unwrapOr(-1);
+  k += "b";
+  const second = m.get(k).unwrapOr(-1);
+  return first * 10 + second;
+}
+
+export fn putBetween(): i32 {
+  let m: Map<String, i32> = Map.new();
+  let k = "x";
+  const before = m.has(k);
+  m.set("y", 1);
+  m.set(k.copy(), 9);
+  const after = m.get(k).unwrapOr(-1);
+  if (before) {
+    return -1;
+  }
+  return after;
+}
