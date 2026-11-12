@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0017-aggregating-without-copies.md](../../en/decisions/0017-aggregating-without-copies.md)._
 
-_Statut : proposée le 2026-11-12. Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
+_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
 
 ## Contexte
 
@@ -59,3 +59,42 @@ Si les étapes 1 à 4 donnent chacune l’essentiel de ce que montre le profil, 
 - Le protocole de la 0014, ses versions A, B et C, ses données et ses seuils. `dashboard.peras` n’est pas réécrit pour gagner : le gain doit venir du compilateur.
 - La sûreté. Chaque changement garde les vérifications de l’allocateur de debug, le vérificateur de release, les tests des deux allocateurs, et le test différentiel : 2 000 graines une fois, et une fois avec le changement cassé exprès (M015). Le générateur du test différentiel gagne des tables de structures mises à jour par `get` puis `set`, et des clés construites par gabarit.
 - SipHash reste : il protège les tables contre des clés choisies pour entrer en collision, et ce n’est pas lui qui coûte ici (F215).
+
+## Comment le TypeScript optimisé atteint sa vitesse
+
+`node scripts/profile-optimized.mjs` profile la version B de la même façon : chaque variante de `bench/data/dashboard-optimized.ts` remplace une de ses techniques par ce que fait du code simple. Les chiffres valent pour 1 000 000 de lignes dans Node, médiane de 9 tours, au commit `037bb74`.
+
+| B, avec une technique remplacée                                                     | Temps  | Ajoute |
+| ----------------------------------------------------------------------------------- | ------ | ------ |
+| B tel qu’écrit                                                                      | 106 ms |        |
+| Chaque utilisateur dans un `Set` par pays, au lieu d’un bitmap                      | 186 ms | 80 ms  |
+| Les paires dans une `Map` à clé chaîne construite par ligne                         | 133 ms | 26 ms  |
+| Les paires dans une `Map` à clé numérique                                           | 109 ms | 3 ms   |
+| Chaque produit dans une `Map`, au lieu d’un tableau dense                           | 111 ms | 5 ms   |
+| Les trois : la lecture des octets de B, avec les tables et ensembles du code simple | 236 ms | 130 ms |
+| Pour comparer, `TextDecoder` seul, les octets en la chaîne de C                     | 18 ms  |        |
+
+**Ce que cela dit.** B est rapide pour deux raisons, de taille inégale.
+
+- **L’essentiel de son avance est la connaissance des données, environ 130 ms sur 236.** B sait trois choses que le code ne dit pas :
+  - les utilisateurs sont sous 2^18, donc un bitmap de 32 Ko par pays les contient ;
+  - un pays est fait de deux majuscules, donc c’est un nombre sous 676 ;
+  - les produits sont sous 8 192.
+
+  Le bitmap vaut à lui seul 80 ms. Un compilateur ne peut pas trouver ces faits dans du code écrit simplement. Le même `Set` coûte d’ailleurs plus en JavaScript qu’en Peras : 80 ms de plus dans V8, contre 48 à 64 pour les ensembles de Peras (F215).
+
+- **Le reste est la lecture des octets en une passe, environ 70 ms.** B avec des structures simples prend 236 ms ; Peras en prend 304 (304 à 322, plus haut). B parcourt les octets une seule fois : il lit chaque entier en rencontrant ses chiffres, et n’alloue rien par ligne. Peras :
+  - découpe chaque ligne en vues ;
+  - demande deux fois chaque entier au runtime ;
+  - contrôle le pays lettre par lettre ;
+  - et, dans la mesure de la décision 0014, reçoit une chaîne que `TextDecoder` a faite à partir des octets, 18 ms que B ne paie pas.
+
+  Cette part est celle du compilateur. Les étapes 2 à 4 la visent, et une technique de plus s’y applique : lire les champs d’une ligne directement dans ses octets, sans ses vues (Langdale et Lemire, 2019, déjà cités dans la décision 0016).
+
+Peras écrit simplement pourrait donc rattraper B écrit avec des structures simples. Il ne rattrapera pas le bitmap de B en compilant seulement. Y arriver demanderait un moyen, dans le langage, pour qu’un programme dise ce qu’il sait : par exemple un ensemble d’entiers sous une borne, gardé en bitmap. C’est un changement du langage, et il ne fait pas partie de cette décision. Il serait proposé à part, son coût pour le langage pesé, et mesuré comme le reste.
+
+## Mesuré après l’étape 1
+
+L’étape 1 est arrivée au commit `037bb74`. Un repli de `unwrapOr` qui copie une valeur lue est désormais calme, donc construit seulement si l’option est vide (F209). Elle est correcte et testée. Le test différentiel gagne une table de chaînes, des replis qui copient et un repli qui déplace une variable. 2 000 graines passent. Avec le repli paresseux d’un tampon cassé exprès, le test échoue dès la première graine. Les tests de bout en bout des deux allocateurs passent, 116 sur 116.
+
+Elle est prise : en comptant les appels au runtime, chaque ligne gardée copie une chaîne 7 fois au lieu de 8 et libère un bloc 12 fois au lieu de 13. Dans le profil, la variante sans la copie ne fait plus rien gagner (−1 ms). Le tableau de bord est passé de 322 à 304 ms pour 1 000 000 de lignes dans Node. C’est plus que les 11 ms qu’annonçait le profil, mais les variantes varient d’environ 10 ms (l’une donne −10), donc le gain est entre 8 et 28 ms.

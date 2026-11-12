@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0017-aggregating-without-copies.md](../../fr/decisions/0017-aggregating-without-copies.md)._
 
-_Status: proposed on 2026-11-12. Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
+_Status: proposed on 2026-11-12. Step 1 landed at `037bb74` (see [Measured after step 1](#measured-after-step-1)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
 
 ## Context
 
@@ -59,3 +59,42 @@ If steps 1 to 4 each give most of what the profile shows, the dashboard goes fro
 - The protocol of 0014, its versions A, B and C, its data and its thresholds. `dashboard.peras` is not rewritten to win: the gain must come from the compiler.
 - Safety. Every change keeps the debug allocator's checks, the release verifier, the tests of both allocators, and the differential test: 2,000 seeds once, and once with the change broken on purpose (M015). The differential test's generator gains maps of structures updated by `get` then `set`, and keys built from templates.
 - SipHash stays: it protects maps against keys chosen to collide, and it is not what costs here (F215).
+
+## How the optimized TypeScript gets its speed
+
+`node scripts/profile-optimized.mjs` profiles version B the same way: each variant of `bench/data/dashboard-optimized.ts` replaces one of its techniques by what plain code does. The figures are for 1,000,000 rows in Node, the median of 9 rounds, at commit `037bb74`.
+
+| B, with one technique replaced                                       | Time   | Adds   |
+| -------------------------------------------------------------------- | ------ | ------ |
+| B as written                                                         | 106 ms |        |
+| Every user in a `Set` per country, instead of a bitmap               | 186 ms | 80 ms  |
+| The pairs in a `Map` keyed by a string built per row                 | 133 ms | 26 ms  |
+| The pairs in a `Map` keyed by a number                               | 109 ms | 3 ms   |
+| Every product in a `Map`, instead of a dense array                   | 111 ms | 5 ms   |
+| All three: B's reading of the bytes, with plain code's maps and sets | 236 ms | 130 ms |
+| For comparison, `TextDecoder` alone, the bytes into C's string       | 18 ms  |        |
+
+**What it says.** B is fast for two reasons, of unequal size.
+
+- **Most of its lead is knowledge of the data, about 130 ms of 236.** B knows three things that the code does not say:
+  - users are below 2^18, so a bitmap of 32 KB per country holds them;
+  - a country is two capital letters, so it is a number below 676;
+  - products are below 8,192.
+
+  The bitmap alone is worth 80 ms. A compiler cannot find these facts in code written plainly. The same `Set` in JavaScript costs more than in Peras: 80 ms added in V8, against 48 to 64 for Peras's sets (F215).
+
+- **The rest is reading the bytes in one pass, about 70 ms.** B with plain structures takes 236 ms; Peras takes 304 (304 to 322, above). B walks the bytes once: it reads each integer as it meets its digits, and it allocates nothing per row. Peras:
+  - splits each line into views;
+  - asks the runtime twice for each integer;
+  - checks the country letter by letter;
+  - and, in decision 0014's measure, is given a string that `TextDecoder` made from the bytes, 18 ms that B does not pay.
+
+  This part is the compiler's. Steps 2 to 4 aim at it, and one more technique fits it: reading the fields of a line straight from its bytes, without its views (Langdale and Lemire, 2019, already cited in decision 0016).
+
+So Peras written plainly could catch up with B written with plain structures. It will not catch up with B's bitmap by compiling alone. Reaching that would take a way, in the language, for a program to state what it knows: for example a set of integers below a bound, kept as a bitmap. That is a change to the language, and it is not part of this decision. It would be proposed separately, its cost on the language weighed, and measured like the rest.
+
+## Measured after step 1
+
+Step 1 landed at commit `037bb74`. A fallback of `unwrapOr` that copies a value read is now quiet, so it is made only when the option is empty (F209). It is correct and tested. The differential test gains a map of strings, fallbacks that copy and a fallback that moves a variable. 2,000 seeds pass. With the lazy fallback of a buffer broken on purpose, the test fails at the first seed. The end-to-end tests of both allocators pass, 116 of 116.
+
+It is taken: counting the runtime's calls, each row kept copies a string 7 times instead of 8 and releases a block 12 times instead of 13. In the profile, the variant without the copy no longer saves anything (−1 ms). The dashboard went from 322 to 304 ms per 1,000,000 rows in Node. That is more than the 11 ms the profile gave, but the variants spread by about 10 ms (one shows −10), so the gain is between 8 and 28 ms.
