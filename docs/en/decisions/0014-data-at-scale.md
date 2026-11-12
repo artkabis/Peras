@@ -205,7 +205,7 @@ Warm, in milliseconds, medians of 15 runs:
 
 ### Run 3, at commit `df51da3`: the results
 
-Measured on 2026-11-12 from 02:17 to 02:22 UTC, Chromium headless, under the same protocol, unchanged; nothing else ran. The report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md); run 2's is kept in [bench/data/run-2](../../../bench/data/run-2/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+Measured on 2026-11-12 from 02:17 to 02:22 UTC, Chromium headless, under the same protocol, unchanged; nothing else ran. The report is in [bench/data/run-3/RESULTS.md](../../../bench/data/run-3/RESULTS.md); run 2's is kept in [bench/data/run-2](../../../bench/data/run-2/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
 
 **What changed in the compiler since run 2.** All of [decision 0016](0016-faster-from-the-literature.md):
 

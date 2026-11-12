@@ -205,7 +205,7 @@ Mesuré le 2026-11-11 de 11:51 à 11:59 UTC, sur la même machine, sous le même
 
 ### Exécution 3, au commit `df51da3` : les résultats
 
-Mesurée le 2026-11-12 de 02:17 à 02:22 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. Le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) ; celui de l’exécution 2 est gardé dans [bench/data/run-2](../../../bench/data/run-2/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+Mesurée le 2026-11-12 de 02:17 à 02:22 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. Le rapport est dans [bench/data/run-3/RESULTS.md](../../../bench/data/run-3/RESULTS.md) ; celui de l’exécution 2 est gardé dans [bench/data/run-2](../../../bench/data/run-2/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
 
 **Ce qui a changé dans le compilateur depuis l’exécution 2.** Toute la [décision 0016](0016-faster-from-the-literature.md) :
 
