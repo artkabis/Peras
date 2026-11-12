@@ -172,7 +172,7 @@ Chacune sera mesurée de nouveau sous ce protocole, inchangé, comme exécution 
 
 ### Exécution 2, au commit `6ef6283` : les résultats
 
-Mesuré le 2026-11-11 de 11:51 à 11:59 UTC, sur la même machine, sous le même protocole, inchangé ; le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md), celui de l’exécution 1 est gardé dans [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+Mesuré le 2026-11-11 de 11:51 à 11:59 UTC, sur la même machine, sous le même protocole, inchangé ; le rapport est dans [bench/data/run-2/RESULTS.md](../../../bench/data/run-2/RESULTS.md), celui de l’exécution 1 est gardé dans [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
 
 **Ce qui a changé dans le compilateur depuis l’exécution 1**, chaque fois avec ses tests et consigné dans [les constats](../findings.md) : un `split` en `const` seulement lu garde des vues au lieu de copies, et `parseI32` lit ses chiffres une fois avec une seule division (F201, commit `19930d1`) ; une chaîne dont la casse change seulement pour être comparée est comparée octet par octet, sans être créée (F205, commit `51635c5`). La source de la version C n’a pas changé.
 

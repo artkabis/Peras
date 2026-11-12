@@ -172,7 +172,7 @@ Each will be measured again under this protocol, unchanged, as a run 2 and furth
 
 ### Run 2, at commit `6ef6283`: the results
 
-Measured on 2026-11-11 from 11:51 to 11:59 UTC, on the same machine, under the same protocol, unchanged; the report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md), run 1's is kept in [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+Measured on 2026-11-11 from 11:51 to 11:59 UTC, on the same machine, under the same protocol, unchanged; the report is in [bench/data/run-2/RESULTS.md](../../../bench/data/run-2/RESULTS.md), run 1's is kept in [bench/data/run-1](../../../bench/data/run-1/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
 
 **What changed in the compiler since run 1**, each with its tests and recorded in [the findings](../findings.md): a `const` split only read holds views instead of copies, and `parseI32` reads its digits once with one division (F201, commit `19930d1`); a string whose case changes only to be compared is compared byte by byte, without being made (F205, commit `51635c5`). Version C's source did not change.
 
