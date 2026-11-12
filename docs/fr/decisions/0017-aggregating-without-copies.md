@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0017-aggregating-without-copies.md](../../en/decisions/0017-aggregating-without-copies.md)._
 
-_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74`, l’étape 2 à `02ff9c2`, l’étape 3 à `a497971` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1), [après l’étape 2](#mesuré-après-létape-2) et [après l’étape 3](#mesuré-après-létape-3)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
+_Statut : proposée le 2026-11-12, close le même jour (voir le [Bilan](#bilan)). L’étape 1 est arrivée à `037bb74`, l’étape 2 à `02ff9c2`, l’étape 3 à `a497971` ; l’étape 4 examinée et pas faite (voir [Étape 4, examinée](#étape-4-examinée--pas-faite) et [Mesuré après l’étape 1](#mesuré-après-létape-1), [après l’étape 2](#mesuré-après-létape-2) et [après l’étape 3](#mesuré-après-létape-3)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
 
 ## Contexte
 
@@ -147,3 +147,48 @@ Chaque gabarit fait donc une allocation et une libération de moins pour chacun 
 **Le gain : 1,3 à 7,4 %, moins que ce qu’annonçait le profil.** `node scripts/ab-data.mjs f989a03 a497971` a donné une médiane avant / après de 1,074, 1,034 et 1,013 sur trois exécutions, les mêmes résumés.
 
 La variante avait changé deux choses, ce qui est encore le constat M013. Sans la catégorie, la table tenait une clé par pays au lieu de jusqu’à douze : une table plus petite, plus souvent en cache. Les 25 ms étaient le coût de l’entier et celui de la table plus petite ensemble, et seul le premier est ce que retire cette étape. La technique 2, la clé pas construite du tout, n’est pas poursuivie maintenant. La clé est construite une fois par ligne gardée, et la construire ne fait plus qu’une allocation.
+
+## Étape 4, examinée : pas faite
+
+L’étape 4 reposait sur une affirmation que cette décision a faite sans lire le runtime : « `parseI32` demande au runtime si le texte est un entier, puis lui demande l’entier : deux passes sur les mêmes octets. » Ce n’est pas ce que fait le runtime. Depuis le constat F201, `str_is_int` lit la valeur dans le passage même qui la vérifie, et la garde dans une globale. `str_parse_int` ne fait que rendre cette globale, un appel que le moteur intègre maintenant que le runtime est lié dans le module. L’étape n’aurait donc presque rien retiré, et elle n’a pas été construite (constat M019).
+
+Ce que coûte la lecture a été mesuré à la place, par retrait. `node scripts/profile-data.mjs` gagne des variantes construites sur `parse-only`, où rien ne s’exécute après le filtre : une variante qui change les lignes gardées ne change donc rien d’autre. Les chiffres valent pour 1 000 000 de lignes, en une exécution, au commit `ad8803f`.
+
+| La lecture, une chose retirée                             | Temps  | Ce qu’elle coûte |
+| --------------------------------------------------------- | ------ | ---------------- |
+| Lues et filtrées, rien d’agrégé                           | 135 ms |                  |
+| Les cinq entiers remplacés par leur longueur, pas lus     | 102 ms | environ 33 ms    |
+| Sans le contrôle des lettres du pays                      | 114 ms | environ 21 ms    |
+| Pas de split : une ligne faite de la longueur de la ligne | 47 ms  | environ 88 ms    |
+| Le seul parcours des lignes                               | 21 ms  |                  |
+
+Les cinq entiers coûtent environ 6,6 ns chacun. Le découpage en vues et la copie du pays coûtent environ 34 ms, le contrôle des lettres environ 21. Aucune de ces parts n’est grande seule. L’étape qui les retirerait ensemble est celle à laquelle a mené le profil du TypeScript optimisé : lire les champs d’une ligne directement dans ses octets, sans ses vues, comme le fait B (Langdale et Lemire, 2019).
+
+## Bilan
+
+Close le 2026-11-12. Les étapes 1 à 3 sont arrivées ; l’étape 4 a été examinée et pas construite (M019) ; l’étape 5, l’index qui garde des bits du hachage, n’a pas été essayée. Son gain était une supposition, et l’exécution 4 de la décision 0014 désigne d’abord autre chose : ce qui croît plus vite que les lignes.
+
+| Étape | Quoi                                                             | Mesuré, un A/B dans un même processus  | Commit    |
+| ----- | ---------------------------------------------------------------- | -------------------------------------- | --------- |
+| 1     | Un repli qui copie, construit seulement s’il sert                | 322 à 304 ms, 8 à 28 ms                | `037bb74` |
+| 2     | Une entrée de table sortie, changée et remise, cherchée une fois | 8,5 à 13,5 % plus rapide               | `02ff9c2` |
+| 3     | Les entiers d’un gabarit écrits dans sa chaîne                   | 1,3 à 7,4 % plus rapide                | `a497971` |
+| 4     | Un appel par entier                                              | pas construite : pas de second passage | (M019)    |
+
+Sous le protocole de la décision 0014, exécution 4 contre exécution 3, même processeur :
+
+- Peras écrit simplement passe de 2,06–2,36 à 2,39–2,63 fois plus rapide que TypeScript simple ;
+- face au TypeScript optimisé à la main, il passe de 0,25–0,28 à 0,26–0,31 ;
+- en millisecondes, 11 % de moins à 1 000 000 de lignes, 2 % de moins à 4 000 000.
+
+L’espoir écrit plus haut était d’environ 200 ms pour 1 000 000 de lignes dans Node et 0,45 de B. Il n’est pas atteint : environ 280 ms, et 0,26 à 0,31 de B. L’étape 4 reposait sur un coût qui n’existait pas, et le profil de l’étape 3 comptait deux changements à la fois (M013).
+
+**Ce que cette décision a appris du TypeScript optimisé.** Environ 130 ms de son avance viennent de ce qu’il sait des données : un bitmap d’utilisateurs, des tableaux denses de codes de pays et de produits. Un compilateur ne peut pas le déduire de code écrit simplement. Environ 70 ms viennent de la lecture des octets en une passe, ce qui revient au compilateur.
+
+**La suite.**
+
+- **Le tableau de bord à 4 000 000 de lignes, profilé.** Le gain à 4 000 000 de lignes est un cinquième de celui à 1 000 000, et H6 s’éloigne de sa borne.
+- **Puis la lecture.** Les champs d’une ligne lus directement dans ses octets, sans vues : le découpage, la copie du pays et les entiers coûtent environ 88 ms pour 1 000 000 de lignes.
+- **Un moyen pour un programme de dire ce qu’il sait de ses données** serait un changement du langage. Il se pèse à part.
+
+Chacune de ces pistes est une décision à part.

@@ -3,9 +3,10 @@
 // and the time it saves is that thing's cost. Not a measure under a protocol:
 // a profile, to choose what the compiler should do next (decision 0017). A
 // variant changes what the dashboard computes; only its time is read.
-// Usage: node scripts/profile-data.mjs [--calls]
-// Prints, for 1,000,000 rows, the median of 9 rounds of each variant, the
-// variants alternating, and what each saves. With --calls, instead: the
+// Usage: node scripts/profile-data.mjs [--calls] [--rows N] [--only a,b,c]
+// Prints, for 1,000,000 rows (or N), the median of 9 rounds of each variant
+// (or of those named, `full` always among them), the variants alternating,
+// and what each saves. With --calls, instead: the
 // dashboard built with the runtime beside it (--link off), and each call
 // into the runtime counted, per row, on 100,000 rows.
 import { spawnSync } from "node:child_process";
@@ -83,8 +84,14 @@ const countryBlock = `    if (!countries.has(country)) {
     users[countries.get(country).unwrapOr(0)].add(user);
 `;
 
+/** The lines parsed and filtered, nothing aggregated. @type {[string, string]} */
+const parseOnly = [
+  "    kept += 1;\n",
+  "    kept += 1;\n    if (kept > 0) {\n      continue;\n    }\n",
+];
+
 /** Each variant: its name, what it shows, and its replacements. @type {[string, string, [string, string][]][]} */
-const variants = [
+const allVariants = [
   ["full", "the dashboard as written", []],
   [
     "boundary",
@@ -105,6 +112,37 @@ const variants = [
     "parse-only",
     "the lines parsed and filtered, nothing aggregated",
     [["    kept += 1;\n", "    kept += 1;\n    if (kept > 0) {\n      continue;\n    }\n"]],
+  ],
+  // The reading alone, each variant on top of parse-only: what a variant
+  // changes in which rows are kept changes nothing after the filter.
+  [
+    "parse-no-ints",
+    "parse-only, the five integers their lengths, not parsed",
+    [
+      parseOnly,
+      [
+        "Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?)",
+        "Row(f[0].length, f[1].length, f[2].copy(), f[3].length, f[4].length, f[5].length)",
+      ],
+    ],
+  ],
+  [
+    "parse-no-check",
+    "parse-only, without the check of the country's letters",
+    [parseOnly, ["  if (f.length != 6 || !isCountry(f[2])) {", "  if (f.length != 6) {"]],
+  ],
+  [
+    "parse-no-split",
+    "parse-only, parse returns a row made of the line's length, no split",
+    [
+      parseOnly,
+      ['  const f = line.split(",");\n', ""],
+      [
+        "  if (f.length != 6 || !isCountry(f[2])) {\n    return None;\n  }\n  return Some(Row(f[0].parseI32()?, f[1].parseI32()?, f[2].copy(), f[3].parseI32()?, f[4].parseI32()?, f[5].parseI32()?));",
+        '  if (line.length == 0) {\n    return None;\n  }\n  return Some(Row(line.length, 1, "FR", 2, 3, 1));',
+      ],
+      ["fn isCountry(", "export fn isCountry("],
+    ],
   ],
   [
     "no-country-check",
@@ -163,6 +201,17 @@ const variants = [
   ],
 ];
 
+/** The value given after `flag`, if any. @param {string} flag */
+const option = (flag) => {
+  const at = process.argv.indexOf(flag);
+  return at < 0 ? undefined : process.argv[at + 1];
+};
+const only = option("--only")?.split(",");
+const variants = allVariants.filter(
+  ([name]) => only === undefined || name === "full" || only.includes(name),
+);
+const rows = Number(option("--rows") ?? 1_000_000);
+
 for (const [name, , replacements] of variants) {
   let text = source;
   for (const [from, to] of replacements) {
@@ -186,7 +235,8 @@ for (const [name, , replacements] of variants) {
 const generator = /** @type {{ generate: (rows: number) => Uint8Array }} */ (
   await load(join(root, "bench", "data", "generate.ts"))
 );
-const text = new TextDecoder().decode(generator.generate(1_000_000));
+const text = new TextDecoder().decode(generator.generate(rows));
+console.log(`${rows.toLocaleString("en")} rows`);
 /** @type {Record<string, Module>} */
 const modules = {};
 for (const [name] of variants)
