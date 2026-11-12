@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0014-data-at-scale.md](../../fr/decisions/0014-data-at-scale.md)._
 
-_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Run 2, at commit `6ef6283`, after three changes to the compiler: the same verdicts, and plain Peras now 1.23 to 1.26 times as fast as plain TypeScript, where it was slower. Run 3, at commit `df51da3`, after decision 0016: H1 holds, plain Peras 2.06 to 2.36 times as fast as plain TypeScript; H6 refuted by 0.02; on another machine (a departure, the ratios compared). Run 4, at commit `d9fbe35`, after steps 1 to 3 of decision 0017: plain Peras 2.39 to 2.63 times as fast as plain TypeScript, 0.26 to 0.31 times as fast as optimized TypeScript; H6 refuted further, 4.88. Results and record below._
+_Status: protocol registered on 2026-11-11 (commit `96e6c43`), amended the same day before any measure: DuckDB-wasm removed (see [Amendment](#amendment-before-any-measure)). Run 1, at commit `b06da25`: five hypotheses refuted, two hold. Run 2, at commit `6ef6283`, after three changes to the compiler: the same verdicts, and plain Peras now 1.23 to 1.26 times as fast as plain TypeScript, where it was slower. Run 3, at commit `df51da3`, after decision 0016: H1 holds, plain Peras 2.06 to 2.36 times as fast as plain TypeScript; H6 refuted by 0.02; on another machine (a departure, the ratios compared). Run 4, at commit `d9fbe35`, after steps 1 to 3 of decision 0017: plain Peras 2.39 to 2.63 times as fast as plain TypeScript, 0.26 to 0.31 times as fast as optimized TypeScript; H6 refuted further, 4.88. Run 5, at commit `8f98a87`, version C given the bytes (decision 0020): H3 holds for the first time, C's peak memory 0.23 times A's, and plain Peras 2.52 to 3.00 times as fast as plain TypeScript. Results and record below._
 
 _Protocol status: registered before any measure. The results will be added below it, whether they confirm the hypotheses or not; the protocol itself will not change after the first measure, and any departure from it will be listed as such._
 
@@ -247,7 +247,7 @@ Warm, in milliseconds, medians of 15 runs:
 
 ### Run 4, at commit `d9fbe35`: the results
 
-Measured on 2026-11-12 from 07:45 to 07:49 UTC, Chromium headless, under the same protocol, unchanged; nothing else ran. The machine is the same model as run 3's, an Intel Xeon at 2.30 GHz with 4 cores. The report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md); run 3's is kept in [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+Measured on 2026-11-12 from 07:45 to 07:49 UTC, Chromium headless, under the same protocol, unchanged; nothing else ran. The machine is the same model as run 3's, an Intel Xeon at 2.30 GHz with 4 cores. The report is in [bench/data/run-4/RESULTS.md](../../../bench/data/run-4/RESULTS.md); run 3's is kept in [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
 
 **What changed in the compiler since run 3.** Steps 1 to 3 of [decision 0017](0017-aggregating-without-copies.md):
 
@@ -278,3 +278,44 @@ Warm, in milliseconds, medians of 15 runs:
 **What it says.** Plain Peras computes the dashboard 2.39 to 2.63 times as fast as plain TypeScript, against 2.06 to 2.36 in run 3. Against TypeScript optimized by hand, it goes from 0.25–0.28 to 0.26–0.31. Run 3 and run 4 had the same processor, so C's milliseconds compare too, with caution (M016). At 1,000,000 rows C goes from 334.1 to 296.9 ms, 11 % less; at 4,000,000 rows from 1,477.7 to 1,448.1, 2 % less.
 
 **The gain is smaller on the larger file, and H6 moves further from its bound**: 3.80, 4.42, then 4.88, against at most 4.4. Decision 0017 removed work done per row, which shows at 1,000,000 rows. What grows faster than the rows does not depend on that work. At 4,000,000 rows, the maps of pairs, products and users are larger and less often in the cache (F215). This is a reading of the figures, not a measure of its cause. It is the first thing to profile at 4,000,000 rows before the next decision on the dashboard.
+
+### Run 5, at commit `8f98a87`: the results
+
+Measured on 2026-11-12 from 09:43 to 09:47 UTC, on the same model of machine as runs 3 and 4, an Intel Xeon at 2.30 GHz with 4 cores, Chromium headless; nothing else ran. The report is in [bench/data/RESULTS.md](../../../bench/data/RESULTS.md); run 4's is kept in [bench/data/run-4](../../../bench/data/run-4/RESULTS.md). The three versions give the same summary, byte for byte, at every size.
+
+**What changed since run 4.** Decision 0020: an exported function that takes a `String` also takes a `Uint8Array`, copied as it is and checked to be UTF-8. **Departure from run 4, registered in decision 0020 before any code:** version C's glue calls `peras.summarize(bytes)` instead of `peras.summarize(new TextDecoder().decode(bytes))`, as A and B already take the bytes. C's Peras source, A, B, the data and the thresholds did not change.
+
+| Hypothesis                         | Run 3             | Run 4             | Run 5                                             | Verdict     |
+| ---------------------------------- | ----------------- | ----------------- | ------------------------------------------------- | ----------- |
+| H1, C at least 2 times A           | 2.36 and 2.06     | 2.63 and 2.39     | **3.00** at 1,000,000 rows, **2.52** at 4,000,000 | **holds**   |
+| H2, C at least 0.8 times B         | 0.28 and 0.25     | 0.31 and 0.26     | 0.35 and 0.28                                     | **refuted** |
+| H3, C's memory at most half of A's | 0.78              | 0.78              | **0.23**                                          | **holds**   |
+| H4, C at most 3 times A's bytes    | 12.5              | 12.5              | 12.9, 10,147 bytes                                | **refuted** |
+| H5, D at least 2 times C           | cannot be written | cannot be written | cannot be written                                 | **refuted** |
+| H6, linear, at most 4.4            | 4.42              | 4.88              | 4.91                                              | **refuted** |
+| H7, C at most 1.25 times A's lines | 1.08              | 1.08              | 1.08                                              | holds       |
+
+Warm, in milliseconds, medians of 15 runs:
+
+| Version                  | 100,000 | 1,000,000 | 4,000,000 |
+| ------------------------ | ------: | --------: | --------: |
+| A. TypeScript, idiomatic |    62.7 |     810.9 |   3,350.4 |
+| B. TypeScript, optimized |    10.6 |      94.1 |     373.3 |
+| C. Peras                 |    24.6 |     270.7 |   1,327.8 |
+
+Memory, the peak added by the query, medians of 5:
+
+| Version                  |  100,000 | 1,000,000 | 4,000,000 |
+| ------------------------ | -------: | --------: | --------: |
+| A. TypeScript, idiomatic | 17.5 MiB |  84.9 MiB | 219.3 MiB |
+| B. TypeScript, optimized |  4.8 MiB |   0.0 MiB |   0.0 MiB |
+| C. Peras                 |  6.2 MiB |  24.1 MiB |  49.4 MiB |
+
+**What it says.**
+
+- **H3 holds for the first time.** Peras's peak at 4,000,000 rows goes from 171.6 MiB in run 4 to 49.4 MiB: 0.23 times plain TypeScript's, where 0.5 was registered. The string that `TextDecoder` made, then the loader encoded back into the module, is gone.
+- **Plain Peras is now 2.52 to 3.00 times as fast as plain TypeScript**, against 2.39 to 2.63, since decoding the text took time too.
+- **Cold, its first chart** comes in 0.45 s against 1.01 at 1,000,000 rows, and 1.74 s against 3.85 at 4,000,000.
+- **It ships 10,147 bytes,** 294 more than run 4: the loader's copy of the bytes and the runtime's check.
+
+**What the measure of memory does not see.** The protocol measures the peak above the page's peak with the data loaded (`VmHWM`, finding M008). Version B's query stays under that peak and reads 0; part of C's may too. The module still holds a copy of the text, about 122 MiB at 4,000,000 rows, which decision 0020 says cannot go while the data starts outside the module. So 49.4 MiB is the peak this protocol sees, not everything C holds. The comparison with A, which H3 registered, stands: A's query climbs past that peak, and C's string no longer does.

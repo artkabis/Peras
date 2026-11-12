@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0020-text-as-bytes.md](../../en/decisions/0020-text-as-bytes.md)._
 
-_Statut : proposée le 2026-11-12, avec ses critères et un amendement à la version C de la décision 0014 enregistrés avant tout code._
+_Statut : proposée le 2026-11-12, avec ses critères et un amendement à la version C de la décision 0014 enregistrés avant tout code ; construite, mesurée et gardée le même jour (voir [Mesuré : gardé](#mesuré--gardé))._
 
 ## Contexte
 
@@ -53,3 +53,17 @@ Gardé seulement si les trois tiennent, sinon retiré :
 1. **Mémoire.** À l’exécution 5 de la décision 0014, H3, le pic de mémoire de C sur celui de A à 4 000 000 de lignes, vaut au plus 0,65. Il valait 0,78 à l’exécution 4.
 2. **Temps.** À l’exécution 5, C sur A vaut au moins 2,58 à 1 000 000 de lignes et 2,34 à 4 000 000. Ce sont les 2,63 et 2,39 de l’exécution 4 moins 0,05 : pas de perte.
 3. **Justesse.** Un test de bout en bout sur les deux allocateurs donne 10 000 chaînes d’octets aléatoires et les cas limites de la table 3-7. Un `Uint8Array` est accepté exactement quand `TextDecoder` avec `fatal: true` l’accepte, et donne alors la même chaîne. Rien ne reste vivant.
+
+## Mesuré : gardé
+
+Le changement est arrivé au commit `39728be`, et l’exécution 5 de la décision 0014 l’a mesuré au commit `8f98a87`, la version C recevant les octets comme le dit l’amendement.
+
+| Critère                                                             | Mesuré                                                                                                                                                                                        | Verdict |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1. H3 au plus 0,65                                                  | 0,23 : le pic de C 49,4 Mio à 4 000 000 de lignes, contre 171,6 à l’exécution 4                                                                                                               | tient   |
+| 2. C sur A au moins 2,58 et 2,34                                    | 3,00 à 1 000 000 de lignes, 2,52 à 4 000 000                                                                                                                                                  | tient   |
+| 3. Des octets acceptés exactement comme par un `TextDecoder` strict | 10 000 chaînes aléatoires et les limites de la table 3-7, sur les deux allocateurs, dans les tests de bout en bout ; 50 000 de plus avec et sans SIMD : aucun désaccord, rien ne reste vivant | tient   |
+
+**Gardé.** Une mutation qui accepte les demi-paires de substitution fait échouer le test de bout en bout sur les deux allocateurs. Les déclarations des paramètres `String` disent `string | Uint8Array` ; deux tests qui les lisent ont été mis à jour.
+
+**Ce qu’il ne fait pas.** Le module copie toujours le texte, environ 122 Mio à 4 000 000 de lignes, parce qu’un module WebAssembly ne lit que sa propre mémoire. Les 49,4 Mio de l’exécution 5 sont le pic que le protocole de la décision 0014 voit au-delà du chargement des données (M008), pas tout ce que C tient. Retirer cette copie demanderait des données écrites dès le départ dans la mémoire du module, comme une page qui lit un fichier ou une réponse directement dedans. C’est un changement de la façon dont une page donne ses données à Peras, pour une autre décision.

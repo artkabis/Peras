@@ -82,6 +82,6 @@ describe("strings in JavaScript", () => {
     expect(m.rename({ name: "a", age: 3 }, "Zoé")).toEqual({ name: "Zoé", age: 3 });
     expect(m.__perasHeap.live()).toBe(0);
     expect(dts).toContain("export interface User { name: string; age: number; }");
-    expect(dts).toContain("export declare function greeting(name: string): string;");
+    expect(dts).toContain("export declare function greeting(name: string | Uint8Array): string;");
   });
 });

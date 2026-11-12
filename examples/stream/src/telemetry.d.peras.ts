@@ -20,4 +20,4 @@ export declare const __perasHeap: {
   array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends "i64" ? bigint : K extends "bool" ? boolean : number)[]): PerasArray<K>;
 };
 export declare function bins(): number;
-export declare function digest(text: string): Digest;
+export declare function digest(text: string | Uint8Array): Digest;

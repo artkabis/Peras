@@ -26,7 +26,6 @@ import { createServer } from "node:http";
 import { cpus } from "node:os";
 import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { TextDecoder } from "node:util";
 import { gzipSync } from "node:zlib";
 import { chromium } from "playwright";
 import ts from "typescript";
@@ -94,7 +93,7 @@ const parallelRefusal =
   parallel.status === 0 ? undefined : (parallel.stderr.split("\n")[0] ?? "refused");
 
 /** @typedef {{ summarize: (bytes: Uint8Array) => unknown }} Version */
-/** @typedef {{ summarize: (text: string) => unknown }} PerasModule */
+/** @typedef {{ summarize: (text: string | Uint8Array) => unknown }} PerasModule */
 /** @param {string} path @returns {Promise<unknown>} */
 async function load(path) {
   /** @type {unknown} */
@@ -112,7 +111,8 @@ const peras = /** @type {PerasModule} */ (await load(join(work, "c", "dashboard.
 const versions = {
   A: /** @type {Version} */ (await load(join(work, "js", "dashboard-idiomatic.js"))).summarize,
   B: /** @type {Version} */ (await load(join(work, "js", "dashboard-optimized.js"))).summarize,
-  C: (bytes) => peras.summarize(new TextDecoder().decode(bytes)),
+  // The bytes as they are (decision 0020, the amendment to 0014 before run 5).
+  C: (bytes) => peras.summarize(bytes),
 };
 const sha = (/** @type {string | Uint8Array} */ x) => createHash("sha256").update(x).digest("hex");
 
@@ -182,7 +182,8 @@ const entry = {
   B: "/js/dashboard-optimized.js",
   C: "/c/dashboard.js",
 };
-const call = `(m, v) => v === "C" ? (bytes) => m.summarize(new TextDecoder().decode(bytes)) : m.summarize`;
+// Every version takes the bytes; C since run 5 (decision 0020).
+const call = `(m, v) => m.summarize`;
 const cold = `<!doctype html><meta charset="utf-8"><title>cold</title><link rel="icon" href="data:,">
 <canvas width="1200" height="600"></canvas>
 <script type="module">

@@ -2428,7 +2428,10 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          // Written straight into the module's memory: room for one byte per\n\
          // character and an eighth more first, enough for English or French\n\
          // in one block; then, if needed, for 3 bytes per character left.\n\
+         // Bytes are copied as they are, then checked to be UTF-8 as a fatal\n\
+         // TextDecoder checks them, with no string made (decision 0020).\n\
          const $toStr = (text) => {\n  \
+         if (text instanceof Uint8Array) return $bytesStr(text);\n  \
          let room = text.length + (text.length >>> 3);\n  \
          const h = $runtime.buf_new(room, 1, 0);\n  \
          let rest = text;\n  \
@@ -2444,6 +2447,17 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          room = rest.length * 3;\n    \
          $runtime.buf_reserve(h, room, 1, 0);\n  \
          }\n\
+         };\n\
+         const $bytesStr = (given) => {\n  \
+         // A view of the module's own memory would be detached as it grows.\n  \
+         const bytes = given.buffer === $runtime.memory.buffer ? given.slice() : given;\n  \
+         const h = $runtime.buf_new(bytes.length, 1, 0);\n  \
+         const view = new DataView($runtime.memory.buffer);\n  \
+         new Uint8Array($runtime.memory.buffer, view.getUint32(h + 8, true), bytes.length).set(bytes);\n  \
+         view.setUint32(h, bytes.length, true);\n  \
+         if ($runtime.str_check_utf8(h)) return h;\n  \
+         $runtime.buf_release(h, 0);\n  \
+         throw new TypeError(\"Peras: the bytes given as a String are not UTF-8\");\n\
          };\n\
          const $readStr = (h) => {\n  \
          const view = new DataView($runtime.memory.buffer);\n  \
@@ -2755,6 +2769,8 @@ fn ts_param(shape: &Shape) -> String {
                 elem_kind(*elem)
             )
         }
+        // Bytes are copied in as they are, checked to be UTF-8 (decision 0020).
+        Shape::String(_) => "string | Uint8Array".to_owned(),
         other => ts_shape(other),
     }
 }
