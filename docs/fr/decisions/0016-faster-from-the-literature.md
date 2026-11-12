@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0016-faster-from-the-literature.md](../../en/decisions/0016-faster-from-the-literature.md)._
 
-_Statut : proposée le 2026-11-11. Chaque changement est mesuré quand il arrive, par une nouvelle exécution du protocole de la [décision 0015](0015-stream-measured.md), inchangé ; un changement qui n’y montre pas son gain est rapporté comme tel._
+_Statut : proposée le 2026-11-11, close le 2026-11-12 (voir le [Bilan](#bilan)). Chaque changement est mesuré quand il arrive, par une nouvelle exécution du protocole de la [décision 0015](0015-stream-measured.md), inchangé ; un changement qui n’y montre pas son gain est rapporté comme tel._
 
 ## Contexte
 
@@ -56,3 +56,46 @@ L’étape 1, les caractères de `split("")` parcourus au fil de l’eau, est fa
 - **Les appels au runtime** (F212). Le runtime est sa propre instance ; un appel par un import coûte 2,06 ns dans Chromium, contre 0,73 pour un appel interne au module, que le moteur intègre (`node scripts/call-cost.mjs`). Le calcul fait 30 de ces appels par ligne : environ 40 ns, 11 % du temps.
 
 L’ordre change donc. D’abord, **les littéraux en blocs statiques** (F211) : prêtés sans copie, jamais libérés ; c’est petit, et cela retire trois des sept allocations de chaque ligne. Ensuite, **le runtime lié dans le module** (F212) : cela retire le surcoût de chaque appel, environ 11 %, et laisse le moteur intégrer les petites fonctions du runtime, ce qui peut donner plus ; cette part n’est pas encore mesurée. Puis les étapes ci-dessus, qui retirent chacune une allocation.
+
+## Bilan
+
+Close le 2026-11-12, après six exécutions de la décision 0015, toutes sous son protocole enregistré, avec les mêmes données, le même TypeScript et les mêmes seuils. Seuls le compilateur et son runtime ont changé. Le calcul de Peras, à 100 000 lignes dans Chromium :
+
+| Exéc. | Commit    | Ce qui est arrivé avant elle                                                                                | Peras, ns par ligne | Peras sur B, intervalle à 95 % |
+| ----- | --------- | ----------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------ |
+| 1     | `13921e6` | rien : le compilateur tel que la 0015 l’a enregistré                                                        | 438,5               | 0,96 [0,93, 0,97]              |
+| 2     | `9f9754b` | les littéraux de texte en blocs statiques (F211)                                                            | 338,0               | 1,21 [1,19, 1,24]              |
+| 3     | `7470d08` | le runtime lié dans le module (F212)                                                                        | 304,7               | 1,41 [1,37, 1,44]              |
+| 4     | `99f9202` | un repli calme de `unwrapOr` construit seulement s’il sert (F209), un cache des petits blocs libérés (F211) | 218,2               | 1,94 [1,87, 2,00]              |
+| 5     | `82641f4` | une recherche dans la table au lieu de deux (F210)                                                          | 204,2               | 2,04 [1,99, 2,07]              |
+| 6     | `9dc9566` | le séparateur cherché 16 octets à la fois, un bloc par split, un pas de caractère (F207, F208)              | 182,1               | 2,27 [2,23, 2,31]              |
+
+Le TypeScript écrit pour la vitesse (B) est resté entre 413,9 et 427,1 ns par ligne sur les six exécutions, et le TypeScript tel qu’on l’écrit (A) entre 729,3 et 745,9. Le temps par ligne de Peras a baissé de 2,4 fois. Peras est passé de 0,96 fois aussi rapide que B à 2,27 fois, et de 1,70 fois plus rapide que A à 4,04 fois. L’espoir écrit plus haut était d’environ 200 ms pour 1 000 000 de lignes. L’exécution 6 donne 182 ns par ligne, 182 ms pour 1 000 000, et le profil dans Node environ 181 ms.
+
+![Combien de fois Peras est plus rapide, exécution après exécution, à 100 000 lignes : sur le TypeScript tel qu’on l’écrit de 1,70 à 4,04, sur le TypeScript écrit pour la vitesse de 0,96 à 2,27](../../assets/stream-history.svg)
+
+**Ce qui n’a pas donné ce qui était attendu**
+
+- L’étape 1, les caractères parcourus au fil de l’eau, n’a rien fait gagner seule (M013). Le profil avait mis le coût sur le tableau, alors qu’il était dans les appels et les allocations. Les retirer, aux exécutions 2 à 4, a donné l’essentiel du gain.
+- Deux premiers essais sur la recherche n’ont rien donné et ont été retirés (F210) :
+  - un hachage mémorisé ;
+  - des clés comparées 8 octets à la fois.
+- H5, les appels lents, reste réfutée : 1,74 [1,66, 1,81] à l’exécution 6. Les appels les plus lents baissent moins que la médiane. Aucune de ces techniques ne les visait.
+
+**Ce qui n’a pas été fait, et pourquoi**
+
+- La technique 3 complète, une analyse d’échappement : pas faite. Deux pas plus petits en ont pris l’essentiel du gain :
+  - un split crée un bloc au lieu d’un par champ ;
+  - un bloc libéré de même taille est réutilisé par le cache.
+- `Option` rendu en valeurs WebAssembly (technique 4) : pas fait. Le repli paresseux a pris l’essentiel de ce que F209 mesurait.
+- La lecture des nombres de Lemire : pas faite. Les nombres pèsent peu dans le temps. `parseF64` lit aujourd’hui les décimaux exactement, et le changer risque sa justesse pour un petit gain.
+
+**Sûreté**
+
+Chaque étape a gardé les vérifications de l’allocateur de debug, le vérificateur de release et les tests de bout en bout des deux allocateurs. À partir de la passe de recherche, chaque optimisation a aussi passé :
+
+- le test différentiel (M015) : des programmes aléatoires exécutés de cinq façons, qui doivent concorder et ne laisser aucun bloc vivant ;
+- 2 000 de ces programmes une fois ;
+- une exécution avec l’optimisation cassée exprès, que le test a détectée.
+
+Un programme écrit simplement a ces gains sans rien changer. Le source Peras de l’application de flux n’a pas été réécrit pour gagner.
