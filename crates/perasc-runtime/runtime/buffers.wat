@@ -515,13 +515,16 @@
           (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
-    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
-    (local.set $block
-      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    ;; One block: the array's header, a handle per part, then the parts'
+    ;; headers; INLINE, so that releasing the array releases it whole.
+    (local.set $parts (call $alloc
+      (i32.add (i32.const 16) (call $bytes (local.get $n) (i32.const 20) (i32.const 0))) (i32.const 0)))
+    (local.set $block (i32.add (local.get $parts) (i32.const 16)))
     (i32.store (local.get $parts) (local.get $n))
     (i32.store offset=4 (local.get $parts) (local.get $n))
     (i32.store offset=8 (local.get $parts) (local.get $block))
-    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (i32.store offset=12 (local.get $parts)
+      (i32.or (i32.or (i32.const 4) (global.get $VIEWS)) (global.get $INLINE)))
     (local.set $handle (local.get $block))
     (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
     (local.set $start (local.get $data))
@@ -582,13 +585,16 @@
           (then (local.set $n (i32.add (local.get $n) (i32.const 1)))))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
-    (local.set $parts (call $alloc (i32.const 16) (i32.const 0)))
-    (local.set $block
-      (call $alloc (call $bytes (local.get $n) (i32.const 20) (i32.const 0)) (i32.const 0)))
+    ;; One block: the array's header, a handle per part, then the parts'
+    ;; headers; INLINE, so that releasing the array releases it whole.
+    (local.set $parts (call $alloc
+      (i32.add (i32.const 16) (call $bytes (local.get $n) (i32.const 20) (i32.const 0))) (i32.const 0)))
+    (local.set $block (i32.add (local.get $parts) (i32.const 16)))
     (i32.store (local.get $parts) (local.get $n))
     (i32.store offset=4 (local.get $parts) (local.get $n))
     (i32.store offset=8 (local.get $parts) (local.get $block))
-    (i32.store offset=12 (local.get $parts) (i32.or (i32.const 4) (global.get $VIEWS)))
+    (i32.store offset=12 (local.get $parts)
+      (i32.or (i32.or (i32.const 4) (global.get $VIEWS)) (global.get $INLINE)))
     ;; Handles at the start of the block, headers after them.
     (local.set $handle (local.get $block))
     (local.set $hdr (i32.add (local.get $block) (i32.shl (local.get $n) (i32.const 2))))
@@ -626,14 +632,56 @@
     (i32.store offset=12 (local.get $c) (i32.or (i32.const 1) (global.get $INLINE)))
     (local.get $c))
 
+;; @simd
+  ;; The first index at or after `from`, below `len`, where the bytes at
+  ;; `data` hold `byte`, or -1: sixteen bytes compared at once while sixteen
+  ;; are left, then one at a time (decision 0016, technique 5).
+  (func $find_byte (param $data i32) (param $from i32) (param $len i32) (param $byte i32) (result i32)
+    (local $i i32) (local $splat v128) (local $m i32)
+    (local.set $i (local.get $from))
+    (local.set $splat (i8x16.splat (local.get $byte)))
+    (block $wide
+      (loop $next
+        (br_if $wide (i32.gt_u (i32.add (local.get $i) (i32.const 16)) (local.get $len)))
+        (local.set $m (i8x16.bitmask (i8x16.eq
+          (v128.load align=1 (i32.add (local.get $data) (local.get $i))) (local.get $splat))))
+        (if (local.get $m)
+          (then (return (i32.add (local.get $i) (i32.ctz (local.get $m))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 16)))
+        (br $next)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $i))) (local.get $byte))
+          (then (return (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const -1))
+
+  ;; @scalar
+  ;; The first index at or after `from`, below `len`, where the bytes at
+  ;; `data` hold `byte`, or -1: one byte at a time.
+  (func $find_byte (param $data i32) (param $from i32) (param $len i32) (param $byte i32) (result i32)
+    (local $i i32)
+    (local.set $i (local.get $from))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+        (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $i))) (local.get $byte))
+          (then (return (local.get $i))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const -1))
+
+  ;; @end
+
   ;; Points the view `c` at the part of `h` from `from` to the next
   ;; `separator`, or to the end; gives where the next part starts, or -1 when
-  ;; this one is the last. A separator of one byte is looked for byte by byte,
-  ;; the usual case. An empty separator gives the characters one by one, as
+  ;; this one is the last. A separator of one byte, the usual case, is looked
+  ;; for by `$find_byte`. An empty separator gives the characters one by one, as
   ;; `split("")` does: a lead byte and its continuation bytes (F207).
   (func (export "str_next_part") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
     (local $len i32) (local $data i32) (local $k i32) (local $at i32) (local $end i32) (local $next i32)
-    (local $byte i32)
     (local.set $len (i32.load (local.get $h)))
     (local.set $data (i32.load offset=8 (local.get $h)))
     (local.set $k (i32.load (local.get $separator)))
@@ -656,15 +704,8 @@
         (return (select (local.get $end) (i32.const -1) (i32.lt_u (local.get $end) (local.get $len))))))
     (if (i32.eq (local.get $k) (i32.const 1))
       (then
-        (local.set $byte (i32.load8_u (i32.load offset=8 (local.get $separator))))
-        (local.set $end (local.get $from))
-        (block $found
-          (loop $next
-            (br_if $found (i32.ge_u (local.get $end) (local.get $len)))
-            (if (i32.eq (i32.load8_u (i32.add (local.get $data) (local.get $end))) (local.get $byte))
-              (then (local.set $at (local.get $end)) (br $found)))
-            (local.set $end (i32.add (local.get $end) (i32.const 1)))
-            (br $next))))
+        (local.set $at (call $find_byte (local.get $data) (local.get $from) (local.get $len)
+          (i32.load8_u (i32.load offset=8 (local.get $separator))))))
       (else (local.set $at (call $str_index_of (local.get $h) (local.get $separator) (local.get $from)))))
     (if (i32.lt_s (local.get $at) (i32.const 0))
       (then
