@@ -675,6 +675,29 @@
 
   ;; @end
 
+  ;; `str_next_part` with an empty separator: points the view `c` at the
+  ;; character of `h` at `from`, its lead byte and its continuation bytes, and
+  ;; gives where the next one starts, or -1 after the last. A function of its
+  ;; own, small enough for the engine to inline into the loop (decision 0016).
+  (func (export "str_next_char") (param $h i32) (param $separator i32) (param $c i32) (param $from i32) (result i32)
+    (local $len i32) (local $data i32) (local $end i32)
+    (local.set $len (i32.load (local.get $h)))
+    (local.set $data (i32.load offset=8 (local.get $h)))
+    (local.set $end (i32.add (local.get $from) (i32.const 1)))
+    (block $whole
+      (loop $more
+        (br_if $whole (i32.ge_u (local.get $end) (local.get $len)))
+        (br_if $whole
+          (i32.ne
+            (i32.and (i32.load8_u (i32.add (local.get $data) (local.get $end))) (i32.const 192))
+            (i32.const 128)))
+        (local.set $end (i32.add (local.get $end) (i32.const 1)))
+        (br $more)))
+    (i32.store (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=4 (local.get $c) (i32.sub (local.get $end) (local.get $from)))
+    (i32.store offset=8 (local.get $c) (i32.add (local.get $data) (local.get $from)))
+    (select (local.get $end) (i32.const -1) (i32.lt_u (local.get $end) (local.get $len))))
+
   ;; Points the view `c` at the part of `h` from `from` to the next
   ;; `separator`, or to the end; gives where the next part starts, or -1 when
   ;; this one is the last. A separator of one byte, the usual case, is looked

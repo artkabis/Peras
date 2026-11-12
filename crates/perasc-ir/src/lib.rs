@@ -688,6 +688,10 @@ pub enum RuntimeFn {
     /// the next part starts, or -1 when this one was the last. The parts are
     /// those of `Split`, the last empty one included.
     NextPart,
+    /// `(s, separator, cursor, from) -> i32`: [`Self::NextPart`] when the
+    /// separator is the empty literal, each part a character: a function
+    /// small enough for the engine to inline (decision 0016).
+    NextChar,
     /// `(s) -> f64`: the decimal number `s` writes, correctly rounded, as
     /// `parseF64` reads it ([`text::is_decimal`]); NaN when it is not one,
     /// which no text it accepts can write.
@@ -696,7 +700,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 47] = [
+    pub const ALL: [Self; 48] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -743,6 +747,7 @@ impl RuntimeFn {
         Self::ArrPermute,
         Self::StrCursor,
         Self::NextPart,
+        Self::NextChar,
         Self::ParseFloat,
     ];
 
@@ -777,6 +782,7 @@ impl RuntimeFn {
             Self::SplitViews => "str_split_views",
             Self::StrCursor => "str_cursor",
             Self::NextPart => "str_next_part",
+            Self::NextChar => "str_next_char",
             Self::ParseFloat => "str_parse_float",
             Self::FmtFloat => "fmt_float",
             Self::MapNew => "map_new",
@@ -817,7 +823,7 @@ impl RuntimeFn {
     #[must_use]
     pub const fn operands(self) -> &'static [Ty] {
         match self {
-            Self::NextPart => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
+            Self::NextPart | Self::NextChar => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
             Self::IndexOf => &[Ty::Borrowed, Ty::I32],
             Self::StartsWith
             | Self::EndsWith
@@ -870,6 +876,7 @@ impl RuntimeFn {
         match self {
             Self::IndexOf
             | Self::NextPart
+            | Self::NextChar
             | Self::ArrIndexOfStr
             | Self::MapFindI
             | Self::MapFindS

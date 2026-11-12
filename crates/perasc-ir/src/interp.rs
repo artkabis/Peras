@@ -807,7 +807,7 @@ impl Machine<'_> {
                 self.split(&s, &separator)
             }
             F::StrCursor => self.string(&[]),
-            F::NextPart => {
+            F::NextPart | F::NextChar => {
                 let separator = text(self, 1)?;
                 self.next_part(&s, &separator, operands.get(2).copied(), int(3)?)?
             }
