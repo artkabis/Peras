@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **A structure has a `copy()`** (finding F102): `e.1.copy()` keeps a structure a loop over a map lends, its strings, arrays, maps and sets made again, in both modes (decision 0021, step 2). A structure holding a resource of the browser, a value of JavaScript or a function has none.
 - **The vectorizer counts reads without wrapping** (finding F219): a loop with four statements it refuses and five reads of a local could be taken for one with one read; the counts now saturate. **An arrow function of a managed module that makes a structure** gives the object, where `=> { … }` was read as a block.
 - **`reduce` keeps a string or an array** (finding F307): `words.reduce((acc, w) => acc + w + ",", "")` compiles; the accumulator owns its value, and each turn releases the previous one once the new one is computed (decision 0021, step 2).
 - **`==` compares arrays of strings and of arrays** (finding F305): `a == b` on `Array<String>`, `Array<Array<i32>>`, or arrays of structures holding them, compares lengths then elements, going down into each, by `buf_equal`, a function of the runtime; floats compare as numbers, as in JavaScript (decision 0021, step 2). Arrays of maps, sets, or options that hold memory are still reported (`E0900`).

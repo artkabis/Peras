@@ -267,4 +267,29 @@ Keys are integers, booleans or strings ([E0240](../errors/E0240.md)); values of 
 | `isOk()`, `isErr()`  | which variant it is           | <span class="status compiled">compiled</span> |
 | `unwrapOr(fallback)` | the `Ok` value, or `fallback` | <span class="status compiled">compiled</span> |
 
+## Structures
+
+| Method   | Gives                                                                                | Status                                        |
+| -------- | ------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `copy()` | a structure of its own: its strings, arrays, maps and sets made again, in both modes | <span class="status compiled">compiled</span> |
+
+A structure that holds a resource of the browser, a value of JavaScript or a function has no `copy()`: a resource has one owner.
+
+```peras build
+struct Item {
+  name: String;
+  tags: Array<String>;
+}
+
+export fn renamed(items: Map<String, Item>): Array<Item> {
+  let out: Array<Item> = [];
+  for (const e of items) {
+    let item = e.1.copy();
+    item.name += "!";
+    out.push(item);
+  }
+  return out;
+}
+```
+
 An unknown member is refused with the list of the ones that exist ([E0215](../errors/E0215.md)). Many more methods are planned: see the [roadmap](roadmap.md#phase-3-a-standard-library).

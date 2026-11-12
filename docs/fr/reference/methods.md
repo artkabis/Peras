@@ -267,4 +267,29 @@ Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E02
 | `isOk()`, `isErr()` | la variante                       | <span class="status compiled">compilé</span> |
 | `unwrapOr(secours)` | la valeur de l’`Ok`, ou `secours` | <span class="status compiled">compilé</span> |
 
+## Structures
+
+| Méthode  | Donne                                                                                         | État                                         |
+| -------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `copy()` | une structure à soi : ses chaînes, tableaux, tables et ensembles refaits, dans les deux modes | <span class="status compiled">compilé</span> |
+
+Une structure qui tient une ressource du navigateur, une valeur de JavaScript ou une fonction n’a pas de `copy()` : une ressource a un seul propriétaire.
+
+```peras build
+struct Item {
+  name: String;
+  tags: Array<String>;
+}
+
+export fn renamed(items: Map<String, Item>): Array<Item> {
+  let out: Array<Item> = [];
+  for (const e of items) {
+    let item = e.1.copy();
+    item.name += "!";
+    out.push(item);
+  }
+  return out;
+}
+```
+
 Un membre inconnu est refusé avec la liste de ceux qui existent ([E0215](../errors/E0215.md)). Beaucoup d’autres méthodes sont prévues : voir la [feuille de route](roadmap.md#phase-3--une-bibliothèque-standard).

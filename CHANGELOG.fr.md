@@ -8,6 +8,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; les ve
 
 ### Langage et compilateur
 
+- **Une structure a un `copy()`** (constat F102) : `e.1.copy()` garde une structure qu’une boucle sur une table prête, ses chaînes, tableaux, tables et ensembles refaits, dans les deux modes (décision 0021, étape 2). Une structure qui tient une ressource du navigateur, une valeur de JavaScript ou une fonction n’en a pas.
 - **Le vectoriseur compte les lectures sans faire le tour** (constat F219) : une boucle avec quatre instructions qu’il refuse et cinq lectures d’un local pouvait passer pour une boucle à une lecture ; les comptes saturent désormais. **Une fonction fléchée d’un module managed qui construit une structure** donne l’objet, là où `=> { … }` était lu comme un bloc.
 - **`reduce` garde une chaîne ou un tableau** (constat F307) : `words.reduce((acc, w) => acc + w + ",", "")` se compile ; l’accumulateur possède sa valeur, et chaque tour libère la précédente une fois la nouvelle calculée (décision 0021, étape 2).
 - **`==` compare les tableaux de chaînes et de tableaux** (constat F305) : `a == b` sur `Array<String>`, `Array<Array<i32>>`, ou des tableaux de structures qui en contiennent, compare les longueurs puis les éléments, en descendant dans chacun, par `buf_equal`, une fonction du runtime ; les flottants se comparent comme des nombres, comme en JavaScript (décision 0021, étape 2). Les tableaux de tables, d’ensembles, ou d’options qui contiennent de la mémoire restent signalés (`E0900`).

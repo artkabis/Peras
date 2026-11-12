@@ -111,6 +111,23 @@ fn an_arrow_function_making_a_structure_gives_it() {
     );
 }
 
+/// A structure's copy is its own: changing it leaves the original as it was
+/// (decision 0021, finding F102).
+#[test]
+fn a_copied_structure_is_its_own() {
+    gives(
+        "struct Bag {\n  name: String;\n  items: Array<i32>;\n  seen: Map<String, i32>;\n}\n\
+         export fn main(): Array<i32> {\n  \
+           const a = Bag(\"a\", [1], Map.new());\n  \
+           let b = a.copy();\n  \
+           b.items.push(2);\n  \
+           b.seen.set(\"x\", 1);\n  \
+           return [a.items.length, b.items.length, a.seen.size, b.seen.size];\n\
+         }\n",
+        "[1,2,0,1]",
+    );
+}
+
 #[test]
 fn integers_wrap_as_in_owned_modules() {
     gives(

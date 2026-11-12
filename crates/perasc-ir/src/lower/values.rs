@@ -576,6 +576,25 @@ impl Lowering<'_> {
                 None => Vec::new(),
             };
         }
+        // A structure's copy: each buffer copied, with those it owns
+        // (decision 0021, finding F102).
+        if method == "copy" {
+            let copies = self
+                .value_as(state, base, Mode::Borrow)
+                .into_iter()
+                .map(|value| {
+                    if value.ty == Ty::Borrowed {
+                        Expr {
+                            kind: ExprKind::Buf(crate::BufOp::Clone, vec![value]),
+                            ty: Ty::Owned,
+                        }
+                    } else {
+                        value
+                    }
+                })
+                .collect();
+            return Self::fresh(state, copies, mode);
+        }
         if method == "unwrapOr"
             && let Some(values) = self.map_get_or(state, base, args, mode)
         {

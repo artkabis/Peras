@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 33 } else { 34 };
+    let choices = if depth == 0 { 34 } else { 35 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -127,6 +127,9 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // `reduce` keeping a string or an array: the previous one released
         // at each turn, the accumulator read in the body.
         32 => "const j = `${k},${s},${i}`.split(\",\").reduce((a, w) => a.slice(0, 6) + w + \"|\", k.copy()); const d = [i, acc % 9].reduce((a, x) => a.concat([x, a.length]), [1]); acc += j.length + d.length + d[d.length - 1];".to_owned(),
+        // `copy()` of structures: one a loop over a map lends, one read
+        // out of it, changed without changing the map.
+        33 => format!("for (const e of pairs) {{ let c = e.1.copy(); c.name += \"q\"; acc += c.name.length + c.count; }} let d = pairs.get({k}).unwrapOr(Pair(\"d\", 2)).copy(); d.count += 1; acc += d.count;"),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

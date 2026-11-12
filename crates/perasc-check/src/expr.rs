@@ -844,6 +844,13 @@ impl Checker<'_> {
             return self.host_method(*h, &text, name_span, args, span);
         }
         let text = self.name(name);
+        // A structure's copy: its own strings, arrays, maps and sets, made
+        // again (decision 0021, finding F102).
+        if matches!(receiver, Ty::Struct(..)) && text == "copy" && self.copyable(receiver, 0) {
+            self.arity(span, "copy", 0, args.len(), None);
+            self.check_args(args, &[]);
+            return receiver.clone();
+        }
         if let Ty::Array(element) = receiver
             && let Some(ty) = self.array_function_method(element, text, args, span)
         {
@@ -875,6 +882,32 @@ impl Checker<'_> {
         self.arity(span, text, method.params.len(), args.len(), None);
         self.check_args(args, &method.params);
         method.ret
+    }
+
+    /// Whether a value of `ty` can be copied: data only, no resource of the
+    /// browser, value of JavaScript or function.
+    fn copyable(&self, ty: &Ty, depth: usize) -> bool {
+        if depth > 64 {
+            return false;
+        }
+        let deeper = depth + 1;
+        match ty {
+            Ty::Int(_) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit | Ty::Bool | Ty::String => true,
+            Ty::Array(t) | Ty::Set(t) | Ty::Option(t) => self.copyable(t, deeper),
+            Ty::Map(k, v) | Ty::Result(k, v) => {
+                self.copyable(k, deeper) && self.copyable(v, deeper)
+            }
+            Ty::Struct(id, _) => self
+                .structs
+                .get(id.0)
+                .is_some_and(|s| s.fields.iter().all(|(_, t)| self.copyable(t, deeper))),
+            Ty::Enum(id, _) => self.enums.get(id.0).is_some_and(|e| {
+                e.variants
+                    .iter()
+                    .all(|(_, ts)| ts.iter().all(|t| self.copyable(t, deeper)))
+            }),
+            _ => false,
+        }
     }
 
     fn field(&mut self, base: &Ty, name: Symbol, span: Span) -> Ty {
