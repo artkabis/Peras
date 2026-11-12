@@ -3,9 +3,11 @@
 // and the time it saves is that thing's cost. Not a measure under a protocol:
 // a profile, to choose what the compiler should do next (decision 0017). A
 // variant changes what the dashboard computes; only its time is read.
-// Usage: node scripts/profile-data.mjs
+// Usage: node scripts/profile-data.mjs [--calls]
 // Prints, for 1,000,000 rows, the median of 9 rounds of each variant, the
-// variants alternating, and what each saves.
+// variants alternating, and what each saves. With --calls, instead: the
+// dashboard built with the runtime beside it (--link off), and each call
+// into the runtime counted, per row, on 100,000 rows.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,6 +19,54 @@ const work = join(root, "target", "profile-data");
 const perasc = join(root, "target", "release", "perasc");
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
+
+/** @param {string} path @returns {Promise<unknown>} */
+const load = (path) => import(pathToFileURL(path).href);
+
+if (process.argv.includes("--calls")) {
+  const out = join(work, "calls");
+  const built = spawnSync(
+    perasc,
+    [
+      "build",
+      join(root, "bench", "data", "dashboard.peras"),
+      "--allocator",
+      "tlsf",
+      "--link",
+      "off",
+      "--out",
+      out,
+    ],
+    { encoding: "utf8" },
+  );
+  if (built.status !== 0) throw new Error(built.stderr);
+  // Each function the module imports from the runtime, wrapped to count.
+  const loader = join(out, "dashboard.js");
+  const text = readFileSync(loader, "utf8");
+  const at = text.indexOf("// perasc:load");
+  if (at < 0) throw new Error("the loader has changed: no `// perasc:load`");
+  writeFileSync(
+    loader,
+    text.slice(0, at) +
+      "export const $counts = {};\n" +
+      "for (const [k, f] of Object.entries($imports.peras_rt)) if (typeof f === 'function') $imports.peras_rt[k] = (...a) => { $counts[k] = ($counts[k] ?? 0) + 1; return f(...a); };\n" +
+      text.slice(at),
+  );
+  const counted =
+    /** @type {{ summarize: (text: string) => { kept: number }, $counts: Record<string, number> }} */ (
+      await load(loader)
+    );
+  const generate = /** @type {{ generate: (rows: number) => Uint8Array }} */ (
+    await load(join(root, "bench", "data", "generate.ts"))
+  );
+  const rows = 100_000;
+  const summary = counted.summarize(new TextDecoder().decode(generate.generate(rows)));
+  console.log(`${String(rows)} rows, ${String(summary.kept)} kept; calls per row kept:`);
+  for (const [name, n] of Object.entries(counted.$counts).sort((a, b) => b[1] - a[1]))
+    console.log(`${name.padEnd(18)} ${(n / summary.kept).toFixed(2).padStart(6)}`);
+  process.exit(0);
+}
+
 const source = readFileSync(join(root, "bench", "data", "dashboard.peras"), "utf8");
 
 const pairBlock = `    const category = p % 12;
@@ -128,8 +178,6 @@ for (const [name, , replacements] of variants) {
 }
 
 /** @typedef {{ summarize: (text: string) => unknown }} Module */
-/** @param {string} path @returns {Promise<unknown>} */
-const load = (path) => import(pathToFileURL(path).href);
 const generator = /** @type {{ generate: (rows: number) => Uint8Array }} */ (
   await load(join(root, "bench", "data", "generate.ts"))
 );

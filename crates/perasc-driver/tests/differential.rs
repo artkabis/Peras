@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 17 } else { 18 };
+    let choices = if depth == 0 { 24 } else { 25 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -91,6 +91,27 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // either way.
         15 => "const t = k.copy(); acc += names.get(i % 5).unwrapOr(t).length;".to_owned(),
         16 => "if (names.has(i % 4)) { names.delete(i % 4); }".to_owned(),
+        // A value taken out of a map, changed, and put back: one lookup.
+        17 => format!(
+            "let p = pairs.get({k}).unwrapOr(Pair({}.copy(), 0)); p.count += 1; pairs.set({}, p);",
+            r.pick(&["k", "s"]),
+            owned_key(&k)
+        ),
+        18 => format!(
+            "let p = pairs.get({k}).unwrapOr(Pair(\"\", i)); p.count += i; if (p.count > 50) {{ pairs.delete({k}); }} else {{ pairs.set({}, p); }}",
+            owned_key(&k)
+        ),
+        19 => "nums.set(i % 7, nums.get(i % 7).unwrapOr(0) + acc % 5);".to_owned(),
+        20 => format!("acc += pairs.get({k}).unwrapOr(Pair(\"z\", 1)).count + pairs.size;"),
+        // A fallback that is not quiet: it runs first.
+        21 => format!("acc += pairs.get({k}).unwrapOr(made(i)).count;"),
+        // The key changed between the lookup and the set: looked up again.
+        22 => "let p = pairs.get(k).unwrapOr(Pair(\"q\", 0)); k += \"b\"; p.count += 2; pairs.set(k.copy(), p);".to_owned(),
+        // The map changed between: looked up again.
+        23 => format!(
+            "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
+            owned_key(&k)
+        ),
         _ => {
             let mut then = String::new();
             let mut otherwise = String::new();
@@ -117,14 +138,31 @@ fn program(seed: u64) -> String {
         body.push_str("    }\n");
     }
     format!(
-        "export fn f(n: i32): i32 {{
+        "struct Pair {{
+  name: String;
+  count: i32;
+}}
+
+fn made(i: i32): Pair {{
+  return Pair(\"m\", i % 4);
+}}
+
+export fn f(n: i32): i32 {{
   let m: Map<String, i32> = Map.new();
+  let pairs: Map<String, Pair> = Map.new();
+  let nums: Map<i32, i32> = Map.new();
   let names: Map<i32, String> = Map.new();
   let k = \"a\";
   let s = \"\";
   let acc = 0;
   for (let i = 0; i < n; i++) {{
 {body}    acc = acc % 100003;
+  }}
+  for (const e of pairs) {{
+    acc += e.1.count + e.1.name.length + e.0.length;
+  }}
+  for (const e of nums) {{
+    acc += e.0 * e.1;
   }}
   return acc + m.size * 1000 + names.size * 100 + s.length + k.length;
 }}

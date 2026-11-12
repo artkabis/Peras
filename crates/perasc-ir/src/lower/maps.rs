@@ -361,6 +361,88 @@ impl Lowering<'_> {
         }
     }
 
+    /// `m.get(k).unwrapOr(fallback)`, when the option is only a step: the
+    /// entry looked up, then, if the fallback is quiet, each scalar of its
+    /// value read, a buffer copied once, only when it is there, and the
+    /// fallback made only when it is not. No option is made, and no empty
+    /// buffer stands for a missing value (decision 0017, step 2). A fallback
+    /// that is not quiet runs after the entry is read, as written. `None`
+    /// when `base` is not a map's `get`.
+    pub(super) fn map_get_or(
+        &mut self,
+        state: &mut FnState,
+        base: ExprId,
+        args: &[ExprId],
+        mode: Mode,
+    ) -> Option<Vec<Expr>> {
+        let AstExpr::Call {
+            callee,
+            args: get_args,
+            ..
+        } = &self.ast.expr(base).kind
+        else {
+            return None;
+        };
+        let AstExpr::Field { base: map, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        let ([k], true) = (
+            get_args.as_slice(),
+            self.ast.name(name.symbol) == "get" && self.is_map(*map),
+        ) else {
+            return None;
+        };
+        let (map, k) = (*map, *k);
+        let span = self.ast.expr(base).span;
+        let table = self.table_of(map, span)?;
+        if table.slots.is_empty() {
+            return None;
+        }
+        let handle = self.value_as(state, map, Mode::Borrow).into_iter().next()?;
+        let mark = state.pre.len();
+        let k = self.map_key(state, k, &table, false);
+        let mut operands = [handle];
+        state.keep_before(mark, &mut operands);
+        let [handle] = operands;
+        let found = runtime(
+            table.pick(F::MapFindI, F::MapFindS),
+            vec![handle.clone(), k],
+        );
+        let entry = state.temp(Ty::I32);
+        state.pre.push(Stmt::Set(entry, found));
+        let entry = super::local_expr(state, entry);
+        let some = state.temp(Ty::Bool);
+        state.pre.push(Stmt::Set(
+            some,
+            super::binary(BinOp::Ge, entry.clone(), int(0, Ty::I32)),
+        ));
+        let some = super::local_expr(state, some);
+        let mark = state.pre.len();
+        let drops = state.drops.len();
+        let fallback = self.arguments(state, None, args);
+        if Self::quiet_since(state, mark, drops, &fallback) {
+            let making = state.pre.split_off(mark);
+            let mut fields = vec![some];
+            fields.extend(
+                table
+                    .slots
+                    .iter()
+                    .enumerate()
+                    .map(|(slot, &ty)| read(&handle, &entry, slot, ty)),
+            );
+            return Some(Self::unwrap_or_lazily(
+                state, fields, fallback, making, false, mode,
+            ));
+        }
+        // The value read before the fallback runs, as `get` then `unwrapOr`
+        // would.
+        let making = state.pre.split_off(mark);
+        let fields = Self::map_get(state, &handle, entry, &table.slots, Mode::Borrow);
+        let mark = state.pre.len();
+        state.pre.extend(making);
+        Some(Self::unwrap_or_eagerly(state, fields, fallback, mark, mode))
+    }
+
     /// `m.get(k)`, the entry found: whether there is one, then each scalar
     /// of its value, or zero and empty buffers. A buffer is copied: the map
     /// keeps its own.

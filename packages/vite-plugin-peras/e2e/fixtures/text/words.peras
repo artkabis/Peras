@@ -469,3 +469,34 @@ export fn putBetween(): i32 {
   }
   return after;
 }
+
+struct Tally {
+  first: String;
+  n: i32;
+}
+
+// A value taken out of a map, changed and put back: one lookup, the entry
+// changed where it is (decision 0017). A word deleted in between is looked
+// up again.
+export fn tallies(text: String, drop: String): String {
+  let m: Map<String, Tally> = Map.new();
+  let byLength: Map<i32, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    let t = m.get(w).unwrapOr(Tally(w.copy(), 0));
+    t.n += 1;
+    if (w == drop) {
+      m.delete(w);
+    }
+    m.set(w.copy(), t);
+    const len = w.length;
+    byLength.set(len, byLength.get(len).unwrapOr(0) + 1);
+  }
+  let out = "";
+  for (const e of m) {
+    out += `${e.0}=${e.1.first}:${e.1.n},`;
+  }
+  for (const e of byLength) {
+    out += `${e.0}#${e.1},`;
+  }
+  return out;
+}

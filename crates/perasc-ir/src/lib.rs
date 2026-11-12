@@ -632,6 +632,19 @@ pub enum RuntimeFn {
     /// `(map, key) -> i32`: [`Self::MapPutS`] with the key lent: the map
     /// keeps a copy of it only when the key is new.
     MapPutSLent,
+    /// `(map, entry, key: i64) -> i32`: [`Self::MapPutI`] when a lookup of
+    /// the same key in the same map, with nothing changed since, gave
+    /// `entry`: that entry's old value released without looking the key up
+    /// again, or the key put as usual when `entry` is -1 (decision 0017).
+    /// The runtime checks that `entry` holds the key, and looks it up when
+    /// it does not.
+    MapPutAtI,
+    /// `(map, entry, key: owned) -> i32`: [`Self::MapPutAtI`] for a string
+    /// key, which the map takes, as [`Self::MapPutS`] does.
+    MapPutAtS,
+    /// `(map, entry, key) -> i32`: [`Self::MapPutAtS`] with the key lent, as
+    /// [`Self::MapPutSLent`]: the map keeps a copy of it only when it is new.
+    MapPutAtSLent,
     /// `(map, entry, slot, value: i64)`: stores a scalar of an entry's value.
     MapStore,
     /// `(map, entry, slot, value: f64)`: [`Self::MapStore`] for a float.
@@ -700,7 +713,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 48] = [
+    pub const ALL: [Self; 51] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -749,6 +762,9 @@ impl RuntimeFn {
         Self::NextPart,
         Self::NextChar,
         Self::ParseFloat,
+        Self::MapPutAtI,
+        Self::MapPutAtS,
+        Self::MapPutAtSLent,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -791,6 +807,9 @@ impl RuntimeFn {
             Self::MapPutI => "map_put_i",
             Self::MapPutS => "map_put_s",
             Self::MapPutSLent => "map_put_s_lent",
+            Self::MapPutAtI => "map_put_at_i",
+            Self::MapPutAtS => "map_put_at_s",
+            Self::MapPutAtSLent => "map_put_at_s_lent",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -864,6 +883,9 @@ impl RuntimeFn {
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
             Self::MapFindI | Self::MapDeleteI | Self::MapPutI => &[Ty::I64],
             Self::MapPutS => &[Ty::Owned],
+            Self::MapPutAtI => &[Ty::I32, Ty::I64],
+            Self::MapPutAtS => &[Ty::I32, Ty::Owned],
+            Self::MapPutAtSLent => &[Ty::I32, Ty::Borrowed],
             Self::MapStore => &[Ty::I32, Ty::I32, Ty::I64],
             Self::MapStoreF => &[Ty::I32, Ty::I32, Ty::F64],
             Self::MapStoreH => &[Ty::I32, Ty::I32, Ty::Owned],
@@ -883,7 +905,10 @@ impl RuntimeFn {
             | Self::MapNext
             | Self::MapPutI
             | Self::MapPutS
-            | Self::MapPutSLent => Ty::I32,
+            | Self::MapPutSLent
+            | Self::MapPutAtI
+            | Self::MapPutAtS
+            | Self::MapPutAtSLent => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt

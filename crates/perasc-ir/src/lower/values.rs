@@ -544,6 +544,11 @@ impl Lowering<'_> {
                 None => Vec::new(),
             };
         }
+        if method == "unwrapOr"
+            && let Some(values) = self.map_get_or(state, base, args, mode)
+        {
+            return values;
+        }
         let fields = self.value_as(state, base, Mode::Borrow);
         // A result is read as an option of its `Ok` data: present when the tag
         // is 0.
@@ -592,7 +597,7 @@ impl Lowering<'_> {
     fn unwrap_or_values(
         &mut self,
         state: &mut FnState,
-        mut fields: Vec<Expr>,
+        fields: Vec<Expr>,
         args: &[ExprId],
         mode: Mode,
     ) -> Vec<Expr> {
@@ -600,18 +605,40 @@ impl Lowering<'_> {
         let mark = state.pre.len();
         let drops = state.drops.len();
         let fallback = self.arguments(state, None, args);
-        // A fallback that only makes literals and reads values cannot be
-        // seen to run: it is made only when the option is empty (decision
-        // 0016, finding F209). Anything else runs first, as written.
-        let quiet = state.drops.len() == drops
+        if Self::quiet_since(state, mark, drops, &fallback) {
+            let making = state.pre.split_off(mark);
+            return Self::unwrap_or_lazily(state, fields, fallback, making, true, mode);
+        }
+        Self::unwrap_or_eagerly(state, fields, fallback, mark, mode)
+    }
+
+    /// Whether the fallback lowered since `mark`, with no drop registered
+    /// since `drops`, is quiet: a fallback that only makes literals and
+    /// copies, and reads values, cannot be seen to run, so it is made only
+    /// when the option is empty (decisions 0016 and 0017, finding F209).
+    /// Anything else runs first, as written.
+    pub(super) fn quiet_since(
+        state: &FnState,
+        mark: usize,
+        drops: usize,
+        fallback: &[Expr],
+    ) -> bool {
+        state.drops.len() == drops
             && state.pre[mark..]
                 .iter()
                 .all(|s| matches!(s, Stmt::Set(_, e) if quiet_value(e)))
-            && fallback.iter().all(quiet_value);
-        if quiet {
-            let making = state.pre.split_off(mark);
-            return Self::unwrap_or_lazily(state, fields, fallback, making, mode);
-        }
+            && fallback.iter().all(quiet_value)
+    }
+
+    /// `unwrapOr` whose fallback, lowered since `mark`, runs first: the
+    /// value when there is one, else the fallback.
+    pub(super) fn unwrap_or_eagerly(
+        state: &mut FnState,
+        mut fields: Vec<Expr>,
+        fallback: Vec<Expr>,
+        mark: usize,
+        mode: Mode,
+    ) -> Vec<Expr> {
         state.keep_before(mark, &mut fields);
         let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
         let Some((some, payload)) = fields.split_first() else {
@@ -660,15 +687,22 @@ impl Lowering<'_> {
     }
 
     /// `unwrapOr` whose fallback, made by the statements `making`, is quiet:
-    /// the value when there is one, else the fallback, made only then.
-    fn unwrap_or_lazily(
+    /// the value when there is one, else the fallback, made only then. With
+    /// `spill`, the value is evaluated before the choice; without, it is read
+    /// only when there is one, as the entry of a map that `get` found.
+    pub(super) fn unwrap_or_lazily(
         state: &mut FnState,
         fields: Vec<Expr>,
         fallback: Vec<Expr>,
         making: Vec<Stmt>,
+        spill: bool,
         mode: Mode,
     ) -> Vec<Expr> {
-        let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
+        let fields: Vec<Expr> = if spill {
+            fields.into_iter().map(|e| state.spill(e)).collect()
+        } else {
+            fields
+        };
         let Some((some, payload)) = fields.split_first() else {
             return Vec::new();
         };

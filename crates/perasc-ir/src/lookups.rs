@@ -61,6 +61,20 @@ fn text_key(e: &Expr) -> Option<Key> {
     }
 }
 
+/// The key an integer operand names: a local, read or widened, or a
+/// constant. A local holds one type, so it is always widened the same way.
+fn number_key(e: &Expr) -> Option<Key> {
+    match &e.kind {
+        ExprKind::Local(local) => Some(Key::Number(local.0)),
+        ExprKind::Convert(inner) if e.ty == Ty::I64 => match inner.kind {
+            ExprKind::Local(local) if inner.ty == Ty::I32 => Some(Key::Number(local.0)),
+            _ => None,
+        },
+        ExprKind::Const(crate::Const::Int(n)) => Some(Key::Constant(*n)),
+        _ => None,
+    }
+}
+
 /// The map and key of a lookup, if `e` is one.
 fn lookup(e: &Expr) -> Option<(u32, Key)> {
     let ExprKind::Buf(BufOp::Runtime(f), args) = &e.kind else {
@@ -72,11 +86,7 @@ fn lookup(e: &Expr) -> Option<(u32, Key)> {
     let map = named(map)?;
     let key = match f {
         RuntimeFn::MapFindS => text_key(key)?,
-        RuntimeFn::MapFindI => match &key.kind {
-            ExprKind::Local(local) => Key::Number(local.0),
-            ExprKind::Const(crate::Const::Int(n)) => Key::Constant(*n),
-            _ => return None,
-        },
+        RuntimeFn::MapFindI => number_key(key)?,
         _ => return None,
     };
     Some((map, key))
@@ -87,17 +97,18 @@ fn insertion(e: &Expr) -> Option<(u32, Key)> {
     let ExprKind::Buf(BufOp::Runtime(f), args) = &e.kind else {
         return None;
     };
-    let [map, key] = args.as_slice() else {
-        return None;
+    // A `set` given the entry: its key after it.
+    let (f, map, key) = match (f, args.as_slice()) {
+        (RuntimeFn::MapPutAtS, [map, _, key]) => (RuntimeFn::MapPutS, map, key),
+        (RuntimeFn::MapPutAtI, [map, _, key]) => (RuntimeFn::MapPutI, map, key),
+        (RuntimeFn::MapPutAtSLent, [map, _, key]) => (RuntimeFn::MapPutSLent, map, key),
+        (f, [map, key]) => (*f, map, key),
+        _ => return None,
     };
     let map = named(map)?;
     let key = match f {
         RuntimeFn::MapPutS | RuntimeFn::MapPutSLent => text_key(key)?,
-        RuntimeFn::MapPutI => match &key.kind {
-            ExprKind::Local(local) => Key::Number(local.0),
-            ExprKind::Const(crate::Const::Int(n)) => Key::Constant(*n),
-            _ => return None,
-        },
+        RuntimeFn::MapPutI => number_key(key)?,
         _ => return None,
     };
     Some((map, key))
@@ -111,6 +122,9 @@ fn changed_maps(e: &Expr, out: &mut Vec<u32>) {
             RuntimeFn::MapPutI
                 | RuntimeFn::MapPutS
                 | RuntimeFn::MapPutSLent
+                | RuntimeFn::MapPutAtI
+                | RuntimeFn::MapPutAtS
+                | RuntimeFn::MapPutAtSLent
                 | RuntimeFn::MapDeleteI
                 | RuntimeFn::MapDeleteS
                 | RuntimeFn::MapClear
@@ -140,7 +154,33 @@ fn children(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-/// `e` with each lookup known replaced by the read of its holder.
+/// The map and key of a `set` that takes its key, and the function that
+/// does it with the entry known, if `e` is one.
+fn put(e: &Expr) -> Option<(u32, Key, RuntimeFn)> {
+    let ExprKind::Buf(BufOp::Runtime(f), args) = &e.kind else {
+        return None;
+    };
+    let [map, key] = args.as_slice() else {
+        return None;
+    };
+    let map = named(map)?;
+    match f {
+        RuntimeFn::MapPutS => {
+            let key = match key.kind {
+                ExprKind::Move(local) => Key::Text(local.0),
+                _ => text_key(key)?,
+            };
+            Some((map, key, RuntimeFn::MapPutAtS))
+        }
+        RuntimeFn::MapPutSLent => Some((map, text_key(key)?, RuntimeFn::MapPutAtSLent)),
+        RuntimeFn::MapPutI => Some((map, number_key(key)?, RuntimeFn::MapPutAtI)),
+        _ => None,
+    }
+}
+
+/// `e` with each lookup known replaced by the read of its holder, and each
+/// `set` of a key known given the entry, so that it does not look the key
+/// up again (decision 0017).
 fn reuse(e: &mut Expr, known: &[Known]) {
     if let Some((map, key)) = lookup(e)
         && let Some(k) = known.iter().find(|k| k.map == map && k.key == key)
@@ -149,6 +189,21 @@ fn reuse(e: &mut Expr, known: &[Known]) {
             kind: ExprKind::Local(k.holder),
             ty: Ty::I32,
         };
+        return;
+    }
+    if let Some((map, key, at)) = put(e)
+        && let Some(k) = known.iter().find(|k| k.map == map && k.key == key)
+        && let ExprKind::Buf(_, args) = &mut e.kind
+    {
+        let mut args = std::mem::take(args);
+        args.insert(
+            1,
+            Expr {
+                kind: ExprKind::Local(k.holder),
+                ty: Ty::I32,
+            },
+        );
+        e.kind = ExprKind::Buf(BufOp::Runtime(at), args);
         return;
     }
     match &mut e.kind {

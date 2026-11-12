@@ -562,6 +562,42 @@ impl Machine<'_> {
 
     /// The entry of `wanted` in map `table`, its key lent as `given`: copied
     /// when it is new, left alone otherwise, as the runtime does.
+    /// `set` of a key given, or lent.
+    fn put_given(
+        &mut self,
+        table: u32,
+        wanted: MapKey,
+        given: Value,
+        lent: bool,
+    ) -> Result<usize, Trap> {
+        if lent {
+            return self.map_put_lent(table, wanted, given);
+        }
+        let handle = match given {
+            Value::Handle(h) => Some(h),
+            _ => None,
+        };
+        self.map_put(table, wanted, handle)
+    }
+
+    /// Traps unless `at` is the entry of `wanted`, or -1 when it is missing:
+    /// the entry a lookup pass gave to a `set` (decision 0017).
+    fn check_entry(&self, table: u32, wanted: &MapKey, at: Value) -> Result<(), Trap> {
+        let Value::I32(at) = at else {
+            return Err(Trap::Unreachable);
+        };
+        let map = self.maps.get(&table).ok_or(Trap::UseAfterRelease)?;
+        let found = map
+            .entries
+            .iter()
+            .position(|e| e.as_ref().is_some_and(|e| &e.key == wanted));
+        if found.map_or(-1, |e| i32::try_from(e).unwrap_or(-1)) == at {
+            Ok(())
+        } else {
+            Err(Trap::Unchecked)
+        }
+    }
+
     fn map_put_lent(&mut self, table: u32, wanted: MapKey, given: Value) -> Result<usize, Trap> {
         let there = self
             .maps
@@ -687,19 +723,20 @@ impl Machine<'_> {
                         .position(|e| e.as_ref().is_some_and(|e| e.key == wanted)),
                 )
             }
-            F::MapPutSLent => {
+            F::MapPutI | F::MapPutS | F::MapPutSLent => {
                 let given = operand(1)?;
                 let wanted = key(self, given)?;
-                entry(Some(self.map_put_lent(block()?, wanted, given)?))
+                let lent = f == F::MapPutSLent;
+                entry(Some(self.put_given(block()?, wanted, given, lent)?))
             }
-            F::MapPutI | F::MapPutS => {
-                let given = operand(1)?;
+            // The entry a lookup gave: checked to hold the key, so that a
+            // lookup pass that proved wrong traps here (decision 0017).
+            F::MapPutAtI | F::MapPutAtS | F::MapPutAtSLent => {
+                let given = operand(2)?;
                 let wanted = key(self, given)?;
-                let handle = match given {
-                    Value::Handle(h) => Some(h),
-                    _ => None,
-                };
-                entry(Some(self.map_put(block()?, wanted, handle)?))
+                self.check_entry(block()?, &wanted, operand(1)?)?;
+                let lent = f == F::MapPutAtSLent;
+                entry(Some(self.put_given(block()?, wanted, given, lent)?))
             }
             F::MapStore | F::MapStoreF | F::MapStoreH => {
                 let stored = operand(3)?;

@@ -2054,6 +2054,37 @@
   (func (export "map_put_s_lent") (param $m i32) (param $key i32) (result i32)
     (call $map_put (local.get $m) (i64.extend_i32_u (local.get $key)) (i32.const 1)))
 
+  ;; `map_put` when a lookup of `key` gave entry `e`, -1 when it was missing,
+  ;; with nothing changed since (decision 0017): the old value's buffers and
+  ;; a string key released, without looking the key up again. An entry that
+  ;; does not hold the key, which the compiler should never give, is looked
+  ;; up as usual.
+  (func $map_put_at (param $m i32) (param $e i32) (param $key i64) (param $lent i32) (result i32)
+    (local $entry i32)
+    (if (i32.and
+          (i32.ge_s (local.get $e) (i32.const 0))
+          (i32.lt_u (local.get $e) (i32.load offset=4 (local.get $m))))
+      (then
+        (local.set $entry (call $map_entry (local.get $m) (local.get $e)))
+        (if (i32.and
+              (i32.load offset=4 (local.get $entry))
+              (call $map_same (local.get $m) (i64.load offset=8 (local.get $entry)) (local.get $key)))
+          (then
+            (call $map_release_values (i32.load offset=28 (local.get $m)) (local.get $entry))
+            (if (i32.and (call $map_strings (local.get $m)) (i32.eqz (local.get $lent)))
+              (then (call $buf_release (i32.wrap_i64 (local.get $key)) (i32.const 0))))
+            (return (local.get $e))))))
+    (call $map_put (local.get $m) (local.get $key) (local.get $lent)))
+
+  (func (export "map_put_at_i") (param $m i32) (param $e i32) (param $key i64) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (local.get $key) (i32.const 0)))
+
+  (func (export "map_put_at_s") (param $m i32) (param $e i32) (param $key i32) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (i64.extend_i32_u (local.get $key)) (i32.const 0)))
+
+  (func (export "map_put_at_s_lent") (param $m i32) (param $e i32) (param $key i32) (result i32)
+    (call $map_put_at (local.get $m) (local.get $e) (i64.extend_i32_u (local.get $key)) (i32.const 1)))
+
   ;; The address of value slot `slot` of entry `e`.
   (func $map_at (param $m i32) (param $e i32) (param $slot i32) (result i32)
     (i32.add (call $map_entry (local.get $m) (local.get $e))

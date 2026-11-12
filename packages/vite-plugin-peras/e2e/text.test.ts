@@ -33,6 +33,7 @@ interface Words {
   renumbered(n: number): number;
   changedKey(): number;
   putBetween(): number;
+  tallies(text: string, drop: string): string;
   tagOr(s: string): string;
   tagOrGiven(s: string, fallback: string): string;
   intOr(s: string): number;
@@ -149,6 +150,16 @@ describe("strings in JavaScript", () => {
       for (const n of [0, 1, 5, 40]) expect(m.renumbered(n)).toBe(3);
       expect(m.changedKey()).toBe(57);
       expect(m.putBetween()).toBe(9);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`changes a map's entry in place where it was just found, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      expect(m.tallies("a bb a c bb a", "")).toBe("a=a:3,bb=bb:2,c=c:1,1#4,2#2,");
+      // A word deleted between the lookup and the set goes to the end.
+      expect(m.tallies("a bb a c bb a", "a")).toBe("bb=bb:2,c=c:1,a=a:3,1#4,2#2,");
+      expect(m.tallies("", "")).toBe("=:1,0#1,");
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });
