@@ -162,7 +162,7 @@ Measured at commit `7470d08`, the protocol unchanged, after a second change to t
 
 ## Run 4: after a quiet fallback made only when needed, and small blocks kept for reuse
 
-Measured at commit `99f9202`, the protocol unchanged, after two more changes: `unwrapOr` makes a fallback that only makes literals only when the option is empty (finding F209), and the TLSF allocator keeps small released blocks for the next allocation of their size (finding F213). Run 3 is kept in [bench/stream/run-3](../../../bench/stream/run-3/RESULTS.md); run 4's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch; nothing else ran during the run.
+Measured at commit `99f9202`, the protocol unchanged, after two more changes: `unwrapOr` makes a fallback that only makes literals only when the option is empty (finding F209), and the TLSF allocator keeps small released blocks for the next allocation of their size (finding F213). Run 3 is kept in [bench/stream/run-3](../../../bench/stream/run-3/RESULTS.md); run 4's [report](../../../bench/stream/run-4/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-4/results.json). The three digests agreed on every batch; nothing else ran during the run.
 
 | Hypothesis                                           | Run 1      | Run 2      | Run 3      | Run 4, 95 % interval                 | Verdict |
 | ---------------------------------------------------- | ---------- | ---------- | ---------- | ------------------------------------ | ------- |
@@ -174,10 +174,10 @@ Measured at commit `99f9202`, the protocol unchanged, after two more changes: `u
 
 **What it says.** Peras is now 1.70, 1.78 and 1.94 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 2.81 to 3.35 times as fast as TypeScript as written; its time per row went from about 305 to about 218 ns, A and B unchanged within 5 %. Since run 1, Peras's time per row has halved, from about 440 ns, with the TypeScript versions and the protocol unchanged. The boundary's share grew to 10 %, since what is around it got faster, not it. H5 stays refuted: the slowest calls fell, the 99th percentile from 53 to 39 ms, but less than the median, from 30.5 to 21.8 ms.
 
-![Rows per second by batch size, run 4: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size, run 4: C highest at every size, B below it, A lowest](../../assets/stream-run-4-throughput.svg)
 
-![The speed ratios with their 95 % intervals, run 4: C over A between 2.81 and 3.35, C over B between 1.70 and 1.94](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals, run 4: C over A between 2.81 and 3.35, C over B between 1.70 and 1.94](../../assets/stream-run-4-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows, run 4: C well to the left of B, A to the right](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows, run 4: C well to the left of B, A to the right](../../assets/stream-run-4-latency.svg)
 
-![C's time per row split into the boundary and the digest, run 4](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary and the digest, run 4](../../assets/stream-run-4-breakdown.svg)
