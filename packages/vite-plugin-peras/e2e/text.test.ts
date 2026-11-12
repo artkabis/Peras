@@ -34,6 +34,7 @@ interface Words {
   changedKey(): number;
   putBetween(): number;
   tallies(text: string, drop: string): string;
+  intTemplate(a: number, b: bigint): string;
   tagOr(s: string): string;
   tagOrGiven(s: string, fallback: string): string;
   intOr(s: string): number;
@@ -150,6 +151,23 @@ describe("strings in JavaScript", () => {
       for (const n of [0, 1, 5, 40]) expect(m.renumbered(n)).toBe(3);
       expect(m.changedKey()).toBe(57);
       expect(m.putBetween()).toBe(9);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`writes a template's integers as JavaScript does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const cases: [number, bigint][] = [
+        [0, 0n],
+        [-1, -1n],
+        [9, 10n],
+        [-10, 99n],
+        [2147483647, 9223372036854775807n],
+        [-2147483648, -9223372036854775808n],
+      ];
+      for (const [a, b] of cases) {
+        expect(m.intTemplate(a, b)).toBe(`${String(a)}|${String(b)}|${String(a)}${String(b)}:0`);
+      }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

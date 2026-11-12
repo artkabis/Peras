@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 24 } else { 25 };
+    let choices = if depth == 0 { 26 } else { 27 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -107,6 +107,10 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         21 => format!("acc += pairs.get({k}).unwrapOr(made(i)).count;"),
         // The key changed between the lookup and the set: looked up again.
         22 => "let p = pairs.get(k).unwrapOr(Pair(\"q\", 0)); k += \"b\"; p.count += 2; pairs.set(k.copy(), p);".to_owned(),
+        // Templates whose integers are written into their string: negative,
+        // zero, wide.
+        24 => "const t = `${i - 3}:${acc - 99}|${k}`; acc += t.length; if (t.startsWith(\"-\")) { acc += 1; }".to_owned(),
+        25 => "const t = `${(i - 5).toI64() * 1000000000000}${true}${i}`; acc += t.length;".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

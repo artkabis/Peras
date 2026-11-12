@@ -782,6 +782,39 @@ impl Machine<'_> {
         Ok(Some(value))
     }
 
+    /// The functions of the runtime that write numbers and booleans as text.
+    fn format_runtime(
+        &mut self,
+        f: crate::RuntimeFn,
+        operands: &[Value],
+    ) -> Result<Option<Value>, Trap> {
+        use crate::RuntimeFn as F;
+        Ok(Some(match (f, operands.first()) {
+            (F::FmtInt, Some(Value::I64(n))) => self.string(n.to_string().as_bytes()),
+            (F::FmtIntLen, Some(Value::I64(n))) => {
+                Value::I32(i32::try_from(n.to_string().len()).unwrap_or(0))
+            }
+            (F::FmtIntAppend, Some(&buf)) => {
+                let Some(Value::I64(n)) = operands.get(1) else {
+                    return Err(Trap::Unreachable);
+                };
+                let digits = n.to_string();
+                self.elements(buf)?
+                    .extend(digits.bytes().map(|b| Value::I32(i32::from(b))));
+                Value::Void
+            }
+            (F::FmtBool, Some(Value::Bool(b))) => self.string(b.to_string().as_bytes()),
+            (F::FmtFloat, Some(Value::F64(x))) => {
+                let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
+                self.string(text?.as_bytes())
+            }
+            (F::FmtInt | F::FmtIntLen | F::FmtIntAppend | F::FmtBool | F::FmtFloat, _) => {
+                return Err(Trap::Unreachable);
+            }
+            _ => return Ok(None),
+        }))
+    }
+
     /// A function of the runtime on strings.
     fn runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
         use crate::RuntimeFn as F;
@@ -801,17 +834,8 @@ impl Machine<'_> {
         if let Some(value) = self.map_runtime(f, operands)? {
             return Ok(value);
         }
-        match (f, operands.first()) {
-            (F::FmtInt, Some(Value::I64(n))) => return Ok(self.string(n.to_string().as_bytes())),
-            (F::FmtBool, Some(Value::Bool(b))) => {
-                return Ok(self.string(b.to_string().as_bytes()));
-            }
-            (F::FmtFloat, Some(Value::F64(x))) => {
-                let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
-                return Ok(self.string(text?.as_bytes()));
-            }
-            (F::FmtInt | F::FmtBool | F::FmtFloat, _) => return Err(Trap::Unreachable),
-            _ => {}
+        if let Some(value) = self.format_runtime(f, operands)? {
+            return Ok(value);
         }
         let s = text(self, 0)?;
         Ok(match f {
@@ -860,6 +884,8 @@ impl Machine<'_> {
             | F::ArrIndexOfStr
             | F::ArrKeep
             | F::FmtInt
+            | F::FmtIntLen
+            | F::FmtIntAppend
             | F::FmtBool
             | F::FmtFloat => {
                 return Err(Trap::Unreachable);

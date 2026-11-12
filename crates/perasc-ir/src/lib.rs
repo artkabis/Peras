@@ -611,6 +611,13 @@ pub enum RuntimeFn {
     FmtInt,
     /// `(b: bool) -> owned`: `true` or `false`.
     FmtBool,
+    /// `(n: i64) -> i32`: the number of bytes [`Self::FmtInt`] writes for
+    /// `n`, its sign included (decision 0017).
+    FmtIntLen,
+    /// `(s, n: i64)`: the digits of `n` appended to the string `s`, as
+    /// [`Self::FmtInt`] writes them, without a string of their own: a
+    /// template's integers (decision 0017).
+    FmtIntAppend,
     /// `(strings: i32, shape: i32) -> owned`: a new, empty map or set
     /// ([decision 0005]); `strings` when its keys are strings it owns;
     /// `shape` the number of value slots in its low byte, and above it one
@@ -713,7 +720,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 53] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -765,6 +772,8 @@ impl RuntimeFn {
         Self::MapPutAtI,
         Self::MapPutAtS,
         Self::MapPutAtSLent,
+        Self::FmtIntLen,
+        Self::FmtIntAppend,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -810,6 +819,8 @@ impl RuntimeFn {
             Self::MapPutAtI => "map_put_at_i",
             Self::MapPutAtS => "map_put_at_s",
             Self::MapPutAtSLent => "map_put_at_s_lent",
+            Self::FmtIntLen => "fmt_int_len",
+            Self::FmtIntAppend => "fmt_int_append",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -830,7 +841,7 @@ impl RuntimeFn {
     #[must_use]
     pub const fn receiver(self) -> Ty {
         match self {
-            Self::FmtInt => Ty::I64,
+            Self::FmtInt | Self::FmtIntLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat => Ty::F64,
             Self::MapNew => Ty::I32,
@@ -863,6 +874,7 @@ impl RuntimeFn {
             | Self::MapValueF
             | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
+            | Self::FmtIntLen
             | Self::StrCursor
             | Self::ParseFloat
             | Self::Upper
@@ -881,7 +893,7 @@ impl RuntimeFn {
             | Self::MapKeyI
             | Self::MapKeyS => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
-            Self::MapFindI | Self::MapDeleteI | Self::MapPutI => &[Ty::I64],
+            Self::MapFindI | Self::MapDeleteI | Self::MapPutI | Self::FmtIntAppend => &[Ty::I64],
             Self::MapPutS => &[Ty::Owned],
             Self::MapPutAtI => &[Ty::I32, Ty::I64],
             Self::MapPutAtS => &[Ty::I32, Ty::Owned],
@@ -908,7 +920,8 @@ impl RuntimeFn {
             | Self::MapPutSLent
             | Self::MapPutAtI
             | Self::MapPutAtS
-            | Self::MapPutAtSLent => Ty::I32,
+            | Self::MapPutAtSLent
+            | Self::FmtIntLen => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt
@@ -924,7 +937,8 @@ impl RuntimeFn {
             | Self::MapStore
             | Self::MapStoreF
             | Self::MapStoreH
-            | Self::MapClear => Ty::Void,
+            | Self::MapClear
+            | Self::FmtIntAppend => Ty::Void,
             _ => Ty::Owned,
         }
     }

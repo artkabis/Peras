@@ -500,3 +500,9 @@ export fn tallies(text: String, drop: String): String {
   }
   return out;
 }
+
+// Integers written into a template's string, with no string of their own
+// (decision 0017): the same text as JavaScript's template.
+export fn intTemplate(a: i32, b: i64): String {
+  return `${a}|${b}|${a}${b}:${0}`;
+}

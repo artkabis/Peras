@@ -1591,6 +1591,48 @@
     (i32.store (local.get $h) (local.get $n))
     (local.get $h))
 
+  ;; The number of bytes `fmt_int` writes for `x`: its digits, and `-` before
+  ;; them when it is negative (decision 0017).
+  (func $fmt_int_len (export "fmt_int_len") (param $x i64) (result i32)
+    (local $n i32)
+    (local.set $n (i32.const 1))
+    (if (i64.lt_s (local.get $x) (i64.const 0))
+      (then
+        (local.set $n (i32.const 2))
+        ;; The magnitude, unsigned: right for the smallest `i64` too.
+        (local.set $x (i64.sub (i64.const 0) (local.get $x)))))
+    (block $done
+      (loop $more
+        (br_if $done (i64.lt_u (local.get $x) (i64.const 10)))
+        (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+        (local.set $n (i32.add (local.get $n) (i32.const 1)))
+        (br $more)))
+    (local.get $n))
+
+  ;; The digits of `x` appended to the string `h`, written from their end,
+  ;; with no string of their own: a template's integers (decision 0017).
+  ;; Room is made when the string has too little, which a template sized by
+  ;; `fmt_int_len` never needs.
+  (func (export "fmt_int_append") (param $h i32) (param $x i64)
+    (local $n i32) (local $p i32) (local $neg i32)
+    (local.set $n (call $fmt_int_len (local.get $x)))
+    (call $buf_reserve (local.get $h) (local.get $n) (i32.const 1) (i32.const 0))
+    (local.set $p (i32.add (i32.load offset=8 (local.get $h))
+      (i32.add (i32.load (local.get $h)) (local.get $n))))
+    (i32.store (local.get $h) (i32.add (i32.load (local.get $h)) (local.get $n)))
+    (if (i64.lt_s (local.get $x) (i64.const 0))
+      (then
+        (local.set $neg (i32.const 1))
+        (local.set $x (i64.sub (i64.const 0) (local.get $x)))))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p)
+        (i32.add (i32.const 48) (i32.wrap_i64 (i64.rem_u (local.get $x) (i64.const 10)))))
+      (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+      (br_if $digit (i64.ne (local.get $x) (i64.const 0))))
+    (if (local.get $neg)
+      (then (i32.store8 (i32.sub (local.get $p) (i32.const 1)) (i32.const 45)))))
+
   ;; `true` or `false`, their bytes stored as one word, little-endian.
   (func (export "fmt_bool") (param $b i32) (result i32)
     (local $h i32) (local $at i32)

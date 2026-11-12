@@ -118,6 +118,11 @@ const variants = [
     [["    const key = `${country}|${category}`;\n", "    const key = country.copy();\n"]],
   ],
   [
+    "pair-key-no-int",
+    "the pair's key a template of the country alone, no integer formatted",
+    [["    const key = `${country}|${category}`;\n", "    const key = `${country}|`;\n"]],
+  ],
+  [
     "pair-fallback-quiet",
     "the pair's fallback without a copy of the country",
     [["unwrapOr(Pair(country.copy(), category, 0, 0))", 'unwrapOr(Pair("", category, 0, 0))']],
