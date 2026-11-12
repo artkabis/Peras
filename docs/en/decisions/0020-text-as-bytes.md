@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0020-text-as-bytes.md](../../fr/decisions/0020-text-as-bytes.md)._
 
-_Status: proposed on 2026-11-12, with its criteria and an amendment to decision 0014's version C registered before any code._
+_Status: proposed on 2026-11-12, with its criteria and an amendment to decision 0014's version C registered before any code; built, measured and kept the same day (see [Measured: kept](#measured-kept))._
 
 ## Context
 
@@ -53,3 +53,17 @@ Kept only if all three hold, else taken back:
 1. **Memory.** In run 5 of decision 0014, H3, C's peak memory over A's at 4,000,000 rows, is at most 0.65. It was 0.78 in run 4.
 2. **Time.** In run 5, C over A is at least 2.58 at 1,000,000 rows and 2.34 at 4,000,000. That is run 4's 2.63 and 2.39 less 0.05: no loss.
 3. **Correctness.** An end-to-end test on both allocators gives 10,000 random byte strings and the edge cases of table 3-7. A `Uint8Array` is accepted exactly when `TextDecoder` with `fatal: true` accepts it, and then gives the same string. Nothing is left alive.
+
+## Measured: kept
+
+The change landed at commit `39728be`, and run 5 of decision 0014 measured it at commit `8f98a87`, with version C given the bytes as the amendment says.
+
+| Criterion                                          | Measured                                                                                                                                                             | Verdict |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1. H3 at most 0.65                                 | 0.23: C's peak 49.4 MiB at 4,000,000 rows, against 171.6 in run 4                                                                                                    | holds   |
+| 2. C over A at least 2.58 and 2.34                 | 3.00 at 1,000,000 rows, 2.52 at 4,000,000                                                                                                                            | holds   |
+| 3. Bytes accepted exactly as a fatal `TextDecoder` | 10,000 random strings and the edges of table 3-7, on both allocators, in the end-to-end tests; 50,000 more with SIMD on and off: no disagreement, nothing left alive | holds   |
+
+**Kept.** A mutation that accepts surrogates fails the end-to-end test on both allocators. The declarations of `String` parameters say `string | Uint8Array`; two tests that read them were updated.
+
+**What it does not do.** The module still copies the text, about 122 MiB at 4,000,000 rows, because a WebAssembly module reads only its own memory. Run 5's 49.4 MiB is the peak decision 0014's protocol sees above the loading of the data (M008), not all that C holds. Removing that copy would take the data written into the module's memory from the start, as a page that reads a file or a response straight into it. That is a change of how a page hands data to Peras, for another decision.

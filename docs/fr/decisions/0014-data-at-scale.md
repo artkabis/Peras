@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Exécution 3, au commit `df51da3`, après la décision 0016 : H1 tient, Peras simple 2,06 à 2,36 fois plus rapide que TypeScript simple ; H6 réfutée de 0,02 ; sur une autre machine (un écart, les rapports comparés). Exécution 4, au commit `d9fbe35`, après les étapes 1 à 3 de la décision 0017 : Peras simple 2,39 à 2,63 fois plus rapide que TypeScript simple, 0,26 à 0,31 fois aussi rapide que TypeScript optimisé ; H6 réfutée plus nettement, 4,88. Résultats et journal ci-dessous._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Exécution 3, au commit `df51da3`, après la décision 0016 : H1 tient, Peras simple 2,06 à 2,36 fois plus rapide que TypeScript simple ; H6 réfutée de 0,02 ; sur une autre machine (un écart, les rapports comparés). Exécution 4, au commit `d9fbe35`, après les étapes 1 à 3 de la décision 0017 : Peras simple 2,39 à 2,63 fois plus rapide que TypeScript simple, 0,26 à 0,31 fois aussi rapide que TypeScript optimisé ; H6 réfutée plus nettement, 4,88. Exécution 5, au commit `8f98a87`, la version C recevant les octets (décision 0020) : H3 tient pour la première fois, le pic de mémoire de C à 0,23 fois celui de A, et Peras simple 2,52 à 3,00 fois plus rapide que TypeScript simple. Résultats et journal ci-dessous._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
@@ -278,3 +278,44 @@ Le source de la version C n’a pas changé, ni A, ni B, ni les données.
 **Ce que cela dit.** Peras écrit simplement calcule le tableau de bord 2,39 à 2,63 fois plus vite que TypeScript simple, contre 2,06 à 2,36 à l’exécution 3. Face au TypeScript optimisé à la main, il passe de 0,25–0,28 à 0,26–0,31. Les exécutions 3 et 4 avaient le même processeur, donc les millisecondes de C se comparent aussi, avec prudence (M016). À 1 000 000 de lignes, C passe de 334,1 à 296,9 ms, 11 % de moins ; à 4 000 000 de lignes, de 1 477,7 à 1 448,1, 2 % de moins.
 
 **Le gain est plus petit sur le plus grand fichier, et H6 s’éloigne de sa borne** : 3,80, 4,42, puis 4,88, pour au plus 4,4. La décision 0017 a retiré du travail fait à chaque ligne, ce qui se voit à 1 000 000 de lignes. Ce qui croît plus vite que les lignes ne dépend pas de ce travail. À 4 000 000 de lignes, les tables des paires, des produits et des utilisateurs sont plus grandes et moins souvent en cache (F215). C’est une lecture des chiffres, pas une mesure de sa cause. C’est la première chose à profiler à 4 000 000 de lignes avant la prochaine décision sur le tableau de bord.
+
+### Exécution 5, au commit `8f98a87` : les résultats
+
+Mesurée le 2026-11-12 de 09:43 à 09:47 UTC, sur le même modèle de machine que les exécutions 3 et 4, un Intel Xeon à 2,30 GHz à 4 cœurs, Chromium sans écran ; rien d’autre n’a tourné. Le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) ; celui de l’exécution 4 est gardé dans [bench/data/run-4](../../../bench/data/run-4/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+**Ce qui a changé depuis l’exécution 4.** La décision 0020 : une fonction exportée qui prend un `String` prend aussi un `Uint8Array`, copié tel quel et vérifié être de l’UTF-8. **Écart à l’exécution 4, enregistré dans la décision 0020 avant tout code :** le code d’appel de la version C appelle `peras.summarize(bytes)` au lieu de `peras.summarize(new TextDecoder().decode(bytes))`, comme A et B prennent déjà les octets. Le source Peras de C, A, B, les données et les seuils n’ont pas changé.
+
+| Hypothèse                                  | Exéc. 3             | Exéc. 4             | Exéc. 5                                              | Verdict     |
+| ------------------------------------------ | ------------------- | ------------------- | ---------------------------------------------------- | ----------- |
+| H1, C au moins 2 fois A                    | 2,36 et 2,06        | 2,63 et 2,39        | **3,00** à 1 000 000 de lignes, **2,52** à 4 000 000 | **tient**   |
+| H2, C au moins 0,8 fois B                  | 0,28 et 0,25        | 0,31 et 0,26        | 0,35 et 0,28                                         | **réfutée** |
+| H3, la mémoire de C au plus la moitié de A | 0,78                | 0,78                | **0,23**                                             | **tient**   |
+| H4, C au plus 3 fois les octets de A       | 12,5                | 12,5                | 12,9, 10 147 octets                                  | **réfutée** |
+| H5, D au moins 2 fois C                    | ne peut être écrite | ne peut être écrite | ne peut être écrite                                  | **réfutée** |
+| H6, linéaire, au plus 4,4                  | 4,42                | 4,88                | 4,91                                                 | **réfutée** |
+| H7, C au plus 1,25 fois les lignes de A    | 1,08                | 1,08                | 1,08                                                 | tient       |
+
+À chaud, en millisecondes, médianes de 15 passes :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |    62,7 |     810,9 |   3 350,4 |
+| B. TypeScript, optimisé    |    10,6 |      94,1 |     373,3 |
+| C. Peras                   |    24,6 |     270,7 |   1 327,8 |
+
+Mémoire, le pic ajouté par la requête, médianes de 5 :
+
+| Version                    |  100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | -------: | --------: | --------: |
+| A. TypeScript, idiomatique | 17,5 Mio |  84,9 Mio | 219,3 Mio |
+| B. TypeScript, optimisé    |  4,8 Mio |   0,0 Mio |   0,0 Mio |
+| C. Peras                   |  6,2 Mio |  24,1 Mio |  49,4 Mio |
+
+**Ce que cela dit.**
+
+- **H3 tient pour la première fois.** Le pic de Peras à 4 000 000 de lignes passe de 171,6 Mio à l’exécution 4 à 49,4 Mio : 0,23 fois celui de TypeScript simple, quand 0,5 était enregistré. La chaîne que `TextDecoder` construisait, et que le chargeur réencodait dans le module, a disparu.
+- **Peras écrit simplement est maintenant 2,52 à 3,00 fois plus rapide que TypeScript simple**, contre 2,39 à 2,63, puisque décoder le texte prenait aussi du temps.
+- **À froid, son premier graphique** arrive en 0,45 s contre 1,01 à 1 000 000 de lignes, et en 1,74 s contre 3,85 à 4 000 000.
+- **Il livre 10 147 octets,** 294 de plus qu’à l’exécution 4 : la copie des octets par le chargeur et la vérification du runtime.
+
+**Ce que la mesure de la mémoire ne voit pas.** Le protocole mesure le pic au-delà du pic de la page avec les données chargées (`VmHWM`, constat M008). La requête de la version B reste sous ce pic et lit 0 ; une part de celle de C peut l’être aussi. Le module tient toujours une copie du texte, environ 122 Mio à 4 000 000 de lignes, que la décision 0020 dit ne pas pouvoir retirer tant que les données partent de l’extérieur du module. Les 49,4 Mio sont donc le pic que ce protocole voit, pas tout ce que C tient. La comparaison avec A, que H3 a enregistrée, tient : la requête de A monte au-delà de ce pic, et la chaîne de C ne le fait plus.
