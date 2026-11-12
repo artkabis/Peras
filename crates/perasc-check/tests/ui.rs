@@ -28,6 +28,7 @@ fn compile(source: &str, managed: bool) -> Vec<Diagnostic> {
                 .map(|(_, types)| types)
                 .unwrap_or_default(),
         }],
+        path: String::new(),
     };
     perasc_check::analyze_with(&parsed.ast, source, &context).diagnostics
 }

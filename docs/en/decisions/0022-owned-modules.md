@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0022-owned-modules.md](../../fr/decisions/0022-owned-modules.md)._
 
-_Status: proposed on 2026-11-12, with its criteria registered before any code; step 3 of [decision 0021](0021-phases-4-and-5.md)._
+_Status: proposed on 2026-11-12, with its criteria registered before any code; accepted by the owner the same day; built, its criteria met (see [Record](#record)); step 3 of [decision 0021](0021-phases-4-and-5.md). Generics, step 3b, are to come._
 
 ## Context
 
@@ -24,7 +24,7 @@ An application of a fair size does not fit in one file. Phase 5 of the [roadmap]
 3. **One build, one WebAssembly module.** `perasc build main.peras` follows the imports. Every file reached is compiled into the same module, with one memory, one allocator and one runtime. A value passed from one file to another crosses no boundary and is not copied. Moves and borrows are checked across files as they are within one.
 4. **Each file is checked on its own, against the signatures the files it imports export.**
    - Its private names stay its own: two files may each have a function `helper`.
-   - The lowered modules are linked into one before the optimizations of decisions 0016 to 0018 run. Those optimizations, inlining included, therefore see across files.
+   - The files are lowered into one module before the optimizations of decisions 0016 to 0018 run, so those optimizations see every file's functions. The compiler inlines no call into another function, except a recursion it unrolls; the WebAssembly engine may inline a call from one file to another, as within one, since they are one module. (Corrected when it landed: the first draft said the compiler's optimizations included inlining.)
 5. **Cycles are refused** (new error `E0250`), with the path of the cycle: `a.peras → b.peras → a.peras`.
    - This is Go's rule, chosen for the same reasons. The order of checking is the order of the graph, and a reader always knows which file depends on which.
    - A cycle that a design needs is broken by moving what both files share into a third file.
@@ -47,7 +47,7 @@ An application of a fair size does not fit in one file. Phase 5 of the [roadmap]
 
 - Two `.apeiron` modules that import two owned roots which share a file each get a copy of that file's code, in two WebAssembly modules with two memories. Values pass between them only through JavaScript. Sharing one module between roots is out of scope.
 - **Module size.**
-  - The files are compiled into one module, and a function no export reaches is still dropped, as today.
+  - The files are compiled into one module. A function no export reaches is kept, as it is today within one file: no pass of the compiler removes such functions yet (corrected before any code: the first draft said they were dropped). An imported file brings all its functions, used or not; removing those no export reaches is separate work.
   - A program split into files should give the same module as the same program in one file, up to the order of functions.
   - This is checked by the tests below rather than assumed.
 
@@ -80,3 +80,24 @@ The step lands only with all of these, in addition to [decision 0021's criteria]
 ## Record
 
 _Each part is recorded here as it lands._
+
+**Step 3, functions, structures and enumerations that are not generic: landed.**
+
+- **What changed.**
+  - The driver follows the imports from the file built. It reads, parses and checks each file it reaches, the files it imports first, each against what those export. A file reached by two paths is read once, so its structures and enumerations are one type in every file that imports them.
+  - The files are lowered in one pass into one module of the IR. Each file keeps its own names, and only the root's exports are JavaScript's. Functions of other files get a name of their own in the module, `area__m1`.
+  - A cycle is refused (`E0250`) in the file whose import closes it, with the path from the root's folder.
+  - `E0244` gains three reasons: `generic`, `managed` (an owned module importing a `.apeiron` file) and `clash`, which now covers functions and two imports of one name.
+  - `perasc build --json` lists the files under `inputs`, the Vite plugin watches them, and `perasc check` on an owned module checks it against the files it imports.
+- **Tests, each criterion in turn.**
+  1. `crates/perasc-driver/tests/modules.rs`, for each refusal: a file not found, a file that does not compile (shown in that file), a name not exported, a clash with a local and with an imported name, a generic structure, a `.apeiron` file, and cycles of two and three files with their path.
+  2. Three files against one, end to end in Chromium on both allocators (`modules.test.ts`), and through the interpreter of the IR with nothing left alive. Their modules are within 1 % of one size.
+  3. The three files hold a structure of a string and an array of strings passed by `sink`, changed and given back, an enumeration matched in another file than its own, a private `helper` in each file, and a diamond: `size.peras`, imported by the two others, compiled once.
+  4. The differential test splits each generated program into two files, each with a private `helper` that computes something else, and compares it with the program in one file on 2,000 seeds. Numbering each file's functions from zero, on purpose, makes `helper` of one file call the other's, and fails it at the first seed.
+  5. A test of the Vite dev server changes a file the root imports and sees the result change. Without the watch, on purpose, it keeps the old result and fails.
+  6. The guide's page [modules](../guide/modules.md), whose blocks the documentation test compiles with the files they import, and the status, the roadmap, `E0244` and `E0250`.
+- **Found while building it.**
+  - The checker's ownership pass read each function's conventions from the syntax tree, where an imported function is not. A `sink` parameter of an imported function would have been lent, and the release verifier refused the code. The pass now reads the checker's signatures, which hold the imported functions.
+  - Two sentences of this decision described the compiler without reading it (finding M020). One said that a function no export reaches is dropped; no pass does that. The other said that the compiler's optimizations include inlining; they inline no call. Both are corrected above, where they were written.
+  - A generic function cannot be exported from an owned module at all (`E0230`), since its exports are JavaScript's, and a module constant cannot be exported (there is no `export const`). Step 3b is therefore about generic structures and enumerations first, then those two.
+  - The methods of an imported structure are not imported with it (`E0215` on the call): the guide says so.

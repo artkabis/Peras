@@ -1,0 +1,21 @@
+// Decision 0022: a structure moved in and given back, an enumeration matched away from its file.
+import { Item, Kind, kind } from "./size.peras";
+
+fn helper(x: i32): i32 {
+  return x + 1;
+}
+
+export fn renamed(item: sink Item): Item {
+  let out = item;
+  out.name += "!";
+  out.tags.push("r");
+  return out;
+}
+
+export fn score(item: sink Item): i32 {
+  const k = match (kind(item)) {
+    Kind.Light => 0,
+    Kind.Heavy(w) => w,
+  };
+  return helper(k + item.name.length + item.tags.length);
+}

@@ -19,7 +19,7 @@ use perasc_diag::json::{self, FileReport, Report};
 use perasc_diag::render::{RenderOptions, render};
 use perasc_diag::source::SourceFile;
 use perasc_driver::{
-    Checked, DirectOptions, ReadError, ToolError, build_direct, build_managed, build_rust,
+    Checked, DirectOptions, ReadError, ToolError, build_direct_file, build_managed, build_rust,
     crate_name, read_source,
 };
 
@@ -77,17 +77,17 @@ pub fn build(
             };
             managed_module(path, &text, &stem, out_dir, how, localizer)
         }
-        Backend::Direct => direct(&text, &stem, out_dir, options, localizer),
+        Backend::Direct => direct(Path::new(path), &text, &stem, out_dir, options, localizer),
         Backend::Rust => {
             let name = crate_name(&stem);
             let crate_dir = out_dir.join(".rust").join(&stem);
             build_rust(&text, &name, &crate_dir, out_dir)
-                .map(|()| out_dir.join(format!("{name}_bg.wasm")))
+                .map(|()| (out_dir.join(format!("{name}_bg.wasm")), Vec::new()))
         }
     };
     let elapsed = started.elapsed().as_millis();
     match result {
-        Ok(wasm) => {
+        Ok((wasm, inputs)) => {
             let bytes = fs::metadata(&wasm).map_or(0, |m| m.len());
             let ok = Message::new("cli-build-ok")
                 .text("file", path)
@@ -95,26 +95,49 @@ pub fn build(
                 .number("bytes", i64::try_from(bytes).unwrap_or(i64::MAX))
                 .number("ms", i64::try_from(elapsed).unwrap_or(i64::MAX));
             if json {
-                print_json(None, path, &text, localizer, out)?;
+                let inputs: Vec<String> = inputs.iter().map(|p| p.display().to_string()).collect();
+                print_json(None, path, &text, &inputs, localizer, out)?;
             } else {
                 writeln!(out, "{}", localizer.message(&ok))?;
             }
             Ok(SUCCESS)
         }
+        Err(ToolError::InFile {
+            path: file,
+            source,
+            checked,
+        }) => {
+            // An imported file's errors, shown in that file (decision 0022).
+            let file = file.display().to_string();
+            if json {
+                print_json(Some(&checked), &file, &source, &[], localizer, out)?;
+            } else {
+                report(&checked, &file, &source, localizer, color, err)?;
+            }
+            Ok(ERRORS_FOUND)
+        }
         Err(ToolError::Diagnostics(checked)) => {
             if json {
-                print_json(Some(&checked), path, &text, localizer, out)?;
+                print_json(Some(&checked), path, &text, &[], localizer, out)?;
             } else {
                 report(&checked, path, &text, localizer, color, err)?;
             }
             Ok(ERRORS_FOUND)
         }
-        Err(ToolError::Io(e)) => {
+        Err(other) => failure(other, localizer, err),
+    }
+}
+
+/// Prints why a build stopped other than on errors in the source, and
+/// returns the exit code.
+fn failure(error: ToolError, localizer: &Localizer, err: &mut dyn Write) -> io::Result<u8> {
+    match error {
+        ToolError::Io(e) => {
             let message = Message::new("cli-write-error").text("reason", e.to_string());
             writeln!(err, "{}", error_line(localizer, &message))?;
             Ok(USAGE_OR_IO)
         }
-        Err(ToolError::Missing(tool)) => {
+        ToolError::Missing(tool) => {
             writeln!(
                 err,
                 "{}",
@@ -125,7 +148,7 @@ pub fn build(
             )?;
             Ok(USAGE_OR_IO)
         }
-        Err(ToolError::Internal(problems)) => {
+        ToolError::Internal(problems) => {
             writeln!(
                 err,
                 "{}",
@@ -136,7 +159,7 @@ pub fn build(
             }
             Ok(COMPILER_BUG)
         }
-        Err(ToolError::Failed { tool, output }) => {
+        ToolError::Failed { tool, output } => {
             writeln!(
                 err,
                 "{}",
@@ -148,6 +171,8 @@ pub fn build(
             writeln!(err, "{output}")?;
             Ok(COMPILER_BUG)
         }
+        // Handled by the caller.
+        ToolError::Diagnostics(_) | ToolError::InFile { .. } => Ok(ERRORS_FOUND),
     }
 }
 
@@ -172,7 +197,7 @@ fn read(
                         hidden: 0,
                     };
                     if json {
-                        print_json(Some(&checked), path, "", localizer, out)?;
+                        print_json(Some(&checked), path, "", &[], localizer, out)?;
                     } else {
                         report(&checked, path, "", localizer, color, err)?;
                     }
@@ -213,7 +238,7 @@ fn managed_module(
         keep_imports,
     }: Managed,
     localizer: &Localizer,
-) -> Result<PathBuf, ToolError> {
+) -> Result<(PathBuf, Vec<PathBuf>), ToolError> {
     let debug = options.allocator == perasc_driver::Allocator::Debug;
     let output = build_managed(Path::new(path), text, !keep_imports, debug, localizer)?;
     let built = if keep_imports {
@@ -221,6 +246,7 @@ fn managed_module(
     } else {
         &output.imports[..]
     };
+    let mut inputs = Vec::new();
     for (from, file) in built {
         let relative = from.trim_start_matches("./");
         let target = out_dir.join(relative);
@@ -236,31 +262,35 @@ fn managed_module(
                 file.display().to_string(),
             ))
         })?;
-        direct(&source, &stem, &dir, options, localizer)?;
+        let (_, files) = direct(file, &source, &stem, &dir, options, localizer)?;
+        inputs.extend(files);
     }
     fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
     let js = out_dir.join(format!("{stem}.js"));
     fs::write(&js, &output.js).map_err(ToolError::Io)?;
     fs::write(out_dir.join(format!("{stem}.d.ts")), &output.dts).map_err(ToolError::Io)?;
-    Ok(js)
+    inputs.push(PathBuf::from(path));
+    Ok((js, inputs))
 }
 
-/// The direct backend: writes `<stem>.wasm`, `<stem>.js` and `<stem>.d.ts`.
+/// The direct backend: writes `<stem>.wasm`, `<stem>.js` and `<stem>.d.ts`,
+/// the module of `path` and of the files it imports; their paths.
 fn direct(
+    path: &Path,
     text: &str,
     stem: &str,
     out_dir: &Path,
     options: DirectOptions,
     localizer: &Localizer,
-) -> Result<PathBuf, ToolError> {
+) -> Result<(PathBuf, Vec<PathBuf>), ToolError> {
     let wasm_file = format!("{stem}.wasm");
-    let output = build_direct(text, &wasm_file, options, localizer)?;
+    let (output, inputs) = build_direct_file(path, text, &wasm_file, options, localizer)?;
     fs::create_dir_all(out_dir).map_err(ToolError::Io)?;
     let wasm = out_dir.join(&wasm_file);
     fs::write(&wasm, &output.wasm).map_err(ToolError::Io)?;
     fs::write(out_dir.join(format!("{stem}.js")), &output.js).map_err(ToolError::Io)?;
     fs::write(out_dir.join(format!("{stem}.d.ts")), &output.dts).map_err(ToolError::Io)?;
-    Ok(wasm)
+    Ok((wasm, inputs))
 }
 
 fn report(
@@ -289,6 +319,7 @@ fn print_json(
     checked: Option<&Checked>,
     path: &str,
     text: &str,
+    inputs: &[String],
     localizer: &Localizer,
     out: &mut dyn Write,
 ) -> io::Result<()> {
@@ -297,6 +328,7 @@ fn print_json(
         version: json::FORMAT_VERSION,
         language: localizer.language().tag(),
         error_count: checked.map_or(0, Checked::error_count),
+        inputs: inputs.to_vec(),
         files: vec![FileReport {
             path: path.to_owned(),
             diagnostics: checked.map_or_else(Vec::new, |c| {

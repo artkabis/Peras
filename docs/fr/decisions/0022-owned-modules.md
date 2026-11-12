@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0022-owned-modules.md](../../en/decisions/0022-owned-modules.md)._
 
-_État : proposée le 2026-11-12, avec ses critères enregistrés avant tout code ; étape 3 de la [décision 0021](0021-phases-4-and-5.md)._
+_État : proposée le 2026-11-12, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour ; construite, ses critères tenus (voir [Registre](#registre)) ; étape 3 de la [décision 0021](0021-phases-4-and-5.md). Les génériques, étape 3b, sont à venir._
 
 ## Contexte
 
@@ -24,7 +24,7 @@ Une application d’une taille raisonnable ne tient pas dans un seul fichier. La
 3. **Un build, un module WebAssembly.** `perasc build main.peras` suit les imports. Chaque fichier atteint est compilé dans le même module, avec une seule mémoire, un seul allocateur et un seul runtime. Une valeur passée d’un fichier à l’autre ne franchit aucune frontière et n’est pas copiée. Les déplacements et les emprunts sont vérifiés d’un fichier à l’autre comme au sein d’un seul.
 4. **Chaque fichier est vérifié seul, contre les signatures qu’exportent les fichiers qu’il importe.**
    - Ses noms privés restent les siens : deux fichiers peuvent chacun avoir une fonction `helper`.
-   - Les modules abaissés sont liés en un seul avant que les optimisations des décisions 0016 à 0018 s’exécutent. Ces optimisations, inlining compris, voient donc d’un fichier à l’autre.
+   - Les fichiers sont abaissés en un seul module avant que les optimisations des décisions 0016 à 0018 s’exécutent, donc ces optimisations voient les fonctions de chaque fichier. Le compilateur n’inline aucun appel dans une autre fonction, hormis une récursion qu’il déroule ; le moteur WebAssembly peut inliner un appel d’un fichier à l’autre, comme au sein d’un seul, puisqu’ils forment un seul module. (Corrigé à l’arrivée : le premier jet disait que les optimisations du compilateur comprenaient l’inlining.)
 5. **Les cycles sont refusés** (nouvelle erreur `E0250`), avec le chemin du cycle : `a.peras → b.peras → a.peras`.
    - C’est la règle de Go, choisie pour les mêmes raisons. L’ordre de vérification est l’ordre du graphe, et un lecteur sait toujours quel fichier dépend de quel autre.
    - Un cycle dont une conception a besoin se casse en déplaçant ce que les deux fichiers partagent dans un troisième.
@@ -47,7 +47,7 @@ Une application d’une taille raisonnable ne tient pas dans un seul fichier. La
 
 - Deux modules `.apeiron` qui importent deux racines owned partageant un fichier reçoivent chacun une copie du code de ce fichier, dans deux modules WebAssembly à deux mémoires. Les valeurs ne passent de l’un à l’autre que par JavaScript. Partager un module entre racines est hors du périmètre.
 - **La taille du module.**
-  - Les fichiers sont compilés en un seul module, et une fonction qu’aucun export n’atteint est toujours retirée, comme aujourd’hui.
+  - Les fichiers sont compilés en un seul module. Une fonction qu’aucun export n’atteint est gardée, comme aujourd’hui dans un seul fichier : aucune passe du compilateur ne retire encore de telles fonctions (corrigé avant tout code : le premier jet les disait retirées). Un fichier importé apporte toutes ses fonctions, utilisées ou non ; retirer celles qu’aucun export n’atteint est un autre chantier.
   - Un programme découpé en fichiers devrait donner le même module que le même programme en un seul fichier, à l’ordre des fonctions près.
   - C’est vérifié par les tests ci-dessous plutôt que supposé.
 
@@ -80,3 +80,24 @@ L’étape n’arrive qu’avec tous ceux-ci, en plus des [critères de la déci
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+**Étape 3, les fonctions, structures et énumérations non génériques : arrivée.**
+
+- **Ce qui a changé.**
+  - Le pilote suit les imports depuis le fichier construit. Il lit, analyse et vérifie chaque fichier qu’il atteint, les fichiers qu’il importe d’abord, chacun contre ce que ceux-ci exportent. Un fichier atteint par deux chemins est lu une fois, donc ses structures et énumérations sont un seul type dans chaque fichier qui les importe.
+  - Les fichiers sont abaissés en une seule passe dans un seul module de l’IR. Chaque fichier garde ses propres noms, et seuls les exports de la racine sont ceux de JavaScript. Les fonctions des autres fichiers reçoivent un nom à elles dans le module, `area__m1`.
+  - Un cycle est refusé (`E0250`) dans le fichier dont l’import le ferme, avec le chemin depuis le dossier de la racine.
+  - `E0244` gagne trois raisons : `generic`, `managed` (un module owned qui importe un fichier `.apeiron`) et `clash`, qui couvre maintenant les fonctions et deux imports d’un même nom.
+  - `perasc build --json` liste les fichiers sous `inputs`, le plugin Vite les surveille, et `perasc check` sur un module owned le vérifie contre les fichiers qu’il importe.
+- **Les tests, critère par critère.**
+  1. `crates/perasc-driver/tests/modules.rs`, pour chaque refus : un fichier introuvable, un fichier qui ne se compile pas (affiché dans ce fichier), un nom non exporté, un conflit avec un nom local et avec un nom importé, une structure générique, un fichier `.apeiron`, et des cycles de deux et de trois fichiers avec leur chemin.
+  2. Trois fichiers contre un seul, de bout en bout dans Chromium sur les deux allocateurs (`modules.test.ts`), et par l’interpréteur de l’IR, rien ne restant vivant. Leurs modules sont à 1 % près de la même taille.
+  3. Les trois fichiers tiennent une structure faite d’une chaîne et d’un tableau de chaînes passée par `sink`, modifiée et rendue, une énumération filtrée dans un autre fichier que le sien, un `helper` privé dans chaque fichier, et un losange : `size.peras`, importé par les deux autres, compilé une fois.
+  4. Le test différentiel découpe chaque programme généré en deux fichiers, chacun avec un `helper` privé qui calcule autre chose, et le compare au programme en un seul fichier sur 2 000 graines. Numéroter exprès les fonctions de chaque fichier à partir de zéro fait appeler à `helper` d’un fichier celui de l’autre, et le fait échouer dès la première graine.
+  5. Un test du serveur de développement de Vite change un fichier que la racine importe et voit le résultat changer. Sans la surveillance, exprès, il garde l’ancien résultat et échoue.
+  6. La page [modules](../guide/modules.md) du guide, dont le test de la documentation compile les blocs avec les fichiers qu’ils importent, et l’état, la feuille de route, `E0244` et `E0250`.
+- **Trouvé en la construisant.**
+  - La passe de propriété du vérificateur lisait les conventions de chaque fonction dans l’arbre syntaxique, où une fonction importée n’est pas. Un paramètre `sink` d’une fonction importée aurait été prêté, et le vérificateur de la release refusait le code. La passe lit maintenant les signatures du vérificateur, qui contiennent les fonctions importées.
+  - Deux phrases de cette décision décrivaient le compilateur sans l’avoir lu (constat M020). L’une disait qu’une fonction qu’aucun export n’atteint est retirée ; aucune passe ne le fait. L’autre disait que les optimisations du compilateur comprennent l’inlining ; elles n’inlinent aucun appel. Les deux sont corrigées plus haut, là où elles étaient écrites.
+  - Une fonction générique ne peut pas du tout être exportée d’un module owned (`E0230`), puisque ses exports sont ceux de JavaScript, et une constante de module ne peut pas être exportée (il n’y a pas de `export const`). L’étape 3b porte donc d’abord sur les structures et énumérations génériques, puis sur ces deux-là.
+  - Les méthodes d’une structure importée ne sont pas importées avec elle (`E0215` sur l’appel) : le guide le dit.

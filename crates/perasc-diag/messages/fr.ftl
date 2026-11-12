@@ -670,7 +670,6 @@ check-managed-only = { $what ->
     [await-sync] `await` hors d’une fonction `async`
     [number] le type `number`
     [promise] le type `Promise`
-    [import] un `import`
     [browser] l’API du navigateur
     [extern] un bloc `extern`
     [arrow-block] une fonction fléchée à instructions
@@ -713,7 +712,9 @@ check-import = { $reason ->
     [module] impossible d’importer depuis `{ $name }`
     [name] `{ $name }` n’est pas une fonction, une structure ou une énumération exportée de ce module
     [signature] `{ $name }` prend ou rend une valeur qui ne passe pas encore d’un module à l’autre
-    [clash] le module importé a un type `{ $name }`, et ce module en déclare un aussi
+    [clash] `{ $name }` est déjà un nom de ce module, déclaré ici ou importé
+    [generic] `{ $name }` est générique, et les génériques ne s’importent pas encore
+    [managed] un module owned ne peut pas importer un module managed, `{ $name }`
    *[other] impossible d’importer `{ $name }`
 }
 check-import-label = { $reason ->
@@ -721,16 +722,26 @@ check-import-label = { $reason ->
     [name] non exporté ici
     [signature] importée ici
     [clash] importé ici
+    [generic] générique
+    [managed] un fichier `.apeiron`
    *[other] ici
 }
-check-import-why = Un module managed importe des fonctions, des structures et des énumérations de modules owned (`.peras`), dans le même dossier ou en dessous, et appelle les fonctions à travers des conversions vérifiées : les nombres, les booléens, les chaînes, les structures et énumérations du module owned, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure générique, une fonction ou un type du navigateur ne passe pas. Une structure ou une énumération importée est celle du module owned, sous son nom : ce module ne peut pas en déclarer une autre de ce nom.
+check-import-why = Un module owned importe les fonctions, structures et énumérations que d’autres modules owned exportent, et ils sont compilés ensemble en un seul module WebAssembly (décision 0022) ; celles qui sont génériques ne s’importent pas encore. Un module managed importe des fonctions, des structures et des énumérations de modules owned (`.peras`), dans le même dossier ou en dessous, et appelle les fonctions à travers des conversions vérifiées : les nombres, les booléens, les chaînes, les structures et énumérations du module owned, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure générique, une fonction ou un type du navigateur ne passe pas. Une structure ou une énumération importée est celle du module owned, sous son nom : ce module ne peut pas en déclarer une autre de ce nom.
 check-import-fix = { $reason ->
     [module] importez un fichier `.peras` par son chemin relatif, comme `"./maths.peras"`, et corrigez d’abord ses erreurs
     [name] marquez-la `export` dans son module, ou vérifiez son orthographe
     [signature] donnez à la fonction des valeurs qui passent : des nombres, des chaînes, des structures et énumérations non génériques, et des tableaux de ceux-ci
-    [clash] renommez le type propre de ce module, ou utilisez celui qui est importé
+    [clash] renommez la déclaration propre de ce module, ou n’importez que l’un des deux
+    [generic] écrivez-en une version pour les types dont ce module a besoin, dans son module ou dans celui-ci
+    [managed] déplacez ce dont les deux modules ont besoin dans un fichier `.peras`, que chacun peut importer
    *[other] vérifiez l’import
 }
+
+# E0250
+check-import-cycle = ces modules s’importent l’un l’autre : { $path }
+check-import-cycle-label = cet import ferme le cycle
+check-import-cycle-why = Chaque module owned est vérifié contre ce qu’exportent les modules qu’il importe, donc ceux-ci sont vérifiés d’abord : un module ne peut pas dépendre, même par d’autres, de lui-même. Un cycle d’imports est refusé plutôt que résolu, pour que l’ordre de vérification soit l’ordre des fichiers et qu’un lecteur sache toujours quel fichier dépend de quel autre (décision 0022).
+check-import-cycle-fix = déplacez ce que les modules du cycle partagent dans un nouveau fichier `.peras`, que chacun d’eux importe
 
 # E0245
 check-resource = { $reason ->

@@ -54,10 +54,68 @@ pub fn lower_with(
     analysis: &Analysis,
     overflow_checks: bool,
 ) -> Result<Module, Vec<Diagnostic>> {
-    let mut lowering = Lowering {
-        overflow_checks,
+    let unit = Unit {
         ast,
         analysis,
+        imports: HashMap::new(),
+    };
+    lower_units(&[unit], overflow_checks)
+        .map_err(|errors| errors.into_iter().flat_map(|(_, d)| d).collect())
+}
+
+/// One owned file of a build, checked, and the files its imports name: each
+/// `from` as written, and the index of that file among the units
+/// ([decision 0022]).
+///
+/// [decision 0022]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0022-owned-modules.md
+pub struct Unit<'a> {
+    /// Its syntax tree.
+    pub ast: &'a Ast,
+    /// Its checks.
+    pub analysis: &'a Analysis,
+    /// The unit each of its imports names, by the path the import writes.
+    pub imports: HashMap<String, usize>,
+}
+
+/// The names of one unit, which only its own functions see.
+#[derive(Default, Clone)]
+struct Names {
+    fns: HashMap<Symbol, FnId>,
+    by_index: HashMap<usize, FnId>,
+    constants: HashMap<Symbol, ExprId>,
+    generic: HashMap<Symbol, usize>,
+    instances: HashMap<(usize, Vec<CheckTy>), FnId>,
+    /// Its exported functions that are not generic, as other units import
+    /// them.
+    exported: HashMap<String, FnId>,
+}
+
+/// Lowers the files of a build into one module ([decision 0022]): each file
+/// imported before the files that import it, the last the root, whose
+/// exported functions alone JavaScript calls. Every function of every file is
+/// in the module, under its own number; a file's private names are its own.
+///
+/// [decision 0022]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0022-owned-modules.md
+///
+/// # Errors
+///
+/// The `E0900` diagnostics of each unit that has some, by its index.
+pub fn lower_units(
+    units: &[Unit<'_>],
+    overflow_checks: bool,
+) -> Result<Module, Vec<(usize, Vec<Diagnostic>)>> {
+    let Some(first) = units.first() else {
+        return Ok(Module {
+            functions: Vec::new(),
+            data: Vec::new(),
+        });
+    };
+    let root = units.len() - 1;
+    let mut lowering = Lowering {
+        overflow_checks,
+        ast: first.ast,
+        analysis: first.analysis,
+        root: true,
         fns: HashMap::new(),
         by_index: HashMap::new(),
         constants: HashMap::new(),
@@ -75,89 +133,200 @@ pub fn lower_with(
         jobs: Vec::new(),
         job_base: 0,
     };
-    // The functions of the module, in order, then the instances of the
-    // generic ones: what each is, and its type arguments.
-    let decls: Vec<&FnDecl> = ast.functions();
-    let mut compiled: Vec<(&FnDecl, Vec<CheckTy>)> = Vec::new();
-    for (index, decl) in decls.iter().enumerate() {
-        let checked = perasc_check::ty::FnId(index);
-        // A method is reached through its type, never by its name alone.
-        let named = decl.impl_of.is_none();
-        if analysis.is_generic(checked) {
-            if named {
-                lowering.generic.insert(decl.name.symbol, index);
-            }
-            continue;
+    let mut tables: Vec<Names> = Vec::with_capacity(units.len());
+    let mut errors: Vec<Vec<Diagnostic>> = vec![Vec::new(); units.len()];
+    // Every function of every unit, numbered in order: each unit's own, then
+    // the instances of its generic ones.
+    let mut compiled = Vec::new();
+    for (u, unit) in units.iter().enumerate() {
+        let table = lowering.register(u, unit, u == root, &tables, &mut compiled);
+        if let Some(e) = errors.get_mut(u) {
+            e.append(&mut lowering.diagnostics);
         }
-        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
-        if named {
-            lowering.fns.insert(decl.name.symbol, id);
-        }
-        lowering.by_index.insert(index, id);
-        compiled.push((decl, Vec::new()));
-    }
-    for (checked, args) in &analysis.instances {
-        let Some(&decl) = decls.get(checked.0) else {
-            continue;
-        };
-        let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
-        lowering.instances.insert((checked.0, args.clone()), id);
-        compiled.push((decl, args.clone()));
-    }
-    for (index, (decl, args)) in compiled.iter().enumerate() {
-        let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
-        lowering.args.clone_from(args);
-        lowering
-            .conventions
-            .insert(id, decl.params.iter().map(|p| p.convention).collect());
-        // Its results, for its callers; a type not compiled yet is
-        // reported once, with the function itself.
-        let mut results: Vec<Ty> = decl
-            .ret
-            .as_ref()
-            .and_then(|t| lowering.resolve(t).ok())
-            .and_then(|t| lowering.leaves(&t).ok())
-            .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
-            .unwrap_or_default();
-        results.extend(lowering.inout_numbers(decl));
-        lowering.results.insert(id, results);
-    }
-    for item in &ast.items {
-        if let ItemKind::Global(local) = &item.kind {
-            match local.init {
-                // A constant is written where it is used.
-                Some(init) if !local.mutable => {
-                    lowering.constants.insert(local.name.symbol, init);
-                }
-                _ => lowering.unsupported(local.name.span, "global"),
-            }
-        }
+        tables.push(table);
     }
     // The jobs of `parallel for` loops come after every other function.
     lowering.job_base = u32::try_from(compiled.len()).unwrap_or(u32::MAX);
-    let mut functions: Vec<Function> = compiled
-        .iter()
-        .map(|(decl, args)| {
-            lowering.args.clone_from(args);
-            lowering.function(decl)
+    let functions = lowering.bodies(units, &tables, &compiled, &mut errors);
+    let failed: Vec<(usize, Vec<Diagnostic>)> = errors
+        .into_iter()
+        .enumerate()
+        .filter(|(_, d)| !d.is_empty())
+        .map(|(u, mut d)| {
+            d.sort_by_key(|d| d.primary_span().map(|s| s.start));
+            (u, d)
         })
         .collect();
-    functions.append(&mut lowering.jobs);
-    if lowering.diagnostics.is_empty() {
+    if failed.is_empty() {
         Ok(Module {
             functions,
             data: lowering.data,
         })
     } else {
-        let mut diagnostics = lowering.diagnostics;
-        diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
-        Err(diagnostics)
+        Err(failed)
+    }
+}
+
+/// A function to compile: its unit, its declaration, its type arguments.
+type Compiled<'a> = (usize, &'a FnDecl, Vec<CheckTy>);
+
+impl<'a> Lowering<'a> {
+    /// Numbers the functions of unit `u` after those already in `compiled`,
+    /// gives each its conventions and results, and names what the unit
+    /// imports from the units before it, whose names are `tables`.
+    fn register(
+        &mut self,
+        u: usize,
+        unit: &Unit<'a>,
+        root: bool,
+        tables: &[Names],
+        compiled: &mut Vec<Compiled<'a>>,
+    ) -> Names {
+        let mut table = Names::default();
+        let decls: Vec<&FnDecl> = unit.ast.functions();
+        let start = compiled.len();
+        for (index, decl) in decls.iter().enumerate() {
+            let checked = perasc_check::ty::FnId(index);
+            // A method is reached through its type, never by its name alone.
+            let by_name = decl.impl_of.is_none();
+            if unit.analysis.is_generic(checked) {
+                if by_name {
+                    table.generic.insert(decl.name.symbol, index);
+                }
+                continue;
+            }
+            let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+            if by_name {
+                table.fns.insert(decl.name.symbol, id);
+                if decl.exported {
+                    table
+                        .exported
+                        .insert(unit.ast.name(decl.name.symbol).to_owned(), id);
+                }
+            }
+            table.by_index.insert(index, id);
+            compiled.push((u, decl, Vec::new()));
+        }
+        for (checked, args) in &unit.analysis.instances {
+            let Some(&decl) = decls.get(checked.0) else {
+                continue;
+            };
+            let id = FnId(u32::try_from(compiled.len()).unwrap_or(u32::MAX));
+            table.instances.insert((checked.0, args.clone()), id);
+            compiled.push((u, decl, args.clone()));
+        }
+        // The functions it imports, under the names it imports them by.
+        for item in &unit.ast.items {
+            let ItemKind::Import(decl) = &item.kind else {
+                continue;
+            };
+            let Some(from) = unit.imports.get(&decl.from).and_then(|&i| tables.get(i)) else {
+                continue;
+            };
+            for name in &decl.names {
+                if let Some(&id) = from.exported.get(unit.ast.name(name.symbol)) {
+                    table.fns.insert(name.symbol, id);
+                }
+            }
+        }
+        self.enter(unit, &table, root);
+        for (index, (_, decl, args)) in compiled.iter().enumerate().skip(start) {
+            let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
+            self.args.clone_from(args);
+            self.conventions
+                .insert(id, decl.params.iter().map(|p| p.convention).collect());
+            // Its results, for its callers; a type not compiled yet is
+            // reported once, with the function itself.
+            let mut results: Vec<Ty> = decl
+                .ret
+                .as_ref()
+                .and_then(|t| self.resolve(t).ok())
+                .and_then(|t| self.leaves(&t).ok())
+                .map(|leaves| leaves.into_iter().map(|(_, ty)| ty).collect())
+                .unwrap_or_default();
+            results.extend(self.inout_numbers(decl));
+            self.results.insert(id, results);
+        }
+        for item in &unit.ast.items {
+            if let ItemKind::Global(local) = &item.kind {
+                match local.init {
+                    // A constant is written where it is used.
+                    Some(init) if !local.mutable => {
+                        self.constants.insert(local.name.symbol, init);
+                    }
+                    _ => self.unsupported(local.name.span, "global"),
+                }
+            }
+        }
+        table.constants = std::mem::take(&mut self.constants);
+        table
+    }
+
+    /// The bodies of the functions `compiled` numbers, then the jobs of
+    /// their `parallel for` loops. Another unit's function is JavaScript's
+    /// to call only in the root, and has a name of its own in the module
+    /// (decision 0022).
+    fn bodies(
+        &mut self,
+        units: &[Unit<'a>],
+        tables: &[Names],
+        compiled: &[Compiled<'a>],
+        errors: &mut [Vec<Diagnostic>],
+    ) -> Vec<Function> {
+        let root = units.len().saturating_sub(1);
+        let mut functions: Vec<Function> = Vec::with_capacity(compiled.len());
+        let mut current = usize::MAX;
+        let mut job_units: Vec<usize> = Vec::new();
+        for (u, decl, args) in compiled {
+            if *u != current {
+                current = *u;
+                if let (Some(unit), Some(table)) = (units.get(current), tables.get(current)) {
+                    self.enter(unit, table, current == root);
+                }
+            }
+            self.args.clone_from(args);
+            let jobs = self.jobs.len();
+            let mut function = self.function(decl);
+            job_units.extend(std::iter::repeat_n(*u, self.jobs.len() - jobs));
+            if *u != root {
+                function.exported = false;
+                function.shape = None;
+                function.name = format!("{}__m{u}", function.name);
+            }
+            functions.push(function);
+            if let Some(e) = errors.get_mut(*u) {
+                e.append(&mut self.diagnostics);
+            }
+        }
+        let mut jobs = std::mem::take(&mut self.jobs);
+        for (job, &u) in jobs.iter_mut().zip(&job_units) {
+            if u != root {
+                job.name = format!("{}__m{u}", job.name);
+            }
+        }
+        functions.append(&mut jobs);
+        functions
+    }
+
+    /// Makes `unit` the one being lowered, with its names.
+    fn enter(&mut self, unit: &Unit<'a>, names: &Names, root: bool) {
+        self.ast = unit.ast;
+        self.analysis = unit.analysis;
+        self.root = root;
+        self.fns.clone_from(&names.fns);
+        self.by_index.clone_from(&names.by_index);
+        self.constants.clone_from(&names.constants);
+        self.generic.clone_from(&names.generic);
+        self.instances.clone_from(&names.instances);
     }
 }
 
 struct Lowering<'a> {
     /// `+`, `-` and `*` on integers stop the program on an overflow.
     overflow_checks: bool,
+    /// The unit being lowered is the root of the build: its exported
+    /// functions are JavaScript's (decision 0022).
+    root: bool,
     ast: &'a Ast,
     analysis: &'a Analysis,
     /// The name of the function being lowered, which its jobs carry.
@@ -493,10 +662,14 @@ impl Lowering<'_> {
                 let inout = param.convention == Convention::Inout;
                 // A JavaScript string cannot change, nor be given back to an
                 // option: there is nothing to copy back into.
-                if inout && decl.exported && self.holds_string(&ty) {
+                if inout && decl.exported && self.root && self.holds_string(&ty) {
                     self.unsupported(param.name.span, "inout-string");
                 }
-                if inout && decl.exported && matches!(ty, CheckTy::Option(_) | CheckTy::Enum(..)) {
+                if inout
+                    && decl.exported
+                    && self.root
+                    && matches!(ty, CheckTy::Option(_) | CheckTy::Enum(..))
+                {
                     self.unsupported(param.name.span, "inout-export");
                 }
                 let numbers = leaves.iter().any(|(_, t)| !t.is_handle());
@@ -524,7 +697,7 @@ impl Lowering<'_> {
             }
             Ok(leaves) => {
                 // A number passed `inout` from JavaScript has nowhere to go back.
-                if param.convention == Convention::Inout && decl.exported {
+                if param.convention == Convention::Inout && decl.exported && self.root {
                     self.unsupported(param.name.span, "inout-export");
                 }
                 let leaf = leaves.first().map_or(Ty::Void, |(_, t)| *t);
@@ -593,7 +766,7 @@ impl Lowering<'_> {
                 }
             }
         }
-        let shape = (decl.exported && has_struct).then(|| JsShape {
+        let shape = (decl.exported && self.root && has_struct).then(|| JsShape {
             params: shapes,
             result: ret_ty
                 .filter(|t| *t != CheckTy::Void)
@@ -602,7 +775,7 @@ impl Lowering<'_> {
         });
         Function {
             name: self.function_name(decl),
-            exported: decl.exported,
+            exported: decl.exported && self.root,
             job: false,
             param_count,
             locals: state.locals,

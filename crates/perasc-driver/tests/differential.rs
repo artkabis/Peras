@@ -316,3 +316,70 @@ fn optimized_programs_compute_what_they_did_as_written() {
         }
     }
 }
+
+/// The program of `seed` in one file, and split into `main.peras` and
+/// `lib.peras` (decision 0022): `lib.peras` exports `Pair` and `made`, and
+/// each file has a private `helper` of its own, which the one file names
+/// apart.
+fn split(seed: u64) -> (String, String, String) {
+    let whole = program(seed);
+    let header = "struct Pair {\n  name: String;\n  count: i32;\n}\n\n\
+                  fn made(i: i32): Pair {\n  return Pair(\"m\", i % 4);\n}\n\n";
+    let end = "+ s.length + k.length;\n";
+    assert!(whole.starts_with(header) && whole.contains(end));
+    let main_fn = whole
+        .trim_start_matches(header)
+        .replace(end, "+ s.length + k.length + helper(n);\n");
+    let one = format!(
+        "struct Pair {{\n  name: String;\n  count: i32;\n}}\n\n\
+         fn helperLib(i: i32): i32 {{\n  return i % 4;\n}}\n\n\
+         fn made(i: i32): Pair {{\n  return Pair(\"m\", helperLib(i));\n}}\n\n\
+         fn helperMain(n: i32): i32 {{\n  return n * 3;\n}}\n\n{}",
+        main_fn.replace("+ helper(n);", "+ helperMain(n);")
+    );
+    let lib = "export struct Pair {\n  name: String;\n  count: i32;\n}\n\n\
+               fn helper(i: i32): i32 {\n  return i % 4;\n}\n\n\
+               export fn made(i: i32): Pair {\n  return Pair(\"m\", helper(i));\n}\n"
+        .to_owned();
+    let main = format!(
+        "import {{ Pair, made }} from \"./lib.peras\";\n\n\
+         fn helper(n: i32): i32 {{\n  return n * 3;\n}}\n\n{main_fn}"
+    );
+    (one, main, lib)
+}
+
+#[test]
+fn programs_split_in_two_files_compute_what_one_file_computes() {
+    let seeds = std::env::var("PERAS_DIFFERENTIAL_SEEDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(150_u64);
+    let dir = std::env::temp_dir().join(format!("perasc-split-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| unreachable!("{e}"));
+    for seed in 0..seeds {
+        let (one, main, lib) = split(seed);
+        let whole = perasc_driver::compile_ir(&one)
+            .unwrap_or_else(|e| unreachable!("seed {seed}: one file: {e:?}\n{one}"));
+        std::fs::write(dir.join("lib.peras"), &lib).unwrap_or_else(|e| unreachable!("{e}"));
+        let root = dir.join("main.peras");
+        std::fs::write(&root, &main).unwrap_or_else(|e| unreachable!("{e}"));
+        let (mut parts, _) = perasc_driver::compile_graph_ir(&root, &main, true)
+            .unwrap_or_else(|e| unreachable!("seed {seed}: two files: {e:?}\n{main}"));
+        for n in [0, 1, 7, 40] {
+            let (oracle, clean) = interpret(&whole, n);
+            assert!(oracle.is_some() && clean, "seed {seed}, n {n}: one file");
+            assert_eq!(
+                interpret(&parts, n),
+                (oracle, true),
+                "seed {seed}, n {n}: two files\n{main}"
+            );
+        }
+        perasc_ir::optimize(&mut parts);
+        assert_eq!(
+            run_wasm(&parts, perasc_runtime::Allocator::Tlsf, 7),
+            (interpret(&whole, 7).0, 0),
+            "seed {seed}: two files, optimized, TLSF\n{main}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

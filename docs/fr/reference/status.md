@@ -41,6 +41,7 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | possession : déplacements, emprunts, alias refusés, libérations                                                                               | <span class="status compiled">compilé</span>                                                                       |
 | `const` au niveau du module                                                                                                                   | <span class="status compiled">compilé</span>                                                                       |
 | `let` au niveau du module                                                                                                                     | <span class="status checked">vérifié</span>                                                                        |
+| `import` entre modules owned, compilés en un seul module ([modules](../guide/modules.md))                                                     | <span class="status compiled">compilé</span>, fonctions, structures et énumérations non génériques                 |
 | `import` de fonctions, structures et énumérations possédées dans un module géré                                                               | <span class="status compiled">compilé</span>, nombres, chaînes, structures, énumérations et collections de ceux-ci |
 
 ## Méthodes

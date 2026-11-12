@@ -80,7 +80,7 @@ export async fn render(canvas: HTMLCanvasElement): Promise<void> {
 
 ## Phase 5: modules and packages
 
-- `import` and `export` between Peras modules: designed in [decision 0022](../decisions/0022-owned-modules.md), cycles refused, every file of a build compiled into one WebAssembly module.
+- ~~`import` and `export` between Peras modules~~: done for functions, structures and enumerations that are not generic, every file of a build compiled into one WebAssembly module, cycles refused ([decision 0022](../decisions/0022-owned-modules.md), [modules](../guide/modules.md)); generics next.
 - ~~Typed use of JavaScript libraries~~: done with `extern` blocks, each value from JavaScript checked against the types declared ([decision 0010](../decisions/0010-calling-javascript.md)); `extern` blocks proposed from `.d.ts` declarations next.
 - Packages: a manifest, versions, a registry.
 

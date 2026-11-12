@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Plugin } from "vite";
 
 /** Extension of owned modules, compiled to WebAssembly. */
@@ -76,6 +76,11 @@ export interface Compiled {
   exports: string;
   /** TypeScript declarations of the exports. */
   dts: string;
+  /**
+   * The `.peras` files the module was compiled from: the file itself and those
+   * it imports, through the files they import (decision 0022).
+   */
+  inputs: string[];
 }
 
 /**
@@ -107,6 +112,8 @@ export class PerasError extends Error {
 /** The part of `perasc --json` output the plugin reads. */
 interface Report {
   errorCount: number;
+  /** For `perasc build`, the files the module was compiled from (decision 0022). */
+  inputs?: string[];
   files: {
     path: string;
     diagnostics: {
@@ -162,14 +169,15 @@ export function firstError(report: Report): { summary: string; loc: Location | u
 
 /**
  * Runs `perasc build` on `file` into `out`, with `extra` arguments; throws a
- * `PerasError` when the source has errors or `perasc` fails.
+ * `PerasError` when the source has errors or `perasc` fails. Gives the files
+ * the module was compiled from.
  */
 async function perascBuild(
   file: string,
   out: string,
   extra: string[],
   options: PerasOptions,
-): Promise<void> {
+): Promise<string[]> {
   const perasc = options.perasc ?? process.env.PERASC ?? "perasc";
   const lang = options.lang === undefined ? [] : ["--lang", options.lang];
   const built = await run(perasc, ["build", file, "--out", out, "--json", ...lang, ...extra]);
@@ -194,6 +202,8 @@ async function perascBuild(
       `vite-plugin-peras: \`perasc build\` stopped on ${kind}:\n${built.stderr}`,
     );
   }
+  const report = JSON.parse(built.stdout) as Report;
+  return (report.inputs ?? [file]).map((input) => resolve(input));
 }
 
 /** Compiles one `.peras` file with `perasc build`, the direct backend. */
@@ -203,14 +213,14 @@ export async function compile(file: string, options: PerasOptions = {}): Promise
   const threads = options.threads === true ? ["--threads", "on"] : [];
   const out = await mkdtemp(join(tmpdir(), "peras-"));
   try {
-    await perascBuild(file, out, [...allocator, ...simd, ...threads], options);
+    const inputs = await perascBuild(file, out, [...allocator, ...simd, ...threads], options);
     const stem = basename(file, OWNED_EXTENSION);
     const [wasm, loader, dts] = await Promise.all([
       readFile(join(out, `${stem}.wasm`)),
       readFile(join(out, `${stem}.js`), "utf8"),
       readFile(join(out, `${stem}.d.ts`), "utf8"),
     ]);
-    return { wasm, ...splitLoader(loader), dts };
+    return { wasm, ...splitLoader(loader), dts, inputs };
   } finally {
     await rm(out, { recursive: true, force: true });
   }
@@ -342,6 +352,8 @@ export default function peras(options: PerasOptions = {}): Plugin {
           ...options,
           allocator: options.allocator ?? (building ? "tlsf" : "debug"),
         });
+        // The files it imports are compiled into it: a change rebuilds it.
+        for (const input of compiled.inputs) if (input !== file) this.addWatchFile(input);
       } catch (error) {
         if (!(error instanceof PerasError)) throw error;
         // Vite shows `frame` under the message in its overlay.

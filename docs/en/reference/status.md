@@ -41,6 +41,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | ownership: moves, borrows, aliasing refused, releases                                                              | <span class="status compiled">compiled</span>                                                                     |
 | module-level `const`                                                                                               | <span class="status compiled">compiled</span>                                                                     |
 | module-level `let`                                                                                                 | <span class="status checked">checked</span>                                                                       |
+| `import` between owned modules, compiled into one module ([modules](../guide/modules.md))                          | <span class="status compiled">compiled</span>, functions, structures and enumerations that are not generic        |
 | `import` of owned functions, structures and enumerations into a managed module                                     | <span class="status compiled">compiled</span>, numbers, strings, structures, enumerations and collections of them |
 
 ## Methods

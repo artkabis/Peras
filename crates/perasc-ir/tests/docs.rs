@@ -5,7 +5,11 @@
 //! - `peras`: checked, and not compiled yet (only `E0900`);
 //! - `peras error E0xxx`: refused with that code;
 //! - `peras planned`: refused by the parser or the checker, so that the page is
-//!   updated when the feature lands.
+//!   updated when the feature lands;
+//! - `peras file <name>`: compiled as `peras build`, and kept as `./<name>`
+//!   for the blocks after it on its page to import;
+//! - `peras main`: compiled with the files it imports, into one module, as
+//!   `perasc build` does (decision 0022).
 //!
 //! An `apeiron` block is a managed module, importing `./stats.peras`:
 //! `apeiron build` is checked and compiled to JavaScript, `apeiron error
@@ -78,6 +82,7 @@ fn compile_managed(source: &str) -> Vec<Diagnostic> {
             imported("./stats.peras", STATS),
             imported("./shapes.peras", SHAPES),
         ],
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     if !analysis.diagnostics.is_empty() {
@@ -185,6 +190,70 @@ fn compile(source: &str) -> (Vec<Diagnostic>, Vec<Diagnostic>) {
     }
 }
 
+/// A block that imports `./<name>` files of its page, compiled with them into
+/// one module (decision 0022): its errors, or those of a file it names.
+fn compile_main(source: &str, files: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let parsed = perasc_syntax::parse(source);
+    if !parsed.diagnostics.is_empty() {
+        return codes(&parsed.diagnostics);
+    }
+    let mut libs = Vec::new();
+    for item in &parsed.ast.items {
+        let perasc_syntax::ast::ItemKind::Import(decl) = &item.kind else {
+            continue;
+        };
+        let Some(text) = decl.from.strip_prefix("./").and_then(|n| files.get(n)) else {
+            return vec![format!("no file `{}` on the page", decl.from)];
+        };
+        let lib = perasc_syntax::parse(text);
+        let analysis = perasc_check::analyze(&lib.ast, text);
+        if !lib.diagnostics.is_empty() || !analysis.diagnostics.is_empty() {
+            return vec![format!("`{}` does not compile", decl.from)];
+        }
+        libs.push((decl.from.clone(), lib.ast, analysis));
+    }
+    let context = perasc_check::Context {
+        managed: false,
+        imports: libs
+            .iter()
+            .map(|(from, _, analysis)| perasc_check::ImportedModule {
+                from: from.clone(),
+                functions: Some(analysis.exports.clone()),
+                types: analysis.exported_types.clone(),
+            })
+            .collect(),
+        path: String::new(),
+    };
+    let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
+    if !analysis.diagnostics.is_empty() {
+        return codes(&analysis.diagnostics);
+    }
+    let mut units: Vec<perasc_ir::Unit<'_>> = libs
+        .iter()
+        .map(|(_, ast, analysis)| perasc_ir::Unit {
+            ast,
+            analysis,
+            imports: std::collections::HashMap::new(),
+        })
+        .collect();
+    units.push(perasc_ir::Unit {
+        ast: &parsed.ast,
+        analysis: &analysis,
+        imports: libs
+            .iter()
+            .enumerate()
+            .map(|(i, (from, _, _))| (from.clone(), i))
+            .collect(),
+    });
+    match perasc_ir::lower_units(&units, false) {
+        Ok(module) => {
+            assert_eq!(perasc_ir::verify(&module), Ok(()), "{module}");
+            Vec::new()
+        }
+        Err(errors) => errors.iter().flat_map(|(_, d)| codes(d)).collect(),
+    }
+}
+
 fn codes(errors: &[Diagnostic]) -> Vec<String> {
     errors.iter().map(|d| d.code.to_string()).collect()
 }
@@ -200,6 +269,7 @@ fn every_code_block_does_what_its_label_says() {
             .unwrap_or(&path)
             .display()
             .to_string();
+        let mut files = std::collections::HashMap::new();
         for (info, code) in blocks(&page) {
             counted += 1;
             let words: Vec<&str> = info.split_whitespace().collect();
@@ -211,6 +281,18 @@ fn every_code_block_does_what_its_label_says() {
                 .trim();
             let at = format!("{name}, block starting `{first}`");
             match words.as_slice() {
+                ["peras", "file", name] => {
+                    if !check.is_empty() || !lower.is_empty() {
+                        problems.push(format!("{at}: does not compile alone"));
+                    }
+                    files.insert((*name).to_owned(), code.clone());
+                }
+                ["peras", "main"] => {
+                    let found = compile_main(&code, &files);
+                    if !found.is_empty() {
+                        problems.push(format!("{at}: does not compile: {found:?}"));
+                    }
+                }
                 ["peras", "build"] => {
                     if !check.is_empty() || !lower.is_empty() {
                         problems.push(format!(

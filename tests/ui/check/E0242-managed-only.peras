@@ -1,4 +1,5 @@
-// Waiting, `number`, `Promise` and imports belong to managed modules.
+// Waiting, `number` and `Promise` belong to managed modules; an owned module
+// imports other owned modules (decision 0022).
 import { mean } from "./stats.peras";
 
 export async fn total(xs: Array<number>): Promise<f64> {

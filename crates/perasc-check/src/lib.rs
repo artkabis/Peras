@@ -187,6 +187,10 @@ pub struct Context {
     pub managed: bool,
     /// The modules its `import`s name.
     pub imports: Vec<ImportedModule>,
+    /// Its file, as the driver names it: where its structures and
+    /// enumerations are declared, so that one imported through two paths is
+    /// one type (decision 0022). Empty when not known.
+    pub path: String,
 }
 
 /// A module an `import` names, as the driver read it.
@@ -200,9 +204,13 @@ pub struct ImportedModule {
     pub types: ExportedTypes,
 }
 
-/// A structure of an owned module: its name, its fields, and whether it is
-/// `export`ed.
-pub type ExportedStruct = (String, Vec<(String, Ty)>, bool);
+/// A structure of an owned module: its name, its fields, whether it is
+/// `export`ed, and the file that declares it.
+pub type ExportedStruct = (String, Vec<(String, Ty)>, bool, String);
+
+/// An enumeration of an owned module: its name, its variants, whether it is
+/// `export`ed, and the file that declares it.
+pub type ExportedEnum = (String, Vec<Variant>, bool, String);
 
 /// The structures and enumerations of an owned module, each by its index
 /// there, as the types of its exported functions name them: its name, its
@@ -213,7 +221,10 @@ pub struct ExportedTypes {
     /// Every structure, by its [`StructId`] in the owned module.
     pub structs: Vec<ExportedStruct>,
     /// Every enumeration, by its [`EnumId`] in the owned module.
-    pub enums: Vec<(String, Vec<Variant>, bool)>,
+    pub enums: Vec<ExportedEnum>,
+    /// The names it exports that cannot be imported yet: generic functions,
+    /// structures and enumerations (decision 0022, until its step 3b).
+    pub pending: Vec<String>,
 }
 
 /// An exported function of an imported module.
@@ -225,6 +236,14 @@ pub struct ImportedFn {
     pub params: Vec<(Ty, Convention)>,
     /// Its result.
     pub ret: Ty,
+}
+
+/// `E0250`, for the driver, which follows the imports: `span` the import
+/// that closes the cycle, `path` its files, `a.peras → b.peras → a.peras`
+/// (decision 0022).
+#[must_use]
+pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
+    errors::import_cycle(span, path)
 }
 
 /// The exported functions of an owned module's source, as a managed module
@@ -252,34 +271,64 @@ pub fn module_exports(source: &str) -> Option<(Vec<ImportedFn>, ExportedTypes)> 
 
 /// The structures and enumerations of a module, as another imports them:
 /// each `export`ed one that no generic made is nameable there.
-fn exported_types(ast: &Ast, structs: &[StructDef], enums: &[EnumDef]) -> ExportedTypes {
+fn exported_types(checker: &Checker<'_>, ast: &Ast) -> ExportedTypes {
     let mut exported = HashSet::new();
+    let mut pending = Vec::new();
     for item in &ast.items {
-        match &item.kind {
+        let (name, generic) = match &item.kind {
             ItemKind::Struct(decl) if decl.exported => {
-                exported.insert(ast.name(decl.name.symbol).to_owned());
+                (decl.name.symbol, !decl.generics.is_empty())
             }
-            ItemKind::Enum(decl) if decl.exported => {
-                exported.insert(ast.name(decl.name.symbol).to_owned());
-            }
-            _ => {}
+            ItemKind::Enum(decl) if decl.exported => (decl.name.symbol, !decl.generics.is_empty()),
+            _ => continue,
+        };
+        exported.insert(ast.name(name).to_owned());
+        if generic {
+            pending.push(ast.name(name).to_owned());
         }
     }
+    pending.extend(
+        checker
+            .exported
+            .iter()
+            .filter_map(|id| checker.fns.get(id.0))
+            .filter(|f| !f.generics.is_empty())
+            .map(|f| f.name.clone()),
+    );
+    // A type taken in from another file keeps that file as its home.
+    let home = |enumeration: bool, id: usize| -> String {
+        checker
+            .homes
+            .get(&(enumeration, id))
+            .cloned()
+            .unwrap_or_else(|| checker.path.to_owned())
+    };
     ExportedTypes {
-        structs: structs
+        structs: checker
+            .structs
             .iter()
-            .map(|d| {
-                let named = d.origin.is_none() && exported.contains(&d.name);
-                (d.name.clone(), d.fields.clone(), named)
+            .enumerate()
+            .map(|(i, d)| {
+                let named = d.origin.is_none()
+                    && d.generics.is_empty()
+                    && exported.contains(&d.name)
+                    && !checker.homes.contains_key(&(false, i));
+                (d.name.clone(), d.fields.clone(), named, home(false, i))
             })
             .collect(),
-        enums: enums
+        enums: checker
+            .enums
             .iter()
-            .map(|d| {
-                let named = d.origin.is_none() && exported.contains(&d.name);
-                (d.name.clone(), d.variants.clone(), named)
+            .enumerate()
+            .map(|(i, d)| {
+                let named = d.origin.is_none()
+                    && d.generics.is_empty()
+                    && exported.contains(&d.name)
+                    && !checker.homes.contains_key(&(true, i));
+                (d.name.clone(), d.variants.clone(), named, home(true, i))
             })
             .collect(),
+        pending,
     }
 }
 
@@ -340,7 +389,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
             ret: f.ret.clone(),
         })
         .collect();
-    let exported_types = exported_types(ast, &checker.structs, &checker.enums);
+    let exported_types = exported_types(&checker, ast);
     let struct_origins = checker.structs.iter().map(|s| s.origin.clone()).collect();
     let enum_origins = checker.enums.iter().map(|e| e.origin.clone()).collect();
     let mut diagnostics = checker.diagnostics;
@@ -455,11 +504,20 @@ struct Checker<'a> {
     managed: bool,
     /// The functions of the modules it imports, as the driver read them.
     imports: &'a [ImportedModule],
-    /// The structures and enumerations imported so far, by the module, the
-    /// kind (`true` for an enumeration) and the index there: their index here.
-    imported_types: HashMap<(usize, bool, usize), usize>,
-    /// The names of the structures and enumerations the module declares.
+    /// The structures and enumerations imported so far, by the file that
+    /// declares them, the kind (`true` for an enumeration) and the name:
+    /// their index here. One type reached through two imports is one.
+    imported_types: HashMap<(String, bool, String), usize>,
+    /// The file each imported structure and enumeration comes from, by kind
+    /// and index here; the others are this file's own.
+    homes: HashMap<(bool, usize), String>,
+    /// This file, as the driver names it.
+    path: &'a str,
+    /// The names the module declares: structures, enumerations, functions
+    /// and constants, which no import may take.
     own_types: HashSet<String>,
+    /// The names imported so far, which no other import may take.
+    imported_names: HashSet<String>,
     /// Where the checker is: in an `async` function, in an `extern` parameter.
     flags: Flags,
     /// The types of `extern` blocks declared so far.
@@ -555,6 +613,9 @@ impl<'a> Checker<'a> {
             managed: context.managed,
             imports: &context.imports,
             imported_types: HashMap::new(),
+            homes: HashMap::new(),
+            imported_names: HashSet::new(),
+            path: &context.path,
             own_types: HashSet::new(),
             flags: Flags::default(),
             opaque_count: 0,
@@ -699,6 +760,21 @@ impl<'a> Checker<'a> {
             .map(|s| s.name.clone())
             .chain(self.enums.iter().map(|e| e.name.clone()))
             .collect();
+        // Its functions and constants too: an imported name may be none of
+        // them (decision 0022).
+        for item in items {
+            match &item.kind {
+                ItemKind::Fn(decl) if decl.impl_of.is_none() => {
+                    self.own_types
+                        .insert(self.name(decl.name.symbol).to_owned());
+                }
+                ItemKind::Global(local) => {
+                    self.own_types
+                        .insert(self.name(local.name.symbol).to_owned());
+                }
+                _ => {}
+            }
+        }
         for item in items {
             if let ItemKind::Import(decl) = &item.kind {
                 self.import_types(decl);
@@ -1089,13 +1165,13 @@ impl<'a> Checker<'a> {
         types
             .structs
             .iter()
-            .position(|(n, _, exported)| *exported && n == name)
+            .position(|(n, _, exported, _)| *exported && n == name)
             .map(|i| (false, i))
             .or_else(|| {
                 types
                     .enums
                     .iter()
-                    .position(|(n, _, exported)| *exported && n == name)
+                    .position(|(n, _, exported, _)| *exported && n == name)
                     .map(|i| (true, i))
             })
     }
@@ -1104,17 +1180,26 @@ impl<'a> Checker<'a> {
     /// enumeration named, taken in as the module's own, under its name
     /// (decision 0021). Functions are imported after.
     fn import_types(&mut self, decl: &ImportDecl) {
-        if !self.managed {
-            return;
-        }
         let Some(index) = self.imports.iter().position(|m| m.from == decl.from) else {
             return;
         };
         for name in &decl.names {
             let text = self.name(name.symbol).to_owned();
+            // A generic, not importable yet: reported with the functions.
+            if self
+                .imports
+                .get(index)
+                .is_some_and(|m| m.types.pending.contains(&text))
+            {
+                continue;
+            }
             let Some((is_enum, at)) = self.exported_type(index, &text) else {
                 continue;
             };
+            if !self.imported_names.insert(text.clone()) {
+                self.report(errors::import(name.span, "clash", &text));
+                continue;
+            }
             let reported = self.diagnostics.len();
             let ty = if is_enum {
                 self.import_enum(index, at, name.span)
@@ -1155,14 +1240,25 @@ impl<'a> Checker<'a> {
         })
     }
 
+    /// The file a type of imported module `index` comes from: the one it
+    /// names, or, when the driver gave none, the import itself.
+    fn home_of(index: usize, home: String) -> String {
+        if home.is_empty() {
+            format!("#{index}")
+        } else {
+            home
+        }
+    }
+
     /// Structure `at` of imported module `index`, taken in once; a name the
     /// module declares itself is reported, two types of one name being two.
     fn import_struct(&mut self, index: usize, at: usize, span: Span) -> Option<Ty> {
-        if let Some(&id) = self.imported_types.get(&(index, false, at)) {
-            let name = self.structs.get(id)?.name.clone();
+        let (name, fields, _, home) = self.imports.get(index)?.types.structs.get(at)?.clone();
+        let home = Self::home_of(index, home);
+        let key = (home.clone(), false, name.clone());
+        if let Some(&id) = self.imported_types.get(&key) {
             return Some(Ty::Struct(StructId(id), name));
         }
-        let (name, fields, _) = self.imports.get(index)?.types.structs.get(at)?.clone();
         if self.own_types.contains(&name) {
             self.report(errors::import(span, "clash", &name));
             return None;
@@ -1175,7 +1271,8 @@ impl<'a> Checker<'a> {
             origin: None,
             span,
         });
-        self.imported_types.insert((index, false, at), id);
+        self.imported_types.insert(key, id);
+        self.homes.insert((false, id), home);
         let mut taken = Vec::with_capacity(fields.len());
         for (field, ty) in &fields {
             taken.push((field.clone(), self.import_ty(index, ty, span)?));
@@ -1188,11 +1285,12 @@ impl<'a> Checker<'a> {
 
     /// Enumeration `at` of imported module `index`, taken in once.
     fn import_enum(&mut self, index: usize, at: usize, span: Span) -> Option<Ty> {
-        if let Some(&id) = self.imported_types.get(&(index, true, at)) {
-            let name = self.enums.get(id)?.name.clone();
+        let (name, variants, _, home) = self.imports.get(index)?.types.enums.get(at)?.clone();
+        let home = Self::home_of(index, home);
+        let key = (home.clone(), true, name.clone());
+        if let Some(&id) = self.imported_types.get(&key) {
             return Some(Ty::Enum(EnumId(id), name));
         }
-        let (name, variants, _) = self.imports.get(index)?.types.enums.get(at)?.clone();
         if self.own_types.contains(&name) {
             self.report(errors::import(span, "clash", &name));
             return None;
@@ -1205,7 +1303,8 @@ impl<'a> Checker<'a> {
             origin: None,
             span,
         });
-        self.imported_types.insert((index, true, at), id);
+        self.imported_types.insert(key, id);
+        self.homes.insert((true, id), home);
         let mut taken = Vec::with_capacity(variants.len());
         for (variant, fields) in &variants {
             let fields: Option<Vec<Ty>> = fields
@@ -1222,9 +1321,11 @@ impl<'a> Checker<'a> {
 
     /// `import { a, b } from "./x.peras"`: each name declared as a function
     /// of the module, with the signature the imported module gives it.
-    fn import(&mut self, decl: &ImportDecl, span: Span) {
-        if !self.managed {
-            self.report(errors::managed_only(span, "import"));
+    fn import(&mut self, decl: &ImportDecl, _span: Span) {
+        // An owned module compiles to WebAssembly, which cannot call the
+        // JavaScript a managed one becomes (decision 0022).
+        if !self.managed && decl.from.ends_with(".apeiron") {
+            self.report(errors::import(decl.from_span, "managed", &decl.from));
             return;
         }
         let module = self.imports.iter().find(|m| m.from == decl.from);
@@ -1241,13 +1342,23 @@ impl<'a> Checker<'a> {
         for name in &decl.names {
             let text = self.name(name.symbol).to_owned();
             // A structure or an enumeration, imported before the functions.
-            if self.exported_type(index, &text).is_some() {
+            let pending = self
+                .imports
+                .get(index)
+                .is_some_and(|m| m.types.pending.contains(&text));
+            if !pending && self.exported_type(index, &text).is_some() {
                 continue;
             }
             let Some(f) = functions.iter().find(|f| f.name == text) else {
-                self.report(errors::import(name.span, "name", &text));
+                let reason = if pending { "generic" } else { "name" };
+                self.report(errors::import(name.span, reason, &text));
                 continue;
             };
+            // A name this module declares, or another import took.
+            if self.own_types.contains(&text) || !self.imported_names.insert(text.clone()) {
+                self.report(errors::import(name.span, "clash", &text));
+                continue;
+            }
             // Its types, each structure or enumeration taken in as the
             // module's own; any other type does not cross.
             let reported = self.diagnostics.len();

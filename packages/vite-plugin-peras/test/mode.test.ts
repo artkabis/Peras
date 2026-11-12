@@ -73,6 +73,7 @@ describe("moduleCode", () => {
     imports: `${IMPORTS_MARKER}\nconst $imports = { peras_rt: {} };\n`,
     exports: `${EXPORTS_MARKER}\nconst $wasm = $instance.exports;\nexport const f = $wasm.f;\n`,
     dts: "",
+    inputs: [],
   };
 
   it("inlines the module for the dev server", () => {

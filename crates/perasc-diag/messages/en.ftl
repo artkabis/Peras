@@ -670,7 +670,6 @@ check-managed-only = { $what ->
     [await-sync] `await` outside an `async` function
     [number] the type `number`
     [promise] the type `Promise`
-    [import] an `import`
     [browser] the browser's API
     [extern] an `extern` block
     [arrow-block] an arrow function with statements
@@ -713,7 +712,9 @@ check-import = { $reason ->
     [module] cannot import from `{ $name }`
     [name] `{ $name }` is not an exported function, structure or enumeration of this module
     [signature] `{ $name }` takes or gives a value that cannot cross between modules yet
-    [clash] the imported module has a type `{ $name }`, and this module declares one too
+    [clash] `{ $name }` is already a name of this module, declared here or imported
+    [generic] `{ $name }` is generic, and generics cannot be imported yet
+    [managed] an owned module cannot import a managed module, `{ $name }`
    *[other] cannot import `{ $name }`
 }
 check-import-label = { $reason ->
@@ -721,16 +722,26 @@ check-import-label = { $reason ->
     [name] not exported here
     [signature] imported here
     [clash] imported here
+    [generic] generic
+    [managed] a `.apeiron` file
    *[other] here
 }
-check-import-why = A managed module imports functions, structures and enumerations from owned modules (`.peras`), in the same folder or below it, and calls the functions through checked conversions: numbers, booleans, strings, the structures and enumerations of the owned module, and arrays, options, results, maps and sets of them cross between the two. A generic structure, a function or a type of the browser does not cross. A structure or an enumeration imported is the owned module's, under its name: this module cannot declare another of that name.
+check-import-why = An owned module imports the functions, structures and enumerations other owned modules export, and they are compiled together into one WebAssembly module (decision 0022); generic ones cannot be imported yet. A managed module imports functions, structures and enumerations from owned modules (`.peras`), in the same folder or below it, and calls the functions through checked conversions: numbers, booleans, strings, the structures and enumerations of the owned module, and arrays, options, results, maps and sets of them cross between the two. A generic structure, a function or a type of the browser does not cross. A structure or an enumeration imported is the owned module's, under its name: this module cannot declare another of that name.
 check-import-fix = { $reason ->
     [module] import a `.peras` file by its relative path, such as `"./maths.peras"`, and fix its errors first
     [name] mark it `export` in its module, or check its spelling
     [signature] give the function values that cross: numbers, strings, structures and enumerations that are not generic, and arrays of them
-    [clash] rename this module's own type, or use the imported one
+    [clash] rename this module's own declaration, or import only one of the two
+    [generic] write a version of it for the types this module uses, in its module or in this one
+    [managed] move what both modules need into a `.peras` file, which each can import
    *[other] check the import
 }
+
+# E0250
+check-import-cycle = these modules import each other: { $path }
+check-import-cycle-label = this import closes the cycle
+check-import-cycle-why = Each owned module is checked against what the modules it imports export, so those are checked first: a module cannot depend, even through others, on itself. A cycle of imports is refused rather than resolved, so that the order of checking is the order of the files and a reader always knows which file depends on which (decision 0022).
+check-import-cycle-fix = move what the modules of the cycle share into a new `.peras` file, which each of them imports
 
 # E0245
 check-resource = { $reason ->

@@ -23,6 +23,7 @@ export const sections: Section[] = [
       "guide/generics",
       "guide/methods",
       "guide/collections",
+      "guide/modules",
       "guide/memory",
       "guide/diagnostics",
       "guide/javascript",

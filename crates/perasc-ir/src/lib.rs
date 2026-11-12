@@ -24,7 +24,7 @@ mod own;
 pub mod text;
 mod verify;
 
-pub use lower::{lower, lower_with};
+pub use lower::{Unit, lower, lower_units, lower_with};
 pub use opt::optimize;
 pub use verify::verify;
 

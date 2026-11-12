@@ -14,6 +14,7 @@ fn js(source: &str) -> String {
     let context = perasc_check::Context {
         managed: true,
         imports: Vec::new(),
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     assert!(
@@ -425,6 +426,7 @@ fn every_valid_source_gives_valid_javascript() {
         let context = perasc_check::Context {
             managed: true,
             imports: Vec::new(),
+            path: String::new(),
         };
         let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
         if !analysis.diagnostics.is_empty() {
@@ -467,6 +469,7 @@ fn options_of_options_are_refused() {
     let context = perasc_check::Context {
         managed: true,
         imports: Vec::new(),
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     assert!(

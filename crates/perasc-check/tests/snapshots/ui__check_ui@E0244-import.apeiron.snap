@@ -12,7 +12,7 @@ diagnostics:
     primary 3:22-3:39: check-import-label { reason: "module" }
     cause: check-import-why
     fix: check-import-fix { reason: "module" }
-  error[E0244] check-import { reason: "signature", name: "Pair" }
-    primary 5:10-5:14: check-import-label { reason: "signature" }
+  error[E0244] check-import { reason: "generic", name: "Pair" }
+    primary 5:10-5:14: check-import-label { reason: "generic" }
     cause: check-import-why
-    fix: check-import-fix { reason: "signature" }
+    fix: check-import-fix { reason: "generic" }

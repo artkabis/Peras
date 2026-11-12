@@ -1,0 +1,13 @@
+// Decision 0022: the root, importing two files that share a third.
+import { Item, make } from "./lib/size.peras";
+import { renamed, score } from "./lib/area.peras";
+
+fn helper(x: i32): i32 {
+  return x - 3;
+}
+
+export fn run(n: i32): i32 {
+  const a = make(n);
+  const b = renamed(a);
+  return helper(score(b));
+}
