@@ -93,7 +93,15 @@ fn the_remainder_of_floats_is_rusts_exactly() {
             seed ^= seed << 17;
             seed
         };
-        for round in 0..1_000_000 {
+        // A million pairs per allocator in a release build; in the debug build
+        // the CI runs, where `wasmi` is not optimized, a million took more
+        // than the job's 20 minutes (finding M022).
+        let rounds = if cfg!(debug_assertions) {
+            20_000
+        } else {
+            1_000_000
+        };
+        for round in 0..rounds {
             // Bits at random, every kind of float; and numbers near each
             // other, where the quotient is small and every bit counts.
             let x = f64::from_bits(next());
