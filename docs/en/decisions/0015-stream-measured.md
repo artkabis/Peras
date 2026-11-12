@@ -138,7 +138,7 @@ Measured at commit `9f9754b`, with the protocol unchanged, after one change to t
 
 ## Run 3: after the runtime is linked into the module
 
-Measured at commit `7470d08`, the protocol unchanged, after a second change to the compiler: the runtime is linked into the module, so that its calls are calls inside one module (decision 0016, finding F212). Run 2 is kept in [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md); run 3's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch.
+Measured at commit `7470d08`, the protocol unchanged, after a second change to the compiler: the runtime is linked into the module, so that its calls are calls inside one module (decision 0016, finding F212). Run 2 is kept in [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md); run 3's [report](../../../bench/stream/run-3/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-3/results.json). The three digests agreed on every batch.
 
 **A departure.** During the run, one file was edited, not built: `fuzz/fuzz_targets/pipeline.rs`, to add the field `link` its CI build was missing. The fuzz target is not part of what is measured, and nothing was compiled until the run ended; the script read the tree as clean when it started.
 
@@ -152,10 +152,10 @@ Measured at commit `7470d08`, the protocol unchanged, after a second change to t
 
 **What it says.** Peras is now 1.26, 1.31 and 1.41 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 2.10 to 2.46 times as fast as TypeScript as written; its time per row went from about 338 to about 305 ns, A and B unchanged within 4 %. H5 is refuted, narrowly: the lower end of its interval, 1.502, is just above its threshold. Its median fell and its slowest calls did not: at 100,000 rows the 99th percentile is 53 ms in run 2 and in run 3, while the median went from 33.8 to 30.5 ms. What the slowest calls hold, the garbage collector of the page or the growth of the module's memory, is not measured here.
 
-![Rows per second by batch size, run 3: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size, run 3: C highest at every size, B below it, A lowest](../../assets/stream-run-3-throughput.svg)
 
-![The speed ratios with their 95 % intervals, run 3: C over A between 2.10 and 2.46, C over B between 1.26 and 1.41](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals, run 3: C over A between 2.10 and 2.46, C over B between 1.26 and 1.41](../../assets/stream-run-3-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows, run 3: C to the left of B, A to the right](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows, run 3: C to the left of B, A to the right](../../assets/stream-run-3-latency.svg)
 
-![C's time per row split into the boundary and the digest, run 3](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary and the digest, run 3](../../assets/stream-run-3-breakdown.svg)

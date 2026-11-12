@@ -1,6 +1,6 @@
 # Decision 0015: results
 
-Measured at commit `7470d08`, 2026-11-11, under [the protocol](../../docs/en/decisions/0015-stream-measured.md). Every number below is in [results.json](results.json), with every call's time.
+Measured at commit `7470d08`, 2026-11-11, under [the protocol](../../../docs/en/decisions/0015-stream-measured.md). Every number below is in [results.json](results.json), with every call's time.
 
 - Machine: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores, linux 6.18.44-fc-v378; Chromium 153.0.8010.12; Node v24.22.1.
 - Design: 10 browser processes; batches of 1000, 10000, 100000 rows; the calls in a Latin square of 4 orders; 95 % intervals by a hierarchical bootstrap of 10000 resamples, seed 15.
@@ -46,11 +46,11 @@ The median over processes of each process's median, in ms; rows per second from 
 
 ## Figures
 
-![Rows per second, by batch size](../../docs/assets/stream-throughput.svg)
+![Rows per second, by batch size](../../../docs/assets/stream-run-3-throughput.svg)
 
-![How many times faster C is, with 95 % intervals](../../docs/assets/stream-ratios.svg)
+![How many times faster C is, with 95 % intervals](../../../docs/assets/stream-run-3-ratios.svg)
 
-![The distribution of the time per row at 100,000 rows](../../docs/assets/stream-latency.svg)
+![The distribution of the time per row at 100,000 rows](../../../docs/assets/stream-run-3-latency.svg)
 
-![C's time per row, split into the boundary and the digest](../../docs/assets/stream-breakdown.svg)
+![C's time per row, split into the boundary and the digest](../../../docs/assets/stream-run-3-breakdown.svg)
 

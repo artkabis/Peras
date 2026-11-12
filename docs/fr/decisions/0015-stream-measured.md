@@ -138,7 +138,7 @@ Mesurée au commit `9f9754b`, protocole inchangé, après un changement du compi
 
 ## Exécution 3 : après le runtime lié dans le module
 
-Mesurée au commit `7470d08`, protocole inchangé, après un second changement du compilateur : le runtime est lié dans le module, pour que ses appels soient internes à un seul module (décision 0016, constat F212). L’exécution 2 est gardée dans [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 3 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont concordé sur chaque lot.
+Mesurée au commit `7470d08`, protocole inchangé, après un second changement du compilateur : le runtime est lié dans le module, pour que ses appels soient internes à un seul module (décision 0016, constat F212). L’exécution 2 est gardée dans [bench/stream/run-2](../../../bench/stream/run-2/RESULTS.md) ; le [rapport](../../../bench/stream/run-3/RESULTS.md) de l’exécution 3 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-3/results.json). Les trois calculs ont concordé sur chaque lot.
 
 **Un écart.** Pendant l’exécution, un fichier a été modifié, sans être compilé : `fuzz/fuzz_targets/pipeline.rs`, pour ajouter le champ `link` qui manquait à sa compilation dans le CI. La cible de fuzzing ne fait pas partie de ce qui est mesuré, et rien n’a été compilé avant la fin de l’exécution ; le script a lu l’arbre comme propre à son départ.
 
@@ -152,10 +152,10 @@ Mesurée au commit `7470d08`, protocole inchangé, après un second changement d
 
 **Ce que cela dit.** Peras est maintenant 1,26, 1,31 et 1,41 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 2,10 à 2,46 fois plus rapide que le TypeScript tel qu’on l’écrit ; son temps par ligne est passé d’environ 338 à environ 305 ns, A et B inchangés à 4 % près. H5 est réfutée, de justesse : le bas de son intervalle, 1,502, est juste au-dessus de son seuil. Sa médiane a baissé, ses appels les plus lents non : à 100 000 lignes, le 99e centile vaut 53 ms à l’exécution 2 comme à la 3, quand la médiane est passée de 33,8 à 30,5 ms. Ce que contiennent les appels les plus lents, le ramasse-miettes de la page ou la croissance de la mémoire du module, n’est pas mesuré ici.
 
-![Lignes par seconde par taille de lot, exécution 3 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+![Lignes par seconde par taille de lot, exécution 3 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-3-throughput.svg)
 
-![Les rapports de vitesse avec leur intervalle à 95 %, exécution 3 : C sur A entre 2,10 et 2,46, C sur B entre 1,26 et 1,41](../../assets/stream-ratios.svg)
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 3 : C sur A entre 2,10 et 2,46, C sur B entre 1,26 et 1,41](../../assets/stream-run-3-ratios.svg)
 
-![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 3 : C à gauche de B, A à droite](../../assets/stream-latency.svg)
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 3 : C à gauche de B, A à droite](../../assets/stream-run-3-latency.svg)
 
-![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 3](../../assets/stream-breakdown.svg)
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 3](../../assets/stream-run-3-breakdown.svg)
