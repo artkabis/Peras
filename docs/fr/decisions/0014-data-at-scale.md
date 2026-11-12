@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0014-data-at-scale.md](../../en/decisions/0014-data-at-scale.md)._
 
-_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Résultats et journal ci-dessous._
+_Statut : protocole enregistré le 2026-11-11 (commit `96e6c43`), amendé le même jour avant toute mesure : DuckDB-wasm retiré (voir [Amendement](#amendement-avant-toute-mesure)). Exécution 1, au commit `b06da25` : cinq hypothèses réfutées, deux tiennent. Exécution 2, au commit `6ef6283`, après trois changements du compilateur : les mêmes verdicts, et Peras simple désormais 1,23 à 1,26 fois plus rapide que TypeScript simple, là où il était plus lent. Exécution 3, au commit `df51da3`, après la décision 0016 : H1 tient, Peras simple 2,06 à 2,36 fois plus rapide que TypeScript simple ; H6 réfutée de 0,02 ; sur une autre machine (un écart, les rapports comparés). Résultats et journal ci-dessous._
 
 _Statut du protocole : enregistré avant toute mesure. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole lui-même ne changera pas après la première mesure, et tout écart sera signalé comme tel._
 
@@ -202,3 +202,45 @@ Mesuré le 2026-11-11 de 11:51 à 11:59 UTC, sur la même machine, sous le même
 
 - **Le commit du rapport est faux.** Le rapport nomme `93d4d25`, le commit à sa fin : le script le lisait alors, et un commit a été fait pendant l’exécution. Le compilateur mesuré a été construit au commit `6ef6283` ; `93d4d25` change trois fichiers de documentation et aucun code. Le script lit désormais le commit à son démarrage.
 - **Le processeur a été utilisé pendant l’exécution**, contre la règle de cette étude : un commit à 11:55 UTC, avec son formatage et sa vérification des traductions, quelques secondes, pendant les chargements à froid ou les mesures de mémoire. La mémoire, un pic par processus, n’est pas affectée par un autre processus ; un chargement à froid a pu être ralenti, et les temps à froid ne sont testés contre aucune hypothèse.
+
+### Exécution 3, au commit `df51da3` : les résultats
+
+Mesurée le 2026-11-12 de 02:17 à 02:22 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. Le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) ; celui de l’exécution 2 est gardé dans [bench/data/run-2](../../../bench/data/run-2/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+
+**Ce qui a changé dans le compilateur depuis l’exécution 2.** Toute la [décision 0016](0016-faster-from-the-literature.md) :
+
+- les littéraux de texte prêtés depuis un en-tête statique ;
+- le runtime lié dans le module ;
+- un repli calme de `unwrapOr` construit seulement s’il sert ;
+- un cache des petits blocs libérés ;
+- une recherche dans la table au lieu de deux ;
+- le séparateur d’un split cherché seize octets à la fois ;
+- les parties d’un split parcourues une à une.
+
+Le source de la version C n’a pas changé, ni A, ni B, ni les données.
+
+| Hypothèse                                  | Exéc. 1             | Exéc. 2             | Exéc. 3                                              | Verdict     |
+| ------------------------------------------ | ------------------- | ------------------- | ---------------------------------------------------- | ----------- |
+| H1, C au moins 2 fois A                    | 0,85 et 0,88        | 1,26 et 1,23        | **2,36** à 1 000 000 de lignes, **2,06** à 4 000 000 | **tient**   |
+| H2, C au moins 0,8 fois B                  | 0,10 et 0,09        | 0,13 et 0,12        | 0,28 et 0,25                                         | **réfutée** |
+| H3, la mémoire de C au plus la moitié de A | 1,12                | 1,12                | 0,78                                                 | **réfutée** |
+| H4, C au plus 3 fois les octets de A       | 15,4                | 15,1                | 12,5, 9 869 octets                                   | **réfutée** |
+| H5, D au moins 2 fois C                    | ne peut être écrite | ne peut être écrite | ne peut être écrite                                  | **réfutée** |
+| H6, linéaire, au plus 4,4                  | 4,17                | 3,80                | 4,42                                                 | **réfutée** |
+| H7, C au plus 1,25 fois les lignes de A    | 1,08                | 1,08                | 1,08                                                 | tient       |
+
+À chaud, en millisecondes, médianes de 15 passes :
+
+| Version                    | 100 000 | 1 000 000 | 4 000 000 |
+| -------------------------- | ------: | --------: | --------: |
+| A. TypeScript, idiomatique |    69,5 |     790,0 |   3 038,4 |
+| B. TypeScript, optimisé    |    10,5 |      93,3 |     370,2 |
+| C. Peras                   |    30,5 |     334,1 |   1 477,7 |
+
+**H1 tient pour la première fois.** Peras écrit simplement calcule le tableau de bord 2,06 à 2,36 fois plus vite que TypeScript écrit simplement, au-delà des 2 enregistrés. À froid, son premier graphique arrive en 0,54 s contre 1,04 à 1 000 000 de lignes, et en 2,06 s contre 3,79 à 4 000 000. Son pic de mémoire est passé de 1,12 fois celui de A à 0,78, encore au-dessus de la moitié enregistrée. Il livre 9 869 octets au lieu de 11 928.
+
+**Ce qui n’a pas changé.** Le TypeScript optimisé reste 3,6 à 4 fois plus rapide que Peras écrit simplement, contre 8 à l’exécution 2. Peras tient toujours le texte une seconde fois, livre son runtime, et ne peut pas agréger sur plusieurs threads.
+
+**H6 est réfutée de 0,02.** Le temps de C croît de 4,42 fois de 1 000 000 à 4 000 000 de lignes, pour au plus 4,4. La règle enregistrée s’applique telle quelle : un seuil manqué de peu est manqué. Les exécutions 1 et 2 donnaient 4,17 et 3,80, donc la croissance est proche de la borne à chaque exécution. Rien ne montre qu’elle se soit dégradée.
+
+**Écart au protocole : la machine a changé.** Les exécutions 1 et 2 ont tourné sur un Intel Xeon à 2,10 GHz, l’exécution 3 sur un Intel Xeon à 2,30 GHz, tous deux à 4 cœurs. Le cloud donne un nouveau conteneur à une nouvelle session, et son processeur n’est pas choisi. Les temps de A eux-mêmes sont 31 à 38 % plus bas qu’à l’exécution 2. Donc les millisecondes d’une version ne se comparent pas d’une exécution à l’autre. Ce que compare le protocole, ce sont les versions d’une même exécution entre elles, en alternance, sur une même machine : les rapports. Ceux-ci tiennent (constat M016).

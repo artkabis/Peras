@@ -29,6 +29,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A value that could not be measured makes a verdict undetermined**, never a hypothesis that holds (M001).
 - **Check every competitor against the rules of the project** before naming it in a protocol (M004).
 - **Count alike**: what is left out of one version's count is left out of every version's (M006).
+- **Compare runs by their ratios, never by their milliseconds**: a new session may get another processor; read the machine in each `results.json` (M016).
 - **`pnpm run check` is the last command before a commit**, after every build and test: a build rewrites the files it generates (M012).
 - **Format, lint and commit before a measure**, so that the run is at a known commit; a run started on code that changes afterwards is stopped and run again (M002).
 - **Nothing that uses the processor during a measure**: no build, no test. Write, read, plan.
