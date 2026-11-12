@@ -1692,18 +1692,9 @@
         (i64.const 1))
       (i64.extend_i32_u (global.get $negative))))
     ;; `mag * 10 + d` is above the limit exactly when `mag` is above a tenth of
-    ;; it, or equal and `d` above its last digit. For 32 and 64 bits both are
-    ;; constants, the last digit 7, or 8 after `-` (decision 0019); any other
-    ;; width divides once, not once per digit.
-    (local.set $last (i64.add (i64.const 7) (i64.extend_i32_u (global.get $negative))))
-    (if (i32.eq (local.get $bits) (i32.const 32))
-      (then (local.set $tenth (i64.const 214748364)))
-      (else
-        (if (i32.eq (local.get $bits) (i32.const 64))
-          (then (local.set $tenth (i64.const 922337203685477580)))
-          (else
-            (local.set $tenth (i64.div_u (local.get $limit) (i64.const 10)))
-            (local.set $last (i64.rem_u (local.get $limit) (i64.const 10)))))))
+    ;; it, or equal and `d` above its last digit: one division, not one per digit.
+    (local.set $tenth (i64.div_u (local.get $limit) (i64.const 10)))
+    (local.set $last (i64.rem_u (local.get $limit) (i64.const 10)))
     (block $done
       (loop $next
         (br_if $done (i32.ge_u (local.get $i) (local.get $len)))

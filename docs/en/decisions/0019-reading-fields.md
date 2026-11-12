@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0019-reading-fields.md](../../fr/decisions/0019-reading-fields.md)._
 
-_Status: proposed on 2026-11-12. Each step is decided by an A/B of two compilers in one process (`node scripts/ab-data.mjs`, finding M017), against criteria registered here before its code._
+_Status: proposed on 2026-11-12; step 1 built, measured below its criterion and taken back the same day (see [Step 1, measured](#step-1-measured-taken-back)). Each step is decided by an A/B of two compilers in one process (`node scripts/ab-data.mjs`, finding M017), against criteria registered here before its code._
 
 ## Context
 
@@ -42,3 +42,24 @@ Kept only if both hold, else taken back:
 
 - Every result: an integer is accepted or refused exactly as before. The end-to-end tests compare `parseI32` and `parseI64` with JavaScript at their bounds.
 - The differential test passes 2,000 seeds, and fails with the change broken on purpose (M015).
+
+## Step 1, measured: taken back
+
+The range of an integer checked against constants was written at commit `3ab2b62` and tested:
+
+- the end-to-end tests of `parseI32` and `parseI64` against JavaScript, at and past their bounds;
+- the differential test, which gains integers read at the bounds of 32 and 64 bits. 2,000 seeds pass;
+- a mutation, a wrong tenth for 32 bits, fails both.
+
+Then `node scripts/ab-data.mjs 491e1b0 3ab2b62` measured it against the criteria:
+
+| Criterion                                 | Runs (median before / after) | Verdict   |
+| ----------------------------------------- | ---------------------------- | --------- |
+| 1. At 1,000,000 rows, at least 1.02, each | 1.027, 1.022, 1.009          | **fails** |
+| 2. At 4,000,000 rows, at least 0.98, each | 1.002, 1.006, 1.003          | holds     |
+
+**Taken back**, as registered. The runtime is as it was before `3ab2b62`; the differential test keeps its integers at the bounds.
+
+**What it says.** Two 64-bit divisions per integer, ten per row, cost 1 to 3 % of the dashboard, not more. The processor runs them while it waits for the bytes of the next field, so removing them saves less than counting them suggests.
+
+**For step 2.** The split costs about 32 ms per 1,000,000 rows, 11 % at most. That holds only if reading the fields in place removes all of it, which steps of this decision and of 0017 and 0018 have not done. Decisions 0017 to 0019 show the same pattern: a profile gives the most a change could save, and the change saves less. The parts of the dashboard that remain are each 10 % or less. Step 2 is weighed with the owner before it is built.

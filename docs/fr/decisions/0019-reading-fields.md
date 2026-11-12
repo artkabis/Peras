@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0019-reading-fields.md](../../en/decisions/0019-reading-fields.md)._
 
-_Statut : proposée le 2026-11-12. Chaque étape est décidée par un A/B de deux compilateurs dans un même processus (`node scripts/ab-data.mjs`, constat M017), contre des critères enregistrés ici avant son code._
+_Statut : proposée le 2026-11-12 ; étape 1 construite, mesurée sous son critère et retirée le même jour (voir [Étape 1, mesurée](#étape-1-mesurée--retirée)). Chaque étape est décidée par un A/B de deux compilateurs dans un même processus (`node scripts/ab-data.mjs`, constat M017), contre des critères enregistrés ici avant son code._
 
 ## Contexte
 
@@ -42,3 +42,24 @@ Gardée seulement si les deux tiennent, sinon retirée :
 
 - Chaque résultat : un entier est accepté ou refusé exactement comme avant. Les tests de bout en bout comparent `parseI32` et `parseI64` avec JavaScript à leurs bornes.
 - Le test différentiel passe 2 000 graines, et échoue avec le changement cassé exprès (M015).
+
+## Étape 1, mesurée : retirée
+
+La plage d’un entier vérifiée contre des constantes a été écrite au commit `3ab2b62` et testée :
+
+- les tests de bout en bout de `parseI32` et `parseI64` contre JavaScript, à leurs bornes et au-delà ;
+- le test différentiel, qui gagne des entiers lus aux bornes de 32 et 64 bits. 2 000 graines passent ;
+- une mutation, un mauvais dixième pour 32 bits, fait échouer les deux.
+
+Puis `node scripts/ab-data.mjs 491e1b0 3ab2b62` l’a mesurée contre les critères :
+
+| Critère                                            | Exécutions (médiane avant / après) | Verdict    |
+| -------------------------------------------------- | ---------------------------------- | ---------- |
+| 1. À 1 000 000 de lignes, au moins 1,02, à chacune | 1,027, 1,022, 1,009                | **échoue** |
+| 2. À 4 000 000 de lignes, au moins 0,98, à chacune | 1,002, 1,006, 1,003                | tient      |
+
+**Retirée**, comme enregistré. Le runtime est tel qu’il était avant `3ab2b62` ; le test différentiel garde ses entiers aux bornes.
+
+**Ce que cela dit.** Deux divisions de 64 bits par entier, dix par ligne, coûtent 1 à 3 % du tableau de bord, pas plus. Le processeur les exécute pendant qu’il attend les octets du champ suivant, donc les retirer fait gagner moins que leur décompte ne le laisse croire.
+
+**Pour l’étape 2.** Le découpage coûte environ 32 ms pour 1 000 000 de lignes, 11 % au plus. Cela ne vaut que si lire les champs sur place le retire entièrement, ce que les étapes de cette décision, de la 0017 et de la 0018 n’ont pas fait. Les décisions 0017 à 0019 montrent le même motif : un profil donne le plus qu’un changement pourrait faire gagner, et le changement gagne moins. Les parts du tableau de bord qui restent font chacune 10 % ou moins. L’étape 2 est pesée avec le propriétaire avant d’être construite.
