@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 13 } else { 14 };
+    let choices = if depth == 0 { 17 } else { 18 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -81,6 +81,16 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
             owned_key(&k)
         ),
         12 => format!("acc += {k}.length; acc += m.size;"),
+        13 => format!("names.set(i % 4, {}.copy());", r.pick(&["k", "s"])),
+        // A fallback that copies: made only when the key is missing.
+        14 => format!(
+            "acc += names.get(i % 3).unwrapOr({}.copy()).length;",
+            r.pick(&["k", "s"])
+        ),
+        // A fallback that moves a variable: the variable is released
+        // either way.
+        15 => "const t = k.copy(); acc += names.get(i % 5).unwrapOr(t).length;".to_owned(),
+        16 => "if (names.has(i % 4)) { names.delete(i % 4); }".to_owned(),
         _ => {
             let mut then = String::new();
             let mut otherwise = String::new();
@@ -109,13 +119,14 @@ fn program(seed: u64) -> String {
     format!(
         "export fn f(n: i32): i32 {{
   let m: Map<String, i32> = Map.new();
+  let names: Map<i32, String> = Map.new();
   let k = \"a\";
   let s = \"\";
   let acc = 0;
   for (let i = 0; i < n; i++) {{
 {body}    acc = acc % 100003;
   }}
-  return acc + m.size * 1000 + s.length + k.length;
+  return acc + m.size * 1000 + names.size * 100 + s.length + k.length;
 }}
 "
     )

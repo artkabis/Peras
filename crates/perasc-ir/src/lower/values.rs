@@ -1036,12 +1036,17 @@ impl Lowering<'_> {
 
 /// A value whose making cannot be seen: pure, a literal or an empty
 /// buffer made, or a block moved out of a temporary.
+/// A value whose making cannot be seen: a read, a literal, a new buffer, or a
+/// copy of a value read (decision 0017, step 1). Each only allocates, which a
+/// program cannot observe, and reads what is not changed before the choice.
 fn quiet_value(e: &Expr) -> bool {
     heap::pure(e)
         || matches!(
             &e.kind,
-            ExprKind::Buf(crate::BufOp::Literal(_) | crate::BufOp::New(_), args)
-                if args.iter().all(heap::pure)
+            ExprKind::Buf(
+                crate::BufOp::Literal(_) | crate::BufOp::New(_) | crate::BufOp::Clone,
+                args
+            ) if args.iter().all(heap::pure)
         )
 }
 
