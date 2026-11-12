@@ -46,6 +46,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A test that passes here and fails in CI is a race until proven otherwise.** Reproduce it by changing the timing (a smaller or larger workload), trace the messages, and make the code wait for an explicit signal rather than raising a timeout (F106).
 - **Profile by removing, not by guessing.** A profile that adds steps one at a time can blame the step added when the cost is in what it forces (F201: `parseI32` blamed, the copies of a stored `split` guilty). Compare variants that differ by one thing, and check that an optimization is taken before crediting it with a gain. A variant that removes a step and its calls together blames the step for the calls' cost (M013).
 - **The end-to-end tests use `target/release/perasc`**: `cargo build --release -p perasc` before `pnpm run e2e`, or they test the compiler as it was (M018).
+- **A round trip can hide a difference**: a test that compares what a module gives back passes through the loader both ways; compare what the module computes from each input too (F217).
 - **An optimization passes the differential test before it lands** (`crates/perasc-driver/tests/differential.rs`): once with `PERAS_DIFFERENTIAL_SEEDS=2000`, and once with the optimization broken on purpose, to see the test fail (M015). Extend its generator with what the optimization touches.
 - **Write Peras as a user would before claiming what it can do.** The frictions found that way go to the findings, with the diagnostic as evidence.
 

@@ -36,6 +36,7 @@ interface Words {
   tallies(text: string, drop: string): string;
   intTemplate(a: number, b: bigint): string;
   echo(s: string | Uint8Array): string;
+  seen(s: string | Uint8Array): string;
   tagOr(s: string): string;
   tagOrGiven(s: string, fallback: string): string;
   intOr(s: string): number;
@@ -171,8 +172,21 @@ describe("strings in JavaScript", () => {
       const check = (bytes: Uint8Array) => {
         const want = decoded(bytes);
         if (want === undefined) expect(() => m.echo(bytes)).toThrow(TypeError);
-        else expect(m.echo(bytes)).toBe(want);
+        else {
+          expect(m.echo(bytes)).toBe(want);
+          // Inside the module too: the bytes give what the decoded text gives.
+          expect(m.seen(bytes)).toBe(m.seen(want));
+        }
       };
+      // A byte order mark at the start is dropped, as a decoder drops it; one
+      // further in is a character (finding F217).
+      const bom = [0xef, 0xbb, 0xbf];
+      for (const bytes of [bom, [...bom, 0x61, 0x62], [...bom, ...bom, 0x61], [0x61, ...bom]]) {
+        check(new Uint8Array(bytes));
+      }
+      expect(m.seen(new Uint8Array([...bom, 0x61, 0x62]))).toBe("2|2|true");
+      // A U+FEFF that is text, given as a string, comes back whole.
+      expect(m.echo("\ufeffa")).toBe("\ufeffa");
       // The Unicode Standard, chapter 3, table 3-7, at and past each bound.
       const edges = [
         [],

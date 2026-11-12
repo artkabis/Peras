@@ -511,3 +511,9 @@ export fn intTemplate(a: i32, b: i64): String {
 export fn echo(s: String): String {
   return s.copy();
 }
+
+// What Peras sees of a string: its length and its characters, so that bytes
+// and the same text decoded are compared inside the module (finding F217).
+export fn seen(s: String): String {
+  return `${s.length}|${s.split("").length}|${s.startsWith("a")}`;
+}
