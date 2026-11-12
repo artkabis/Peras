@@ -247,7 +247,7 @@ Le source de la version C n’a pas changé, ni A, ni B, ni les données.
 
 ### Exécution 4, au commit `d9fbe35` : les résultats
 
-Mesurée le 2026-11-12 de 07:45 à 07:49 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. La machine est du même modèle que celle de l’exécution 3, un Intel Xeon à 2,30 GHz à 4 cœurs. Le rapport est dans [bench/data/RESULTS.md](../../../bench/data/RESULTS.md) ; celui de l’exécution 3 est gardé dans [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
+Mesurée le 2026-11-12 de 07:45 à 07:49 UTC, Chromium sans écran, sous le même protocole, inchangé ; rien d’autre n’a tourné. La machine est du même modèle que celle de l’exécution 3, un Intel Xeon à 2,30 GHz à 4 cœurs. Le rapport est dans [bench/data/run-4/RESULTS.md](../../../bench/data/run-4/RESULTS.md) ; celui de l’exécution 3 est gardé dans [bench/data/run-3](../../../bench/data/run-3/RESULTS.md). Les trois versions donnent le même résumé, octet pour octet, à chaque taille.
 
 **Ce qui a changé dans le compilateur depuis l’exécution 3.** Les étapes 1 à 3 de la [décision 0017](0017-aggregating-without-copies.md) :
 
