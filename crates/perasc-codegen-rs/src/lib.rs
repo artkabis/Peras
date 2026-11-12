@@ -9,7 +9,9 @@
 
 use std::fmt::Write as _;
 
-use perasc_ir::{BinOp, Const, Expr, ExprKind, Function, MathOp, Module, Stmt, Ty, UnOp};
+use perasc_ir::{
+    BinOp, BufOp, Const, Expr, ExprKind, Function, MathOp, Module, RuntimeFn, Stmt, Ty, UnOp,
+};
 
 /// The `wasm-bindgen` version the generated crate depends on; the
 /// `wasm-bindgen` command-line tool must have exactly the same version.
@@ -258,6 +260,12 @@ impl<'a> Emitter<'a> {
         match &e.kind {
             ExprKind::Const(c) => constant(*c, e.ty),
             ExprKind::Local(local) => self.var(usize::try_from(local.0).unwrap_or(0)),
+            // `%` on floats, the runtime's in WebAssembly: Rust's `%` is the
+            // same exact remainder.
+            ExprKind::Buf(BufOp::Runtime(RuntimeFn::FloatRem), args) => match args.as_slice() {
+                [x, y] => format!("({} % {})", self.expr(x), self.expr(y)),
+                _ => "unreachable!()".to_owned(),
+            },
             ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) | ExprKind::Buf(..) => {
                 "unreachable!()".to_owned()
             }

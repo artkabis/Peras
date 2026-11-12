@@ -791,6 +791,10 @@ impl Machine<'_> {
         use crate::RuntimeFn as F;
         Ok(Some(match (f, operands.first()) {
             (F::FmtInt, Some(Value::I64(n))) => self.string(n.to_string().as_bytes()),
+            (F::FloatRem, Some(Value::F64(x))) => match operands.get(1) {
+                Some(Value::F64(y)) => Value::F64(x % y),
+                _ => return Err(Trap::Unreachable),
+            },
             (F::FmtIntLen, Some(Value::I64(n))) => {
                 Value::I32(i32::try_from(n.to_string().len()).unwrap_or(0))
             }
@@ -808,7 +812,10 @@ impl Machine<'_> {
                 let text = float_mode(operands.get(1)).map(|m| crate::text::float_text(*x, m));
                 self.string(text?.as_bytes())
             }
-            (F::FmtInt | F::FmtIntLen | F::FmtIntAppend | F::FmtBool | F::FmtFloat, _) => {
+            (
+                F::FmtInt | F::FmtIntLen | F::FmtIntAppend | F::FmtBool | F::FmtFloat | F::FloatRem,
+                _,
+            ) => {
                 return Err(Trap::Unreachable);
             }
             _ => return Ok(None),
@@ -886,6 +893,7 @@ impl Machine<'_> {
             | F::FmtInt
             | F::FmtIntLen
             | F::FmtIntAppend
+            | F::FloatRem
             | F::FmtBool
             | F::FmtFloat => {
                 return Err(Trap::Unreachable);

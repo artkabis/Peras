@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 30 } else { 31 };
+    let choices = if depth == 0 { 31 } else { 32 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -120,6 +120,8 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         28 => "wide.set(i.toI64() * 4294967296 + 5, i); acc += wide.get((i % 3).toI64() * 4294967296 + 5).unwrapOr(7) + wide.size;".to_owned(),
         // Integers read at and past the bounds of 32 and 64 bits.
         29 => "const w = `${i - 20}`; acc += w.parseI32().unwrapOr(-1) + \"2147483647\".parseI32().unwrapOr(1) % 7 + \"2147483650\".parseI32().unwrapOr(3) + \"-2147483648\".parseI32().unwrapOr(4) % 5; if (\"-9223372036854775809\".parseI64().isSome() || \"9223372036854775807\".parseI64().isNone()) { acc += 11; }".to_owned(),
+        // `%` on floats, the runtime's in WebAssembly, Rust's in the oracle.
+        30 => "acc += ((i.toF64() * 1.5 - 7.25) % 4.0 * 100.0).toI32() + (i.toF32() % -2.5).toI32();".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

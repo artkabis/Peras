@@ -268,7 +268,24 @@ impl Module {
     /// follow [`Module::uses_heap`] alone, the same in every build.
     #[must_use]
     pub fn needs_runtime(&self) -> bool {
-        self.uses_heap() || self.functions.iter().any(Function::checks_overflow)
+        self.uses_heap()
+            || self.functions.iter().any(Function::checks_overflow)
+            || self.calls_runtime()
+    }
+
+    /// Whether a function calls the runtime, as `%` on floats does with no
+    /// buffer at all (decision 0021).
+    #[must_use]
+    pub fn calls_runtime(&self) -> bool {
+        let mut found = false;
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if matches!(e.kind, ExprKind::Buf(BufOp::Runtime(_), _)) {
+                    found = true;
+                }
+            });
+        }
+        found
     }
 }
 
@@ -614,6 +631,10 @@ pub enum RuntimeFn {
     /// `(n: i64) -> i32`: the number of bytes [`Self::FmtInt`] writes for
     /// `n`, its sign included (decision 0017).
     FmtIntLen,
+    /// `(x: f64, y: f64) -> f64`: the remainder of `x / y` with the sign of
+    /// `x`, exactly, as JavaScript's `%` and C's `fmod` give it; WebAssembly
+    /// has no instruction for it (decision 0021, finding F304).
+    FloatRem,
     /// `(s, n: i64)`: the digits of `n` appended to the string `s`, as
     /// [`Self::FmtInt`] writes them, without a string of their own: a
     /// template's integers (decision 0017).
@@ -720,7 +741,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 53] = [
+    pub const ALL: [Self; 54] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -774,6 +795,7 @@ impl RuntimeFn {
         Self::MapPutAtSLent,
         Self::FmtIntLen,
         Self::FmtIntAppend,
+        Self::FloatRem,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -821,6 +843,7 @@ impl RuntimeFn {
             Self::MapPutAtSLent => "map_put_at_s_lent",
             Self::FmtIntLen => "fmt_int_len",
             Self::FmtIntAppend => "fmt_int_append",
+            Self::FloatRem => "f64_rem",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -843,7 +866,7 @@ impl RuntimeFn {
         match self {
             Self::FmtInt | Self::FmtIntLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
-            Self::FmtFloat => Ty::F64,
+            Self::FmtFloat | Self::FloatRem => Ty::F64,
             Self::MapNew => Ty::I32,
             _ => Ty::Borrowed,
         }
@@ -898,6 +921,7 @@ impl RuntimeFn {
             Self::MapPutAtI => &[Ty::I32, Ty::I64],
             Self::MapPutAtS => &[Ty::I32, Ty::Owned],
             Self::MapPutAtSLent => &[Ty::I32, Ty::Borrowed],
+            Self::FloatRem => &[Ty::F64],
             Self::MapStore => &[Ty::I32, Ty::I32, Ty::I64],
             Self::MapStoreF => &[Ty::I32, Ty::I32, Ty::F64],
             Self::MapStoreH => &[Ty::I32, Ty::I32, Ty::Owned],
@@ -929,7 +953,7 @@ impl RuntimeFn {
             | Self::MapDeleteS => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
-            Self::MapValueF | Self::ParseFloat => Ty::F64,
+            Self::MapValueF | Self::ParseFloat | Self::FloatRem => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
             | Self::ArrPermute

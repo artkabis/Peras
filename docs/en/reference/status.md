@@ -31,7 +31,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | Feature                                                                        | Status                                                                                                            |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `let`, `const`, assignments, `+=` and the others, `++`, `--`                   | <span class="status compiled">compiled</span>                                                                     |
-| arithmetic, comparisons, bitwise and logical operators                         | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span>   |
+| arithmetic, comparisons, bitwise and logical operators, `%` on floats too      | <span class="status compiled">compiled</span>                                                                     |
 | `if`, `while`, `for`, `break`, `continue`                                      | <span class="status compiled">compiled</span>                                                                     |
 | `for…of`                                                                       | <span class="status compiled">compiled</span>                                                                     |
 | `parallel for`, on threads with `--threads on`                                 | <span class="status compiled">compiled</span>                                                                     |

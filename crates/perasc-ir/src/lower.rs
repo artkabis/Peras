@@ -1179,7 +1179,7 @@ impl Lowering<'_> {
                 state.keep_before(mark, &mut operands);
                 let [lhs] = operands;
                 if *op == BinaryOp::Rem && lhs.ty.is_float() {
-                    self.unsupported(span, "float-remainder");
+                    return float_rem(lhs, rhs);
                 }
                 return self.arith(state, bin_op(*op), lhs, rhs);
             }
@@ -1527,6 +1527,38 @@ const fn assign_op(op: AssignOp) -> Option<BinOp> {
         AssignOp::Mul => Some(BinOp::Mul),
         AssignOp::Div => Some(BinOp::Div),
         AssignOp::Rem => Some(BinOp::Rem),
+    }
+}
+
+/// `x % y` on floats: a function of the runtime, exact as JavaScript's `%`;
+/// an `f32` computed as an `f64`, whose remainder an `f32` holds exactly
+/// (decision 0021, finding F304).
+fn float_rem(x: Expr, y: Expr) -> Expr {
+    let ty = x.ty;
+    let wide = |e: Expr| {
+        if e.ty == Ty::F64 {
+            e
+        } else {
+            Expr {
+                kind: ExprKind::Convert(Box::new(e)),
+                ty: Ty::F64,
+            }
+        }
+    };
+    let rem = Expr {
+        kind: ExprKind::Buf(
+            crate::BufOp::Runtime(crate::RuntimeFn::FloatRem),
+            vec![wide(x), wide(y)],
+        ),
+        ty: Ty::F64,
+    };
+    if ty == Ty::F64 {
+        rem
+    } else {
+        Expr {
+            kind: ExprKind::Convert(Box::new(rem)),
+            ty,
+        }
     }
 }
 
