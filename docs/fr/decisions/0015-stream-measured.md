@@ -184,7 +184,7 @@ Mesurée au commit `99f9202`, protocole inchangé, après deux autres changement
 
 ## Exécution 5 : après une clé de table cherchée une fois
 
-Mesurée au commit `82641f4`, protocole inchangé, après un changement de plus : une passe sur l’IR cherche une clé une fois là où la table ne peut pas avoir changé entre deux recherches (constat F210). L’exécution 4 est gardée dans [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md) ; le [rapport](../../../bench/stream/RESULTS.md) de l’exécution 5 et le temps de chaque appel sont dans [results.json](../../../bench/stream/results.json). Les trois calculs ont concordé sur chaque lot ; rien d’autre n’a tourné pendant l’exécution.
+Mesurée au commit `82641f4`, protocole inchangé, après un changement de plus : une passe sur l’IR cherche une clé une fois là où la table ne peut pas avoir changé entre deux recherches (constat F210). L’exécution 4 est gardée dans [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md) ; le [rapport](../../../bench/stream/run-5/RESULTS.md) de l’exécution 5 et le temps de chaque appel sont dans [results.json](../../../bench/stream/run-5/results.json). Les trois calculs ont concordé sur chaque lot ; rien d’autre n’a tourné pendant l’exécution.
 
 | Hypothèse                                           | Exéc. 1     | Exéc. 4     | Exéc. 5, intervalle à 95 %            | Verdict      |
 | --------------------------------------------------- | ----------- | ----------- | ------------------------------------- | ------------ |
@@ -196,10 +196,10 @@ Mesurée au commit `82641f4`, protocole inchangé, après un changement de plus 
 
 **Ce que cela dit.** Peras est 1,83, 1,90 et 2,04 fois plus rapide que le TypeScript écrit pour la vitesse à 1 000, 10 000 et 100 000 lignes, et 3,05 à 3,61 fois plus rapide que le TypeScript tel qu’on l’écrit ; environ 204 ns par ligne, contre 218 à l’exécution 4 et 440 à l’exécution 1. H5 est de nouveau indéterminée : son intervalle contient maintenant son seuil, ses appels les plus lents variant davantage d’un processus à l’autre.
 
-![Lignes par seconde par taille de lot, exécution 5 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-throughput.svg)
+![Lignes par seconde par taille de lot, exécution 5 : C le plus haut à chaque taille, B en dessous, A le plus bas](../../assets/stream-run-5-throughput.svg)
 
-![Les rapports de vitesse avec leur intervalle à 95 %, exécution 5 : C sur A entre 3,05 et 3,61, C sur B entre 1,83 et 2,04](../../assets/stream-ratios.svg)
+![Les rapports de vitesse avec leur intervalle à 95 %, exécution 5 : C sur A entre 3,05 et 3,61, C sur B entre 1,83 et 2,04](../../assets/stream-run-5-ratios.svg)
 
-![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 5](../../assets/stream-latency.svg)
+![La part des appels terminés en deçà d’un temps par ligne à 100 000 lignes, exécution 5](../../assets/stream-run-5-latency.svg)
 
-![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 5](../../assets/stream-breakdown.svg)
+![Le temps par ligne de C séparé entre la frontière et le calcul, exécution 5](../../assets/stream-run-5-breakdown.svg)

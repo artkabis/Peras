@@ -184,7 +184,7 @@ Measured at commit `99f9202`, the protocol unchanged, after two more changes: `u
 
 ## Run 5: after a map key is looked up once
 
-Measured at commit `82641f4`, the protocol unchanged, after one more change: a pass over the IR looks a map key up once where the map cannot have changed between two lookups (finding F210). Run 4 is kept in [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md); run 5's [report](../../../bench/stream/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/results.json). The three digests agreed on every batch; nothing else ran during the run.
+Measured at commit `82641f4`, the protocol unchanged, after one more change: a pass over the IR looks a map key up once where the map cannot have changed between two lookups (finding F210). Run 4 is kept in [bench/stream/run-4](../../../bench/stream/run-4/RESULTS.md); run 5's [report](../../../bench/stream/run-5/RESULTS.md) and every call's time are in [results.json](../../../bench/stream/run-5/results.json). The three digests agreed on every batch; nothing else ran during the run.
 
 | Hypothesis                                           | Run 1      | Run 4      | Run 5, 95 % interval                 | Verdict      |
 | ---------------------------------------------------- | ---------- | ---------- | ------------------------------------ | ------------ |
@@ -196,10 +196,10 @@ Measured at commit `82641f4`, the protocol unchanged, after one more change: a p
 
 **What it says.** Peras is 1.83, 1.90 and 2.04 times as fast as TypeScript written for speed at 1,000, 10,000 and 100,000 rows, and 3.05 to 3.61 times as fast as TypeScript as written; about 204 ns per row, from 218 in run 4 and 440 in run 1. H5 is undetermined again: its interval now holds its threshold, its slowest calls varying more from one process to the next.
 
-![Rows per second by batch size, run 5: C highest at every size, B below it, A lowest](../../assets/stream-throughput.svg)
+![Rows per second by batch size, run 5: C highest at every size, B below it, A lowest](../../assets/stream-run-5-throughput.svg)
 
-![The speed ratios with their 95 % intervals, run 5: C over A between 3.05 and 3.61, C over B between 1.83 and 2.04](../../assets/stream-ratios.svg)
+![The speed ratios with their 95 % intervals, run 5: C over A between 3.05 and 3.61, C over B between 1.83 and 2.04](../../assets/stream-run-5-ratios.svg)
 
-![The share of calls done within a time per row at 100,000 rows, run 5](../../assets/stream-latency.svg)
+![The share of calls done within a time per row at 100,000 rows, run 5](../../assets/stream-run-5-latency.svg)
 
-![C's time per row split into the boundary and the digest, run 5](../../assets/stream-breakdown.svg)
+![C's time per row split into the boundary and the digest, run 5](../../assets/stream-run-5-breakdown.svg)
