@@ -46,3 +46,13 @@ L’ordre d’insertion est gardé tel quel, dans les entrées. Le parcours ne c
 - SipHash, la protection contre des clés choisies pour entrer en collision (F215).
 - Le protocole de la 0014, et `dashboard.peras`, qui n’est pas réécrit.
 - Le test différentiel (M015) : 2 000 graines, et une fois avec le changement cassé exprès.
+
+## Critères, enregistrés avant tout code
+
+Enregistrés le 2026-11-12, avant que le changement soit écrit. Le nouvel index n’est gardé que si les trois tiennent :
+
+1. **4 000 000 de lignes.** `node scripts/ab-data.mjs` à 4 000 000 de lignes donne une médiane avant / après d’au moins 1,10 à chacune de trois exécutions.
+2. **1 000 000 de lignes.** Le même A/B à 1 000 000 de lignes donne une médiane d’au moins 0,98 à chacune de trois exécutions : pas de perte de plus de 2 %.
+3. **Mémoire.** Une nouvelle exécution de la décision 0014 donne H3, le pic de mémoire de C sur celui de A à 4 000 000 de lignes, au plus 0,90. Il valait 0,78 aux exécutions 3 et 4.
+
+Si l’un échoue, le changement est retiré : le commit annulé, les mesures gardées, le constat écrit.

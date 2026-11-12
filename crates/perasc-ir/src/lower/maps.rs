@@ -179,12 +179,18 @@ impl Lowering<'_> {
     /// A new, empty map of type `ty`.
     pub(super) fn empty_map(&self, ty: &CheckTy) -> Option<Expr> {
         let table = self.table(ty).ok()?;
+        // 1: string keys; 2: keys of 32 bits, kept in the index (decision
+        // 0018); 0: other integers.
+        let keys = if table.strings {
+            1
+        } else if table.key == Ty::I32 {
+            2
+        } else {
+            0
+        };
         Some(runtime(
             F::MapNew,
-            vec![
-                int(i64::from(table.strings), Ty::I32),
-                int(table.shape(), Ty::I32),
-            ],
+            vec![int(keys, Ty::I32), int(table.shape(), Ty::I32)],
         ))
     }
 

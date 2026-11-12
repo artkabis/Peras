@@ -46,3 +46,13 @@ The order of insertion is kept as it is, in the entries. Iterating does not chan
 - SipHash, the protection against keys chosen to collide (F215).
 - The protocol of 0014, and `dashboard.peras`, which is not rewritten.
 - The differential test (M015): 2,000 seeds, and once with the change broken on purpose.
+
+## Criteria, registered before any code
+
+Registered on 2026-11-12, before the change is written. The new index is kept only if all three hold:
+
+1. **4,000,000 rows.** `node scripts/ab-data.mjs` at 4,000,000 rows gives a median before / after of at least 1.10 in each of three runs.
+2. **1,000,000 rows.** The same A/B at 1,000,000 rows gives a median of at least 0.98 in each of three runs: no loss above 2 %.
+3. **Memory.** A new run of decision 0014 gives H3, C's peak memory over A's at 4,000,000 rows, at most 0.90. It was 0.78 in runs 3 and 4.
+
+If any fails, the change is taken back: the commit reverted, the measures kept, the finding written.

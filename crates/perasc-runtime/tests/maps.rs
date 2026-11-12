@@ -746,3 +746,95 @@ fn a_set_of_a_string_given_its_entry_ends_as_a_set() {
         assert_eq!(rt.live_count(), 0, "blocks left alive");
     }
 }
+
+/// A map whose keys are integers of 32 bits keeps them in its index
+/// (decision 0018): the same operations as the model, keys negative, zero
+/// and at the bounds of an `i32` among them, many deletes, growth and a
+/// clear; then a copy of the map, which finds what the map finds.
+#[test]
+fn keys_of_32_bits_kept_in_the_index_behave_as_the_model() {
+    for wasm in [DEBUG_ALLOCATOR, TLSF_ALLOCATOR] {
+        let mut rt = runtime(wasm);
+        let mut random = Random(0x5851_f42d_4c95_7f2d);
+        for round in 0..9 {
+            let m = rt
+                .map_new
+                .call(&mut rt.store, (2, 1))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let mut model = Model::default();
+            let span = [4, 50, 3000][round % 3];
+            for _ in 0..2500 {
+                // Keys of 32 bits, widened as the compiler widens an `i32`.
+                let key = match random.next(20) {
+                    0 => i64::from(i32::MIN),
+                    1 => i64::from(i32::MAX),
+                    _ => (i64::try_from(random.next(span)).unwrap_or(0) - 17) * 65_537,
+                };
+                match random.next(10) {
+                    0..=4 => {
+                        let value = i64::try_from(random.next(1 << 40)).unwrap_or(0);
+                        let e = rt
+                            .put_i
+                            .call(&mut rt.store, (m, key))
+                            .unwrap_or_else(|e| unreachable!("{e}"));
+                        rt.store_value
+                            .call(&mut rt.store, (m, e, 0, value))
+                            .unwrap_or_else(|e| unreachable!("{e}"));
+                        model.put(key, value);
+                    }
+                    5..=6 => {
+                        let removed = rt
+                            .delete_i
+                            .call(&mut rt.store, (m, key))
+                            .unwrap_or_else(|e| unreachable!("{e}"));
+                        assert_eq!(removed == 1, model.delete(key));
+                    }
+                    7 if random.next(200) == 0 => {
+                        rt.clear
+                            .call(&mut rt.store, m)
+                            .unwrap_or_else(|e| unreachable!("{e}"));
+                        model = Model::default();
+                    }
+                    _ => check_found(&mut rt, m, key, &model),
+                }
+            }
+            let (keys, size) = rt.keys(m);
+            assert_eq!(keys, model.order, "insertion order");
+            assert_eq!(usize::try_from(size).unwrap_or(0), model.order.len());
+            let copy = rt
+                .clone
+                .call(&mut rt.store, (m, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            for &key in &model.order {
+                check_found(&mut rt, copy, key, &model);
+            }
+            check_found(&mut rt, copy, i64::from(i32::MIN) + 3, &model);
+            for h in [m, copy] {
+                rt.release
+                    .call(&mut rt.store, (h, 0))
+                    .unwrap_or_else(|e| unreachable!("{e}"));
+            }
+        }
+        assert_eq!(rt.live_count(), 0, "blocks left alive");
+    }
+}
+
+/// `key` is found in `m` with the model's value, or not found when the model
+/// does not hold it.
+fn check_found(rt: &mut Runtime, m: i32, key: i64, model: &Model) {
+    let e = rt
+        .find_i
+        .call(&mut rt.store, (m, key))
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    match model.values.get(&key) {
+        Some(&want) => {
+            assert!(e >= 0, "{key} not found");
+            let got = rt
+                .value
+                .call(&mut rt.store, (m, e, 0))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert_eq!(got, want);
+        }
+        None => assert_eq!(e, -1, "{key} found"),
+    }
+}

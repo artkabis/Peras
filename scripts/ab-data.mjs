@@ -5,7 +5,7 @@
 // sides of a round alike, which a comparison of two separate profiles does
 // not survive (decision 0017). Not a measure under a protocol: the check of
 // one change.
-// Usage: node scripts/ab-data.mjs <git ref before> [<git ref after>]
+// Usage: node scripts/ab-data.mjs <git ref before> [<git ref after>] [--rows N]
 // The ref after is the working tree when it is left out. Each ref is built
 // in a worktree of its own under target/ab-data, with its own target folder.
 // Prints both medians and the median and range of the ratio before / after,
@@ -18,7 +18,11 @@ import { TextDecoder } from "node:util";
 
 const root = join(import.meta.dirname, "..");
 const work = join(root, "target", "ab-data");
-const [beforeRef, afterRef] = process.argv.slice(2);
+const rowsAt = process.argv.indexOf("--rows");
+const rows = rowsAt < 0 ? 1_000_000 : Number(process.argv[rowsAt + 1]);
+const [beforeRef, afterRef] = process.argv
+  .slice(2)
+  .filter((a, i, all) => a !== "--rows" && all[i - 1] !== "--rows");
 if (beforeRef === undefined)
   throw new Error("usage: node scripts/ab-data.mjs <ref before> [<ref after>]");
 
@@ -78,7 +82,7 @@ if (before === undefined || after === undefined) throw new Error("a side is miss
 const generator = /** @type {{ generate: (rows: number) => Uint8Array }} */ (
   await load(join(root, "bench", "data", "generate.ts"))
 );
-const text = new TextDecoder().decode(generator.generate(1_000_000));
+const text = new TextDecoder().decode(generator.generate(rows));
 /** @param {unknown} summary */
 const canonical = (summary) =>
   JSON.stringify(summary, (_, v) =>
@@ -111,5 +115,5 @@ const sorted = (/** @type {number[]} */ xs) => [...xs].sort((a, b) => a - b);
 const median = (/** @type {number[]} */ xs) => sorted(xs)[xs.length >> 1] ?? 0;
 const ratios = sorted(times.before.map((b, i) => b / (times.after[i] ?? b)));
 console.log(
-  `1,000,000 rows, 20 rounds; the same summary. Before ${median(times.before).toFixed(1)} ms, after ${median(times.after).toFixed(1)} ms; before / after, round by round: median ${median(ratios).toFixed(3)}, from ${(ratios[0] ?? 0).toFixed(3)} to ${(ratios.at(-1) ?? 0).toFixed(3)}.`,
+  `${rows.toLocaleString("en")} rows, 20 rounds; the same summary. Before ${median(times.before).toFixed(1)} ms, after ${median(times.after).toFixed(1)} ms; before / after, round by round: median ${median(ratios).toFixed(3)}, from ${(ratios[0] ?? 0).toFixed(3)} to ${(ratios.at(-1) ?? 0).toFixed(3)}.`,
 );
