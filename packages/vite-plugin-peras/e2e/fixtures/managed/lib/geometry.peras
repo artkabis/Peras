@@ -1,0 +1,57 @@
+// An owned module whose structures and enumerations a managed module
+// imports and passes back and forth (decision 0021).
+
+export struct Size {
+  width: f64;
+  height: f64;
+}
+
+export struct Room {
+  name: String;
+  size: Size;
+  tags: Array<String>;
+}
+
+export enum Shape {
+  Circle(f64),
+  Box(Size),
+  Empty,
+}
+
+export fn area(s: Size): f64 {
+  return s.width * s.height;
+}
+
+export fn grown(r: Room, by: f64): Room {
+  return Room(r.name + "+", Size(r.size.width + by, r.size.height + by), r.tags.copy());
+}
+
+export fn measure(s: Shape): f64 {
+  return match (s) {
+    Circle(r) => 3.0 * r * r,
+    Box(z) => z.width * z.height,
+    Empty => 0.0,
+  };
+}
+
+export fn tagged(rooms: Array<Room>): i32 {
+  let n = 0;
+  for (const r of rooms) {
+    n += r.tags.length;
+  }
+  return n;
+}
+
+export fn biggest(rooms: Array<Room>): Shape {
+  let best = 0.0;
+  for (const r of rooms) {
+    const a = area(r.size);
+    if (a > best) {
+      best = a;
+    }
+  }
+  if (best == 0.0) {
+    return Shape.Empty;
+  }
+  return Shape.Circle(best);
+}

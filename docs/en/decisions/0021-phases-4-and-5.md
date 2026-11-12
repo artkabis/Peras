@@ -55,3 +55,15 @@ A step lands only with all of these:
 ## Record
 
 _Each step is recorded here as it lands._
+
+**Step 1, structures and enumerations across `.apeiron` and `.peras`: landed.**
+
+- **What changed.**
+  - The checker gives a managed module the structures and enumerations of the owned modules it imports, by their index there. It takes in, once and under its name, each one an import names or an imported function's types reach, its fields and variants translated.
+  - A generic structure does not cross.
+  - A type of the same name as one the managed module declares is reported (`E0244`, `clash`).
+  - The JavaScript a managed module compiles to imports only the functions.
+- **Tests.**
+  - The checker's UI tests: a structure imported and used, a generic one refused, a name that clashes.
+  - An end-to-end test, on both allocators: a nested structure with an array of strings, an enumeration each way and an array of structures, the result compared and nothing left alive.
+  - The fields of a structure taken in out of order, on purpose, fail it.

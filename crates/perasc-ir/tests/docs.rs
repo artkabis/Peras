@@ -49,6 +49,23 @@ const STATS: &str = "export fn mean(xs: Array<f64>): f64 {\n\
                        return xs.reduce((a, x) => a + x, 0.0) / xs.length.toF64();\n\
                      }\n";
 
+/// The owned module the guide's example of structures across modes imports,
+/// as `./shapes.peras` (decision 0021).
+const SHAPES: &str = "export struct Size {\n  width: f64;\n  height: f64;\n}\n\
+                      export enum Shape {\n  Circle(f64),\n  Box(Size),\n}\n\
+                      export fn area(s: Size): f64 {\n  return s.width * s.height;\n}\n";
+
+/// An owned module as a managed one imports it.
+fn imported(from: &str, source: &str) -> perasc_check::ImportedModule {
+    perasc_check::ImportedModule {
+        from: from.to_owned(),
+        functions: perasc_check::exports_of(source),
+        types: perasc_check::module_exports(source)
+            .map(|(_, types)| types)
+            .unwrap_or_default(),
+    }
+}
+
 /// A managed module's errors: syntax, checks, then JavaScript generation.
 fn compile_managed(source: &str) -> Vec<Diagnostic> {
     let parsed = perasc_syntax::parse(source);
@@ -57,10 +74,10 @@ fn compile_managed(source: &str) -> Vec<Diagnostic> {
     }
     let context = perasc_check::Context {
         managed: true,
-        imports: vec![perasc_check::ImportedModule {
-            from: "./stats.peras".to_owned(),
-            functions: perasc_check::exports_of(STATS),
-        }],
+        imports: vec![
+            imported("./stats.peras", STATS),
+            imported("./shapes.peras", SHAPES),
+        ],
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     if !analysis.diagnostics.is_empty() {

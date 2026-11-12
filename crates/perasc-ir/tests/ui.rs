@@ -25,6 +25,7 @@ fn compile(source: &str) -> Result<perasc_ir::Module, Vec<Diagnostic>> {
 /// The owned module the managed tests import, as `./stats.peras`.
 const STATS: &str = "export fn mean(xs: Array<f64>): f64 { return xs[0]; }\n\
                      export struct Point { x: f64 }\n\
+                     export struct Pair<T> { first: T }\n\
                      export fn origin(): Point { return Point(0.0); }\n";
 
 /// A managed module's checks, importing `./stats.peras`: it is not lowered,
@@ -39,6 +40,9 @@ fn check_managed(source: &str) -> Result<(), Vec<Diagnostic>> {
         imports: vec![perasc_check::ImportedModule {
             from: "./stats.peras".to_owned(),
             functions: perasc_check::exports_of(STATS),
+            types: perasc_check::module_exports(STATS)
+                .map(|(_, types)| types)
+                .unwrap_or_default(),
         }],
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);

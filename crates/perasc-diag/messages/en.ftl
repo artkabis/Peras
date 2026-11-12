@@ -711,21 +711,24 @@ check-owned-only-fix = { $what ->
 # E0244
 check-import = { $reason ->
     [module] cannot import from `{ $name }`
-    [name] `{ $name }` is not an exported function of this module
+    [name] `{ $name }` is not an exported function, structure or enumeration of this module
     [signature] `{ $name }` takes or gives a value that cannot cross between modules yet
+    [clash] the imported module has a type `{ $name }`, and this module declares one too
    *[other] cannot import `{ $name }`
 }
 check-import-label = { $reason ->
     [module] not an owned module that compiles
     [name] not exported here
     [signature] imported here
+    [clash] imported here
    *[other] here
 }
-check-import-why = A managed module imports functions from owned modules (`.peras`), in the same folder or below it, and calls them through checked conversions: numbers, booleans, strings, and arrays, options, results, maps and sets of them cross between the two. A structure or an enumeration is the other module's own type, and does not cross yet.
+check-import-why = A managed module imports functions, structures and enumerations from owned modules (`.peras`), in the same folder or below it, and calls the functions through checked conversions: numbers, booleans, strings, the structures and enumerations of the owned module, and arrays, options, results, maps and sets of them cross between the two. A generic structure, a function or a type of the browser does not cross. A structure or an enumeration imported is the owned module's, under its name: this module cannot declare another of that name.
 check-import-fix = { $reason ->
     [module] import a `.peras` file by its relative path, such as `"./maths.peras"`, and fix its errors first
-    [name] mark the function `export` in its module, or check its spelling
-    [signature] give the function numbers, strings, or arrays of them, and build the structure on each side
+    [name] mark it `export` in its module, or check its spelling
+    [signature] give the function values that cross: numbers, strings, structures and enumerations that are not generic, and arrays of them
+    [clash] rename this module's own type, or use the imported one
    *[other] check the import
 }
 

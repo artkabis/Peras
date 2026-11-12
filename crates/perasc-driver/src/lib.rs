@@ -102,10 +102,18 @@ fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::
             _ => None,
         })
         .map(|from| {
-            let functions = import_path(path, &from)
+            let exports = import_path(path, &from)
                 .and_then(|file| read_source(&file).ok())
-                .and_then(|text| perasc_check::exports_of(&text));
-            perasc_check::ImportedModule { from, functions }
+                .and_then(|text| perasc_check::module_exports(&text));
+            let (functions, types) = match exports {
+                Some((functions, types)) => (Some(functions), types),
+                None => (None, perasc_check::ExportedTypes::default()),
+            };
+            perasc_check::ImportedModule {
+                from,
+                functions,
+                types,
+            }
         })
         .collect();
     perasc_check::Context {

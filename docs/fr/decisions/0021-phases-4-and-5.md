@@ -55,3 +55,15 @@ Une étape n’arrive qu’avec tout ceci :
 ## Journal
 
 _Chaque étape est consignée ici quand elle arrive._
+
+**Étape 1, les structures et les énumérations entre `.apeiron` et `.peras` : arrivée.**
+
+- **Ce qui a changé.**
+  - Le vérificateur donne à un module managed les structures et les énumérations des modules owned qu’il importe, par leur indice là-bas. Il prend, une fois et sous son nom, chacune qu’un import nomme ou que les types d’une fonction importée atteignent, ses champs et variantes traduits.
+  - Une structure générique ne passe pas.
+  - Un type du même nom qu’un type que le module managed déclare est signalé (`E0244`, `clash`).
+  - Le JavaScript que produit un module managed n’importe que les fonctions.
+- **Tests.**
+  - Les tests UI du vérificateur : une structure importée et utilisée, une générique refusée, un nom en conflit.
+  - Un test de bout en bout, sur les deux allocateurs : une structure imbriquée avec un tableau de chaînes, une énumération dans chaque sens et un tableau de structures, le résultat comparé et rien ne restant vivant.
+  - Les champs d’une structure pris dans le désordre, exprès, le font échouer.

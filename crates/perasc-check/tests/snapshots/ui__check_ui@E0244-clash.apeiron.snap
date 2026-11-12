@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0244-clash.apeiron
+---
+diagnostics:
+  error[E0244] check-import { reason: "clash", name: "Point" }
+    primary 2:10-2:16: check-import-label { reason: "clash" }
+    cause: check-import-why
+    fix: check-import-fix { reason: "clash" }

@@ -58,7 +58,7 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 
 - ~~Les modules `.apeiron` compilés en JavaScript, par la CLI et le plugin Vite~~ : fait, avec `number` pour `f64`.
 - ~~`async` et `await`~~ : fait.
-- ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci ; les structures et les énumérations ensuite.
+- ~~Des appels des modules gérés vers les modules possédés, avec des conversions vérifiées à la frontière~~ : fait pour les nombres, les chaînes, les structures et les énumérations, et les tableaux, options, résultats, tables et ensembles de ceux-ci ([décision 0021](../decisions/0021-phases-4-and-5.md)).
 - ~~Le DOM, les événements, `fetch`, les minuteries, le stockage, avec des API typées~~ : fait pour un sous-ensemble, la [référence du navigateur](browser.md) ([décision 0009](../decisions/0009-browser-and-resources.md)) ; les WebSockets, les Web Workers, les formulaires et `requestAnimationFrame` ensuite.
 - ~~Des règles qui empêchent les fuites classiques : un écouteur ou une minuterie est une ressource, libérée avec son propriétaire, et un détecteur de fuites signale celles qui ne le sont pas~~ : fait.
 - ~~Des fonctions fléchées à instructions qui capturent ce qu’elles utilisent, et les fonctions comme valeurs~~ : fait ([guide](../guide/managed.md#fonctions-fléchées)) ; l’étude de cas garde son état dans le tableau qu’elle monte, affiché deux fois dans une page.
@@ -66,7 +66,7 @@ Les modules `.apeiron` compilés en JavaScript, pour tout ce qui parle au naviga
 - ~~`sortBy(clé)`~~ : fait, `sortBy` et `sortByDescending` dans les deux modes ([méthodes](methods.md#trier-par-une-clé)), 3 à 7 fois la vitesse de TypeScript par un nombre.
 - ~~`toFixed`~~ : fait, dans les deux modes, le texte de JavaScript par construction ([méthodes](methods.md#en-texte)) ; le coût sur la machine est mesuré à chaque étape désormais ([décision 0012](../decisions/0012-cost-on-the-machine.md)).
 - ~~Le débordement d’entier arrêté en debug~~ : fait, dans les deux modes, le compteur d’une boucle comptée non vérifié ; la production reboucle, sans coût ([types](types.md)).
-- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : les structures entre `.apeiron` et `.peras` ; des éléments possédés par un groupe.
+- Ensuite, dans l’ordre mesuré par la [décision 0011](../decisions/0011-what-to-build-next.md) : ~~les structures entre `.apeiron` et `.peras`~~ (fait) ; des éléments possédés par un groupe.
 
 ```apeiron planned
 import { inside } from "./mandel.peras";

@@ -711,21 +711,24 @@ check-owned-only-fix = { $what ->
 # E0244
 check-import = { $reason ->
     [module] impossible d’importer depuis `{ $name }`
-    [name] `{ $name }` n’est pas une fonction exportée de ce module
+    [name] `{ $name }` n’est pas une fonction, une structure ou une énumération exportée de ce module
     [signature] `{ $name }` prend ou rend une valeur qui ne passe pas encore d’un module à l’autre
+    [clash] le module importé a un type `{ $name }`, et ce module en déclare un aussi
    *[other] impossible d’importer `{ $name }`
 }
 check-import-label = { $reason ->
     [module] pas un module owned qui se compile
-    [name] non exportée ici
+    [name] non exporté ici
     [signature] importée ici
+    [clash] importé ici
    *[other] ici
 }
-check-import-why = Un module managed importe des fonctions de modules owned (`.peras`), dans le même dossier ou en dessous, et les appelle à travers des conversions vérifiées : les nombres, les booléens, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure ou une énumération est le type propre de l’autre module, et ne passe pas encore.
+check-import-why = Un module managed importe des fonctions, des structures et des énumérations de modules owned (`.peras`), dans le même dossier ou en dessous, et appelle les fonctions à travers des conversions vérifiées : les nombres, les booléens, les chaînes, les structures et énumérations du module owned, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure générique, une fonction ou un type du navigateur ne passe pas. Une structure ou une énumération importée est celle du module owned, sous son nom : ce module ne peut pas en déclarer une autre de ce nom.
 check-import-fix = { $reason ->
     [module] importez un fichier `.peras` par son chemin relatif, comme `"./maths.peras"`, et corrigez d’abord ses erreurs
-    [name] marquez la fonction `export` dans son module, ou vérifiez son orthographe
-    [signature] donnez à la fonction des nombres, des chaînes, ou des tableaux de ceux-ci, et construisez la structure de chaque côté
+    [name] marquez-la `export` dans son module, ou vérifiez son orthographe
+    [signature] donnez à la fonction des valeurs qui passent : des nombres, des chaînes, des structures et énumérations non génériques, et des tableaux de ceux-ci
+    [clash] renommez le type propre de ce module, ou utilisez celui qui est importé
    *[other] vérifiez l’import
 }
 

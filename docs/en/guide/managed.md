@@ -111,7 +111,43 @@ export fn centered(xs: Array<number>): Array<number> {
 }
 ```
 
-Each call is checked against the function's signature, read from the owned module, and converted by its loader as for any JavaScript caller ([types across the boundary](javascript.md#types-across-the-boundary)). Numbers, booleans, strings, and arrays, options, results, maps and sets of them cross. A structure or an enumeration is the other module's own type and does not cross yet ([E0244](../errors/E0244.md)): give the function numbers or arrays, and build the structure on each side.
+Each call is checked against the function's signature, read from the owned module, and converted by its loader as for any JavaScript caller ([types across the boundary](javascript.md#types-across-the-boundary)). Numbers, booleans, strings, the owned module's structures and enumerations, and arrays, options, results, maps and sets of them cross.
+
+A managed module imports the structures and enumerations an owned module exports as it imports its functions, by name, and then makes them, reads them, matches them and passes them across ([decision 0021](../decisions/0021-phases-4-and-5.md)):
+
+```peras build
+// shapes.peras
+export struct Size {
+  width: f64;
+  height: f64;
+}
+
+export enum Shape {
+  Circle(f64),
+  Box(Size),
+}
+
+export fn area(s: Size): f64 {
+  return s.width * s.height;
+}
+```
+
+```apeiron build
+import { Size, Shape, area } from "./shapes.peras";
+
+export fn describe(s: Shape): String {
+  return match (s) {
+    Circle(r) => `circle ${r}`,
+    Box(z) => `box of ${area(z)}`,
+  };
+}
+
+export fn square(side: number): Size {
+  return Size(side, side);
+}
+```
+
+Both modes give a structure to JavaScript as a plain object, and an enumeration as `{ kind, values }`, so nothing is converted but what the owned module's loader copies in and out. A structure that is generic does not cross, nor a function or a type of the browser; and a managed module cannot declare a type of the same name as one it imports ([E0244](../errors/E0244.md)).
 
 An owned module cannot import a managed one: computation does not call the interface.
 
@@ -229,5 +265,4 @@ The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as
 - **Generic `extern` functions**, default exports, and reading `.d.ts` files to propose `extern` blocks.
 - **Arrays of resources**, and a request as a resource cancelled with its owner.
 - **`async` arrow functions**, an arrow function that calls itself, and functions given to or by JavaScript through an export.
-- **Structures and enumerations across an import.**
 - **Options of options**, refused with [E0900](../errors/E0900.md): in JavaScript, `Some(None)` and `None` are both `undefined`.

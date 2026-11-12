@@ -1,0 +1,21 @@
+// A managed module that imports structures and enumerations of an owned
+// one, makes them, passes them across and reads what comes back
+// (decision 0021).
+import { Size, Room, Shape, area, grown, measure, tagged, biggest } from "./lib/geometry.peras";
+
+export fn report(): String {
+  const s = Size(2.0, 3.0);
+  const room = Room("hall", s, ["a", "b"]);
+  const g = grown(room, 1.0);
+  const shapes = [Shape.Circle(1.0), Shape.Box(Size(4.0, 5.0)), Shape.Empty];
+  let total = 0.0;
+  for (const shape of shapes) {
+    total += measure(shape);
+  }
+  const kind = match (biggest([room, g])) {
+    Circle(a) => `circle ${a}`,
+    Box(z) => `box ${z.width}`,
+    Empty => "empty",
+  };
+  return `${area(s)} ${g.name} ${g.size.width}x${g.size.height} ${g.tags.length} ${total} ${kind} ${tagged([room, g])}`;
+}
