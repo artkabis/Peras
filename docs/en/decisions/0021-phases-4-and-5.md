@@ -28,7 +28,7 @@ Each step is small enough to land alone, and the most used come first.
    - `copy()` on a structure (F102).
 3. **`import` and `export` between `.peras` modules.**
    - Several files compiled into one WebAssembly module: names resolved across files, each file checked against what the others export.
-   - The design is written first, as its own decision, before code: files, cycles, names, what a build produces.
+   - The design is written first, as its own decision, before code: files, cycles, names, what a build produces. Written: [decision 0022](0022-owned-modules.md).
 4. **Medium gaps:**
    - module-level `let` (F306);
    - `u8`, `u16`, `u32`, `u64` compiled (F302);

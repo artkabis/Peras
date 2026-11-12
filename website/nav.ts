@@ -77,6 +77,7 @@ export const sections: Section[] = [
       "decisions/0019-reading-fields",
       "decisions/0020-text-as-bytes",
       "decisions/0021-phases-4-and-5",
+      "decisions/0022-owned-modules",
     ],
   },
 ];

@@ -28,7 +28,7 @@ Chaque étape est assez petite pour arriver seule, et les plus utilisées vienne
    - `copy()` sur une structure (F102).
 3. **`import` et `export` entre modules `.peras`.**
    - Plusieurs fichiers compilés en un seul module WebAssembly : les noms résolus d’un fichier à l’autre, chaque fichier vérifié contre ce que les autres exportent.
-   - Le design est écrit d’abord, dans sa propre décision, avant le code : fichiers, cycles, noms, ce que produit une construction.
+   - Le design est écrit d’abord, dans sa propre décision, avant le code : fichiers, cycles, noms, ce que produit une construction. Écrit : [décision 0022](0022-owned-modules.md).
 4. **Les lacunes moyennes :**
    - le `let` au niveau du module (F306) ;
    - `u8`, `u16`, `u32`, `u64` compilés (F302) ;
