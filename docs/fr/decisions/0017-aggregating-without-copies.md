@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0017-aggregating-without-copies.md](../../en/decisions/0017-aggregating-without-copies.md)._
 
-_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
+_Statut : proposée le 2026-11-12. L’étape 1 est arrivée à `037bb74`, l’étape 2 à `02ff9c2` (voir [Mesuré après l’étape 1](#mesuré-après-létape-1) et [après l’étape 2](#mesuré-après-létape-2)). Chaque changement est mesuré quand il arrive : d’abord par le profil ci-dessous, dans Node, puis par une nouvelle exécution du protocole de la [décision 0014](0014-data-at-scale.md), inchangé. Un changement qui n’y montre pas son gain est rapporté comme tel._
 
 ## Contexte
 
@@ -98,3 +98,29 @@ Peras écrit simplement pourrait donc rattraper B écrit avec des structures sim
 L’étape 1 est arrivée au commit `037bb74`. Un repli de `unwrapOr` qui copie une valeur lue est désormais calme, donc construit seulement si l’option est vide (F209). Elle est correcte et testée. Le test différentiel gagne une table de chaînes, des replis qui copient et un repli qui déplace une variable. 2 000 graines passent. Avec le repli paresseux d’un tampon cassé exprès, le test échoue dès la première graine. Les tests de bout en bout des deux allocateurs passent, 116 sur 116.
 
 Elle est prise : en comptant les appels au runtime, chaque ligne gardée copie une chaîne 7 fois au lieu de 8 et libère un bloc 12 fois au lieu de 13. Dans le profil, la variante sans la copie ne fait plus rien gagner (−1 ms). Le tableau de bord est passé de 322 à 304 ms pour 1 000 000 de lignes dans Node. C’est plus que les 11 ms qu’annonçait le profil, mais les variantes varient d’environ 10 ms (l’une donne −10), donc le gain est entre 8 et 28 ms.
+
+## Mesuré après l’étape 2
+
+L’étape 2 est arrivée au commit `02ff9c2`, en deux parties, chacune un petit changement à part.
+
+- **`m.get(k).unwrapOr(repli)` abaissé d’un seul tenant**, quand l’option n’est qu’une étape. Une recherche ; chaque scalaire de la valeur lu seulement si l’entrée est là ; un tampon copié une fois ; le repli construit seulement si la clé manque. Avant, l’option se voyait construire un tampon vide pour une valeur absente, et sa chaîne était copiée deux fois. Un repli qui n’est pas calme s’exécute toujours d’abord, après la lecture de l’entrée, comme écrit.
+- **Un `set` d’une clé que la passe de recherche connaît reçoit l’entrée.** `map_put_at_i`, `map_put_at_s` et `map_put_at_s_lent` libèrent l’ancienne valeur et la clé sans chercher la clé à nouveau. La passe n’en donne une que là où la table et la clé n’ont pas pu changer depuis la recherche : la même règle que dans la décision 0016. Une clé entière élargie depuis une variable locale `i32` lui est désormais connue aussi.
+
+**Ce qui la garde.** Chaque garde doit échouer si l’étape est fausse :
+
+- Le runtime vérifie que l’entrée qu’on lui donne tient la clé. Si ce n’est pas le cas, il cherche la clé comme `set` l’a toujours fait : une entrée fausse coûte du temps, jamais une table fausse. Les tests du runtime lui donnent exprès des entrées fausses, sur les deux allocateurs.
+- L’interpréteur de l’IR s’arrête sur une entrée fausse, donc une preuve fausse de la passe fait échouer le test différentiel.
+- Le test différentiel gagne des tables de structures sorties, changées et remises, un repli qui n’est pas calme, et une clé ou une table changée entre la recherche et le `set`. 2 000 graines passent. Trois mutations le font chacune échouer :
+  - la passe qui n’oublie pas les changements d’une table ;
+  - toute entrée connue de la table donnée à un `set`, quelle que soit sa clé ;
+  - la valeur de l’entrée lue avant le choix, alors qu’elle peut manquer.
+- Un test de bout en bout change sur place des entrées de structures à travers la frontière JavaScript, sur les deux allocateurs, y compris une clé supprimée entre les deux. Les tests de bout en bout passent, 118 sur 118.
+
+**Elle est prise.** En comptant les appels au runtime (`node scripts/profile-data.mjs --calls`), chaque ligne gardée :
+
+- libère un bloc 10 fois au lieu de 12 ;
+- copie une chaîne 6 fois au lieu de 7 ;
+- construit un tampon vide de moins ;
+- cherche chaque clé des paires et des produits une seule fois, avec `map_put_at_s` et `map_put_at_i` à la place de `map_put_s` et `map_put_i`.
+
+**Le gain : 8,5 à 13,5 %.** Deux profils lancés à une heure d’écart ne pouvaient pas le montrer. `full` est passé de 304 à 310 ms, mais les variantes que cette étape ne touche pas ont ralenti autant : le seul parcours des lignes est passé de 21 à 24 ms. La machine avait ralenti entre les deux (constat M017). Les deux compilateurs ont donc été comparés dans un même processus avec `node scripts/ab-data.mjs 037bb74 02ff9c2` : le même texte résumé par chacun à tour de rôle, l’ordre alterné, et le rapport pris tour par tour. Sur quatre telles exécutions, avant / après valait 1,085, 1,097, 1,104 et 1,135 en médiane. Les résumés étaient identiques.

@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Language and compiler
 
+- **A map entry taken out, changed and put back is looked up once**: `let p = m.get(k).unwrapOr(…); p.n += 1; m.set(k, p);` reads the entry where it is, copies its strings once, makes no empty buffer for a missing value, and the `set` reuses the entry the lookup found, where the map and the key cannot have changed between (decision 0017, finding F216). The runtime checks the entry it is given and looks the key up when it does not hold it. The sales dashboard in Node: 8.5 to 13.5 % faster, compared in one process with `node scripts/ab-data.mjs`.
 - **A fallback of `unwrapOr` that copies a value read is made only when it is needed**: `m.get(k).unwrapOr(Pair(country.copy(), 0, 0))` no longer copies the country when `k` is there, a copy having no effect a program can see but its allocation (decision 0017, finding F209). The sales dashboard in Node: 322 to 304 ms per 1,000,000 rows, one copy and one release fewer per row kept.
 - **Walking the characters of a string is cheaper**: `for (const c of s.split(""))` steps through a function of its own, small enough for the engine to inline (decision 0016, finding F207). Checking the letters of a million short names: 37.9 to about 32 ms.
 - **Optimizations are tested against the program as written** (finding M015): random programs, made from a seed, must compute the same in the interpreter and in WebAssembly, optimized or not, on both allocators, leaving no block alive.

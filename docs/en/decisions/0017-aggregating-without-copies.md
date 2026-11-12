@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0017-aggregating-without-copies.md](../../fr/decisions/0017-aggregating-without-copies.md)._
 
-_Status: proposed on 2026-11-12. Step 1 landed at `037bb74` (see [Measured after step 1](#measured-after-step-1)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
+_Status: proposed on 2026-11-12. Step 1 landed at `037bb74`, step 2 at `02ff9c2` (see [Measured after step 1](#measured-after-step-1) and [after step 2](#measured-after-step-2)). Each change is measured when it lands: first by the profile below, in Node, then by a new run of [decision 0014](0014-data-at-scale.md)'s protocol, unchanged. A change that does not show its gain there is reported as such._
 
 ## Context
 
@@ -98,3 +98,29 @@ So Peras written plainly could catch up with B written with plain structures. It
 Step 1 landed at commit `037bb74`. A fallback of `unwrapOr` that copies a value read is now quiet, so it is made only when the option is empty (F209). It is correct and tested. The differential test gains a map of strings, fallbacks that copy and a fallback that moves a variable. 2,000 seeds pass. With the lazy fallback of a buffer broken on purpose, the test fails at the first seed. The end-to-end tests of both allocators pass, 116 of 116.
 
 It is taken: counting the runtime's calls, each row kept copies a string 7 times instead of 8 and releases a block 12 times instead of 13. In the profile, the variant without the copy no longer saves anything (−1 ms). The dashboard went from 322 to 304 ms per 1,000,000 rows in Node. That is more than the 11 ms the profile gave, but the variants spread by about 10 ms (one shows −10), so the gain is between 8 and 28 ms.
+
+## Measured after step 2
+
+Step 2 landed at commit `02ff9c2`, in two parts, each its own small change.
+
+- **`m.get(k).unwrapOr(fallback)` lowered as one thing**, when the option is only a step. One lookup; each scalar of the value read only when the entry is there; a buffer copied once; the fallback made only when the key is missing. Before, the option had an empty buffer made for a missing value, and its string was copied twice. A fallback that is not quiet still runs first, after the entry is read, as written.
+- **A `set` of a key the lookup pass knows is given the entry.** `map_put_at_i`, `map_put_at_s` and `map_put_at_s_lent` release the old value and the key without looking the key up again. The pass gives one only where the map and the key cannot have changed since the lookup: the same rule as decision 0016's. An integer key widened from an `i32` local is now known to it too.
+
+**What guards it.** Each guard is meant to fail if the step is wrong:
+
+- The runtime checks that the entry it is given holds the key. When it does not, it looks the key up as `set` always did, so a wrong entry costs time, never a wrong map. The runtime's own tests give it wrong entries on purpose, on both allocators.
+- The interpreter of the IR traps on a wrong entry, so a wrong proof of the pass fails the differential test.
+- The differential test gains maps of structures taken out, changed and put back, a fallback that is not quiet, and a key or a map changed between the lookup and the set. 2,000 seeds pass. Three mutations each fail it:
+  - the pass not forgetting a map's changes;
+  - any known entry of the map given to a `set`, whatever its key;
+  - the entry's value read before the choice, when it may be missing.
+- An end-to-end test changes entries of structures in place across the JavaScript boundary on both allocators, a key deleted in between included. The end-to-end tests pass, 118 of 118.
+
+**It is taken.** Counting the runtime's calls (`node scripts/profile-data.mjs --calls`), each row kept:
+
+- releases a block 10 times instead of 12;
+- copies a string 6 times instead of 7;
+- makes one empty buffer fewer;
+- looks each key of the pairs and of the products up once, with `map_put_at_s` and `map_put_at_i` in place of `map_put_s` and `map_put_i`.
+
+**The gain: 8.5 to 13.5 %.** Two profiles run an hour apart could not show it. `full` went from 304 to 310 ms, but the variants this step does not touch slowed down as much: the walk over the lines alone went from 21 to 24 ms. The machine had slowed between the two (finding M017). So the two compilers were compared in one process with `node scripts/ab-data.mjs 037bb74 02ff9c2`: the same text summarized by each in turn, the order alternating, and the ratio taken round by round. Over four such runs, before / after was 1.085, 1.097, 1.104 and 1.135 at the median. The summaries were the same.
