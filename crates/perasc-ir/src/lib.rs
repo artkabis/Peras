@@ -12,8 +12,10 @@ use std::fmt::{self, Write as _};
 
 mod bounds;
 mod inline;
-#[cfg(test)]
-mod interp;
+/// The interpreter of the IR, the oracle of the tests: what a module gives,
+/// computed without any backend.
+#[doc(hidden)]
+pub mod interp;
 mod licm;
 mod lookups;
 mod lower;
