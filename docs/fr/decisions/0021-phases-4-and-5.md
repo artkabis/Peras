@@ -1,0 +1,57 @@
+# 0021 : Les phases 4 et 5, et les lacunes du langage
+
+_English version: [../../en/decisions/0021-phases-4-and-5.md](../../en/decisions/0021-phases-4-and-5.md)._
+
+_Statut : acceptée le 2026-11-12 par le propriétaire. Un plan : chaque étape arrive avec ses tests, et cette page dit ce qui est arrivé._
+
+## Contexte
+
+La [feuille de route](../reference/roadmap.md) place Peras en phase 3, la bibliothèque standard. Le propriétaire demande ensuite les phases 4 et 5, avec les lacunes que les constats gardent ouvertes :
+
+- **Phase 4, le mode managed.** C’est la moitié du design qui parle au navigateur. Sa prochaine étape, mesurée par la [décision 0011](0011-what-to-build-next.md), est celle des structures entre `.apeiron` et `.peras`.
+- **Phase 5, les modules.** Un programme en plusieurs fichiers `.peras` n’est pas encore possible.
+
+Ce qu’une étape change au langage est écrit dans le guide et l’état le jour où elle arrive.
+
+## L’ordre
+
+Chaque étape est assez petite pour arriver seule, et les plus utilisées viennent d’abord.
+
+1. **Les structures et les énumérations entre `.apeiron` et `.peras`.**
+   - Aujourd’hui, un module `.apeiron` ne peut appeler une fonction `.peras` qu’avec des nombres, des booléens, des chaînes, et des tableaux, options, résultats et tables de ceux-ci. Le `portable` du vérificateur refuse le reste.
+   - Les deux modes donnent déjà une structure à JavaScript comme un simple objet, et une énumération comme `{ kind, values }`.
+   - L’étape : un module managed importe les structures et les énumérations qu’un module `.peras` exporte, comme il importe ses fonctions : `import { area, Rect } from "./shapes.peras"`. Il peut les nommer, les construire, les lire, et les faire passer.
+2. **Les petites lacunes, chacune vérifiée mais pas compilée :**
+   - `%` sur les flottants (F304) ;
+   - `==` sur des tableaux de chaînes ou de tableaux (F305) ;
+   - `reduce` avec un accumulateur qui tient une chaîne ou un tableau (F307) ;
+   - `copy()` sur une structure (F102).
+3. **`import` et `export` entre modules `.peras`.**
+   - Plusieurs fichiers compilés en un seul module WebAssembly : les noms résolus d’un fichier à l’autre, chaque fichier vérifié contre ce que les autres exportent.
+   - Le design est écrit d’abord, dans sa propre décision, avant le code : fichiers, cycles, noms, ce que produit une construction.
+4. **Les lacunes moyennes :**
+   - le `let` au niveau du module (F306) ;
+   - `u8`, `u16`, `u32`, `u64` compilés (F302) ;
+   - un champ déplacé hors d’une structure possédée (F214) ;
+   - une fonction nommée utilisée comme valeur (F308).
+
+Plus tard, chacune avec sa décision :
+
+- les types qui se contiennent eux-mêmes et `Rc<T>` (F310) ;
+- `let … else` et un bras qui quitte une boucle (F101, F105), qui sont des questions de design plus que de code ;
+- les API du navigateur que la phase 4 liste encore ;
+- `extern` depuis des `.d.ts`, et les paquets.
+
+## Critères de chaque étape
+
+Une étape n’arrive qu’avec tout ceci :
+
+- **Des tests en Rust, du vérificateur ou de l’IR.** Ils incluent les cas qui doivent rester refusés.
+- **Des tests de bout en bout sur les deux allocateurs, là où l’étape atteint le navigateur.** Ils comparent avec JavaScript, et rien ne doit rester vivant.
+- **Le test différentiel, là où l’étape touche ce que voient les optimisations des décisions 0016 à 0018.** Il tourne une fois avec 2 000 graines, et une fois avec le changement cassé exprès (M015).
+- **Chaque vérification de `CLAUDE.md`,** y compris les tests de bout en bout sur un binaire release reconstruit (M018).
+- **Le guide, l’état et la feuille de route mis à jour,** en anglais et en français.
+
+## Journal
+
+_Chaque étape est consignée ici quand elle arrive._

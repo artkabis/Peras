@@ -1,0 +1,57 @@
+# 0021: Phases 4 and 5, and the gaps of the language
+
+_French translation: [../../fr/decisions/0021-phases-4-and-5.md](../../fr/decisions/0021-phases-4-and-5.md)._
+
+_Status: accepted on 2026-11-12 by the owner. A plan: each step lands with its tests, and this page says what landed._
+
+## Context
+
+The [roadmap](../reference/roadmap.md) puts Peras in phase 3, the standard library. The owner asks for phases 4 and 5 next, with the gaps the findings keep open:
+
+- **Phase 4, managed mode.** It is the half of the design that talks to the browser. Its next step, measured by [decision 0011](0011-what-to-build-next.md), is structures across `.apeiron` and `.peras`.
+- **Phase 5, modules.** A program in several `.peras` files is not possible yet.
+
+What a step changes in the language is written in the guide and the status the day it lands.
+
+## The order
+
+Each step is small enough to land alone, and the most used come first.
+
+1. **Structures and enumerations across `.apeiron` and `.peras`.**
+   - Today an `.apeiron` module can call a `.peras` function only with numbers, booleans, strings, and arrays, options, results and maps of them. The checker's `portable` refuses the rest.
+   - Both modes already give a structure to JavaScript as a plain object, and an enumeration as `{ kind, values }`.
+   - The step: a managed module imports the structures and enumerations a `.peras` module exports, as it imports its functions: `import { area, Rect } from "./shapes.peras"`. It can name them, make them, read them, and pass them across.
+2. **Small gaps, each checked but not compiled:**
+   - `%` on floats (F304);
+   - `==` on arrays of strings or of arrays (F305);
+   - `reduce` with an accumulator that holds a string or an array (F307);
+   - `copy()` on a structure (F102).
+3. **`import` and `export` between `.peras` modules.**
+   - Several files compiled into one WebAssembly module: names resolved across files, each file checked against what the others export.
+   - The design is written first, as its own decision, before code: files, cycles, names, what a build produces.
+4. **Medium gaps:**
+   - module-level `let` (F306);
+   - `u8`, `u16`, `u32`, `u64` compiled (F302);
+   - a field moved out of an owned structure (F214);
+   - a named function used as a value (F308).
+
+Later, each with its own decision:
+
+- types that contain themselves and `Rc<T>` (F310);
+- `let … else` and an arm that leaves a loop (F101, F105), which are questions of design more than of code;
+- the browser APIs phase 4 still lists;
+- `extern` from `.d.ts`, and packages.
+
+## Criteria of each step
+
+A step lands only with all of these:
+
+- **Tests in Rust, of the checker or of the IR.** These include the cases that must still be refused.
+- **End-to-end tests on both allocators, where the step reaches the browser.** They compare with JavaScript, and nothing may be left alive.
+- **The differential test, where the step touches what the optimizations of decisions 0016 to 0018 see.** It runs once with 2,000 seeds, and once with the change broken on purpose (M015).
+- **Every check of `CLAUDE.md`,** e2e on a freshly built release binary included (M018).
+- **The guide, the status and the roadmap updated,** in English and in French.
+
+## Record
+
+_Each step is recorded here as it lands._

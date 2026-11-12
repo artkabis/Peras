@@ -76,6 +76,7 @@ export const sections: Section[] = [
       "decisions/0018-large-maps",
       "decisions/0019-reading-fields",
       "decisions/0020-text-as-bytes",
+      "decisions/0021-phases-4-and-5",
     ],
   },
 ];
