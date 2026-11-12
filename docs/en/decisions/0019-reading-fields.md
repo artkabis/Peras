@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0019-reading-fields.md](../../fr/decisions/0019-reading-fields.md)._
 
-_Status: proposed on 2026-11-12; step 1 built, measured below its criterion and taken back the same day (see [Step 1, measured](#step-1-measured-taken-back)). Each step is decided by an A/B of two compilers in one process (`node scripts/ab-data.mjs`, finding M017), against criteria registered here before its code._
+_Status: proposed on 2026-11-12; step 1 built, measured below its criterion and taken back the same day (see [Step 1, measured](#step-1-measured-taken-back)); closed with step 2 not built (see [Outcome](#outcome)). Each step is decided by an A/B of two compilers in one process (`node scripts/ab-data.mjs`, finding M017), against criteria registered here before its code._
 
 ## Context
 
@@ -63,3 +63,7 @@ Then `node scripts/ab-data.mjs 491e1b0 3ab2b62` measured it against the criteria
 **What it says.** Two 64-bit divisions per integer, ten per row, cost 1 to 3 % of the dashboard, not more. The processor runs them while it waits for the bytes of the next field, so removing them saves less than counting them suggests.
 
 **For step 2.** The split costs about 32 ms per 1,000,000 rows, 11 % at most. That holds only if reading the fields in place removes all of it, which steps of this decision and of 0017 and 0018 have not done. Decisions 0017 to 0019 show the same pattern: a profile gives the most a change could save, and the change saves less. The parts of the dashboard that remain are each 10 % or less. Step 2 is weighed with the owner before it is built.
+
+## Outcome
+
+Closed on 2026-11-12 by the owner's decision: step 2 is not built for now. The dashboard's remaining parts are each 10 % or less, and the last three changes tried on it each saved less than their profile gave. Plain Peras computes it 2.39 to 2.63 times as fast as plain TypeScript (decision 0014, run 4). What separates it from TypeScript optimized by hand is mostly what that version knows of the data, which only a change to the language could let a program say. Step 2 stays written here, with its profile, for when the reading becomes the cost again.

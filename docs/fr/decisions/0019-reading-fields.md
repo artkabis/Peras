@@ -2,7 +2,7 @@
 
 _English version: [../../en/decisions/0019-reading-fields.md](../../en/decisions/0019-reading-fields.md)._
 
-_Statut : proposée le 2026-11-12 ; étape 1 construite, mesurée sous son critère et retirée le même jour (voir [Étape 1, mesurée](#étape-1-mesurée--retirée)). Chaque étape est décidée par un A/B de deux compilateurs dans un même processus (`node scripts/ab-data.mjs`, constat M017), contre des critères enregistrés ici avant son code._
+_Statut : proposée le 2026-11-12 ; étape 1 construite, mesurée sous son critère et retirée le même jour (voir [Étape 1, mesurée](#étape-1-mesurée--retirée)) ; close sans l’étape 2 (voir le [Bilan](#bilan)). Chaque étape est décidée par un A/B de deux compilateurs dans un même processus (`node scripts/ab-data.mjs`, constat M017), contre des critères enregistrés ici avant son code._
 
 ## Contexte
 
@@ -63,3 +63,7 @@ Puis `node scripts/ab-data.mjs 491e1b0 3ab2b62` l’a mesurée contre les critè
 **Ce que cela dit.** Deux divisions de 64 bits par entier, dix par ligne, coûtent 1 à 3 % du tableau de bord, pas plus. Le processeur les exécute pendant qu’il attend les octets du champ suivant, donc les retirer fait gagner moins que leur décompte ne le laisse croire.
 
 **Pour l’étape 2.** Le découpage coûte environ 32 ms pour 1 000 000 de lignes, 11 % au plus. Cela ne vaut que si lire les champs sur place le retire entièrement, ce que les étapes de cette décision, de la 0017 et de la 0018 n’ont pas fait. Les décisions 0017 à 0019 montrent le même motif : un profil donne le plus qu’un changement pourrait faire gagner, et le changement gagne moins. Les parts du tableau de bord qui restent font chacune 10 % ou moins. L’étape 2 est pesée avec le propriétaire avant d’être construite.
+
+## Bilan
+
+Close le 2026-11-12 sur décision du propriétaire : l’étape 2 n’est pas construite pour l’instant. Les parts qui restent du tableau de bord font chacune 10 % ou moins, et les trois derniers changements essayés ont chacun fait gagner moins que leur profil. Peras écrit simplement le calcule 2,39 à 2,63 fois plus vite que TypeScript simple (décision 0014, exécution 4). Ce qui le sépare du TypeScript optimisé à la main est surtout ce que cette version sait des données, qu’un changement du langage pourrait seul laisser un programme dire. L’étape 2 reste écrite ici, avec son profil, pour le jour où la lecture redeviendra le coût.
