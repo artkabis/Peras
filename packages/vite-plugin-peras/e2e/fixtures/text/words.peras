@@ -506,3 +506,8 @@ export fn tallies(text: String, drop: String): String {
 export fn intTemplate(a: i32, b: i64): String {
   return `${a}|${b}|${a}${b}:${0}`;
 }
+
+// A string given as bytes, checked to be UTF-8 (decision 0020), given back.
+export fn echo(s: String): String {
+  return s.copy();
+}

@@ -23,5 +23,5 @@ export declare function nbody(n: number, steps: number): number;
 export declare function hash64(n: number): bigint;
 export declare function sorted(xs: number[] | Float64Array | PerasArray<"f64">): number;
 export declare function mandel(size: number): number;
-export declare function words(text: string): number;
+export declare function words(text: string | Uint8Array): number;
 export declare function add(a: number, b: number): number;

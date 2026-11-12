@@ -55,7 +55,7 @@ describe("generics in JavaScript", () => {
       'export type Maybe_i32 = { kind: "Just"; values: [number] } | { kind: "Nothing"; values: [] };',
     );
     expect(dts).toContain(
-      "export declare function named(n: number, name: string): Pair_i32_String;",
+      "export declare function named(n: number, name: string | Uint8Array): Pair_i32_String;",
     );
     expect(dts).not.toContain("larger(");
   });

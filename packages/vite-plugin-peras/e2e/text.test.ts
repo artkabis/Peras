@@ -35,6 +35,7 @@ interface Words {
   putBetween(): number;
   tallies(text: string, drop: string): string;
   intTemplate(a: number, b: bigint): string;
+  echo(s: string | Uint8Array): string;
   tagOr(s: string): string;
   tagOrGiven(s: string, fallback: string): string;
   intOr(s: string): number;
@@ -151,6 +152,94 @@ describe("strings in JavaScript", () => {
       for (const n of [0, 1, 5, 40]) expect(m.renumbered(n)).toBe(3);
       expect(m.changedKey()).toBe(57);
       expect(m.putBetween()).toBe(9);
+      m.__perasHeap.checkLeaks();
+      expect(m.__perasHeap.live()).toBe(0);
+    });
+
+    it(`takes bytes where it takes a String, exactly as a fatal TextDecoder does, on ${allocator}`, async () => {
+      const m = await load(allocator);
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      const encoder = new TextEncoder();
+      /** What the decoder makes of the bytes, or undefined when it refuses them. */
+      const decoded = (bytes: Uint8Array): string | undefined => {
+        try {
+          return decoder.decode(bytes);
+        } catch {
+          return undefined;
+        }
+      };
+      const check = (bytes: Uint8Array) => {
+        const want = decoded(bytes);
+        if (want === undefined) expect(() => m.echo(bytes)).toThrow(TypeError);
+        else expect(m.echo(bytes)).toBe(want);
+      };
+      // The Unicode Standard, chapter 3, table 3-7, at and past each bound.
+      const edges = [
+        [],
+        [0x7f],
+        [0x80],
+        [0xc0, 0x80],
+        [0xc1, 0xbf],
+        [0xc2, 0x80],
+        [0xdf, 0xbf],
+        [0xc2],
+        [0xe0, 0x9f, 0x80],
+        [0xe0, 0xa0, 0x80],
+        [0xed, 0x9f, 0xbf],
+        [0xed, 0xa0, 0x80],
+        [0xed, 0xbf, 0xbf],
+        [0xee, 0x80, 0x80],
+        [0xef, 0xbf, 0xbf],
+        [0xe1, 0x80],
+        [0xf0, 0x8f, 0xbf, 0xbf],
+        [0xf0, 0x90, 0x80, 0x80],
+        [0xf4, 0x8f, 0xbf, 0xbf],
+        [0xf4, 0x90, 0x80, 0x80],
+        [0xf5, 0x80, 0x80, 0x80],
+        [0xff],
+        [0xf0, 0x90, 0x80],
+      ];
+      for (const edge of edges) {
+        check(new Uint8Array(edge));
+        // The same after sixteen bytes of ASCII and more, as a block read at once.
+        check(
+          new Uint8Array([
+            ...encoder.encode("abcdefghijklmnopqrstuvwxyz0123456789"),
+            ...edge,
+            0x41,
+          ]),
+        );
+      }
+      let seed = 0x9e3779b97f4a7c15n;
+      const next = (below: number) => {
+        seed ^= (seed << 13n) & 0xffffffffffffffffn;
+        seed ^= seed >> 7n;
+        seed ^= (seed << 17n) & 0xffffffffffffffffn;
+        return Number(seed % BigInt(below));
+      };
+      for (let i = 0; i < 10000; i++) {
+        let bytes: Uint8Array;
+        if (i % 3 === 0) {
+          // Random bytes: most are refused.
+          bytes = Uint8Array.from({ length: next(40) }, () => next(256));
+        } else {
+          // Valid text, of every plane, then one byte changed one time in two.
+          const points = Array.from(
+            { length: next(30) },
+            () =>
+              [
+                next(0x80),
+                next(0x800),
+                next(0xd800),
+                0xe000 + next(0x2000),
+                0x10000 + next(0x100000),
+              ][next(5)] ?? 0,
+          );
+          bytes = encoder.encode(String.fromCodePoint(...points));
+          if (i % 2 === 0 && bytes.length > 0) bytes[next(bytes.length)] = next(256);
+        }
+        check(bytes);
+      }
       m.__perasHeap.checkLeaks();
       expect(m.__perasHeap.live()).toBe(0);
     });

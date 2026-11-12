@@ -1673,6 +1673,91 @@
     (global.set $negative (i32.eq (local.get $c) (i32.const 45)))
     (i32.or (global.get $negative) (i32.eq (local.get $c) (i32.const 43))))
 
+  ;; Whether the byte at `at` continues a UTF-8 sequence: 80 to BF.
+  (func $utf8_cont (param $at i32) (result i32)
+    (i32.eq (i32.and (i32.load8_u (local.get $at)) (i32.const 0xC0)) (i32.const 0x80)))
+
+  ;; The length of the UTF-8 sequence at `at`, before `end`, or 0 when it is
+  ;; not one: the Unicode Standard, chapter 3, table 3-7. No C0, C1 or F5 to
+  ;; FF; no overlong form; no surrogate, ED A0 to ED BF; nothing above
+  ;; U+10FFFF; nothing cut short (decision 0020).
+  (func $utf8_one (param $at i32) (param $end i32) (result i32)
+    (local $b i32) (local $c i32) (local $n i32) (local $low i32) (local $high i32)
+    (local.set $b (i32.load8_u (local.get $at)))
+    (if (i32.lt_u (local.get $b) (i32.const 0x80)) (then (return (i32.const 1))))
+    (if (i32.lt_u (local.get $b) (i32.const 0xC2)) (then (return (i32.const 0))))
+    (local.set $low (i32.const 0x80))
+    (local.set $high (i32.const 0xBF))
+    (if (i32.lt_u (local.get $b) (i32.const 0xE0))
+      (then (local.set $n (i32.const 2)))
+      (else
+        (if (i32.lt_u (local.get $b) (i32.const 0xF0))
+          (then
+            (local.set $n (i32.const 3))
+            (if (i32.eq (local.get $b) (i32.const 0xE0)) (then (local.set $low (i32.const 0xA0))))
+            (if (i32.eq (local.get $b) (i32.const 0xED)) (then (local.set $high (i32.const 0x9F)))))
+          (else
+            (if (i32.ge_u (local.get $b) (i32.const 0xF5)) (then (return (i32.const 0))))
+            (local.set $n (i32.const 4))
+            (if (i32.eq (local.get $b) (i32.const 0xF0)) (then (local.set $low (i32.const 0x90))))
+            (if (i32.eq (local.get $b) (i32.const 0xF4)) (then (local.set $high (i32.const 0x8F))))))))
+    (if (i32.gt_u (i32.add (local.get $at) (local.get $n)) (local.get $end)) (then (return (i32.const 0))))
+    ;; The second byte in its range, then each further byte a continuation.
+    (local.set $c (i32.load8_u offset=1 (local.get $at)))
+    (if (i32.or (i32.lt_u (local.get $c) (local.get $low)) (i32.gt_u (local.get $c) (local.get $high)))
+      (then (return (i32.const 0))))
+    (if (i32.ge_u (local.get $n) (i32.const 3))
+      (then
+        (if (i32.eqz (call $utf8_cont (i32.add (local.get $at) (i32.const 2))))
+          (then (return (i32.const 0))))))
+    (if (i32.eq (local.get $n) (i32.const 4))
+      (then
+        (if (i32.eqz (call $utf8_cont (i32.add (local.get $at) (i32.const 3))))
+          (then (return (i32.const 0))))))
+    (local.get $n))
+
+  ;; @simd
+  ;; Whether the `len` bytes at `at` are UTF-8 (decision 0020): sixteen bytes
+  ;; at a time while none has its high bit set, ASCII, then one sequence at a
+  ;; time, as `new TextDecoder("utf-8", { fatal: true })` accepts them.
+  (func $is_utf8 (param $at i32) (param $len i32) (result i32)
+    (local $i i32) (local $end i32) (local $n i32)
+    (local.set $i (local.get $at))
+    (local.set $end (i32.add (local.get $at) (local.get $len)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $end)))
+        (if (i32.le_u (i32.add (local.get $i) (i32.const 16)) (local.get $end))
+          (then
+            (if (i32.eqz (i8x16.bitmask (v128.load align=1 (local.get $i))))
+              (then
+                (local.set $i (i32.add (local.get $i) (i32.const 16)))
+                (br $next)))))
+        (local.set $n (call $utf8_one (local.get $i) (local.get $end)))
+        (if (i32.eqz (local.get $n)) (then (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (local.get $n)))
+        (br $next)))
+    (i32.const 1))
+  ;; @scalar
+  (func $is_utf8 (param $at i32) (param $len i32) (result i32)
+    (local $i i32) (local $end i32) (local $n i32)
+    (local.set $i (local.get $at))
+    (local.set $end (i32.add (local.get $at) (local.get $len)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $end)))
+        (local.set $n (call $utf8_one (local.get $i) (local.get $end)))
+        (if (i32.eqz (local.get $n)) (then (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (local.get $n)))
+        (br $next)))
+    (i32.const 1))
+  ;; @end
+
+  ;; Whether the string `h` is UTF-8: the check of a text the loader copied
+  ;; in as bytes (decision 0020).
+  (func (export "str_check_utf8") (param $h i32) (result i32)
+    (call $is_utf8 (i32.load offset=8 (local.get $h)) (i32.load (local.get $h))))
+
   ;; Whether `h` is a sign or none, then at least one decimal digit, and
   ;; nothing else, in the range of a signed integer of `bits` bits: up to
   ;; 2^(bits-1) - 1, or 2^(bits-1) after `-`. The value it read is kept in
