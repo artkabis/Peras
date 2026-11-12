@@ -1739,10 +1739,6 @@
   ;; rebuilt, and the entries packed, when the entries are full.
   (global $MAP i32 (i32.const 0x800))
   (global $STRKEY i32 (i32.const 0x1000))
-  ;; A map whose keys are integers of 32 bits (decision 0018): its index slots
-  ;; are 8 bytes, the entry's number plus one, then the key, so that a lookup
-  ;; that finds its key, or passes another, reads no entry.
-  (global $KEY32 i32 (i32.const 0x2000))
   ;; SipHash-1-3's key, set once by the loader with `map_seed` from
   ;; crypto.getRandomValues; fixed until then, for tests.
   (global $k0 (mut i64) (i64.const 0x0706050403020100))
@@ -1924,35 +1920,13 @@
             (i32.load (local.get $x))))))
       (else (i64.eq (local.get $a) (local.get $b)))))
 
-  ;; The size of an index slot of `m`, as a shift: 2 for 4 bytes, 3 for 8
-  ;; when its keys are integers of 32 bits, kept in the slot (decision 0018).
-  (func $map_slot_shift (param $m i32) (result i32)
-    (i32.add (i32.const 2)
-      (i32.ne (i32.and (i32.load offset=12 (local.get $m)) (global.get $KEY32)) (i32.const 0))))
-
-  ;; The address of the index slot that holds `key`, or 0. In an index that
-  ;; keeps its keys, the key is compared there, and no entry is read.
+  ;; The address of the index slot that holds `key`, or 0.
   (func $map_slot (param $m i32) (param $hash i32) (param $key i64) (result i32)
     (local $index i32) (local $mask i32) (local $s i32) (local $slot i32) (local $at i32)
-    (local $shift i32) (local $wanted i32)
     (local.set $index (i32.load offset=20 (local.get $m)))
     (if (i32.eqz (local.get $index)) (then (return (i32.const 0))))
     (local.set $mask (i32.load offset=24 (local.get $m)))
     (local.set $s (i32.and (local.get $hash) (local.get $mask)))
-    (local.set $shift (call $map_slot_shift (local.get $m)))
-    (if (i32.eq (local.get $shift) (i32.const 3))
-      (then
-        (local.set $wanted (i32.wrap_i64 (local.get $key)))
-        (loop $probe_kept
-          (local.set $at (i32.add (local.get $index) (i32.shl (local.get $s) (i32.const 3))))
-          (local.set $slot (i32.load (local.get $at)))
-          (if (i32.eqz (local.get $slot)) (then (return (i32.const 0))))
-          (if (i32.and
-                (i32.gt_s (local.get $slot) (i32.const 0))
-                (i32.eq (i32.load offset=4 (local.get $at)) (local.get $wanted)))
-            (then (return (local.get $at))))
-          (local.set $s (i32.and (i32.add (local.get $s) (i32.const 1)) (local.get $mask)))
-          (br $probe_kept))))
     (loop $probe
       (local.set $at (i32.add (local.get $index) (i32.shl (local.get $s) (i32.const 2))))
       (local.set $slot (i32.load (local.get $at)))
@@ -1991,23 +1965,18 @@
         (local.set $at (i32.add (local.get $at) (i32.const 8)))
         (br $next))))
 
-  ;; Puts entry `e` into the index, in the first free slot from its hash, its
-  ;; key beside it in an index that keeps its keys.
+  ;; Puts entry `e` into the index, in the first free slot from its hash.
   (func $map_place (param $m i32) (param $e i32)
-    (local $mask i32) (local $s i32) (local $at i32) (local $entry i32) (local $shift i32)
+    (local $mask i32) (local $s i32) (local $at i32)
     (local.set $mask (i32.load offset=24 (local.get $m)))
-    (local.set $shift (call $map_slot_shift (local.get $m)))
-    (local.set $entry (call $map_entry (local.get $m) (local.get $e)))
-    (local.set $s (i32.and (i32.load (local.get $entry)) (local.get $mask)))
+    (local.set $s (i32.and (i32.load (call $map_entry (local.get $m) (local.get $e))) (local.get $mask)))
     (loop $probe
-      (local.set $at (i32.add (i32.load offset=20 (local.get $m)) (i32.shl (local.get $s) (local.get $shift))))
+      (local.set $at (i32.add (i32.load offset=20 (local.get $m)) (i32.shl (local.get $s) (i32.const 2))))
       (if (i32.gt_s (i32.load (local.get $at)) (i32.const 0))
         (then
           (local.set $s (i32.and (i32.add (local.get $s) (i32.const 1)) (local.get $mask)))
           (br $probe))))
-    (i32.store (local.get $at) (i32.add (local.get $e) (i32.const 1)))
-    (if (i32.eq (local.get $shift) (i32.const 3))
-      (then (i32.store offset=4 (local.get $at) (i32.wrap_i64 (i64.load offset=8 (local.get $entry)))))))
+    (i32.store (local.get $at) (i32.add (local.get $e) (i32.const 1))))
 
   ;; Room for twice the live entries, at least 4: the live ones packed, in
   ;; order, and a new index, at most two thirds full.
@@ -2028,10 +1997,8 @@
         (local.set $slots (i32.shl (local.get $slots) (i32.const 1)))
         (br $double)))
     (local.set $entries (call $alloc (i32.mul (local.get $cap) (local.get $stride)) (i32.const 0)))
-    (local.set $index (call $alloc
-      (i32.shl (local.get $slots) (call $map_slot_shift (local.get $m))) (i32.const 0)))
-    (memory.fill (local.get $index) (i32.const 0)
-      (i32.shl (local.get $slots) (call $map_slot_shift (local.get $m))))
+    (local.set $index (call $alloc (i32.shl (local.get $slots) (i32.const 2)) (i32.const 0)))
+    (memory.fill (local.get $index) (i32.const 0) (i32.shl (local.get $slots) (i32.const 2)))
     (block $done
       (loop $next
         (br_if $done (i32.ge_u (local.get $i) (local.get $used)))
@@ -2059,18 +2026,14 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $place))))
 
-  ;; A new, empty map; `strings` 1 when its keys are strings it owns, 2 when
-  ;; they are integers of 32 bits, kept in its index (decision 0018), 0 for
-  ;; other integers; `shape` its value slots and those that own a buffer.
+  ;; A new, empty map; `strings` when its keys are strings it owns, `shape`
+  ;; its value slots and those that own a buffer.
   (func (export "map_new") (param $strings i32) (param $shape i32) (result i32)
     (local $m i32)
     (local.set $m (call $alloc (i32.const 32) (i32.const 0)))
     (memory.fill (local.get $m) (i32.const 0) (i32.const 32))
     (i32.store offset=12 (local.get $m)
-      (i32.or (global.get $MAP)
-        (i32.or
-          (select (global.get $STRKEY) (i32.const 0) (i32.eq (local.get $strings) (i32.const 1)))
-          (select (global.get $KEY32) (i32.const 0) (i32.eq (local.get $strings) (i32.const 2))))))
+      (i32.or (global.get $MAP) (select (global.get $STRKEY) (i32.const 0) (local.get $strings))))
     (i32.store offset=28 (local.get $m) (local.get $shape))
     (local.get $m))
 
@@ -2271,8 +2234,7 @@
     (local.set $bytes (i32.mul (i32.load offset=16 (local.get $m)) (local.get $stride)))
     (i32.store offset=8 (local.get $copy) (call $alloc (local.get $bytes) (local.get $site)))
     (memory.copy (i32.load offset=8 (local.get $copy)) (i32.load offset=8 (local.get $m)) (local.get $bytes))
-    (local.set $bytes (i32.shl (i32.add (i32.load offset=24 (local.get $m)) (i32.const 1))
-      (call $map_slot_shift (local.get $m))))
+    (local.set $bytes (i32.shl (i32.add (i32.load offset=24 (local.get $m)) (i32.const 1)) (i32.const 2)))
     (i32.store offset=20 (local.get $copy) (call $alloc (local.get $bytes) (local.get $site)))
     (memory.copy (i32.load offset=20 (local.get $copy)) (i32.load offset=20 (local.get $m)) (local.get $bytes))
     (block $done
