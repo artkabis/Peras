@@ -111,7 +111,43 @@ export fn centered(xs: Array<number>): Array<number> {
 }
 ```
 
-Chaque appel est vérifié d’après la signature de la fonction, lue dans le module owned, et converti par son chargeur comme pour tout appelant JavaScript ([les types à la frontière](javascript.md#les-types-à-la-frontière)). Les nombres, les booléens, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent. Une structure ou une énumération est le type propre de l’autre module et ne passe pas encore ([E0244](../errors/E0244.md)) : donnez à la fonction des nombres ou des tableaux, et construisez la structure de chaque côté.
+Chaque appel est vérifié d’après la signature de la fonction, lue dans le module owned, et converti par son chargeur comme pour tout appelant JavaScript ([les types à la frontière](javascript.md#les-types-à-la-frontière)). Les nombres, les booléens, les chaînes, les structures et énumérations du module owned, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent.
+
+Un module managed importe les structures et les énumérations qu’un module owned exporte comme il importe ses fonctions, par leur nom, puis il les construit, les lit, les filtre par `match` et les fait passer ([décision 0021](../decisions/0021-phases-4-and-5.md)) :
+
+```peras build
+// shapes.peras
+export struct Size {
+  width: f64;
+  height: f64;
+}
+
+export enum Shape {
+  Circle(f64),
+  Box(Size),
+}
+
+export fn area(s: Size): f64 {
+  return s.width * s.height;
+}
+```
+
+```apeiron build
+import { Size, Shape, area } from "./shapes.peras";
+
+export fn describe(s: Shape): String {
+  return match (s) {
+    Circle(r) => `circle ${r}`,
+    Box(z) => `box of ${area(z)}`,
+  };
+}
+
+export fn square(side: number): Size {
+  return Size(side, side);
+}
+```
+
+Les deux modes donnent une structure à JavaScript comme un simple objet, et une énumération comme `{ kind, values }` : rien n’est converti hormis ce que le chargeur du module owned copie à l’entrée et à la sortie. Une structure générique ne passe pas, ni une fonction ni un type du navigateur ; et un module managed ne peut pas déclarer un type du même nom qu’un type qu’il importe ([E0244](../errors/E0244.md)).
 
 Un module owned ne peut pas importer un module managed : le calcul n’appelle pas l’interface.
 
@@ -229,5 +265,4 @@ Le chemin est un fichier, `"./chart.js"`, ou un paquet npm, `"date-fns"`, import
 - **Les fonctions `extern` génériques**, les exports par défaut, et la lecture des fichiers `.d.ts` pour proposer des blocs `extern`.
 - **Les tableaux de ressources**, et une requête comme ressource annulée avec son propriétaire.
 - **Les fonctions fléchées `async`**, une fonction fléchée qui s’appelle elle-même, et les fonctions données à JavaScript ou reçues de lui par un export.
-- **Les structures et les énumérations à travers un import.**
 - **Les options d’options**, refusées par [E0900](../errors/E0900.md) : en JavaScript, `Some(None)` et `None` valent tous deux `undefined`.

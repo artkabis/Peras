@@ -61,6 +61,9 @@ pub fn check(source: &str) -> Checked {
 /// the owned modules it imports, read from beside it.
 #[must_use]
 pub fn check_file(path: &Path, source: &str) -> Checked {
+    if Mode::from_path(path) == Some(Mode::Owned) {
+        return check_owned(path, source);
+    }
     if Mode::from_path(path) != Some(Mode::Managed) {
         return check(source);
     }
@@ -70,6 +73,40 @@ pub fn check_file(path: &Path, source: &str) -> Checked {
     }
     let context = managed_context(path, &parsed.ast);
     Checked::capped(perasc_check::analyze_with(&parsed.ast, source, &context).diagnostics)
+}
+
+/// An owned module, checked against the files it imports (decision 0022).
+/// When one of them does not compile, its import is reported here: that
+/// file's own errors are for `perasc build` or a check of it.
+fn check_owned(path: &Path, source: &str) -> Checked {
+    match owned_graph(path, source) {
+        Ok(_) => Checked::capped(Vec::new()),
+        Err(ToolError::Diagnostics(checked)) => checked,
+        Err(_) => {
+            let parsed = perasc_syntax::parse(source);
+            if !parsed.diagnostics.is_empty() {
+                return Checked::capped(parsed.diagnostics);
+            }
+            let mut context = imports_context(path, &parsed.ast);
+            context.managed = false;
+            context.path = canonical(path).display().to_string();
+            Checked::capped(perasc_check::analyze_with(&parsed.ast, source, &context).diagnostics)
+        }
+    }
+}
+
+/// The exported functions, structures and enumerations of the owned module
+/// at `file`, checked with the files it imports; `None` when it cannot be.
+fn owned_exports(
+    file: &Path,
+) -> Option<(Vec<perasc_check::ImportedFn>, perasc_check::ExportedTypes)> {
+    let text = read_source(file).ok()?;
+    let graph = owned_graph(file, &text).ok()?;
+    let root = graph.units.last()?;
+    Some((
+        root.analysis.exports.clone(),
+        root.analysis.exported_types.clone(),
+    ))
 }
 
 /// The path an `import` of the module at `path` names, when it is an owned
@@ -94,6 +131,12 @@ pub fn import_path(path: &Path, from: &str) -> Option<std::path::PathBuf> {
 /// What a managed module is checked against: the exported functions of each
 /// owned module it imports, read and checked; `None` for one that cannot be.
 fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
+    imports_context(path, ast)
+}
+
+/// The modules the imports of the module at `path` name, each checked with
+/// the files it imports in turn.
+fn imports_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
     let imports = ast
         .items
         .iter()
@@ -102,16 +145,217 @@ fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::
             _ => None,
         })
         .map(|from| {
-            let functions = import_path(path, &from)
-                .and_then(|file| read_source(&file).ok())
-                .and_then(|text| perasc_check::exports_of(&text));
-            perasc_check::ImportedModule { from, functions }
+            let exports = import_path(path, &from).and_then(|file| owned_exports(&file));
+            let (functions, types) = match exports {
+                Some((functions, types)) => (Some(functions), types),
+                None => (None, perasc_check::ExportedTypes::default()),
+            };
+            perasc_check::ImportedModule {
+                from,
+                functions,
+                types,
+            }
         })
         .collect();
     perasc_check::Context {
         managed: true,
         imports,
+        path: String::new(),
     }
+}
+
+/// One owned file of a build: read, parsed, checked against the files it
+/// imports (decision 0022).
+pub struct GraphUnit {
+    /// Its path, as reached from the root.
+    pub path: std::path::PathBuf,
+    /// Its text.
+    pub source: String,
+    /// Its syntax tree.
+    pub ast: perasc_syntax::ast::Ast,
+    /// Its checks.
+    pub analysis: perasc_check::Analysis,
+    /// The unit each of its imports names, by the path the import writes.
+    pub imports: std::collections::HashMap<String, usize>,
+}
+
+/// The owned files a build reaches from its root, each checked: the files
+/// it imports before it, the root last (decision 0022).
+pub struct Graph {
+    /// The files, in that order.
+    pub units: Vec<GraphUnit>,
+}
+
+impl Graph {
+    /// The paths of its files, the root last.
+    #[must_use]
+    pub fn paths(&self) -> Vec<std::path::PathBuf> {
+        self.units.iter().map(|u| u.path.clone()).collect()
+    }
+}
+
+/// Reads, parses and checks an owned module and every owned module it
+/// imports, through the files it reaches, each checked against what the
+/// files it imports export (decision 0022).
+///
+/// # Errors
+///
+/// The errors of the root as [`ToolError::Diagnostics`]; those of another
+/// file, a cycle of imports among them, as [`ToolError::InFile`].
+pub fn owned_graph(path: &Path, source: &str) -> Result<Graph, ToolError> {
+    let mut walk = Walk {
+        units: Vec::new(),
+        done: std::collections::HashMap::new(),
+        stack: Vec::new(),
+        base: canonical(path)
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default(),
+    };
+    walk.visit(path, source.to_owned())?;
+    Ok(Graph { units: walk.units })
+}
+
+/// The path, resolved, so that a file reached by two paths is one.
+fn canonical(path: &Path) -> std::path::PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The walk of [`owned_graph`]: the files checked, and those being.
+struct Walk {
+    units: Vec<GraphUnit>,
+    done: std::collections::HashMap<std::path::PathBuf, usize>,
+    stack: Vec<std::path::PathBuf>,
+    /// The root's folder, from which the files of a cycle are named.
+    base: std::path::PathBuf,
+}
+
+impl Walk {
+    /// A file's name as a cycle shows it: from the root's folder.
+    fn shown(&self, path: &Path) -> String {
+        path.strip_prefix(&self.base)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    }
+
+    /// Checks the file at `path`, after the files it imports; its index.
+    fn visit(&mut self, path: &Path, source: String) -> Result<usize, ToolError> {
+        let root = self.stack.is_empty();
+        let failed = |source: String, diagnostics: Vec<Diagnostic>| {
+            let checked = Checked::capped(diagnostics);
+            if root {
+                ToolError::Diagnostics(checked)
+            } else {
+                ToolError::InFile {
+                    path: path.to_path_buf(),
+                    source,
+                    checked,
+                }
+            }
+        };
+        let parsed = perasc_syntax::parse(&source);
+        if !parsed.diagnostics.is_empty() {
+            return Err(failed(source, parsed.diagnostics));
+        }
+        let here = canonical(path);
+        self.stack.push(here.clone());
+        let mut imports = std::collections::HashMap::new();
+        let mut modules = Vec::new();
+        for item in &parsed.ast.items {
+            let perasc_syntax::ast::ItemKind::Import(decl) = &item.kind else {
+                continue;
+            };
+            let file = import_path(path, &decl.from).filter(|f| f.is_file());
+            let mut module = perasc_check::ImportedModule {
+                from: decl.from.clone(),
+                functions: None,
+                types: perasc_check::ExportedTypes::default(),
+            };
+            if let Some(file) = file {
+                let target = canonical(&file);
+                if let Some(at) = self.stack.iter().position(|p| *p == target) {
+                    let mut names: Vec<String> =
+                        self.stack[at..].iter().map(|p| self.shown(p)).collect();
+                    names.push(self.shown(&target));
+                    let cycle = perasc_check::import_cycle(decl.from_span, &names.join(" → "));
+                    self.stack.pop();
+                    return Err(failed(source, vec![cycle]));
+                }
+                let index = match self.done.get(&target) {
+                    Some(&index) => Some(index),
+                    None => match read_source(&file) {
+                        Ok(text) => Some(self.visit(&file, text)?),
+                        Err(_) => None,
+                    },
+                };
+                if let Some(unit) = index.and_then(|i| self.units.get(i).map(|u| (i, u))) {
+                    imports.insert(decl.from.clone(), unit.0);
+                    module.functions = Some(unit.1.analysis.exports.clone());
+                    module.types = unit.1.analysis.exported_types.clone();
+                }
+            }
+            modules.push(module);
+        }
+        self.stack.pop();
+        let context = perasc_check::Context {
+            managed: false,
+            imports: modules,
+            path: here.display().to_string(),
+        };
+        let analysis = perasc_check::analyze_with(&parsed.ast, &source, &context);
+        if !analysis.diagnostics.is_empty() {
+            return Err(failed(source, analysis.diagnostics));
+        }
+        let index = self.units.len();
+        self.done.insert(here, index);
+        self.units.push(GraphUnit {
+            path: path.to_path_buf(),
+            source,
+            ast: parsed.ast,
+            analysis,
+            imports,
+        });
+        Ok(index)
+    }
+}
+
+/// An owned module and the files it imports, lowered into one module of the
+/// IR and verified (decision 0022); the paths of its files, the root last.
+///
+/// # Errors
+///
+/// As [`owned_graph`], and the code generation limits (`E0900`) of each file.
+pub fn compile_graph_ir(
+    path: &Path,
+    source: &str,
+    overflow_checks: bool,
+) -> Result<(perasc_ir::Module, Vec<std::path::PathBuf>), ToolError> {
+    let graph = owned_graph(path, source)?;
+    let units: Vec<perasc_ir::Unit<'_>> = graph
+        .units
+        .iter()
+        .map(|u| perasc_ir::Unit {
+            ast: &u.ast,
+            analysis: &u.analysis,
+            imports: u.imports.clone(),
+        })
+        .collect();
+    let root = graph.units.len().saturating_sub(1);
+    let module = perasc_ir::lower_units(&units, overflow_checks).map_err(|failed| {
+        let (index, diagnostics) = failed.into_iter().next().unwrap_or_default();
+        let checked = Checked::capped(diagnostics);
+        match graph.units.get(index) {
+            Some(unit) if index != root => ToolError::InFile {
+                path: unit.path.clone(),
+                source: unit.source.clone(),
+                checked,
+            },
+            _ => ToolError::Diagnostics(checked),
+        }
+    })?;
+    perasc_ir::verify(&module).map_err(ToolError::Internal)?;
+    Ok((module, graph.paths()))
 }
 
 /// What a managed module compiles to.
@@ -244,6 +488,30 @@ pub fn build_direct(
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
     Ok(emit_direct_for(&module, wasm_file, options, localizer))
+}
+
+/// [`build_direct`] for a file, with the files it imports compiled into the
+/// same module (decision 0022); the paths of those files, the root last.
+///
+/// # Errors
+///
+/// See [`compile_graph_ir`].
+pub fn build_direct_file(
+    path: &Path,
+    source: &str,
+    wasm_file: &str,
+    options: DirectOptions,
+    localizer: &Localizer,
+) -> Result<(DirectOutput, Vec<std::path::PathBuf>), ToolError> {
+    let (mut module, inputs) = compile_graph_ir(path, source, options.overflow_checks)?;
+    if options.optimize {
+        perasc_ir::optimize(&mut module);
+        perasc_ir::verify(&module).map_err(ToolError::Internal)?;
+    }
+    Ok((
+        emit_direct_for(&module, wasm_file, options, localizer),
+        inputs,
+    ))
 }
 
 pub use perasc_runtime::Allocator;
@@ -448,6 +716,16 @@ pub fn fault_messages(localizer: &Localizer) -> Vec<String> {
 pub enum ToolError {
     /// The source has errors.
     Diagnostics(Checked),
+    /// A file the source imports has errors, or closes a cycle of imports:
+    /// shown in that file (decision 0022).
+    InFile {
+        /// The file, as reached from the root.
+        path: std::path::PathBuf,
+        /// Its text.
+        source: String,
+        /// Its errors.
+        checked: Checked,
+    },
     /// The IR verifier rejected the IR: a bug in perasc, with what it found.
     Internal(Vec<String>),
     /// A file could not be written.

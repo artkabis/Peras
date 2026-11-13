@@ -96,6 +96,7 @@ const fn why(code: ErrorCode) -> &'static str {
         247 => "check-extern-why",
         248 => "check-floating-promise-why",
         249 => "check-sort-key-why",
+        250 => "check-import-cycle-why",
         _ => "check-operator-why",
     }
 }
@@ -1156,6 +1157,19 @@ pub fn import(span: Span, reason: &str, name: &str) -> Diagnostic {
         span,
         Message::new("check-import-label").text("reason", reason),
         Message::new("check-import-fix").text("reason", reason),
+    )
+}
+
+/// `E0250`: owned modules that import each other in a cycle, `path` the
+/// files of the cycle, `a.peras → b.peras → a.peras` (decision 0022).
+#[must_use]
+pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
+    simple(
+        codes::IMPORT_CYCLE,
+        Message::new("check-import-cycle").text("path", path),
+        span,
+        Message::new("check-import-cycle-label"),
+        Message::new("check-import-cycle-fix"),
     )
 }
 

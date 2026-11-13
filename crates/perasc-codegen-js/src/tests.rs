@@ -14,6 +14,7 @@ fn js(source: &str) -> String {
     let context = perasc_check::Context {
         managed: true,
         imports: Vec::new(),
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     assert!(
@@ -96,6 +97,36 @@ fn gives(source: &str, expected: &str) {
     if let Some(found) = run(source) {
         assert_eq!(found, expected, "{}", js(source));
     }
+}
+
+/// An arrow function whose body makes a structure gives the object, not a
+/// block (decision 0021, found writing F307's test).
+#[test]
+fn an_arrow_function_making_a_structure_gives_it() {
+    gives(
+        "struct Tally {\n  text: String;\n  count: i32;\n}\n\
+         export fn main(): Tally {\n  \
+           return [\"ab\", \"c\"].reduce((acc, w) => Tally(acc.text + w, acc.count + 1), Tally(\"\", 0));\n\
+         }\n",
+        r#"{"text":"abc","count":2}"#,
+    );
+}
+
+/// A structure's copy is its own: changing it leaves the original as it was
+/// (decision 0021, finding F102).
+#[test]
+fn a_copied_structure_is_its_own() {
+    gives(
+        "struct Bag {\n  name: String;\n  items: Array<i32>;\n  seen: Map<String, i32>;\n}\n\
+         export fn main(): Array<i32> {\n  \
+           const a = Bag(\"a\", [1], Map.new());\n  \
+           let b = a.copy();\n  \
+           b.items.push(2);\n  \
+           b.seen.set(\"x\", 1);\n  \
+           return [a.items.length, b.items.length, a.seen.size, b.seen.size];\n\
+         }\n",
+        "[1,2,0,1]",
+    );
 }
 
 #[test]
@@ -395,6 +426,7 @@ fn every_valid_source_gives_valid_javascript() {
         let context = perasc_check::Context {
             managed: true,
             imports: Vec::new(),
+            path: String::new(),
         };
         let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
         if !analysis.diagnostics.is_empty() {
@@ -437,6 +469,7 @@ fn options_of_options_are_refused() {
     let context = perasc_check::Context {
         managed: true,
         imports: Vec::new(),
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     assert!(

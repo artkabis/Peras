@@ -9,7 +9,9 @@
 
 use std::fmt::Write as _;
 
-use perasc_ir::{BinOp, Const, Expr, ExprKind, Function, MathOp, Module, Stmt, Ty, UnOp};
+use perasc_ir::{
+    BinOp, BufOp, Const, Expr, ExprKind, Function, MathOp, Module, RuntimeFn, Stmt, Ty, UnOp,
+};
 
 /// The `wasm-bindgen` version the generated crate depends on; the
 /// `wasm-bindgen` command-line tool must have exactly the same version.
@@ -50,6 +52,16 @@ pub fn source(module: &Module) -> String {
          #![forbid(unsafe_code)]\n\n\
          use wasm_bindgen::prelude::*;\n",
     );
+    // The module variables, each set to its initial value (decision 0023);
+    // the generated code has no `unsafe`, so each is a cell of its thread.
+    for (i, global) in module.globals.iter().enumerate() {
+        let ty = rust_type(global.ty);
+        let _ = writeln!(
+            out,
+            "thread_local! {{ static G{i}: std::cell::Cell<{ty}> = const {{ std::cell::Cell::new({}) }}; }}",
+            constant(global.init, global.ty)
+        );
+    }
     for function in &module.functions {
         out.push('\n');
         Emitter::function(&mut out, module, function);
@@ -142,6 +154,14 @@ impl<'a> Emitter<'a> {
     fn stmt(&mut self, out: &mut String, stmt: &Stmt, level: usize) {
         let pad = "    ".repeat(level);
         match stmt {
+            Stmt::SetGlobal(global, value) => {
+                let value = self.expr(value);
+                let _ = writeln!(
+                    out,
+                    "{pad}{{ let v = {value}; G{}.with(|g| g.set(v)); }}",
+                    global.0
+                );
+            }
             Stmt::Set(local, value) => {
                 let target = self.var(usize::try_from(local.0).unwrap_or(0));
                 let value = self.expr(value);
@@ -257,7 +277,14 @@ impl<'a> Emitter<'a> {
     fn expr(&self, e: &Expr) -> String {
         match &e.kind {
             ExprKind::Const(c) => constant(*c, e.ty),
+            ExprKind::Global(global) => format!("G{}.with(std::cell::Cell::get)", global.0),
             ExprKind::Local(local) => self.var(usize::try_from(local.0).unwrap_or(0)),
+            // `%` on floats, the runtime's in WebAssembly: Rust's `%` is the
+            // same exact remainder.
+            ExprKind::Buf(BufOp::Runtime(RuntimeFn::FloatRem), args) => match args.as_slice() {
+                [x, y] => format!("({} % {})", self.expr(x), self.expr(y)),
+                _ => "unreachable!()".to_owned(),
+            },
             ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) | ExprKind::Buf(..) => {
                 "unreachable!()".to_owned()
             }

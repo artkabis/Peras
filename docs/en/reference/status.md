@@ -28,20 +28,21 @@ Peras is young. This page says, feature by feature, how far each one goes:
 
 ## Statements and expressions
 
-| Feature                                                      | Status                                                                                                          |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `let`, `const`, assignments, `+=` and the others, `++`, `--` | <span class="status compiled">compiled</span>                                                                   |
-| arithmetic, comparisons, bitwise and logical operators       | <span class="status compiled">compiled</span>, except `%` on floats <span class="status checked">checked</span> |
-| `if`, `while`, `for`, `break`, `continue`                    | <span class="status compiled">compiled</span>                                                                   |
-| `for…of`                                                     | <span class="status compiled">compiled</span>                                                                   |
-| `parallel for`, on threads with `--threads on`               | <span class="status compiled">compiled</span>                                                                   |
-| functions, recursion, `export`                               | <span class="status compiled">compiled</span>                                                                   |
-| `sink` parameters                                            | <span class="status compiled">compiled</span>                                                                   |
-| `inout` parameters, `&` at the call                          | <span class="status compiled">compiled</span>                                                                   |
-| ownership: moves, borrows, aliasing refused, releases        | <span class="status compiled">compiled</span>                                                                   |
-| module-level `const`                                         | <span class="status compiled">compiled</span>                                                                   |
-| module-level `let`                                           | <span class="status checked">checked</span>                                                                     |
-| `import` of owned functions into a managed module            | <span class="status compiled">compiled</span>, numbers, strings and collections of them                         |
+| Feature                                                                                                            | Status                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `let`, `const`, assignments, `+=` and the others, `++`, `--`                                                       | <span class="status compiled">compiled</span>                                                                         |
+| arithmetic, comparisons, bitwise and logical operators, `%` on floats too, `==` on arrays of strings and of arrays | <span class="status compiled">compiled</span>                                                                         |
+| `if`, `while`, `for`, `break`, `continue`                                                                          | <span class="status compiled">compiled</span>                                                                         |
+| `for…of`                                                                                                           | <span class="status compiled">compiled</span>                                                                         |
+| `parallel for`, on threads with `--threads on`                                                                     | <span class="status compiled">compiled</span>                                                                         |
+| functions, recursion, `export`                                                                                     | <span class="status compiled">compiled</span>                                                                         |
+| `sink` parameters                                                                                                  | <span class="status compiled">compiled</span>                                                                         |
+| `inout` parameters, `&` at the call                                                                                | <span class="status compiled">compiled</span>                                                                         |
+| ownership: moves, borrows, aliasing refused, releases                                                              | <span class="status compiled">compiled</span>                                                                         |
+| module-level `const`                                                                                               | <span class="status compiled">compiled</span>                                                                         |
+| module-level `let` ([decision 0023](../decisions/0023-module-variables.md))                                        | <span class="status compiled">compiled</span>, numbers and booleans, and structures, enumerations and options of them |
+| `import` between owned modules, compiled into one module ([modules](../guide/modules.md))                          | <span class="status compiled">compiled</span>, functions, structures and enumerations that are not generic            |
+| `import` of owned functions, structures and enumerations into a managed module                                     | <span class="status compiled">compiled</span>, numbers, strings, structures, enumerations and collections of them     |
 
 ## Methods
 

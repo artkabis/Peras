@@ -62,3 +62,18 @@ fn blocks_of_the_optimized_ir_get_labels() {
         assert!(rust.contains(label), "{label}\n{rust}");
     }
 }
+
+/// Module variables: a cell of its thread each, set to its initial value,
+/// with no `unsafe` (decision 0023).
+#[test]
+fn module_variables_are_cells_with_no_unsafe() {
+    let rust = source(&module(
+        "let count = 20;\nlet total = 0.5;\nexport fn bump(): i32 {\n  count++;\n  total += 1.0;\n  return count + total.toI32();\n}\n",
+    ));
+    assert!(
+        !rust.contains("unsafe {") && !rust.contains("static mut"),
+        "{rust}"
+    );
+    assert!(rust.contains("thread_local!"), "{rust}");
+    insta::assert_snapshot!(rust);
+}

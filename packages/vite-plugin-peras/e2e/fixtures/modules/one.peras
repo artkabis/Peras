@@ -1,0 +1,59 @@
+// Decision 0022: the same program in one file, its helpers named apart.
+struct Item {
+  name: String;
+  tags: Array<String>;
+  weight: i32;
+}
+
+enum Kind {
+  Light,
+  Heavy(i32),
+}
+
+fn helper1(x: i32): i32 {
+  return x * 2;
+}
+
+fn make(n: i32): Item {
+  let tags: Array<String> = [];
+  for (let i = 0; i < n % 4; i++) {
+    tags.push(`t${i}`);
+  }
+  return Item(`item${n}`, tags, helper1(n));
+}
+
+fn kind(item: Item): Kind {
+  if (item.weight > 10) {
+    return Kind.Heavy(item.weight);
+  }
+  return Kind.Light;
+}
+
+fn helper2(x: i32): i32 {
+  return x + 1;
+}
+
+fn renamed(item: sink Item): Item {
+  let out = item;
+  out.name += "!";
+  out.tags.push("r");
+  return out;
+}
+
+fn score(item: sink Item): i32 {
+  const k = match (kind(item)) {
+    Kind.Light => 0,
+    Kind.Heavy(w) => w,
+  };
+  return helper2(k + item.name.length + item.tags.length);
+}
+
+fn helper3(x: i32): i32 {
+  return x - 3;
+}
+
+export fn run(n: i32): i32 {
+  const a = make(n);
+  const b = renamed(a);
+  return helper3(score(b));
+}

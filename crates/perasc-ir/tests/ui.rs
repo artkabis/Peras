@@ -25,6 +25,7 @@ fn compile(source: &str) -> Result<perasc_ir::Module, Vec<Diagnostic>> {
 /// The owned module the managed tests import, as `./stats.peras`.
 const STATS: &str = "export fn mean(xs: Array<f64>): f64 { return xs[0]; }\n\
                      export struct Point { x: f64 }\n\
+                     export struct Pair<T> { first: T }\n\
                      export fn origin(): Point { return Point(0.0); }\n";
 
 /// A managed module's checks, importing `./stats.peras`: it is not lowered,
@@ -39,7 +40,11 @@ fn check_managed(source: &str) -> Result<(), Vec<Diagnostic>> {
         imports: vec![perasc_check::ImportedModule {
             from: "./stats.peras".to_owned(),
             functions: perasc_check::exports_of(STATS),
+            types: perasc_check::module_exports(STATS)
+                .map(|(_, types)| types)
+                .unwrap_or_default(),
         }],
+        path: String::new(),
     };
     let analysis = perasc_check::analyze_with(&parsed.ast, source, &context);
     if analysis.diagnostics.is_empty() {
@@ -89,7 +94,11 @@ fn every_code_has_a_ui_test() {
     }
     for entry in codes::REGISTRY {
         // E0008 needs a 4 GiB file: covered by a unit test with a lowered limit instead.
-        if entry.code == codes::SOURCE_TOO_LARGE || entry.retired {
+        // E0250 needs several files: covered by `perasc-driver/tests/modules.rs`.
+        if entry.code == codes::SOURCE_TOO_LARGE
+            || entry.code == codes::IMPORT_CYCLE
+            || entry.retired
+        {
             continue;
         }
         assert!(
@@ -245,7 +254,9 @@ fn every_documented_example_and_fix_is_true() {
                 found.contains(&entry.code.to_string())
             };
             // E0111 needs more nesting than a page can show: its example is a sketch.
-            if entry.code.to_string() == "E0111" {
+            // E0250 needs several files, which a page shows one by one: its
+            // example is checked by `perasc-driver/tests/modules.rs`.
+            if entry.code.to_string() == "E0111" || entry.code == codes::IMPORT_CYCLE {
                 continue;
             }
             if let Some(code) = block_after(page, example).as_ref() {
@@ -262,9 +273,10 @@ fn every_documented_example_and_fix_is_true() {
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-    // E0008 has no example (it needs a 4 GiB file), and E0111 is a sketch.
+    // E0008 has no example (it needs a 4 GiB file), E0111 is a sketch, and
+    // E0250 needs several files.
     assert!(
-        checked >= 2 * (codes::REGISTRY.len() - 2),
+        checked >= 2 * (codes::REGISTRY.len() - 3),
         "only {checked} examples checked"
     );
 }

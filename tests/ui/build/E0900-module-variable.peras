@@ -1,0 +1,7 @@
+// A module variable holding a string is checked, not compiled yet: the memory
+// it keeps between calls is its own step (decision 0023).
+let name = "peras";
+
+export fn f(): i32 {
+  return name.length;
+}

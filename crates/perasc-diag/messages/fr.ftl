@@ -587,9 +587,9 @@ check-alias-cycle-why = Un alias est un autre nom pour un type : le remplacer pa
 check-alias-cycle-fix = fais-en une structure ou une énumération
 
 # E0233
-check-not-constant = la valeur d’une constante de module doit être connue à la compilation
+check-not-constant = la valeur d’une constante de module, ou la valeur initiale d’une variable de module dans un module owned, doit être connue à la compilation
 check-not-constant-label = calculé quand le programme s’exécute
-check-not-constant-why = Une `const` de module est écrite dans le code partout où elle sert : sa valeur est faite de littéraux, d’autres constantes, d’opérateurs, de tableaux, de tuples, de structures, d’options et de variantes. Un appel ne s’exécute que quand le programme tourne.
+check-not-constant-why = Une `const` de module est écrite dans le code partout où elle sert, et un `let` de module d’un module owned est posé avant tout appel (décision 0023) : leurs valeurs sont faites de littéraux, d’autres constantes, d’opérateurs, de tableaux, de tuples, de structures, d’options et de variantes. Un appel ne s’exécute que quand le programme tourne.
 check-not-constant-fix = calcule-la dans une fonction, ou écris sa valeur
 
 # E0234
@@ -657,6 +657,7 @@ check-parallel = cette boucle ne peut pas tourner en parallèle : { $reason ->
     [calls] elle appelle une fonction
     [heap] elle crée, agrandit, déplace ou libère une chaîne, un tableau ou une table
     [exits] elle sort de la boucle par `break` ou `return`
+    [global] elle lit ou écrit une variable de module, dont chaque thread a sa propre copie
    *[other] ses tours pourraient se voir
 }
 check-parallel-label = des tours qui peuvent tourner en même temps
@@ -670,7 +671,6 @@ check-managed-only = { $what ->
     [await-sync] `await` hors d’une fonction `async`
     [number] le type `number`
     [promise] le type `Promise`
-    [import] un `import`
     [browser] l’API du navigateur
     [extern] un bloc `extern`
     [arrow-block] une fonction fléchée à instructions
@@ -711,23 +711,38 @@ check-owned-only-fix = { $what ->
 # E0244
 check-import = { $reason ->
     [module] impossible d’importer depuis `{ $name }`
-    [name] `{ $name }` n’est pas une fonction exportée de ce module
+    [name] `{ $name }` n’est pas une fonction, une structure ou une énumération exportée de ce module
     [signature] `{ $name }` prend ou rend une valeur qui ne passe pas encore d’un module à l’autre
+    [clash] `{ $name }` est déjà un nom de ce module, déclaré ici ou importé
+    [generic] `{ $name }` est générique, et les génériques ne s’importent pas encore
+    [managed] un module owned ne peut pas importer un module managed, `{ $name }`
    *[other] impossible d’importer `{ $name }`
 }
 check-import-label = { $reason ->
     [module] pas un module owned qui se compile
-    [name] non exportée ici
+    [name] non exporté ici
     [signature] importée ici
+    [clash] importé ici
+    [generic] générique
+    [managed] un fichier `.apeiron`
    *[other] ici
 }
-check-import-why = Un module managed importe des fonctions de modules owned (`.peras`), dans le même dossier ou en dessous, et les appelle à travers des conversions vérifiées : les nombres, les booléens, les chaînes, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure ou une énumération est le type propre de l’autre module, et ne passe pas encore.
+check-import-why = Un module owned importe les fonctions, structures et énumérations que d’autres modules owned exportent, et ils sont compilés ensemble en un seul module WebAssembly (décision 0022) ; celles qui sont génériques ne s’importent pas encore. Un module managed importe des fonctions, des structures et des énumérations de modules owned (`.peras`), dans le même dossier ou en dessous, et appelle les fonctions à travers des conversions vérifiées : les nombres, les booléens, les chaînes, les structures et énumérations du module owned, et les tableaux, options, résultats, tables et ensembles de ceux-ci passent de l’un à l’autre. Une structure générique, une fonction ou un type du navigateur ne passe pas. Une structure ou une énumération importée est celle du module owned, sous son nom : ce module ne peut pas en déclarer une autre de ce nom.
 check-import-fix = { $reason ->
     [module] importez un fichier `.peras` par son chemin relatif, comme `"./maths.peras"`, et corrigez d’abord ses erreurs
-    [name] marquez la fonction `export` dans son module, ou vérifiez son orthographe
-    [signature] donnez à la fonction des nombres, des chaînes, ou des tableaux de ceux-ci, et construisez la structure de chaque côté
+    [name] marquez-la `export` dans son module, ou vérifiez son orthographe
+    [signature] donnez à la fonction des valeurs qui passent : des nombres, des chaînes, des structures et énumérations non génériques, et des tableaux de ceux-ci
+    [clash] renommez la déclaration propre de ce module, ou n’importez que l’un des deux
+    [generic] écrivez-en une version pour les types dont ce module a besoin, dans son module ou dans celui-ci
+    [managed] déplacez ce dont les deux modules ont besoin dans un fichier `.peras`, que chacun peut importer
    *[other] vérifiez l’import
 }
+
+# E0250
+check-import-cycle = ces modules s’importent l’un l’autre : { $path }
+check-import-cycle-label = cet import ferme le cycle
+check-import-cycle-why = Chaque module owned est vérifié contre ce qu’exportent les modules qu’il importe, donc ceux-ci sont vérifiés d’abord : un module ne peut pas dépendre, même par d’autres, de lui-même. Un cycle d’imports est refusé plutôt que résolu, pour que l’ordre de vérification soit l’ordre des fichiers et qu’un lecteur sache toujours quel fichier dépend de quel autre (décision 0022).
+check-import-cycle-fix = déplacez ce que les modules du cycle partagent dans un nouveau fichier `.peras`, que chacun d’eux importe
 
 # E0245
 check-resource = { $reason ->
@@ -811,6 +826,9 @@ check-sort-key-fix = triez par un nombre ou une chaîne : un champ, `(o) => o.am
 gen-unsupported = la génération de code ne prend pas encore en charge { $feature ->
     [struct] les structures
     [global] les constantes et variables de module
+    [global-heap] les variables de module qui tiennent une chaîne, un tableau, une table ou un ensemble
+    [global-init] cette valeur initiale d’une variable de module
+    [global-inout] une variable de module passée en `inout`
     [inout] les paramètres `inout`
     [for-of] les boucles `for…of`
     [place] les affectations de champs et d’éléments
@@ -823,14 +841,13 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [heap-option] les options qui contiennent un tableau ou une chaîne
     [inout-string] les chaînes `inout` des fonctions exportées, que JavaScript ne peut pas modifier
     [inout-export] les nombres et options `inout` des fonctions exportées : JavaScript les passe par valeur
-    [deep-equality] `==` sur des tableaux de chaînes ou de tableaux
+    [deep-equality] `==` sur des tableaux de tables, d’ensembles, ou d’options qui contiennent des chaînes ou des tableaux
     [field] les champs
     [index] l’indexation
     [try] l’opérateur `?`
     [option] les valeurs `Option`
     [method] cette méthode
     [integer-type] les types entiers autres que `i32` et `i64`
-    [reduce-heap] `reduce` avec un accumulateur qui contient une chaîne ou un tableau
     [recursive-type] les types qui se contiennent eux-mêmes
     [map-value] les tables dont les valeurs ont plus de 24 scalaires
     [nested-option] dans un module managed, les options d’options, dont JavaScript ne distingue pas `Some(None)` de `None`

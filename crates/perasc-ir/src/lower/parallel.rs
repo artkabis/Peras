@@ -38,6 +38,7 @@ enum Refusal {
     Calls,
     Heap,
     Exits,
+    Global,
 }
 
 impl Refusal {
@@ -50,6 +51,7 @@ impl Refusal {
             Self::Calls => "calls",
             Self::Heap => "heap",
             Self::Exits => "exits",
+            Self::Global => "global",
         }
     }
 }
@@ -244,6 +246,8 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
             Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
             Stmt::Buf(..) | Stmt::Release(_) => return Err(Refusal::Heap),
             Stmt::CallMany { .. } => return Err(Refusal::Calls),
+            // Each thread has its own module variables (decision 0023).
+            Stmt::SetGlobal(..) => return Err(Refusal::Global),
             Stmt::Return(_) | Stmt::ReturnMany(_) => return Err(Refusal::Exits),
             // The parallel loop is the outermost one in the job.
             Stmt::Break if loops <= 1 => return Err(Refusal::Exits),
@@ -254,6 +258,7 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
     })?;
     walk_exprs(body, &mut |e| match &e.kind {
         ExprKind::Call(..) => Err(Refusal::Calls),
+        ExprKind::Global(_) => Err(Refusal::Global),
         ExprKind::Buf(BufOp::Get(_), args) => {
             let reads_written = args
                 .first()
@@ -501,6 +506,8 @@ impl Rename {
     fn expr(&self, e: &Expr) -> Expr {
         let kind = match &e.kind {
             ExprKind::Local(l) => ExprKind::Local(self.local(*l)),
+            // Refused in a turn when lowered (decision 0023): never here.
+            ExprKind::Global(g) => ExprKind::Global(*g),
             ExprKind::Borrow(l) if self.lent.contains(&l.0) => ExprKind::Local(self.local(*l)),
             ExprKind::Borrow(l) => ExprKind::Borrow(self.local(*l)),
             ExprKind::Move(l) => ExprKind::Move(self.local(*l)),

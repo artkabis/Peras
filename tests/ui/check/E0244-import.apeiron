@@ -1,7 +1,10 @@
-// What an import may name.
-import { average, origin } from "./stats.peras";
+// What an import may name: a function, a structure, and what is refused.
+import { average, origin, Point } from "./stats.peras";
 import { mean } from "./missing.peras";
+// A generic structure does not cross.
+import { Pair } from "./stats.peras";
 
 export fn score(xs: Array<number>): number {
-  return 0.0;
+  const p: Point = origin();
+  return p.x + xs[0];
 }

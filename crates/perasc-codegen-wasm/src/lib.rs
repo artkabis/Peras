@@ -17,8 +17,9 @@ use perasc_ir::{
 };
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataCountSection, DataSection, EntityType, ExportKind,
-    ExportSection, Function as WasmFunction, FunctionSection, Ieee32, Ieee64, ImportSection,
-    Instruction as I, MemArg, MemArgTarget, MemoryType, TypeSection, ValType,
+    ExportSection, Function as WasmFunction, FunctionSection, GlobalSection, GlobalType, Ieee32,
+    Ieee64, ImportSection, Instruction as I, MemArg, MemArgTarget, MemoryType, TypeSection,
+    ValType,
 };
 
 /// The value type of an IR type; `None` for `void`.
@@ -300,6 +301,32 @@ fn data_section(module: &Module) -> Option<(u32, DataSection)> {
     Some((count, data))
 }
 
+/// A mutable global per module variable, set to its initial value.
+fn globals_section(module: &Module) -> GlobalSection {
+    let mut section = GlobalSection::new();
+    for global in &module.globals {
+        let Some(val_type) = val_type(global.ty) else {
+            continue;
+        };
+        let init = match (global.init, global.ty) {
+            (Const::Int(v), Ty::I64) => ConstExpr::i64_const(v),
+            (Const::Int(v), _) => ConstExpr::i32_const(i32::try_from(v).unwrap_or(i32::MIN)),
+            (Const::Float(v), Ty::F32) => ConstExpr::f32_const(Ieee32::from(narrow(v))),
+            (Const::Float(v), _) => ConstExpr::f64_const(Ieee64::from(v)),
+            (Const::Bool(v), _) => ConstExpr::i32_const(i32::from(v)),
+        };
+        section.global(
+            GlobalType {
+                val_type,
+                mutable: true,
+                shared: false,
+            },
+            &init,
+        );
+    }
+    section
+}
+
 /// [`compile_for`], with threads when `threads`: the memory imported with
 /// its maximum, so that the loader can share it between threads; each job
 /// exported as `__job0`, `__job1`…, and each call to one made to the
@@ -381,7 +408,12 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
     if heap || !math.is_empty() || !jobs.is_empty() {
         wasm.section(&imports);
     }
-    wasm.section(&functions).section(&exports);
+    wasm.section(&functions);
+    // The module variables, each with its initial value (decision 0023).
+    if !module.globals.is_empty() {
+        wasm.section(&globals_section(module));
+    }
+    wasm.section(&exports);
     // String literals: passive segments, copied into a new buffer when used;
     // then those only read, written below the heap (decision 0016).
     let data = data_section(module);
@@ -552,6 +584,11 @@ impl<'a> FnEncoder<'a> {
                 self.expr(value);
                 self.emit(&I::LocalSet(local.0));
             }
+            // The module imports no global: its own come first (decision 0023).
+            Stmt::SetGlobal(global, value) => {
+                self.expr(value);
+                self.emit(&I::GlobalSet(global.0));
+            }
             Stmt::Expr(e) => {
                 self.expr(e);
                 if e.ty != Ty::Void {
@@ -684,6 +721,7 @@ impl<'a> FnEncoder<'a> {
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => self.constant(*c, e.ty),
+            ExprKind::Global(global) => self.emit(&I::GlobalGet(global.0)),
             // A handle is an address: moving or lending it copies the number. The
             // release verifier proved a moved-from local is not used again.
             ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {

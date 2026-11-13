@@ -6,9 +6,9 @@ Read at the start of every session. It holds the rules of the project and the tr
 
 - **Report to the owner in French.** Docs are written in English first, then in French; `node scripts/check-i18n.mjs` checks that every page exists in both.
 - **No dependency on another language than Rust**, not even in a benchmark. A competitor that needs an npm package or a C library is cited from its published figures, never installed.
-- **A build fails on any error.** Before a commit: `cargo fmt`, `cargo clippy -D warnings`, the same two for `fuzz/` (`--manifest-path fuzz/Cargo.toml`, a workspace of its own, M014), `cargo test --workspace`, `pnpm run check` (format, lint, types, tests, translations, `pnpm audit` with no vulnerability), `pnpm run docs`, and the `--check` of each benchmark touched.
+- **A build fails on any error.** Before a commit: `cargo fmt`, `cargo clippy -D warnings`, the same two for `fuzz/` (`--manifest-path fuzz/Cargo.toml`, a workspace of its own, M014), `cargo test --workspace`, `pnpm run check` (format, lint, types, tests, translations, `pnpm audit` with no vulnerability), `pnpm run docs`, and the `--check` of each benchmark touched. Every commit, a commit of documentation alone included: a page changes what the docs tests compile (M021).
 - **pnpm installs nothing published less than 24 hours ago** (`minimumReleaseAge`); never add an exclusion.
-- **Commits** follow Conventional Commits, signed off (`git commit -s`), with the attribution lines the session gives. No model name in the repository.
+- **Commits** follow Conventional Commits, signed off (`git commit -s`), with the attribution lines the session gives. No model name in the repository. **A pull request's title** follows them too: the CI checks it (`conventional-title`), the local checks do not (M021).
 - **Commits are authored by the owner**, who decides and signs off: in this repository, `git config user.name "Artkabis"` and `git config user.email "8205827+artkabis@users.noreply.github.com"`, set before the first commit of a session. The `Co-Authored-By` line still names who wrote the code.
 - **No force push.** After a pull request is merged, merge `main` into the branch.
 - **Nothing published outside the repository** (forums, social networks) without the owner.
@@ -19,12 +19,15 @@ Read at the start of every session. It holds the rules of the project and the tr
 - Chromium: never `playwright install`; set `PERAS_CHROMIUM=/opt/pw-browsers/chromium`, or `executablePath` in a script.
 - A script that imports the repository's packages runs from the repository, not from the scratchpad.
 - The CI installs browsers through `scripts/install-browser.mjs`, which needs the browser's download and only tries its system packages: a job red at `Failed to install browsers` is the runner's network, not the code; read the log before saying which (F107).
+- A linker that dies on `signal 7 [Bus error]` means a full disk: `df -h .`, then remove `target/debug` (M023).
+- A filter on the output of `cargo test` keeps `^error` lines: a test that does not compile prints no failed result (M023).
 - GitHub Pages must be enabled by the owner (Settings, Pages, Source: GitHub Actions); until it is, nothing is online.
 
 ## Studies: the traps already fallen into
 
 Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 
+- **Read the code before a design says what the compiler does**: a step planned on a cost not read (M019), a decision that claimed a pass that does not exist (M020).
 - **Register the protocol before any measure**, and test its definitions against a first version before registering: two rules that disagree are found by code, not by reading (M003).
 - **A value that could not be measured makes a verdict undetermined**, never a hypothesis that holds (M001).
 - **Check every competitor against the rules of the project** before naming it in a protocol (M004).
@@ -37,6 +40,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A build that reuses a cache must prove it rebuilt what changed.** Old sources extracted with their commit dates look older than the cache and are not recompiled; extract them dated now, or give each its own target (M009).
 - **A flawed run is kept with its flaw**, archived, and its correction listed as a departure from the protocol.
 - **Never say a thing is online, deployed or passing before seeing it**: read the workflow's run, not the workflow's file (M005).
+- **A cancelled job is a failure, and a test is timed in the debug build the CI runs**: the Rust job stops at 20 minutes, and one test of 2,000,000 pairs took all of it unnoticed (M022).
 - **"All checks pass" means the CI of the last commit, read on GitHub**, and locally every `--check` script of `scripts/`, not only those of the files touched: a change of defaults breaks the scripts that relied on them (M007).
 
 ## Code: the traps already fallen into
@@ -55,7 +59,9 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 What a program can rely on, and what it cannot yet; the details and their evidence are in the findings and in [the status](docs/en/reference/status.md).
 
 - `Option`: `isSome()`, `isNone()`, `unwrapOr(x)` (evaluates `x` whenever doing so can be seen; a quiet fallback, literals, reads and copies, is made only when needed: F209), and `?`. No `unwrap`, no `let … else`; a `match` whose arm leaves a loop gives no value (F101, F104, F105).
-- Structures have no `copy()` (F102). An argument moved is not readable by a later argument of the same call (F103).
+- Structures have `copy()` (F102), unless they hold a resource, a JavaScript value or a function. An argument moved is not readable by a later argument of the same call (F103).
+- Modules: a `.peras` file imports functions, structures and enumerations of other `.peras` files, compiled into one module; not generics, not the methods of an imported structure, no `as`, no cycle (decision 0022).
+- Module variables (`let` at the top of a `.peras`): numbers, booleans, and structures, enumerations and options of them, a constant initial value; not strings or arrays, not `inout`, not in a `parallel for` (decision 0023).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).
 - Integers: `i32` and `i64` compiled; `i8`, `i16`, `u8`, `u16`, `u32`, `u64` checked only (F302).
 - A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).

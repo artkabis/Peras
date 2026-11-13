@@ -1673,6 +1673,131 @@
     (global.set $negative (i32.eq (local.get $c) (i32.const 45)))
     (i32.or (global.get $negative) (i32.eq (local.get $c) (i32.const 43))))
 
+  ;; Whether buffers `a` and `b` hold the same elements, by `==` on each
+  ;; (decision 0021, finding F305): `shape`'s low four bits say their kind,
+  ;; 1 a byte, 2 an `i32`, 3 an `i64`, 4 an `f32`, 5 an `f64`, 6 a `bool`,
+  ;; 7 a handle, whose buffers are compared with the shape's next four bits.
+  ;; Bytes and integers compare as bytes; floats as floats, NaN unequal to
+  ;; itself and 0 equal to -0.
+  (func $buf_equal (export "buf_equal") (param $a i32) (param $b i32) (param $shape i32) (result i32)
+    (local $n i32) (local $kind i32) (local $da i32) (local $db i32) (local $i i32)
+    (local.set $n (i32.load (local.get $a)))
+    (if (i32.ne (local.get $n) (i32.load (local.get $b))) (then (return (i32.const 0))))
+    (local.set $kind (i32.and (local.get $shape) (i32.const 0xf)))
+    (local.set $da (i32.load offset=8 (local.get $a)))
+    (local.set $db (i32.load offset=8 (local.get $b)))
+    (if (i32.eq (local.get $kind) (i32.const 1))
+      (then (return (call $same (local.get $da) (local.get $db) (local.get $n)))))
+    (if (i32.or (i32.eq (local.get $kind) (i32.const 2)) (i32.eq (local.get $kind) (i32.const 6)))
+      (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 2))))))
+    (if (i32.eq (local.get $kind) (i32.const 3))
+      (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 3))))))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (if (i32.eq (local.get $kind) (i32.const 4))
+          (then
+            (if (f32.ne
+                  (f32.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 2))))
+                  (f32.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 2)))))
+              (then (return (i32.const 0))))))
+        (if (i32.eq (local.get $kind) (i32.const 5))
+          (then
+            (if (f64.ne
+                  (f64.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 3))))
+                  (f64.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 3)))))
+              (then (return (i32.const 0))))))
+        (if (i32.eq (local.get $kind) (i32.const 7))
+          (then
+            (if (i32.eqz (call $buf_equal
+                  (i32.load (i32.add (local.get $da) (i32.shl (local.get $i) (i32.const 2))))
+                  (i32.load (i32.add (local.get $db) (i32.shl (local.get $i) (i32.const 2))))
+                  (i32.shr_u (local.get $shape) (i32.const 4))))
+              (then (return (i32.const 0))))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (i32.const 1))
+
+  ;; `x % y` on floats, exactly as JavaScript's `%` and C's `fmod`: the
+  ;; remainder of `x / y` with the sign of `x`, computed on the bits of both,
+  ;; as musl's `fmod` does (decision 0021, finding F304). NaN when `y` is
+  ;; zero or NaN or `x` is infinite or NaN; `x` itself when `|x| < |y|`.
+  (func (export "f64_rem") (param $x f64) (param $y f64) (result f64)
+    (local $ux i64) (local $uy i64) (local $ex i64) (local $ey i64) (local $sx i64) (local $i i64)
+    (local.set $ux (i64.reinterpret_f64 (local.get $x)))
+    (local.set $uy (i64.reinterpret_f64 (local.get $y)))
+    (local.set $ex (i64.and (i64.shr_u (local.get $ux) (i64.const 52)) (i64.const 0x7ff)))
+    (local.set $ey (i64.and (i64.shr_u (local.get $uy) (i64.const 52)) (i64.const 0x7ff)))
+    (local.set $sx (i64.shr_u (local.get $ux) (i64.const 63)))
+    (if (i32.or (i32.or
+          (i64.eqz (i64.shl (local.get $uy) (i64.const 1)))
+          (f64.ne (local.get $y) (local.get $y)))
+          (i64.eq (local.get $ex) (i64.const 0x7ff)))
+      (then (return (f64.div (f64.mul (local.get $x) (local.get $y)) (f64.mul (local.get $x) (local.get $y))))))
+    (if (i64.le_u (i64.shl (local.get $ux) (i64.const 1)) (i64.shl (local.get $uy) (i64.const 1)))
+      (then
+        (if (i64.eq (i64.shl (local.get $ux) (i64.const 1)) (i64.shl (local.get $uy) (i64.const 1)))
+          (then (return (f64.mul (f64.const 0) (local.get $x)))))
+        (return (local.get $x))))
+    ;; Each significand normalized, its implicit bit set.
+    (if (i64.eqz (local.get $ex))
+      (then
+        (local.set $i (i64.shl (local.get $ux) (i64.const 12)))
+        (block $done
+          (loop $more
+            (br_if $done (i64.ne (i64.shr_u (local.get $i) (i64.const 63)) (i64.const 0)))
+            (local.set $ex (i64.sub (local.get $ex) (i64.const 1)))
+            (local.set $i (i64.shl (local.get $i) (i64.const 1)))
+            (br $more)))
+        (local.set $ux (i64.shl (local.get $ux) (i64.add (i64.sub (i64.const 0) (local.get $ex)) (i64.const 1)))))
+      (else
+        (local.set $ux (i64.and (local.get $ux) (i64.const 0x000fffffffffffff)))
+        (local.set $ux (i64.or (local.get $ux) (i64.const 0x0010000000000000)))))
+    (if (i64.eqz (local.get $ey))
+      (then
+        (local.set $i (i64.shl (local.get $uy) (i64.const 12)))
+        (block $done
+          (loop $more
+            (br_if $done (i64.ne (i64.shr_u (local.get $i) (i64.const 63)) (i64.const 0)))
+            (local.set $ey (i64.sub (local.get $ey) (i64.const 1)))
+            (local.set $i (i64.shl (local.get $i) (i64.const 1)))
+            (br $more)))
+        (local.set $uy (i64.shl (local.get $uy) (i64.add (i64.sub (i64.const 0) (local.get $ey)) (i64.const 1)))))
+      (else
+        (local.set $uy (i64.and (local.get $uy) (i64.const 0x000fffffffffffff)))
+        (local.set $uy (i64.or (local.get $uy) (i64.const 0x0010000000000000)))))
+    ;; `x mod y`, one bit of the quotient at a time.
+    (block $reduced
+      (loop $step
+        (br_if $reduced (i64.le_s (local.get $ex) (local.get $ey)))
+        (local.set $i (i64.sub (local.get $ux) (local.get $uy)))
+        (if (i64.eqz (i64.shr_u (local.get $i) (i64.const 63)))
+          (then
+            (if (i64.eqz (local.get $i)) (then (return (f64.mul (f64.const 0) (local.get $x)))))
+            (local.set $ux (local.get $i))))
+        (local.set $ux (i64.shl (local.get $ux) (i64.const 1)))
+        (local.set $ex (i64.sub (local.get $ex) (i64.const 1)))
+        (br $step)))
+    (local.set $i (i64.sub (local.get $ux) (local.get $uy)))
+    (if (i64.eqz (i64.shr_u (local.get $i) (i64.const 63)))
+      (then
+        (if (i64.eqz (local.get $i)) (then (return (f64.mul (f64.const 0) (local.get $x)))))
+        (local.set $ux (local.get $i))))
+    (block $normal
+      (loop $shift
+        (br_if $normal (i64.ne (i64.shr_u (local.get $ux) (i64.const 52)) (i64.const 0)))
+        (local.set $ux (i64.shl (local.get $ux) (i64.const 1)))
+        (local.set $ex (i64.sub (local.get $ex) (i64.const 1)))
+        (br $shift)))
+    ;; The result scaled back, a subnormal one shifted.
+    (if (i64.gt_s (local.get $ex) (i64.const 0))
+      (then
+        (local.set $ux (i64.sub (local.get $ux) (i64.const 0x0010000000000000)))
+        (local.set $ux (i64.or (local.get $ux) (i64.shl (local.get $ex) (i64.const 52)))))
+      (else
+        (local.set $ux (i64.shr_u (local.get $ux) (i64.add (i64.sub (i64.const 0) (local.get $ex)) (i64.const 1))))))
+    (f64.reinterpret_i64 (i64.or (local.get $ux) (i64.shl (local.get $sx) (i64.const 63)))))
+
   ;; Whether the byte at `at` continues a UTF-8 sequence: 80 to BF.
   (func $utf8_cont (param $at i32) (result i32)
     (i32.eq (i32.and (i32.load8_u (local.get $at)) (i32.const 0xC0)) (i32.const 0x80)))

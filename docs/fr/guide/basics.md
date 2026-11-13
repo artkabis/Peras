@@ -40,7 +40,31 @@ export fn describe(): i32 {
 }
 ```
 
-Un `let` de module, une variable partagée par toutes les fonctions, est vérifié mais pas encore compilé. <span class="status checked">vérifié</span>
+## Variables de module
+
+Un `let` hors de toute fonction est une variable de module : les fonctions du module la partagent, et elle garde sa valeur d’un appel à l’autre, aussi longtemps que vit l’instance du module ([décision 0023](../decisions/0023-module-variables.md)). Dans un module owned, sa valeur initiale est une constante, comme celle d’une constante de module ([E0233](../errors/E0233.md)) : elle est posée avant tout appel, et aucun code ne s’exécute au chargement du module. <span class="status compiled">compilé</span>
+
+```peras build
+const START: i32 = 10;
+
+struct Point {
+  x: i32;
+  y: f64;
+}
+
+let count = START;
+let origin = Point(0, 0.5);
+
+export fn next(): i32 {
+  count++;
+  origin.x += count;
+  return origin.x;
+}
+```
+
+- Elle tient des nombres et des booléens, ou des structures, énumérations et options de ceux-ci. Une qui tient une chaîne, un tableau, une table ou un ensemble est vérifiée mais pas encore compilée ([E0900](../errors/E0900.md)), ni une passée en `inout`.
+- Une `parallel for` ne peut ni en lire ni en écrire une : chaque thread en a sa propre copie ([E0241](../errors/E0241.md)).
+- Deux pages, ou deux workers, chargent chacun leur propre instance du module, donc chacun a ses propres valeurs. Le `let` d’un module managed est un `let` JavaScript.
 
 ## Nombres
 

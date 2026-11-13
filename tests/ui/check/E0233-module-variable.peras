@@ -1,0 +1,11 @@
+// In an owned module, a module variable is set before any call: its initial
+// value is a constant, as a module constant's is (decision 0023).
+fn seed(): i32 {
+  return 3;
+}
+
+let n = seed();
+
+export fn f(): i32 {
+  return n;
+}

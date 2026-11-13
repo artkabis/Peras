@@ -1,0 +1,10 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/E0241-parallel-global.peras
+---
+diagnostics:
+  error[E0241] check-parallel { reason: "global", name: "" }
+    primary 10:3-12:4: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix

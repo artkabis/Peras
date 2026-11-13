@@ -164,6 +164,8 @@ pub const EXTERN: ErrorCode = ErrorCode::new(247);
 pub const FLOATING_PROMISE: ErrorCode = ErrorCode::new(248);
 /// A sort key that is neither a number nor a string.
 pub const SORT_KEY: ErrorCode = ErrorCode::new(249);
+/// Owned modules that import each other in a cycle.
+pub const IMPORT_CYCLE: ErrorCode = ErrorCode::new(250);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -298,6 +300,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(EXTERN, "check-extern", "E0247"),
     active!(FLOATING_PROMISE, "check-floating-promise", "E0248"),
     active!(SORT_KEY, "check-sort-key", "E0249"),
+    active!(IMPORT_CYCLE, "check-import-cycle", "E0250"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

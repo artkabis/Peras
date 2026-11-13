@@ -110,7 +110,7 @@ Each of these methods takes an arrow function, written in place, `(x) => …`, a
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
 | `map(f)`              | a new array of `f(x)` for each element                                                                                                                     | <span class="status compiled">compiled</span> |
 | `filter(f)`           | a new array of copies of the elements for which `f(x)` is `true`; on a temporary array, as `text.split(" ")`, the same array, kept in place without copies | <span class="status compiled">compiled</span> |
-| `reduce(f, start)`    | `f(acc, x)` folded over the elements, from `start`; numbers and structures of them                                                                         | <span class="status compiled">compiled</span> |
+| `reduce(f, start)`    | `f(acc, x)` folded over the elements, from `start`, of any type: numbers, strings, arrays, structures                                                      | <span class="status compiled">compiled</span> |
 | `find(f)`             | a copy of the first element for which `f(x)` is `true`, or `None`                                                                                          | <span class="status compiled">compiled</span> |
 | `findIndex(f)`        | the index of the first element for which `f(x)` is `true`, or `-1`                                                                                         | <span class="status compiled">compiled</span> |
 | `some(f)`, `every(f)` | whether `f(x)` is `true` for one element, for all; stops as soon as known                                                                                  | <span class="status compiled">compiled</span> |
@@ -120,7 +120,8 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
   const evens = xs.filter((x) => x % 2 == 0);
   const total = evens.map((x) => x * 10).reduce((acc, x) => acc + x, 0);
   const long = words.find((w) => w.length > 3).unwrapOr("");
-  let n = total + long.length + xs.findIndex((x) => x > 100);
+  const line = words.reduce((acc, w) => acc + w + ",", "");
+  let n = total + long.length + line.length + xs.findIndex((x) => x > 100);
   if (xs.some((x) => x < 0)) {
     n += 1;
   }
@@ -265,5 +266,30 @@ Keys are integers, booleans or strings ([E0240](../errors/E0240.md)); values of 
 | -------------------- | ----------------------------- | --------------------------------------------- |
 | `isOk()`, `isErr()`  | which variant it is           | <span class="status compiled">compiled</span> |
 | `unwrapOr(fallback)` | the `Ok` value, or `fallback` | <span class="status compiled">compiled</span> |
+
+## Structures
+
+| Method   | Gives                                                                                | Status                                        |
+| -------- | ------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `copy()` | a structure of its own: its strings, arrays, maps and sets made again, in both modes | <span class="status compiled">compiled</span> |
+
+A structure that holds a resource of the browser, a value of JavaScript or a function has no `copy()`: a resource has one owner.
+
+```peras build
+struct Item {
+  name: String;
+  tags: Array<String>;
+}
+
+export fn renamed(items: Map<String, Item>): Array<Item> {
+  let out: Array<Item> = [];
+  for (const e of items) {
+    let item = e.1.copy();
+    item.name += "!";
+    out.push(item);
+  }
+  return out;
+}
+```
 
 An unknown member is refused with the list of the ones that exist ([E0215](../errors/E0215.md)). Many more methods are planned: see the [roadmap](roadmap.md#phase-3-a-standard-library).

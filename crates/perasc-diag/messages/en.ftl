@@ -587,9 +587,9 @@ check-alias-cycle-why = An alias is another name for a type: replacing it by wha
 check-alias-cycle-fix = make it a structure or an enumeration
 
 # E0233
-check-not-constant = the value of a module constant must be known when compiling
+check-not-constant = the value of a module constant, or the initial value of a module variable in an owned module, must be known when compiling
 check-not-constant-label = computed when the program runs
-check-not-constant-why = A module `const` is written into the code wherever it is used: its value is made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
+check-not-constant-why = A module `const` is written into the code wherever it is used, and a module `let` of an owned module is set before any call (decision 0023): their values are made of literals, other constants, operators, arrays, tuples, structures, options and variants. A call runs only when the program does.
 check-not-constant-fix = compute it in a function, or write its value
 
 # E0234
@@ -657,6 +657,7 @@ check-parallel = this loop cannot run in parallel: { $reason ->
     [calls] it calls a function
     [heap] it makes, grows, moves or releases a string, an array or a map
     [exits] it leaves the loop with `break` or `return`
+    [global] it reads or writes a module variable, of which each thread has its own copy
    *[other] its turns could see each other
 }
 check-parallel-label = turns that may run at the same time
@@ -670,7 +671,6 @@ check-managed-only = { $what ->
     [await-sync] `await` outside an `async` function
     [number] the type `number`
     [promise] the type `Promise`
-    [import] an `import`
     [browser] the browser's API
     [extern] an `extern` block
     [arrow-block] an arrow function with statements
@@ -711,23 +711,38 @@ check-owned-only-fix = { $what ->
 # E0244
 check-import = { $reason ->
     [module] cannot import from `{ $name }`
-    [name] `{ $name }` is not an exported function of this module
+    [name] `{ $name }` is not an exported function, structure or enumeration of this module
     [signature] `{ $name }` takes or gives a value that cannot cross between modules yet
+    [clash] `{ $name }` is already a name of this module, declared here or imported
+    [generic] `{ $name }` is generic, and generics cannot be imported yet
+    [managed] an owned module cannot import a managed module, `{ $name }`
    *[other] cannot import `{ $name }`
 }
 check-import-label = { $reason ->
     [module] not an owned module that compiles
     [name] not exported here
     [signature] imported here
+    [clash] imported here
+    [generic] generic
+    [managed] a `.apeiron` file
    *[other] here
 }
-check-import-why = A managed module imports functions from owned modules (`.peras`), in the same folder or below it, and calls them through checked conversions: numbers, booleans, strings, and arrays, options, results, maps and sets of them cross between the two. A structure or an enumeration is the other module's own type, and does not cross yet.
+check-import-why = An owned module imports the functions, structures and enumerations other owned modules export, and they are compiled together into one WebAssembly module (decision 0022); generic ones cannot be imported yet. A managed module imports functions, structures and enumerations from owned modules (`.peras`), in the same folder or below it, and calls the functions through checked conversions: numbers, booleans, strings, the structures and enumerations of the owned module, and arrays, options, results, maps and sets of them cross between the two. A generic structure, a function or a type of the browser does not cross. A structure or an enumeration imported is the owned module's, under its name: this module cannot declare another of that name.
 check-import-fix = { $reason ->
     [module] import a `.peras` file by its relative path, such as `"./maths.peras"`, and fix its errors first
-    [name] mark the function `export` in its module, or check its spelling
-    [signature] give the function numbers, strings, or arrays of them, and build the structure on each side
+    [name] mark it `export` in its module, or check its spelling
+    [signature] give the function values that cross: numbers, strings, structures and enumerations that are not generic, and arrays of them
+    [clash] rename this module's own declaration, or import only one of the two
+    [generic] write a version of it for the types this module uses, in its module or in this one
+    [managed] move what both modules need into a `.peras` file, which each can import
    *[other] check the import
 }
+
+# E0250
+check-import-cycle = these modules import each other: { $path }
+check-import-cycle-label = this import closes the cycle
+check-import-cycle-why = Each owned module is checked against what the modules it imports export, so those are checked first: a module cannot depend, even through others, on itself. A cycle of imports is refused rather than resolved, so that the order of checking is the order of the files and a reader always knows which file depends on which (decision 0022).
+check-import-cycle-fix = move what the modules of the cycle share into a new `.peras` file, which each of them imports
 
 # E0245
 check-resource = { $reason ->
@@ -811,6 +826,9 @@ check-sort-key-fix = sort by a number or a string: a field, `(o) => o.amount`, o
 gen-unsupported = code generation does not support { $feature ->
     [struct] structures
     [global] module-level constants and variables
+    [global-heap] module variables holding a string, an array, a map or a set
+    [global-init] this initial value of a module variable
+    [global-inout] a module variable passed `inout`
     [inout] `inout` parameters
     [for-of] `for…of` loops
     [place] assignments to fields and elements
@@ -823,14 +841,13 @@ gen-unsupported = code generation does not support { $feature ->
     [heap-option] options holding an array or a string
     [inout-string] `inout` strings in exported functions, which JavaScript cannot change
     [inout-export] `inout` numbers and options in exported functions: JavaScript passes them by value
-    [deep-equality] `==` on arrays of strings or of arrays
+    [deep-equality] `==` on arrays of maps, sets, or options that hold strings or arrays
     [field] fields
     [index] indexing
     [try] the `?` operator
     [option] `Option` values
     [method] this method
     [integer-type] integer types other than `i32` and `i64`
-    [reduce-heap] `reduce` with an accumulator holding a string or an array
     [recursive-type] types that contain themselves
     [map-value] maps whose values have more than 24 scalars
     [nested-option] in a managed module, options of options, whose `Some(None)` JavaScript cannot tell from `None`

@@ -1,0 +1,10 @@
+// A type the imported module has, declared here too: two types of one name.
+import { origin } from "./stats.peras";
+
+struct Point {
+  x: number;
+}
+
+export fn first(): number {
+  return 0.0;
+}

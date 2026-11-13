@@ -169,6 +169,9 @@ impl Copy {
                 Stmt::Set(local, value) => {
                     out.push(Stmt::Set(shift(*local, self.base), self.expr(value)));
                 }
+                Stmt::SetGlobal(global, value) => {
+                    out.push(Stmt::SetGlobal(*global, self.expr(value)));
+                }
                 Stmt::Expr(e) => out.push(Stmt::Expr(self.expr(e))),
                 Stmt::CallMany {
                     targets,
@@ -217,6 +220,7 @@ impl Copy {
     fn expr(&self, e: &Expr) -> Expr {
         let kind = match &e.kind {
             ExprKind::Const(c) => ExprKind::Const(*c),
+            ExprKind::Global(g) => ExprKind::Global(*g),
             ExprKind::Local(local) => ExprKind::Local(shift(*local, self.base)),
             ExprKind::Unary(op, x) => ExprKind::Unary(*op, Box::new(self.expr(x))),
             ExprKind::Binary(op, a, b) => {
@@ -244,8 +248,10 @@ impl Copy {
 fn hoistable(e: &Expr, id: FnId) -> bool {
     match &e.kind {
         ExprKind::Call(callee, _) => *callee == id,
-        // Moving a call before a block changes hands would change who holds it.
+        // Moving a call before a block changes hands would change who holds it,
+        // and before a module variable is read, the value read (decision 0023).
         ExprKind::Binary(BinOp::And | BinOp::Or, ..)
+        | ExprKind::Global(_)
         | ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Alloc(_)
@@ -310,7 +316,7 @@ pub fn needs_reset(function: &Function) -> Vec<LocalId> {
 
 fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
     match &e.kind {
-        ExprKind::Const(_) => true,
+        ExprKind::Const(_) | ExprKind::Global(_) => true,
         ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {
             assigned.contains(&local.0)
         }
@@ -330,7 +336,9 @@ fn size(stmts: &[Stmt]) -> usize {
     stmts
         .iter()
         .map(|stmt| match stmt {
-            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => 1 + expr_size(e),
+            Stmt::Set(_, e) | Stmt::SetGlobal(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {
+                1 + expr_size(e)
+            }
             Stmt::ReturnMany(values)
             | Stmt::CallMany { args: values, .. }
             | Stmt::Buf(_, values) => 1 + values.iter().map(expr_size).sum::<usize>(),
@@ -354,7 +362,11 @@ fn size(stmts: &[Stmt]) -> usize {
 
 fn expr_size(e: &Expr) -> usize {
     1 + match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => 0,
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => 0,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)

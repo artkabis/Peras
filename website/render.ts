@@ -205,12 +205,17 @@ export async function render(): Promise<string[]> {
           planned: words[lang].planned,
           error: `${words[lang].error} ${attrs[1] ?? code}`,
           fixed: words[lang].fixed,
+          // A file of a page that the blocks after it import, and a block that
+          // imports them: both compiled, as `perasc build` does (decision 0022).
+          file: `${words[lang].compiled} · ${attrs[1] ?? ""}`,
+          main: words[lang].compiled,
         };
         // A managed module compiles to JavaScript, an owned one to WebAssembly.
         if (name === "apeiron") text.build = words[lang].compiledJs;
         const said = text[kind];
         if (said === undefined) problems.push(`${key}.md: unknown kind of ${name} block "${kind}"`);
-        label = `<span class="code-label code-${escapeHtml(kind)}">${escapeHtml(said ?? kind)}</span>`;
+        const style = kind === "file" || kind === "main" ? "build" : kind;
+        label = `<span class="code-label code-${escapeHtml(style)}">${escapeHtml(said ?? kind)}</span>`;
       }
       return `<div class="code">${label}${highlighted}</div>\n`;
     };

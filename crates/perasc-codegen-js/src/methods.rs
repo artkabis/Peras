@@ -54,6 +54,9 @@ impl Module<'_> {
                 Some(format!("{helper}({me}, {}, {desc})", arg(0)))
             }
             Ty::Array(element) => self.array_method(element, name, &me, rest),
+            // A structure's copy: plain data, its arrays, maps and sets made
+            // again (decision 0021, finding F102).
+            Ty::Struct(..) if name == "copy" => Some(format!("structuredClone({me})")),
             Ty::String => self.string_method(name, &me, rest),
             Ty::Map(_, value) => match name {
                 "copy" if shallow(value) => Some(format!("new Map({me})")),

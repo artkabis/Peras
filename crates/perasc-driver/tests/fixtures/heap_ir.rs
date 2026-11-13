@@ -95,6 +95,7 @@ pub fn work() -> Module {
         ],
     };
     Module {
+        globals: Vec::new(),
         functions: vec![work, peek],
         data: Vec::new(),
     }
@@ -120,6 +121,7 @@ pub fn keep() -> Module {
 
 fn one(name: &str, body: Vec<Stmt>) -> Module {
     Module {
+        globals: Vec::new(),
         functions: vec![Function {
             name: name.to_owned(),
             exported: true,

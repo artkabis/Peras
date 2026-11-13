@@ -108,6 +108,7 @@ pub fn module(ret: Ty, locals: Vec<Local>, body: Vec<Stmt>) -> Module {
         body,
     };
     Module {
+        globals: Vec::new(),
         functions: vec![
             f,
             helper(

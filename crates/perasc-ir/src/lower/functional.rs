@@ -89,7 +89,7 @@ impl Lowering<'_> {
             Some(_) if method == "filter" => {
                 Goal::Keep(state.owned_temp(new_buffer(n_expr.clone(), Elem::Bool)))
             }
-            _ => self.goal(state, method, args, lambda, body, columns, &n_expr)?,
+            _ => self.goal(state, method, args, body, columns, &n_expr)?,
         };
         let i = state.temp(Ty::I32);
         state.pre.push(Stmt::Set(i, int(0)));
@@ -234,13 +234,11 @@ impl Lowering<'_> {
     }
 
     /// What the loop of `method` builds, set up before it.
-    #[allow(clippy::too_many_arguments)]
     fn goal(
         &mut self,
         state: &mut FnState,
         method: &str,
         args: &[ExprId],
-        lambda: ExprId,
         body: ExprId,
         columns: &[Elem],
         n_expr: &Expr,
@@ -268,15 +266,19 @@ impl Lowering<'_> {
                 let start = *args.get(1)?;
                 let start_ty = self.check_type(start).unwrap_or(CheckTy::Void);
                 let leaves = self.leaves(&start_ty).ok()?;
-                if leaves.iter().any(|(_, t)| t.is_handle()) {
-                    let span = self.ast.expr(lambda).span;
-                    self.unsupported(span, "reduce-heap");
-                    return None;
-                }
+                // A string or an array is owned by the accumulator: the start
+                // given to it, copied when it is only lent (decision 0021).
                 let values = self.value(state, start);
-                let locals: Vec<LocalId> = leaves.iter().map(|(_, t)| state.temp(*t)).collect();
-                for (&local, value) in locals.iter().zip(values) {
-                    state.pre.push(Stmt::Set(local, value));
+                let mut locals = Vec::new();
+                for ((_, t), value) in leaves.iter().zip(values) {
+                    if t.is_handle() {
+                        let local = state.owned_temp(owned(value));
+                        locals.push(local);
+                    } else {
+                        let local = state.temp(*t);
+                        state.pre.push(Stmt::Set(local, value));
+                        locals.push(local);
+                    }
                 }
                 Goal::Reduce(locals)
             }
@@ -355,24 +357,7 @@ impl Lowering<'_> {
                     otherwise: Vec::new(),
                 });
             }
-            Goal::Reduce(acc) => {
-                let values = this.value(state, body);
-                // Each value computed before any is stored: the body may
-                // read the accumulator after a field of it changed.
-                let temps: Vec<LocalId> = values
-                    .into_iter()
-                    .map(|v| {
-                        let t = state.temp(v.ty);
-                        state.pre.push(Stmt::Set(t, v));
-                        t
-                    })
-                    .collect();
-                state.flush(out);
-                for (&a, t) in acc.iter().zip(temps) {
-                    let value = super::local_expr(state, t);
-                    out.push(Stmt::Set(a, value));
-                }
-            }
+            Goal::Reduce(acc) => this.reduce_turn(state, acc, body, out),
             Goal::FindIndex(index) => {
                 let found = this.test(state, body, out);
                 state.end_statement(out);
@@ -403,6 +388,48 @@ impl Lowering<'_> {
                     then,
                     otherwise: Vec::new(),
                 });
+            }
+        }
+    }
+
+    /// A turn of `reduce`: the new accumulator computed, then stored.
+    fn reduce_turn(
+        &mut self,
+        state: &mut FnState,
+        acc: &[LocalId],
+        body: ExprId,
+        out: &mut Vec<Stmt>,
+    ) {
+        let values = self.value(state, body);
+        // Each value computed before any is stored: the body may read the
+        // accumulator after a field of it changed. A string or an array is
+        // the accumulator's own: copied when the body only lends it, the
+        // previous one released once every value is computed.
+        let temps: Vec<LocalId> = values
+            .into_iter()
+            .zip(acc)
+            .map(|(v, &a)| {
+                let v = if state.is_owned(a) { owned(v) } else { v };
+                let t = state.temp(v.ty);
+                state.pre.push(Stmt::Set(t, v));
+                t
+            })
+            .collect();
+        state.flush(out);
+        for (&a, t) in acc.iter().zip(temps) {
+            if state.is_owned(a) {
+                out.push(Stmt::Buf(
+                    crate::BufStmt::Release,
+                    vec![Expr {
+                        kind: ExprKind::Move(a),
+                        ty: Ty::Owned,
+                    }],
+                ));
+                let value = super::heap::moved(state, t);
+                out.push(Stmt::Set(a, value));
+            } else {
+                let value = super::local_expr(state, t);
+                out.push(Stmt::Set(a, value));
             }
         }
     }
@@ -704,10 +731,24 @@ impl Lowering<'_> {
     }
 }
 
+/// A buffer to be kept: the value itself when it is owned, a copy when it is
+/// lent.
+fn owned(value: Expr) -> Expr {
+    if value.ty == Ty::Borrowed {
+        Expr {
+            kind: ExprKind::Buf(BufOp::Clone, vec![value]),
+            ty: Ty::Owned,
+        }
+    } else {
+        value
+    }
+}
+
 /// Names the accumulator of `reduce`.
 fn bind_locals(state: &mut FnState, name: &Ident, locals: &[LocalId]) {
     let binding = match locals {
-        [one] => Binding::Scalar(*one),
+        // A string or an array is bound as values are, one owned local.
+        [one] if !state.is_owned(*one) => Binding::Scalar(*one),
         many => Binding::Struct(many.to_vec()),
     };
     if let Some(scope) = state.scopes.last_mut() {

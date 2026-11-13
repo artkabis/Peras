@@ -292,6 +292,7 @@ fn check_files(
     err: &mut dyn Write,
 ) -> io::Result<u8> {
     let mut report = Report {
+        inputs: Vec::new(),
         version: json::FORMAT_VERSION,
         language: localizer.language().tag(),
         error_count: 0,

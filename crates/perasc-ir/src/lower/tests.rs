@@ -48,13 +48,21 @@ fn negative_literals_are_folded_including_the_smallest() {
 #[test]
 fn every_unsupported_construct_is_reported_with_its_name() {
     for (source, feature) in [
-        // A structure is compiled; one holding a type that is not, is reported.
+        // Arrays of strings and of arrays are compared; of maps, not yet.
         (
-            "fn f(a: Array<String>, b: Array<String>): bool { return a == b; }",
+            "fn f(a: Array<Map<String, i32>>, b: Array<Map<String, i32>>): bool { return a == b; }",
             "deep-equality",
         ),
-        // A module constant is compiled; a module variable is not yet.
-        ("let counter = 3;", "global"),
+        // A module variable of numbers is compiled; of a string, or passed
+        // `inout`, not yet (decision 0023).
+        (
+            "let name = \"x\";\nexport fn f(): i32 {\n  return name.length;\n}\n",
+            "global-heap",
+        ),
+        (
+            "let k = 2;\nfn g(x: inout i32): void {\n  x += 1;\n}\nexport fn f(): i32 {\n  g(&k);\n  return k;\n}\n",
+            "global-inout",
+        ),
         (
             "struct Tree {\n  children: Array<Tree>;\n}\nexport fn f(t: Tree): i32 {\n  return t.children.length;\n}\n",
             "recursive-type",
@@ -68,7 +76,6 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "inout-string",
         ),
         ("fn f(x: u8): u8 { return x; }", "integer-type"),
-        ("fn f(x: f64): f64 { return x % 2.0; }", "float-remainder"),
     ] {
         let errors = lowered(source).err().unwrap_or_default();
         assert!(!errors.is_empty(), "{source}: no error");

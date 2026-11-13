@@ -1,0 +1,10 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0215-copy-resource.apeiron
+---
+diagnostics:
+  error[E0215] check-unknown-member { type: "Widget", member: "copy" }
+    primary 9:12-9:16: check-unknown-member-label { type: "Widget" }
+    cause: check-unknown-member-why
+    fix: check-unknown-member-fix

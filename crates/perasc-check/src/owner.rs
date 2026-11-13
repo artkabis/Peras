@@ -100,12 +100,10 @@ pub(crate) struct Owner<'c, 'a> {
 
 impl<'c, 'a> Owner<'c, 'a> {
     pub(crate) fn new(checker: &'c mut Checker<'a>) -> Self {
-        let conventions = checker
-            .ast
-            .functions()
-            .iter()
-            .map(|decl| decl.params.iter().map(|p| p.convention).collect())
-            .collect();
+        // The checker's signatures, which hold the functions a module
+        // imports after its own: an imported `sink` takes its argument too
+        // (decision 0022).
+        let conventions = checker.fns.iter().map(|f| f.conventions.clone()).collect();
         Self {
             checker,
             conventions,

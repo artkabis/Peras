@@ -304,14 +304,15 @@ fn quiet_stmt(stmt: &Stmt, held: &[LocalId]) -> bool {
                 BufStmt::Set(_) | BufStmt::CheckIndex | BufStmt::CheckOverflow
             ) && args.iter().all(quiet_expr)
         }
-        Stmt::Release(_) | Stmt::CallMany { .. } => false,
+        // A module variable written may be a bound: kept as written.
+        Stmt::Release(_) | Stmt::CallMany { .. } | Stmt::SetGlobal(..) => false,
     }
 }
 
 /// Whether evaluating `e` calls nothing and moves nothing.
 fn quiet_expr(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Borrow(_) => true,
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Borrow(_) | ExprKind::Global(_) => true,
         ExprKind::Call(..) | ExprKind::Move(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)

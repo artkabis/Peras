@@ -24,7 +24,7 @@ mod own;
 pub mod text;
 mod verify;
 
-pub use lower::{lower, lower_with};
+pub use lower::{Unit, lower, lower_units, lower_with};
 pub use opt::optimize;
 pub use verify::verify;
 
@@ -105,10 +105,29 @@ pub const STATIC_END: u32 = 1024;
 pub struct Module {
     /// Functions, in source order.
     pub functions: Vec<Function>,
+    /// The module's variables, by their [`GlobalId`]: one per scalar of each
+    /// module-level `let` (decision 0023).
+    pub globals: Vec<Global>,
     /// The bytes of each string literal, which [`BufOp::Literal`] copies into a
     /// new buffer.
     pub data: Vec<Vec<u8>>,
 }
+
+/// A module variable: one scalar of a module-level `let`, kept between
+/// calls, its initial value a constant (decision 0023).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Global {
+    /// Its name in source, a field's path after it: `origin_x`.
+    pub name: String,
+    /// Its type: a number or a boolean.
+    pub ty: Ty,
+    /// Its value before any call.
+    pub init: Const,
+}
+
+/// The number of a module variable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GlobalId(pub u32);
 
 /// A function.
 #[derive(Debug, Clone, PartialEq)]
@@ -268,7 +287,24 @@ impl Module {
     /// follow [`Module::uses_heap`] alone, the same in every build.
     #[must_use]
     pub fn needs_runtime(&self) -> bool {
-        self.uses_heap() || self.functions.iter().any(Function::checks_overflow)
+        self.uses_heap()
+            || self.functions.iter().any(Function::checks_overflow)
+            || self.calls_runtime()
+    }
+
+    /// Whether a function calls the runtime, as `%` on floats does with no
+    /// buffer at all (decision 0021).
+    #[must_use]
+    pub fn calls_runtime(&self) -> bool {
+        let mut found = false;
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if matches!(e.kind, ExprKind::Buf(BufOp::Runtime(_), _)) {
+                    found = true;
+                }
+            });
+        }
+        found
     }
 }
 
@@ -347,6 +383,8 @@ pub struct Local {
 pub enum Stmt {
     /// `local = value`
     Set(LocalId, Expr),
+    /// `variable = value`, for a module variable.
+    SetGlobal(GlobalId, Expr),
     /// A value computed for its effect, then dropped.
     Expr(Expr),
     /// `if (cond) { then } else { otherwise }`
@@ -440,6 +478,8 @@ pub enum ExprKind {
     Move(LocalId),
     /// Lends the block of an `owned` local, as a `borrowed` argument.
     Borrow(LocalId),
+    /// Reads a module variable, which any call may have changed.
+    Global(GlobalId),
     /// A value computed from a buffer: see [`BufOp`].
     Buf(BufOp, Vec<Expr>),
 }
@@ -466,6 +506,20 @@ pub enum Elem {
 }
 
 impl Elem {
+    /// Its kind in a shape of [`RuntimeFn::BufEqual`].
+    #[must_use]
+    pub const fn shape(self) -> u32 {
+        match self {
+            Self::U8 => 1,
+            Self::I32 => 2,
+            Self::I64 => 3,
+            Self::F32 => 4,
+            Self::F64 => 5,
+            Self::Bool => 6,
+            Self::Handle => 7,
+        }
+    }
+
     /// Its size in bytes.
     #[must_use]
     pub const fn size(self) -> u32 {
@@ -614,6 +668,18 @@ pub enum RuntimeFn {
     /// `(n: i64) -> i32`: the number of bytes [`Self::FmtInt`] writes for
     /// `n`, its sign included (decision 0017).
     FmtIntLen,
+    /// `(x: f64, y: f64) -> f64`: the remainder of `x / y` with the sign of
+    /// `x`, exactly, as JavaScript's `%` and C's `fmod` give it; WebAssembly
+    /// has no instruction for it (decision 0021, finding F304).
+    FloatRem,
+    /// `(a, b, shape: i32) -> bool`: whether two buffers hold the same
+    /// elements, by `==` on each: bytes and integers by value, floats as
+    /// floats compare, a handle's buffer by the same rule, one level down.
+    /// `shape` says the kind of the elements in its low four bits, then the
+    /// kind of a handle's elements in the next four, and so on: 1 a byte,
+    /// 2 an `i32`, 3 an `i64`, 4 an `f32`, 5 an `f64`, 6 a `bool`, 7 a
+    /// handle (decision 0021, finding F305).
+    BufEqual,
     /// `(s, n: i64)`: the digits of `n` appended to the string `s`, as
     /// [`Self::FmtInt`] writes them, without a string of their own: a
     /// template's integers (decision 0017).
@@ -720,7 +786,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 53] = [
+    pub const ALL: [Self; 55] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -774,6 +840,8 @@ impl RuntimeFn {
         Self::MapPutAtSLent,
         Self::FmtIntLen,
         Self::FmtIntAppend,
+        Self::FloatRem,
+        Self::BufEqual,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -821,6 +889,8 @@ impl RuntimeFn {
             Self::MapPutAtSLent => "map_put_at_s_lent",
             Self::FmtIntLen => "fmt_int_len",
             Self::FmtIntAppend => "fmt_int_append",
+            Self::FloatRem => "f64_rem",
+            Self::BufEqual => "buf_equal",
             Self::MapStore => "map_store",
             Self::MapStoreF => "map_store_f",
             Self::MapStoreH => "map_store_h",
@@ -843,7 +913,7 @@ impl RuntimeFn {
         match self {
             Self::FmtInt | Self::FmtIntLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
-            Self::FmtFloat => Ty::F64,
+            Self::FmtFloat | Self::FloatRem => Ty::F64,
             Self::MapNew => Ty::I32,
             _ => Ty::Borrowed,
         }
@@ -854,7 +924,7 @@ impl RuntimeFn {
     pub const fn operands(self) -> &'static [Ty] {
         match self {
             Self::NextPart | Self::NextChar => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
-            Self::IndexOf => &[Ty::Borrowed, Ty::I32],
+            Self::IndexOf | Self::BufEqual => &[Ty::Borrowed, Ty::I32],
             Self::StartsWith
             | Self::EndsWith
             | Self::Split
@@ -898,6 +968,7 @@ impl RuntimeFn {
             Self::MapPutAtI => &[Ty::I32, Ty::I64],
             Self::MapPutAtS => &[Ty::I32, Ty::Owned],
             Self::MapPutAtSLent => &[Ty::I32, Ty::Borrowed],
+            Self::FloatRem => &[Ty::F64],
             Self::MapStore => &[Ty::I32, Ty::I32, Ty::I64],
             Self::MapStoreF => &[Ty::I32, Ty::I32, Ty::F64],
             Self::MapStoreH => &[Ty::I32, Ty::I32, Ty::Owned],
@@ -926,10 +997,11 @@ impl RuntimeFn {
             | Self::EndsWith
             | Self::IsInt
             | Self::MapDeleteI
-            | Self::MapDeleteS => Ty::Bool,
+            | Self::MapDeleteS
+            | Self::BufEqual => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
-            Self::MapValueF | Self::ParseFloat => Ty::F64,
+            Self::MapValueF | Self::ParseFloat | Self::FloatRem => Ty::F64,
             Self::ArrReverse
             | Self::ArrSort
             | Self::ArrPermute
@@ -1255,7 +1327,9 @@ impl Module {
 fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
     for stmt in stmts {
         match stmt {
-            Stmt::Set(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => each_in(e, visit),
+            Stmt::Set(_, e) | Stmt::SetGlobal(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {
+                each_in(e, visit);
+            }
             Stmt::If {
                 cond,
                 then,
@@ -1308,7 +1382,11 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
                 each_in(a, visit);
             }
         }
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Move(_) | ExprKind::Borrow(_) => {}
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Move(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_) => {}
     }
 }
 
@@ -1318,6 +1396,15 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
 
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, global) in self.globals.iter().enumerate() {
+            writeln!(
+                f,
+                "global @{i} {}: {} = {:?}",
+                global.name,
+                global.ty.name(),
+                global.init
+            )?;
+        }
         for function in &self.functions {
             let params: Vec<String> = function
                 .params()
@@ -1354,6 +1441,9 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
         match stmt {
             Stmt::Set(local, value) => {
                 let _ = writeln!(out, "{pad}%{} = {}", local.0, expr(value));
+            }
+            Stmt::SetGlobal(global, value) => {
+                let _ = writeln!(out, "{pad}@{} = {}", global.0, expr(value));
             }
             Stmt::Expr(e) => {
                 let _ = writeln!(out, "{pad}{}", expr(e));
@@ -1434,6 +1524,7 @@ fn expr(e: &Expr) -> String {
         ExprKind::Const(Const::Float(v)) => format!("{v:?}:{ty}"),
         ExprKind::Const(Const::Bool(v)) => v.to_string(),
         ExprKind::Local(l) => format!("%{}", l.0),
+        ExprKind::Global(g) => format!("@{}", g.0),
         ExprKind::Unary(op, operand) => {
             let op = match op {
                 UnOp::Neg => "neg",

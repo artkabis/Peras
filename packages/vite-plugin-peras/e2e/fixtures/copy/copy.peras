@@ -1,0 +1,72 @@
+// `copy()` on a structure (decision 0021, finding F102): its strings,
+// arrays and maps made again, so that changing the copy leaves the
+// original as it was.
+export enum Tag {
+  Plain,
+  Named(String),
+}
+
+export struct Inner {
+  label: String;
+  values: Array<i32>;
+}
+
+export struct Record {
+  name: String;
+  words: Array<String>;
+  counts: Map<String, i32>;
+  note: Option<String>;
+  tag: Tag;
+  inner: Inner;
+  score: f64;
+}
+
+fn sample(seed: i32): Record {
+  let counts: Map<String, i32> = Map.new();
+  counts.set("a", seed);
+  counts.set("b", seed * 2);
+  return Record(`r${seed}`, ["x", "yy"], counts, Some("n"), Tag.Named("t"), Inner("in", [seed, 2]), 1.5);
+}
+
+// The copy changed, the original read after: both given back as text.
+export fn changed(seed: i32): String {
+  const original = sample(seed);
+  let copy = original.copy();
+  copy.name += "!";
+  copy.words.push("zzz");
+  copy.words[0] = "w";
+  copy.counts.set("a", 99);
+  copy.inner.label = "out";
+  copy.inner.values.push(7);
+  copy.score = 2.5;
+  return `${describe(original)}|${describe(copy)}`;
+}
+
+fn describe(r: Record): String {
+  const tag = match (r.tag) {
+    Tag.Plain => "plain",
+    Tag.Named(n) => n.copy(),
+  };
+  return `${r.name},${r.words.join("+")},${r.counts.get("a").unwrapOr(-1)},${r.counts.size},${r.note.unwrapOr("-")},${tag},${r.inner.label},${r.inner.values.length},${r.score}`;
+}
+
+// A value a loop over a map lends, kept by a copy: F102's case.
+export fn kept(n: i32): String {
+  let byName: Map<String, Inner> = Map.new();
+  for (let i = 0; i < n; i++) {
+    byName.set(`k${i}`, Inner(`l${i}`, [i]));
+  }
+  let out: Array<Inner> = [];
+  for (const e of byName) {
+    if (e.1.values[0] % 2 == 0) {
+      out.push(e.1.copy());
+    }
+  }
+  byName.clear();
+  return out.map((x) => x.label.copy()).join(",");
+}
+
+// A copy of a temporary, read and dropped.
+export fn temporary(seed: i32): i32 {
+  return sample(seed).copy().words.length + sample(seed).copy().inner.values[0];
+}

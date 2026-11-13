@@ -98,6 +98,13 @@ impl<'a> Checker<'a> {
                 expr(value, &mut state)?;
                 self.fill(&mut state, *local)?;
             }
+            Stmt::SetGlobal(global, value) => {
+                expr(value, &mut state)?;
+                // A module variable holds numbers only (decision 0023).
+                if matches!(value.ty, Ty::Owned | Ty::Borrowed) {
+                    return Err(format!("module variable #{} is given a block", global.0));
+                }
+            }
             Stmt::CallMany { targets, args, .. } => {
                 for arg in args {
                     expr(arg, &mut state)?;
@@ -265,7 +272,7 @@ impl<'a> Checker<'a> {
 /// The state after an expression, evaluated left to right.
 fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) => {}
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Global(_) => {}
         ExprKind::Move(local) | ExprKind::Borrow(local) => {
             if !holds(state, *local) {
                 return Err(format!(

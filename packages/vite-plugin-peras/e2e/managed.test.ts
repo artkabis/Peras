@@ -107,6 +107,40 @@ describe("a managed module", () => {
     }
   });
 
+  for (const allocator of ["debug", "tlsf"] as const) {
+    it(`passes the structures and enumerations of an owned module both ways, on ${allocator}`, async () => {
+      const out = await mkdtemp(join(tmpdir(), "peras-managed-"));
+      try {
+        await promisify(execFile)(perasc, [
+          "build",
+          join(fixtures, "geometry.apeiron"),
+          "--allocator",
+          allocator,
+          "--out",
+          out,
+        ]);
+        const js = await readFile(join(out, "geometry.js"), "utf8");
+        // Types have nothing to import at run time.
+        expect(js).toContain(
+          'import { area, grown, measure, tagged, biggest } from "./lib/geometry.js";',
+        );
+        const app = (await import(pathToFileURL(join(out, "geometry.js")).href)) as {
+          report(): string;
+        };
+        // A nested structure, an array of strings in it, an enumeration each
+        // way, an array of structures.
+        expect(app.report()).toBe("6 hall+ 3x4 2 23 circle 12 4");
+        const lib = (await import(pathToFileURL(join(out, "lib", "geometry.js")).href)) as {
+          __perasHeap: { checkLeaks(): void; live(): number };
+        };
+        lib.__perasHeap.checkLeaks();
+        expect(lib.__perasHeap.live()).toBe(0);
+      } finally {
+        await rm(out, { recursive: true, force: true });
+      }
+    });
+  }
+
   it("reports an import that cannot be made", async () => {
     const dir = await mkdtemp(join(tmpdir(), "peras-managed-"));
     try {

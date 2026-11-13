@@ -10,3 +10,13 @@ export fn rounded(x: f64): f64 {
 export fn single(x: f32): f32 {
   return x.pow(3.0) + x.sin() + x.round();
 }
+
+// `%` on floats, which WebAssembly has no instruction for: the runtime's,
+// exact (decision 0021).
+export fn remainder(x: f64, y: f64): f64 {
+  return x % y;
+}
+
+export fn remainder32(x: f32, y: f32): f32 {
+  return x % y;
+}

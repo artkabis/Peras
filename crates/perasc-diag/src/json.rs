@@ -28,6 +28,11 @@ pub struct Report {
     pub error_count: usize,
     /// One entry per checked file, in the order given.
     pub files: Vec<FileReport>,
+    /// For `perasc build`, the files the module was compiled from, the
+    /// imported ones first and the file built last, so that a bundler can
+    /// watch them all (decision 0022). Absent when not known.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<String>,
 }
 
 /// The errors of one file.

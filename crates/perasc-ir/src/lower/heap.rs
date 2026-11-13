@@ -375,8 +375,7 @@ impl Lowering<'_> {
             return int(0);
         };
         if columns.contains(&Elem::Handle) {
-            self.unsupported(span, "deep-equality");
-            return int(0);
+            return self.deep_buffer_eq(state, (lhs, rhs), &columns, equal, span);
         }
         // `x.toLowerCase() == y`: each byte of `x`, its case changed, against
         // `y`'s, without making the new string (decision 0014, finding F205).
@@ -433,6 +432,57 @@ impl Lowering<'_> {
         } else {
             Expr {
                 kind: ExprKind::Unary(UnOp::Not, Box::new(same_expr)),
+                ty: Ty::Bool,
+            }
+        }
+    }
+
+    /// `a == b` on arrays of strings or of arrays: each column of `a` against
+    /// `b`'s by the runtime, its elements and theirs compared by `==`
+    /// (decision 0021, finding F305). The shape of each column comes from the
+    /// checked type, and must agree with the columns, or it is not compiled.
+    fn deep_buffer_eq(
+        &mut self,
+        state: &mut FnState,
+        (lhs, rhs): (ExprId, ExprId),
+        columns: &[Elem],
+        equal: bool,
+        span: Span,
+    ) -> Expr {
+        let shapes = match self.check_type(lhs) {
+            Some(CheckTy::Array(inner)) => self.shapes(&inner),
+            _ => None,
+        };
+        let shapes = shapes.filter(|s| {
+            s.len() == columns.len() && s.iter().zip(columns).all(|(s, e)| s & 0xf == e.shape())
+        });
+        let Some(shapes) = shapes else {
+            self.unsupported(span, "deep-equality");
+            return int(0);
+        };
+        let a = self.value_as(state, lhs, Mode::Borrow);
+        let b = self.value_as(state, rhs, Mode::Borrow);
+        let same = a
+            .into_iter()
+            .zip(b)
+            .zip(shapes)
+            .map(|((x, y), shape)| Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(crate::RuntimeFn::BufEqual),
+                    vec![x, y, int(i64::from(shape))],
+                ),
+                ty: Ty::Bool,
+            })
+            .reduce(|acc, e| super::binary(BinOp::And, acc, e))
+            .unwrap_or(Expr {
+                kind: ExprKind::Const(Const::Bool(true)),
+                ty: Ty::Bool,
+            });
+        if equal {
+            same
+        } else {
+            Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(same)),
                 ty: Ty::Bool,
             }
         }

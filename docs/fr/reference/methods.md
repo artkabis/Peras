@@ -110,7 +110,7 @@ Chacune de ces méthodes prend une fonction fléchée, écrite sur place, `(x) =
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | `map(f)`              | un nouveau tableau des `f(x)` de chaque élément                                                                                                                               | <span class="status compiled">compilé</span> |
 | `filter(f)`           | un nouveau tableau des copies des éléments pour lesquels `f(x)` vaut `true` ; sur un tableau temporaire, comme `text.split(" ")`, le même tableau, gardé sur place sans copie | <span class="status compiled">compilé</span> |
-| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start` ; nombres et structures de nombres                                                                                        | <span class="status compiled">compilé</span> |
+| `reduce(f, start)`    | `f(acc, x)` replié sur les éléments, depuis `start`, de tout type : nombres, chaînes, tableaux, structures                                                                    | <span class="status compiled">compilé</span> |
 | `find(f)`             | une copie du premier élément pour lequel `f(x)` vaut `true`, ou `None`                                                                                                        | <span class="status compiled">compilé</span> |
 | `findIndex(f)`        | l’indice du premier élément pour lequel `f(x)` vaut `true`, ou `-1`                                                                                                           | <span class="status compiled">compilé</span> |
 | `some(f)`, `every(f)` | si `f(x)` vaut `true` pour un élément, pour tous ; s’arrête dès que c’est connu                                                                                               | <span class="status compiled">compilé</span> |
@@ -120,7 +120,8 @@ export fn summary(xs: Array<i32>, words: Array<String>): i32 {
   const evens = xs.filter((x) => x % 2 == 0);
   const total = evens.map((x) => x * 10).reduce((acc, x) => acc + x, 0);
   const long = words.find((w) => w.length > 3).unwrapOr("");
-  let n = total + long.length + xs.findIndex((x) => x > 100);
+  const line = words.reduce((acc, w) => acc + w + ",", "");
+  let n = total + long.length + line.length + xs.findIndex((x) => x > 100);
   if (xs.some((x) => x < 0)) {
     n += 1;
   }
@@ -265,5 +266,30 @@ Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E02
 | ------------------- | --------------------------------- | -------------------------------------------- |
 | `isOk()`, `isErr()` | la variante                       | <span class="status compiled">compilé</span> |
 | `unwrapOr(secours)` | la valeur de l’`Ok`, ou `secours` | <span class="status compiled">compilé</span> |
+
+## Structures
+
+| Méthode  | Donne                                                                                         | État                                         |
+| -------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `copy()` | une structure à soi : ses chaînes, tableaux, tables et ensembles refaits, dans les deux modes | <span class="status compiled">compilé</span> |
+
+Une structure qui tient une ressource du navigateur, une valeur de JavaScript ou une fonction n’a pas de `copy()` : une ressource a un seul propriétaire.
+
+```peras build
+struct Item {
+  name: String;
+  tags: Array<String>;
+}
+
+export fn renamed(items: Map<String, Item>): Array<Item> {
+  let out: Array<Item> = [];
+  for (const e of items) {
+    let item = e.1.copy();
+    item.name += "!";
+    out.push(item);
+  }
+  return out;
+}
+```
 
 Un membre inconnu est refusé avec la liste de ceux qui existent ([E0215](../errors/E0215.md)). Beaucoup d’autres méthodes sont prévues : voir la [feuille de route](roadmap.md#phase-3--une-bibliothèque-standard).

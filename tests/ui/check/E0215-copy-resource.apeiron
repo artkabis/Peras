@@ -1,0 +1,10 @@
+// A structure that holds a resource of the browser has no `copy()`: the
+// resource has one owner.
+struct Widget {
+  root: Element;
+  name: String;
+}
+
+export fn twin(w: Widget): Widget {
+  return w.copy();
+}

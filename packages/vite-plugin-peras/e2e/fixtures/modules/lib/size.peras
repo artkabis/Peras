@@ -1,0 +1,30 @@
+// Decision 0022: imported by both other files: a diamond.
+export struct Item {
+  name: String;
+  tags: Array<String>;
+  weight: i32;
+}
+
+export enum Kind {
+  Light,
+  Heavy(i32),
+}
+
+fn helper(x: i32): i32 {
+  return x * 2;
+}
+
+export fn make(n: i32): Item {
+  let tags: Array<String> = [];
+  for (let i = 0; i < n % 4; i++) {
+    tags.push(`t${i}`);
+  }
+  return Item(`item${n}`, tags, helper(n));
+}
+
+export fn kind(item: Item): Kind {
+  if (item.weight > 10) {
+    return Kind.Heavy(item.weight);
+  }
+  return Kind.Light;
+}

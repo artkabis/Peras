@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 30 } else { 31 };
+    let choices = if depth == 0 { 35 } else { 36 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -120,6 +120,20 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         28 => "wide.set(i.toI64() * 4294967296 + 5, i); acc += wide.get((i % 3).toI64() * 4294967296 + 5).unwrapOr(7) + wide.size;".to_owned(),
         // Integers read at and past the bounds of 32 and 64 bits.
         29 => "const w = `${i - 20}`; acc += w.parseI32().unwrapOr(-1) + \"2147483647\".parseI32().unwrapOr(1) % 7 + \"2147483650\".parseI32().unwrapOr(3) + \"-2147483648\".parseI32().unwrapOr(4) % 5; if (\"-9223372036854775809\".parseI64().isSome() || \"9223372036854775807\".parseI64().isNone()) { acc += 11; }".to_owned(),
+        // `%` on floats, the runtime's in WebAssembly, Rust's in the oracle.
+        30 => "acc += ((i.toF64() * 1.5 - 7.25) % 4.0 * 100.0).toI32() + (i.toF32() % -2.5).toI32();".to_owned(),
+        // `==` on arrays of strings and of arrays, deep in the runtime.
+        31 => "const a = s.split(\",\"); const b = `${k},${s}`.split(\",\"); if (a == b) { acc += 5; } if (a != \"x,yy\".split(\",\")) { acc += 1; } if ([[i % 3, 1], [2]] == [[1, 1], [2]]) { acc += 3; } if ([[0.0 / 0.0]] == [[0.0 / 0.0]] || [[-0.0]] != [[0.0]]) { acc += 7; }".to_owned(),
+        // `reduce` keeping a string or an array: the previous one released
+        // at each turn, the accumulator read in the body.
+        32 => "const j = `${k},${s},${i}`.split(\",\").reduce((a, w) => a.slice(0, 6) + w + \"|\", k.copy()); const d = [i, acc % 9].reduce((a, x) => a.concat([x, a.length]), [1]); acc += j.length + d.length + d[d.length - 1];".to_owned(),
+        // `copy()` of structures: one a loop over a map lends, one read
+        // out of it, changed without changing the map.
+        33 => format!("for (const e of pairs) {{ let c = e.1.copy(); c.name += \"q\"; acc += c.name.length + c.count; }} let d = pairs.get({k}).unwrapOr(Pair(\"d\", 2)).copy(); d.count += 1; acc += d.count;"),
+        // A module variable, which a call changes: a value read before the
+        // call is not the value after it (decision 0023).
+        // `spun` uses no memory: the optimizations run on its loop.
+        34 => "for (let j = 0; j < 3; j++) { const before = tally; acc += bumped(j + i) - before % 50; } if (tally % 2 == 0) { tally += 1; } acc += tally % 7 + spun(i);".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -160,6 +174,22 @@ fn made(i: i32): Pair {{
   return Pair(\"m\", i % 4);
 }}
 
+let tally = 0;
+
+fn bumped(i: i32): i32 {{
+  tally += i % 3 + 1;
+  return tally % 50;
+}}
+
+fn spun(n: i32): i32 {{
+  let total = 0;
+  for (let j = 0; j < n % 5 + 1; j++) {{
+    const before = tally;
+    total += bumped(j) - before % 50;
+  }}
+  return total;
+}}
+
 export fn f(n: i32): i32 {{
   let m: Map<String, i32> = Map.new();
   let pairs: Map<String, Pair> = Map.new();
@@ -182,7 +212,7 @@ export fn f(n: i32): i32 {{
   for (const x of ids) {{
     acc = (acc + x % 1000) % 100003;
   }}
-  return acc + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
+  return acc + tally % 1000 + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
 }}
 "
     )
@@ -305,4 +335,71 @@ fn optimized_programs_compute_what_they_did_as_written() {
             }
         }
     }
+}
+
+/// The program of `seed` in one file, and split into `main.peras` and
+/// `lib.peras` (decision 0022): `lib.peras` exports `Pair` and `made`, and
+/// each file has a private `helper` of its own, which the one file names
+/// apart.
+fn split(seed: u64) -> (String, String, String) {
+    let whole = program(seed);
+    let header = "struct Pair {\n  name: String;\n  count: i32;\n}\n\n\
+                  fn made(i: i32): Pair {\n  return Pair(\"m\", i % 4);\n}\n\n";
+    let end = "+ s.length + k.length;\n";
+    assert!(whole.starts_with(header) && whole.contains(end));
+    let main_fn = whole
+        .trim_start_matches(header)
+        .replace(end, "+ s.length + k.length + helper(n);\n");
+    let one = format!(
+        "struct Pair {{\n  name: String;\n  count: i32;\n}}\n\n\
+         fn helperLib(i: i32): i32 {{\n  return i % 4;\n}}\n\n\
+         fn made(i: i32): Pair {{\n  return Pair(\"m\", helperLib(i));\n}}\n\n\
+         fn helperMain(n: i32): i32 {{\n  return n * 3;\n}}\n\n{}",
+        main_fn.replace("+ helper(n);", "+ helperMain(n);")
+    );
+    let lib = "export struct Pair {\n  name: String;\n  count: i32;\n}\n\n\
+               fn helper(i: i32): i32 {\n  return i % 4;\n}\n\n\
+               export fn made(i: i32): Pair {\n  return Pair(\"m\", helper(i));\n}\n"
+        .to_owned();
+    let main = format!(
+        "import {{ Pair, made }} from \"./lib.peras\";\n\n\
+         fn helper(n: i32): i32 {{\n  return n * 3;\n}}\n\n{main_fn}"
+    );
+    (one, main, lib)
+}
+
+#[test]
+fn programs_split_in_two_files_compute_what_one_file_computes() {
+    let seeds = std::env::var("PERAS_DIFFERENTIAL_SEEDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(150_u64);
+    let dir = std::env::temp_dir().join(format!("perasc-split-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| unreachable!("{e}"));
+    for seed in 0..seeds {
+        let (one, main, lib) = split(seed);
+        let whole = perasc_driver::compile_ir(&one)
+            .unwrap_or_else(|e| unreachable!("seed {seed}: one file: {e:?}\n{one}"));
+        std::fs::write(dir.join("lib.peras"), &lib).unwrap_or_else(|e| unreachable!("{e}"));
+        let root = dir.join("main.peras");
+        std::fs::write(&root, &main).unwrap_or_else(|e| unreachable!("{e}"));
+        let (mut parts, _) = perasc_driver::compile_graph_ir(&root, &main, true)
+            .unwrap_or_else(|e| unreachable!("seed {seed}: two files: {e:?}\n{main}"));
+        for n in [0, 1, 7, 40] {
+            let (oracle, clean) = interpret(&whole, n);
+            assert!(oracle.is_some() && clean, "seed {seed}, n {n}: one file");
+            assert_eq!(
+                interpret(&parts, n),
+                (oracle, true),
+                "seed {seed}, n {n}: two files\n{main}"
+            );
+        }
+        perasc_ir::optimize(&mut parts);
+        assert_eq!(
+            run_wasm(&parts, perasc_runtime::Allocator::Tlsf, 7),
+            (interpret(&whole, 7).0, 0),
+            "seed {seed}: two files, optimized, TLSF\n{main}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }
