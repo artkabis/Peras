@@ -18,7 +18,7 @@
 //! is moved; in a loop, a value moved in one turn is moved at the start of the
 //! next one, unless the turn gives it a new value or leaves the loop.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use perasc_diag::Span;
 use perasc_syntax::ast::{
@@ -110,8 +110,8 @@ pub(crate) struct Owner<'c, 'a> {
     /// Decision 0027's option D, prototyped: the variables holding an arrow
     /// function that lends what it captures, which cannot leave them, and
     /// the variables lent to one, which cannot move.
-    lending: HashSet<usize>,
-    pinned: HashSet<usize>,
+    lending: HashMap<usize, ExprId>,
+    pinned: HashMap<usize, Vec<ExprId>>,
 }
 
 impl<'c, 'a> Owner<'c, 'a> {
@@ -130,8 +130,8 @@ impl<'c, 'a> Owner<'c, 'a> {
             uses: Vec::new(),
             lent: HashSet::new(),
             in_lambda: 0,
-            lending: HashSet::new(),
-            pinned: HashSet::new(),
+            lending: HashMap::new(),
+            pinned: HashMap::new(),
         }
     }
 
@@ -235,7 +235,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                     if self.is_lending(init) {
                         self.expr(init, Use::Read, path);
                         if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
-                            self.lending.insert(binding);
+                            self.lending.insert(binding, init);
                         }
                     } else {
                         self.expr(init, Use::Consume, path);
@@ -520,10 +520,12 @@ impl<'c, 'a> Owner<'c, 'a> {
                 if self.is_lending(id) {
                     if mode == Use::Consume {
                         let span = self.checker.ast.expr(id).span;
-                        self.report(errors::move_out(span, "lending-closure", false));
+                        self.escapes(id, span, "lending-closure");
                     }
                     let captured = self.checker.captures.get(&id).cloned().unwrap_or_default();
-                    self.pinned.extend(captured.into_iter().map(|(_, b)| b));
+                    for (_, b) in captured {
+                        self.pinned.entry(b).or_default().push(id);
+                    }
                 }
             }
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
@@ -552,13 +554,21 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
         // Option D: a lending arrow function never leaves its variable, and
         // what it borrows never moves.
-        if mode == Use::Consume && self.lending.contains(&binding) {
-            self.report(errors::move_out(span, "lending-closure", false));
+        if mode == Use::Consume
+            && let Some(&lambda) = self.lending.get(&binding)
+            && self.escapes(lambda, span, "lending-closure")
+        {
             return;
         }
-        if mode == Use::Consume && self.pinned.contains(&binding) && self.moves(id) {
-            self.report(errors::move_out(span, "lent-to-closure", false));
-            return;
+        if mode == Use::Consume && self.moves(id) {
+            let lambdas = self.pinned.get(&binding).cloned().unwrap_or_default();
+            let mut refused = false;
+            for lambda in lambdas {
+                refused |= self.escapes(lambda, span, "lent-to-closure");
+            }
+            if refused {
+                return;
+            }
         }
         let part = path
             .moved
@@ -736,10 +746,23 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
-    /// Option D, prototyped: an arrow function used as a value that lends
-    /// what it captures on the heap.
+    /// A lending arrow function that escapes, or whose capture moves: option
+    /// D refuses it, and says so; the option found by measuring (`auto`)
+    /// copies what it captures instead.
+    fn escapes(&mut self, lambda: ExprId, span: Span, what: &'static str) -> bool {
+        if crate::proto_closure().as_deref() == Some("auto") {
+            self.checker.escaping.insert(lambda);
+            false
+        } else {
+            self.report(errors::move_out(span, what, false));
+            true
+        }
+    }
+
+    /// Option D, prototyped, or the option found by measuring: an arrow
+    /// function used as a value that lends what it captures on the heap.
     fn is_lending(&self, id: ExprId) -> bool {
-        crate::proto_closure().as_deref() == Some("lend")
+        matches!(crate::proto_closure().as_deref(), Some("lend" | "auto"))
             && self.checker.value_arrows.contains(&id)
             && self.checker.captures.get(&id).is_some_and(|c| {
                 c.iter().any(|(_, b)| {

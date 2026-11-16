@@ -1,6 +1,8 @@
 // Decision 0027's protocol: what a closure does with a string it captures,
 // option by option, each a prototype the compiler builds when
-// PERAS_PROTO_CLOSURE is `move` (A), `copy` (B) or `lend` (D).
+// PERAS_PROTO_CLOSURE is `move` (A), `copy` (B) or `lend` (D), and the option
+// found by measuring them, `auto` (F): copied, unless the closure cannot
+// escape, then lent.
 //
 // 1. The workloads of bench/closures/workloads, built by each option and as a
 //    managed module (JavaScript), checked to give the same result, then run in
@@ -29,7 +31,13 @@ const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "closures");
 const work = join(root, "target", "bench-closures");
 const perasc = join(root, "target", "release", "perasc");
-const OPTIONS = { move: "A, move", copy: "B, copy", lend: "D, lend", js: "managed" };
+const OPTIONS = {
+  move: "A, move",
+  copy: "B, copy",
+  lend: "D, lend",
+  auto: "F, copy unless lent",
+  js: "managed",
+};
 
 rmSync(work, { recursive: true, force: true });
 
@@ -98,31 +106,31 @@ const workloads = [
     "W1, 16 B, 1,000,000 times",
     "w1",
     [16, 1_000_000],
-    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", js: "w1.peras" },
+    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", auto: "w1.peras", js: "w1.peras" },
   ],
   [
     "W1, 1 KiB, 100,000 times",
     "w1",
     [1024, 100_000],
-    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", js: "w1.peras" },
+    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", auto: "w1.peras", js: "w1.peras" },
   ],
   [
     "W1, 64 KiB, 2,000 times",
     "w1",
     [65_536, 2000],
-    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", js: "w1.peras" },
+    { move: "w1-move.peras", copy: "w1.peras", lend: "w1.peras", auto: "w1.peras", js: "w1.peras" },
   ],
   [
     "W2, 20,000,000 calls",
     "w2",
     [20_000_000],
-    { move: "w2.peras", copy: "w2.peras", lend: "w2.peras", js: "w2.peras" },
+    { move: "w2.peras", copy: "w2.peras", lend: "w2.peras", auto: "w2.peras", js: "w2.peras" },
   ],
   [
     "W3, 100,000 strings",
     "w3",
     [100_000],
-    { move: "w3-move.peras", copy: "w3.peras", js: "w3.peras" },
+    { move: "w3-move.peras", copy: "w3.peras", auto: "w3.peras", js: "w3.peras" },
   ],
 ];
 
@@ -192,15 +200,15 @@ for (const [label, fn, args, sources] of workloads) {
 /** @type {Record<string, unknown[]>} */
 const inputs = { p1: ["w"], p2: ["a cat and the dog"], p3: ["Ann"], p4: [12], p5: ["  word  "] };
 lines.push("### Ease of writing", "");
-lines.push("| Program | A, move | B, copy | D, lend |");
-lines.push("| --- | --- | --- | --- |");
+lines.push("| Program | A, move | B, copy | D, lend | F, copy unless lent |");
+lines.push("| --- | --- | --- | --- | --- |");
 for (const p of Object.keys(inputs)) {
   const source = join(bench, "ease", `${p}.peras`);
   const managed = build(source, "js");
   if (!managed.ok) throw new Error(`${p} managed: ${managed.errors.join(" | ")}`);
   const want = JSON.stringify((await load(managed.js))[p]?.(...(inputs[p] ?? [])));
   const cells = [];
-  for (const o of ["move", "copy", "lend"]) {
+  for (const o of ["move", "copy", "lend", "auto"]) {
     const natural = build(source, o);
     const errors = natural.ok ? [] : natural.errors.map((e) => e.slice(6, 11));
     const fixed = join(bench, "ease", "fixed", `${p}-${o}.peras`);

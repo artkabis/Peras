@@ -51,7 +51,7 @@ type Planned = (Symbol, CheckTy, Option<Vec<(bool, usize)>>);
 /// (A) or is copied (B); `None` when it is lent (D).
 fn taken(state: &mut FnState, value: &Expr, proto: Option<&str>, fns: bool) -> Option<Expr> {
     match (&value.kind, proto) {
-        (_, Some("lend")) => None,
+        (_, Some("lend" | "lent")) => None,
         (ExprKind::Borrow(l), Some("move")) if !fns => Some(super::heap::moved(state, *l)),
         _ => Some(Expr {
             kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
@@ -105,7 +105,13 @@ impl Lowering<'_> {
     pub(super) fn arrow_value(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
         let span = self.ast.expr(id).span;
         let found = self.analysis.captures.get(&id).cloned().unwrap_or_default();
-        let proto = perasc_check::proto_closure();
+        // The option found by measuring copies what an escaping closure
+        // captures, and lends to one that cannot escape.
+        let proto = perasc_check::proto_closure().map(|p| match p.as_str() {
+            "auto" if self.analysis.escaping.contains(&id) => "copy".to_owned(),
+            "auto" => "lent".to_owned(),
+            _ => p,
+        });
         // The buffers the environment owns come first, then the rest.
         let mut owned: Vec<Expr> = Vec::new();
         let mut rest: Vec<Expr> = Vec::new();
