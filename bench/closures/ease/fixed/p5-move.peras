@@ -1,0 +1,7 @@
+// P5: a closure capturing a value the function still uses after.
+export fn p5(s: String): i32 {
+  const word = s.trim();
+  const kept = word.copy();
+  const f = (x: i32): i32 => x + kept.length;
+  return f(1) + word.length;
+}

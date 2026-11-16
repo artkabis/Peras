@@ -1,0 +1,13 @@
+// W1: a closure capturing a string, made, called once and dropped.
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn w1(size: i32, times: i32): i32 {
+  const s = "a".repeat(size);
+  let total = 0;
+  for (let i = 0; i < times; i++) {
+    total = (total + apply((x: i32): i32 => x + s.length, i)) % 1000003;
+  }
+  return total;
+}

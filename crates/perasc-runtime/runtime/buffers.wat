@@ -25,7 +25,8 @@
   (global $VIEWS i32 (i32.const 0x400))
   ;; An environment of a function value (decision 0026), not a buffer: its
   ;; header is +0 the function's position in the table, +4 how many hold it,
-  ;; 0 when it is static, +8 0, +12 SHARED, then its slots, 8 bytes each,
+  ;; 0 when it is static, +8 how many of its first slots are buffers it owns
+  ;; (decision 0027), +12 SHARED, then its slots, 8 bytes each,
   ;; written when it is made and never after. A copy adds one to its count, a
   ;; release takes one, and the last frees its block; a static one, written
   ;; below the heap when the module is instantiated, is neither counted nor
@@ -125,6 +126,16 @@
           (then
             (i32.store offset=4 (local.get $h) (local.get $len))
             (return)))
+        ;; The last holder: the buffers it owns, its first slots, go first.
+        (local.set $len (i32.load offset=8 (local.get $h)))
+        (block $done
+          (loop $next
+            (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+            (call $buf_release
+              (i32.load offset=16 (i32.add (local.get $h) (i32.shl (local.get $i) (i32.const 3))))
+              (local.get $site))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $next)))
         (call $release (local.get $h) (local.get $site))
         (return)))
     ;; A map: its header first, which catches a block released twice, then

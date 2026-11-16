@@ -1,0 +1,13 @@
+// P4: callbacks stored in an array, each capturing its own string.
+export fn p4(n: i32): i32 {
+  let fs: Array<() => i32> = [];
+  for (let i = 0; i < n; i++) {
+    const tag = `t${i}`;
+    fs.push((): i32 => tag.length);
+  }
+  let total = 0;
+  for (const f of fs) {
+    total += f();
+  }
+  return total;
+}

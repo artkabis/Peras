@@ -962,7 +962,7 @@ impl<'a> FnEncoder<'a> {
                     i32::try_from(perasc_ir::ZERO_ENV).unwrap_or(0),
                 ));
             }
-            EnvOp::New(f) => {
+            EnvOp::New(f, owned) => {
                 let bytes = 16 + 8 * args.len();
                 self.emit(&I::I32Const(i32::try_from(bytes).unwrap_or(i32::MAX)));
                 let site = self.alloc_site();
@@ -970,7 +970,8 @@ impl<'a> FnEncoder<'a> {
                 self.emit(&I::Call(ALLOC));
                 self.emit(&I::LocalSet(self.temp_env));
                 let position = self.host.table_position(f);
-                for (offset, word) in [(0, position), (4, 1), (8, 0), (12, SHARED)] {
+                let owned = i32::try_from(owned).unwrap_or(i32::MAX);
+                for (offset, word) in [(0, position), (4, 1), (8, owned), (12, SHARED)] {
                     self.emit(&I::LocalGet(self.temp_env));
                     self.emit(&I::I32Const(word));
                     self.emit(&I::I32Store(mem(offset, 4)));
@@ -979,7 +980,12 @@ impl<'a> FnEncoder<'a> {
                     self.emit(&I::LocalGet(self.temp_env));
                     self.expr(slot);
                     let offset = 16 + 8 * u64::try_from(i).unwrap_or(0);
-                    self.emit(&I::I64Store(mem(offset, 8)));
+                    // A buffer's handle, in the low half of its slot.
+                    if slot.ty.is_handle() {
+                        self.emit(&I::I32Store(mem(offset, 4)));
+                    } else {
+                        self.emit(&I::I64Store(mem(offset, 8)));
+                    }
                 }
                 self.emit(&I::LocalGet(self.temp_env));
             }
@@ -988,6 +994,12 @@ impl<'a> FnEncoder<'a> {
                     self.expr(env);
                 }
                 self.emit(&I::I64Load(mem(16 + 8 * u64::from(slot), 8)));
+            }
+            EnvOp::LoadHandle(slot) => {
+                if let Some(env) = args.first() {
+                    self.expr(env);
+                }
+                self.emit(&I::I32Load(mem(16 + 8 * u64::from(slot), 4)));
             }
         }
     }

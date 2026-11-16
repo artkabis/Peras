@@ -107,6 +107,11 @@ pub(crate) struct Owner<'c, 'a> {
     lent: HashSet<usize>,
     /// How many arrow functions the expression being checked is inside.
     in_lambda: u32,
+    /// Decision 0027's option D, prototyped: the variables holding an arrow
+    /// function that lends what it captures, which cannot leave them, and
+    /// the variables lent to one, which cannot move.
+    lending: HashSet<usize>,
+    pinned: HashSet<usize>,
 }
 
 impl<'c, 'a> Owner<'c, 'a> {
@@ -125,6 +130,8 @@ impl<'c, 'a> Owner<'c, 'a> {
             uses: Vec::new(),
             lent: HashSet::new(),
             in_lambda: 0,
+            lending: HashSet::new(),
+            pinned: HashSet::new(),
         }
     }
 
@@ -223,7 +230,16 @@ impl<'c, 'a> Owner<'c, 'a> {
         match &stmt.kind {
             StmtKind::Local(local) => {
                 if let Some(init) = local.init {
-                    self.expr(init, Use::Consume, path);
+                    // A lending arrow function may be kept in a variable,
+                    // which then only lends it.
+                    if self.is_lending(init) {
+                        self.expr(init, Use::Read, path);
+                        if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
+                            self.lending.insert(binding);
+                        }
+                    } else {
+                        self.expr(init, Use::Consume, path);
+                    }
                 }
                 // A new variable, also at each turn of a loop.
                 if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
@@ -500,6 +516,15 @@ impl<'c, 'a> Owner<'c, 'a> {
                     self.expr(*body, mode, path);
                     self.in_lambda -= 1;
                 }
+                self.captures_moved(id, path);
+                if self.is_lending(id) {
+                    if mode == Use::Consume {
+                        let span = self.checker.ast.expr(id).span;
+                        self.report(errors::move_out(span, "lending-closure", false));
+                    }
+                    let captured = self.checker.captures.get(&id).cloned().unwrap_or_default();
+                    self.pinned.extend(captured.into_iter().map(|(_, b)| b));
+                }
             }
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
                 for &item in items {
@@ -524,6 +549,16 @@ impl<'c, 'a> Owner<'c, 'a> {
             && !uses.inside.contains(&id)
         {
             uses.reads.push((binding, Vec::new(), span));
+        }
+        // Option D: a lending arrow function never leaves its variable, and
+        // what it borrows never moves.
+        if mode == Use::Consume && self.lending.contains(&binding) {
+            self.report(errors::move_out(span, "lending-closure", false));
+            return;
+        }
+        if mode == Use::Consume && self.pinned.contains(&binding) && self.moves(id) {
+            self.report(errors::move_out(span, "lent-to-closure", false));
+            return;
         }
         let part = path
             .moved
@@ -670,6 +705,51 @@ impl<'c, 'a> Owner<'c, 'a> {
                 _ => return None,
             }
         }
+    }
+
+    /// Decision 0027's option A, prototyped: an arrow function used as a
+    /// value takes what it captures that lives on the heap, which moves into
+    /// its environment where it is made.
+    fn captures_moved(&mut self, id: ExprId, path: &mut Path) {
+        if crate::proto_closure().as_deref() != Some("move")
+            || !self.checker.value_arrows.contains(&id)
+        {
+            return;
+        }
+        let span = self.checker.ast.expr(id).span;
+        let captured = self.checker.captures.get(&id).cloned().unwrap_or_default();
+        for (_, binding) in captured {
+            let Some(b) = self.checker.scopes.bindings.get(binding) else {
+                continue;
+            };
+            if !self.checker.is_move_type(&b.ty.clone()) {
+                continue;
+            }
+            let name = self.binding_name(binding);
+            if let Some(&at) = path.moved.get(&(binding, Vec::new())) {
+                self.report(errors::moved(span, &name, at, None, true));
+            } else if !self.owns(binding) {
+                self.report(errors::move_borrowed_parameter(span, &name, None));
+            } else {
+                path.moved.insert((binding, Vec::new()), span);
+            }
+        }
+    }
+
+    /// Option D, prototyped: an arrow function used as a value that lends
+    /// what it captures on the heap.
+    fn is_lending(&self, id: ExprId) -> bool {
+        crate::proto_closure().as_deref() == Some("lend")
+            && self.checker.value_arrows.contains(&id)
+            && self.checker.captures.get(&id).is_some_and(|c| {
+                c.iter().any(|(_, b)| {
+                    self.checker
+                        .scopes
+                        .bindings
+                        .get(*b)
+                        .is_some_and(|b| self.checker.is_move_type(&b.ty))
+                })
+            })
     }
 
     /// Whether the function owns the value of a variable: a local, not the

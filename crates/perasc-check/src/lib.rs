@@ -250,6 +250,17 @@ pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
     errors::import_cycle(span, path)
 }
 
+/// The option of decision 0027 a prototype build follows, from the
+/// environment variable `PERAS_PROTO_CLOSURE`: `move`, `copy` or `lend` for
+/// what a closure does with a string, an array or a function value it
+/// captures; none refuses them (`closure-heap`). For the measures only.
+#[must_use]
+pub fn proto_closure() -> Option<String> {
+    std::env::var("PERAS_PROTO_CLOSURE")
+        .ok()
+        .filter(|m| matches!(m.as_str(), "move" | "copy" | "lend"))
+}
+
 /// The exported functions of an owned module's source, as a managed module
 /// imports them; `None` when it does not parse or check.
 #[must_use]

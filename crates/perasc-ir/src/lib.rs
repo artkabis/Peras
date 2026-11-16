@@ -519,14 +519,19 @@ pub enum EnvOp {
     /// `owned` value that costs no allocation, at this address below the
     /// heap ([`Module::static_envs`]).
     Static(FnId, u32),
-    /// `[slots…]`, each an `i64`: a new environment of this function,
-    /// counted once, holding the slots in order.
-    New(FnId),
+    /// `[slots…]`: a new environment of this function, counted once,
+    /// holding the slots in order: each an `i64`, or a buffer's handle. The
+    /// first slots, as many as the number given, are `owned` buffers the
+    /// environment releases with its last holder; a `borrowed` one is lent
+    /// to it (decision 0027, prototypes).
+    New(FnId, u32),
     /// `[]`: the environment of no function, held by a `None` or an empty
     /// variant; it is static, at [`ZERO_ENV`], and is never called.
     Zero,
     /// `[env]`, lent: the slot at this index, an `i64`.
     Load(u32),
+    /// `[env]`, lent: the buffer at this slot, lent in turn.
+    LoadHandle(u32),
 }
 
 /// The shapes of expression.
@@ -1503,7 +1508,7 @@ impl Module {
         let mut found = std::collections::BTreeSet::new();
         for f in &self.functions {
             each_expr(&f.body, &mut |e| {
-                if let ExprKind::Env(EnvOp::Static(id, _) | EnvOp::New(id), _) = e.kind {
+                if let ExprKind::Env(EnvOp::Static(id, _) | EnvOp::New(id, _), _) = e.kind {
                     found.insert(id.0);
                 }
             });
@@ -1928,9 +1933,11 @@ fn expr(e: &Expr) -> String {
             let args: Vec<String> = args.iter().map(expr).collect();
             let op = match op {
                 EnvOp::Static(id, at) => format!("env.static #{} @{at}", id.0),
-                EnvOp::New(id) => format!("env.new #{}", id.0),
+                EnvOp::New(id, 0) => format!("env.new #{}", id.0),
+                EnvOp::New(id, owned) => format!("env.new #{} owns {owned}", id.0),
                 EnvOp::Zero => "env.zero".to_owned(),
                 EnvOp::Load(slot) => format!("env.load {slot}"),
+                EnvOp::LoadHandle(slot) => format!("env.handle {slot}"),
             };
             format!("({op} {})", args.join(" "))
         }

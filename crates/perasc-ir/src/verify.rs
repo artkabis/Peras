@@ -86,7 +86,7 @@ impl<'a> Verifier<'a> {
             | ExprKind::Call(..)
             | ExprKind::CallIndirect(..)
             | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _)
-            | ExprKind::Env(EnvOp::Static(..) | EnvOp::New(_) | EnvOp::Zero, _) => {
+            | ExprKind::Env(EnvOp::Static(..) | EnvOp::New(..) | EnvOp::Zero, _) => {
                 self.expr(value);
             }
             ExprKind::Buf(BufOp::Runtime(f), _) if f.result() == Ty::Owned => {
@@ -126,6 +126,10 @@ impl<'a> Verifier<'a> {
                 if self.local_type(local.0) == Some(Ty::Owned) => {}
             Some((ExprKind::Local(local), Ty::Borrowed))
                 if self.local_type(local.0) == Some(Ty::Borrowed) => {}
+            // A buffer an environment holds, lent (decision 0027).
+            Some((ExprKind::Env(EnvOp::LoadHandle(slot), args), Ty::Borrowed)) => {
+                self.env_expr(EnvOp::LoadHandle(*slot), args, Ty::Borrowed);
+            }
             // A literal only read, lent from its static header.
             Some((ExprKind::Buf(op @ BufOp::Static(..), args), Ty::Borrowed)) => {
                 self.buf_expr(*op, args, Ty::Borrowed);
@@ -530,8 +534,8 @@ impl<'a> Verifier<'a> {
     /// static one is below the heap.
     fn env_expr(&mut self, op: EnvOp, args: &[Expr], ty: Ty) {
         let named = match op {
-            EnvOp::Static(id, _) | EnvOp::New(id) => Some(id),
-            EnvOp::Zero | EnvOp::Load(_) => None,
+            EnvOp::Static(id, _) | EnvOp::New(id, _) => Some(id),
+            EnvOp::Zero | EnvOp::Load(_) | EnvOp::LoadHandle(_) => None,
         };
         if let Some(id) = named {
             let last = usize::try_from(id.0)
@@ -558,15 +562,31 @@ impl<'a> Verifier<'a> {
                 self.operands("env", args, &[]);
                 Ty::Owned
             }
-            EnvOp::New(_) => {
-                let slots = vec![Ty::I64; args.len()];
-                self.operands("env.new", args, &slots);
+            EnvOp::New(_, owned) => {
+                // The buffers it owns first, then those lent, then numbers.
+                let owned = usize::try_from(owned).unwrap_or(usize::MAX);
+                for (i, arg) in args.iter().enumerate() {
+                    match arg.ty {
+                        Ty::Owned if i < owned => self.handed_over(arg),
+                        Ty::Borrowed if i >= owned => self.buffer(Some(arg)),
+                        Ty::I64 if i >= owned => self.expr(arg),
+                        other => self.problem(&format!(
+                            "env.new slot {i} is a {}, with {owned} owned",
+                            other.name()
+                        )),
+                    }
+                }
                 Ty::Owned
             }
             EnvOp::Load(_) => {
                 self.buffer(args.first());
                 self.operands("env.load", args.get(1..).unwrap_or(&[]), &[]);
                 Ty::I64
+            }
+            EnvOp::LoadHandle(_) => {
+                self.buffer(args.first());
+                self.operands("env.handle", args.get(1..).unwrap_or(&[]), &[]);
+                Ty::Borrowed
             }
         };
         if ty != expected {
