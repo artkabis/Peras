@@ -79,3 +79,5 @@ _Chaque étape est consignée ici quand elle arrive._
 **Étape 3, `import` et `export` entre modules `.peras` : arrivée** pour les fonctions, structures et énumérations non génériques, comme la [décision 0022](0022-owned-modules.md) l’a conçue et le consigne.
 
 **Étape 4, le `let` de module (F306) : arrivé** pour les nombres, les booléens, et les structures, énumérations et options de ceux-ci, comme la [décision 0023](0023-module-variables.md) l’a conçu et le consigne. `u8` à `u64` (F302), un champ déplacé hors d’une structure (F214) et une fonction comme valeur (F308) suivent.
+
+**Étape 4, tous les types entiers (F302) : arrivé**, comme la [décision 0024](0024-integer-types.md) l’a conçu et le consigne. Un champ déplacé hors d’une structure (F214) et les fonctions comme valeurs (F308) sont conçus par la [décision 0025](0025-moved-fields-and-function-values.md), proposée.
