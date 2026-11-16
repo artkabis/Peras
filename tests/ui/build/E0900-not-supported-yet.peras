@@ -1,12 +1,17 @@
 // E0900: valid Peras that code generation cannot compile yet; every occurrence is reported.
-let limit: i32 = 10;
+let prefix = "n";
+
+struct Tree {
+  value: i32;
+  children: Array<Tree>;
+}
 
 export fn total(xs: Array<i32>, label: String): i32 {
   let sum = 0;
   for (const x of xs) sum += x;
-  return sum + label.length + limit;
+  return sum + label.length + prefix.length;
 }
 
-export fn small(xs: Array<u8>, names: Array<String>): i32 {
-  return xs.length + names.length;
+export fn size(t: Tree): i32 {
+  return t.children.length + t.value;
 }

@@ -150,7 +150,7 @@ export fn largest(orders: Array<Order>, count: i32): Array<Order> {
 }
 ```
 
-- **The key** is an `i32`, an `i64`, an `f32`, an `f64` (`number`) or a `String`, computed once per element ([E0249](../errors/E0249.md)). Numbers are in the order of `sort()`: -0 before +0, NaN last. Strings are in the order of their Unicode code points, the same in both modes; JavaScript's `<` compares UTF-16 units, which differ only between characters above U+FFFF and those from U+E000 to U+FFFF.
+- **The key** is an integer of any type, an `f32`, an `f64` (`number`) or a `String`, computed once per element ([E0249](../errors/E0249.md)). Numbers are in the order of `sort()`: -0 before +0, NaN last. Strings are in the order of their Unicode code points, the same in both modes; JavaScript's `<` compares UTF-16 units, which differ only between characters above U+FFFF and those from U+E000 to U+FFFF.
 - **Stable**: elements with equal keys keep their order, decreasing too. `sortByDescending` reverses the order of the keys, so NaN comes first.
 - **Fast**: numbers are sorted by their bits, a radix sort that carries the elements' indices, in time proportional to the length; strings by comparison. Measured against TypeScript's `sort((a, b) => a.amount - b.amount)` ([results](../../../bench/sort/RESULTS.md)): by a number, 3 to 7 times as fast from 10,000 elements, in both modes; by a string, as fast in a managed module, 1.1 to 1.4 times in an owned one.
 

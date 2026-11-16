@@ -140,7 +140,7 @@ impl Plan {
                     let [buffer, at, value] = args.as_slice() else {
                         return None;
                     };
-                    let fits = elem.ty() == self.ty
+                    let fits = lane(*elem, self.ty)
                         && is_buffer(buffer)
                         && at.kind == ExprKind::Local(self.index)
                         && self.lanewise(value);
@@ -225,7 +225,7 @@ impl Plan {
         match &e.kind {
             ExprKind::Local(l) => self.varying.contains(l),
             ExprKind::Buf(BufOp::Get(elem), args) => {
-                elem.ty() == self.ty
+                lane(*elem, self.ty)
                     && matches!(args.as_slice(), [b, at] if is_buffer(b) && at.kind == ExprKind::Local(self.index))
             }
             ExprKind::Binary(op, a, b) => {
@@ -265,11 +265,23 @@ fn reduction(local: LocalId, value: &Expr, ty: Ty) -> Option<BinOp> {
         .then_some(*op)
 }
 
+/// Whether elements of `elem` are lanes of `ty`: of its type and its size. An
+/// element of one or two bytes, read as an `i32`, is not (decision 0024).
+fn lane(elem: Elem, ty: Ty) -> bool {
+    let size = match ty {
+        Ty::I64 | Ty::F64 => 8,
+        _ => 4,
+    };
+    elem.ty() == ty && elem.size() == size
+}
+
 /// Whether evaluating `e` cannot trap, call or allocate.
 fn simple(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Const(_) | ExprKind::Local(_) => true,
-        ExprKind::Binary(BinOp::Div | BinOp::Rem, ..) if e.ty == Ty::I32 || e.ty == Ty::I64 => {
+        ExprKind::Binary(BinOp::Div | BinOp::Rem | BinOp::DivU | BinOp::RemU, ..)
+            if e.ty == Ty::I32 || e.ty == Ty::I64 =>
+        {
             false
         }
         ExprKind::Binary(_, a, b) => simple(a) && simple(b),

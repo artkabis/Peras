@@ -527,6 +527,9 @@ impl Lowering<'_> {
     pub(super) fn columns(&self, ty: Option<&CheckTy>) -> Option<Vec<Elem>> {
         match ty {
             Some(CheckTy::String) => Some(vec![Elem::U8]),
+            Some(CheckTy::Array(inner)) if super::ints::array_elem(inner).is_some() => {
+                super::ints::array_elem(inner).map(|elem| vec![elem])
+            }
             Some(CheckTy::Array(inner)) => self
                 .leaves(inner)
                 .ok()?
@@ -766,7 +769,10 @@ impl Lowering<'_> {
         let covered = buffers.iter().zip(&columns).skip(offset).take(count);
         for ((buffer, &elem), value) in covered.zip(values) {
             let value = match op {
-                Some(op) => self.arith(state, op, get(buffer, index.clone(), elem), value),
+                Some(op) => {
+                    let kind = self.int_kind(target);
+                    self.arith(state, op, get(buffer, index.clone(), elem), value, kind)
+                }
                 None => value,
             };
             state.pre.push(Stmt::Buf(

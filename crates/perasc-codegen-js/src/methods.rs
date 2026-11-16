@@ -253,6 +253,12 @@ impl Module<'_> {
             "sort" => {
                 let typed = match element {
                     Ty::Int(IntTy::I64) => "BigInt64Array",
+                    Ty::Int(IntTy::U64) => "BigUint64Array",
+                    Ty::Int(IntTy::I8) => "Int8Array",
+                    Ty::Int(IntTy::I16) => "Int16Array",
+                    Ty::Int(IntTy::U8) => "Uint8Array",
+                    Ty::Int(IntTy::U16) => "Uint16Array",
+                    Ty::Int(IntTy::U32) => "Uint32Array",
                     Ty::Int(_) => "Int32Array",
                     _ => "Float64Array",
                 };

@@ -2,14 +2,14 @@
 export interface Zone { name: string; readings: number; alerts: number; tempSum: number; tempMin: number; tempMax: number; humiditySum: number; energy: number; }
 export interface Digest { lines: number; broken: number; kept: number; zones: Zone[]; histogram: number[]; hottestSensor: number; hottest: number; }
 /** The kinds of number a `PerasArray` holds, and the typed array that views each. */
-export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array }
+export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array; i8: Int8Array; i16: Int16Array; u16: Uint16Array; u32: Uint32Array; u64: BigUint64Array }
 /** An array of numbers in the module's memory, passed to its functions with no copy. */
 export declare class PerasArray<K extends keyof PerasKinds> {
   readonly kind: K;
   readonly length: number;
   /** A view of the elements, with no copy; valid until the next call into the module. */
   view(): PerasKinds[K];
-  toArray(): (K extends "i64" ? bigint : K extends "bool" ? boolean : number)[];
+  toArray(): (K extends "i64" | "u64" ? bigint : K extends "bool" ? boolean : number)[];
   /** Gives its memory back; released when collected otherwise. */
   release(): void;
 }
@@ -17,7 +17,7 @@ export declare class PerasArray<K extends keyof PerasKinds> {
 export declare const __perasHeap: {
   live(): number;
   checkLeaks(): void;
-  array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends "i64" ? bigint : K extends "bool" ? boolean : number)[]): PerasArray<K>;
+  array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends "i64" | "u64" ? bigint : K extends "bool" ? boolean : number)[]): PerasArray<K>;
 };
 export declare function bins(): number;
 export declare function digest(text: string | Uint8Array): Digest;

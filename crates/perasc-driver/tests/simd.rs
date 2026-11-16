@@ -301,3 +301,63 @@ fn simd_off_gives_modules_and_runtimes_without_it_and_a_loader_without_the_check
     assert!(on.js.contains("--simd off"), "{}", on.js);
     assert!(!off.js.contains("WebAssembly.validate"), "{}", off.js);
 }
+
+/// Decision 0024: an array of `u32` is four bytes an element, lanes as an
+/// `i32`'s are; an array of `u8` or `i16` is not, and its loop stays scalar.
+/// Read as lanes of four bytes, its loop wrote past the end of its block.
+#[test]
+fn only_elements_of_a_lanes_width_are_vectorized() {
+    let wide = "export fn mixed(n: i32): i32 {
+  let xs: Array<u32> = [];
+  for (let k = 0; k < n; k++) {
+    xs.push(k.toU32().wrappingMul(2654435761).wrappingAdd(7));
+  }
+  for (let i = 0; i < xs.length; i++) {
+    xs[i] = (xs[i] ^ 2863311530) | 3;
+  }
+  let h: u32 = 0;
+  for (const x of xs) {
+    h = h.wrappingMul(31).wrappingAdd(x);
+  }
+  return h.toI32();
+}
+";
+    same_both_ways(wide, "mixed");
+    let narrow = "export fn narrow(n: i32): i32 {
+  let bs: Array<u8> = [];
+  let ws: Array<i16> = [];
+  for (let k = 0; k < n; k++) {
+    bs.push((k * 29).toU8());
+    ws.push((k * 2029).toI16());
+  }
+  let cs = bs.copy();
+  let vs = ws.copy();
+  for (let i = 0; i < cs.length; i++) {
+    cs[i] = bs[i] & 15;
+  }
+  for (let i = 0; i < vs.length; i++) {
+    vs[i] = ws[i] ^ 3;
+  }
+  let h = 0;
+  for (let i = 0; i < cs.length; i++) {
+    h = h * 31 + cs[i].toI32() + vs[i].toI32();
+  }
+  return h;
+}
+";
+    let (vector, scalar) = (build(narrow, true), build(narrow, false));
+    assert!(!has_vectors(&vector), "a loop over bytes was vectorized");
+    for n in 0..20 {
+        // The program's own wrapping: `toU8` and `toI16` keep the low bits.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let expected = (0..n).fold(0_i32, |h, k| {
+            let b = (k * 29) as u8 & 15;
+            let w = (k * 2029) as i16 ^ 3;
+            h.wrapping_mul(31) + i32::from(b) + i32::from(w)
+        });
+        #[allow(clippy::cast_sign_loss)]
+        let expected = Some(u64::from(expected as u32));
+        assert_eq!(call(&vector, "narrow", n), expected, "narrow({n})");
+        assert_eq!(call(&scalar, "narrow", n), expected, "narrow({n}) scalar");
+    }
+}

@@ -162,13 +162,7 @@ impl Lowering<'_> {
         let Some(&(key, elem)) = keys.first() else {
             return;
         };
-        let kind = match elem {
-            Elem::I32 => 0,
-            Elem::I64 => 1,
-            Elem::F32 => 2,
-            Elem::F64 => 3,
-            _ => 4,
-        };
+        let kind = elem.sort_kind();
         let order = state.owned_temp(Expr {
             kind: ExprKind::Buf(
                 BufOp::Runtime(F::ArrSortIndex),
@@ -553,12 +547,7 @@ impl Lowering<'_> {
                 Some(Vec::new())
             }
             "sort" => {
-                let kind = match columns.first()? {
-                    Elem::I32 => 0,
-                    Elem::I64 => 1,
-                    Elem::F32 => 2,
-                    _ => 3,
-                };
+                let kind = columns.first()?.sort_kind();
                 let buffer = buffers.first()?.clone();
                 state
                     .pre
@@ -698,13 +687,19 @@ impl Lowering<'_> {
         state: &mut FnState,
         receiver: Expr,
         method: &str,
-        args: &[ExprId],
+        (args, unsigned): (&[ExprId], bool),
     ) -> Option<Expr> {
+        // Unsigned integers compare as unsigned (decision 0024).
+        let (lt, gt) = if unsigned {
+            (BinOp::LtU, BinOp::GtU)
+        } else {
+            (BinOp::Lt, BinOp::Gt)
+        };
         let ops: &[BinOp] = match method {
             // Replaced when the other is smaller, or larger.
-            "min" => &[BinOp::Lt],
-            "max" => &[BinOp::Gt],
-            "clamp" => &[BinOp::Lt, BinOp::Gt],
+            "min" => &[lt],
+            "max" => &[gt],
+            "clamp" => &[lt, gt],
             _ => return None,
         };
         let result = state.temp(receiver.ty);

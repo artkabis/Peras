@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0024-integer-types.md](../../fr/decisions/0024-integer-types.md)._
 
-_Status: proposed on 2026-11-16, with its criteria registered before any code; step 4 of [decision 0021](0021-phases-4-and-5.md), finding F302._
+_Status: proposed on 2026-11-16, with its criteria registered before any code; accepted by the owner the same day; built, its criteria met (see [Record](#record)); step 4 of [decision 0021](0021-phases-4-and-5.md), finding F302._
 
 ## Context
 
@@ -64,3 +64,23 @@ The step lands only with all of these, in addition to [decision 0021's criteria]
 ## Record
 
 _Each part is recorded here as it lands._
+
+**Every integer type in owned modules: landed.**
+
+- **What changed.**
+  - The IR gains `convert_u`, a conversion that reads or makes an unsigned integer, and the unsigned `/u`, `%u`, `>>u`, `<u`, `<=u`, `>u` and `>=u`; WebAssembly has an instruction for each, the Rust backend casts through `u32` or `u64`, and the interpreter computes them as Rust does. The release verifier checks their types.
+  - The lowering, `lower/ints.rs`, keeps each value canonical: after `+`, `-`, `*`, `<<`, `-x` and `~x`, a narrow type is masked or sign-extended back. With overflow checks, a narrow type compares the exact result with its range, `u32` and `u64` by an unsigned comparison or a division; `MIN / -1` of an `i8` or an `i16` stops the program in every build, as it does for `i32`. A conversion from a float to a narrow type saturates to an `i32`, then to the type.
+  - Arrays store each element at its width: `Elem` gains `I8`, `I16`, `U16`, `U32` and `U64`, loaded with the right extension. The runtime's `arr_sort` and `arr_sort_index` take unsigned kinds and elements of one or two bytes, widened to sort them, and `buf_equal` elements of two bytes.
+  - The loader wraps each value JavaScript gives to its type, in a parameter, a field, an array, a map or a set, gives `u32` and `u64` back non-negative, and a `PerasArray` has the kinds `i8`, `i16`, `u16`, `u32` and `u64`. A key of a map or a set is widened by its type's extension, a `u32` by zeros.
+  - `u64` is formatted by `fmt_uint`, new in the runtime; a `u64` literal above `i64::MAX` keeps its bits.
+- **Tests, each criterion in turn.**
+  1. `crates/perasc-driver/tests/integers.rs`: for each of the six types, a module of 29 functions, the wrapping `+`, `-` and `*`, `/`, `%`, `<<`, `>>`, `&`, `|`, `^`, `min`, `max`, the five comparisons, the conversions to every numeric type and from `f32` and `f64`, against Rust's arithmetic on that type, bit for bit: 10,000 cases per type in release, 400 in debug, under a second either way. The edges are drawn one time in four; the floats include NaN, the infinities and values past the type's range.
+  2. `overflow.rs`: for each type, `+` and `*` past the maximum and `-` below the minimum stop a debug build and wrap in production; `MIN / -1` stops both.
+  3. `integers.test.ts`, on both allocators: every type as a parameter, a result, a field, an array element, an `inout` array, a map key, a set element and a module variable, against the same calls written in JavaScript, with out-of-range numbers given; `u32` above 2³¹ and `u64` above 2⁶³ come back non-negative; `PerasArray`s of each kind are viewed as their typed arrays; nothing is left alive.
+  4. The differential test gains `u8`, `u16`, `u32`, `u64`, `i8` and `i16` locals and an `Array<i16>` sorted short and past 64 elements; it passes 2,000 seeds. Leaving out the narrowing after a `u8` addition fails `overflow.rs` (`u8 add wrapped`); comparing `u32` as signed fails the oracle at its first cases. The differential test's oracle is the IR's interpreter: it sees an optimization that mishandles these operations, not a lowering that does, which the oracle sees.
+  5. The types reference, the status, `E0900`, `E0249` and the method reference, in English and in French.
+- **Found on the way**, each fixed with a test that fails without it: the vectorizer read an array of bytes as lanes of four (F007); `is_simple` let an unsigned division leave a loop that does not turn (F008); `reverse()` mixed the bytes of elements of two bytes (F009).
+- **Departures from the text above.**
+  - In an array of structures, a field of these types takes the four bytes of an `i32` (or the eight of an `i64`): only an `Array<T>` of one of them is stored at its width. The loader wraps such a field all the same.
+  - `sort()`, `includes`, `indexOf` and the keys of `sortBy` took only `i32`, `i64` and floats, in both modes (F109); they take every integer type now, a change of the checker the text above did not name.
+  - The Rust backend writes these operations through `u32` and `u64`, which a unit test checks in the text it writes (`unsigned_operations_go_through_unsigned_types`); a build by `--backend rust` was not run end to end.

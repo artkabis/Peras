@@ -168,11 +168,45 @@ pub struct JsShape {
     pub writeback: Vec<(String, Shape)>,
 }
 
+/// An integer type other than `i32` and `i64`, as JavaScript sees it: the
+/// loader wraps a value given to its type, and gives a `u32` or a `u64` back
+/// non-negative (decision 0024).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntKind {
+    /// `i8`
+    I8,
+    /// `i16`
+    I16,
+    /// `u8`
+    U8,
+    /// `u16`
+    U16,
+    /// `u32`
+    U32,
+    /// `u64`, a `BigInt` in JavaScript.
+    U64,
+}
+
+impl IntKind {
+    /// The IR type that keeps it.
+    #[must_use]
+    pub const fn ty(self) -> Ty {
+        if matches!(self, Self::U64) {
+            Ty::I64
+        } else {
+            Ty::I32
+        }
+    }
+}
+
 /// A value as JavaScript sees it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     /// A scalar: one parameter or result of the WebAssembly function.
     Value(Ty),
+    /// An integer of another type than `i32` and `i64`: one scalar, which
+    /// the loader converts each way.
+    Int(IntKind),
     /// A structure: its name and its fields, whose scalars follow each other.
     Object(String, Vec<(String, Shape)>),
     /// An `Option<T>`: a `bool` saying whether a value is there, then the
@@ -227,6 +261,7 @@ impl Shape {
     pub fn scalars(&self) -> Vec<Ty> {
         match self {
             Self::Value(ty) => vec![*ty],
+            Self::Int(kind) => vec![kind.ty()],
             Self::Object(_, fields) => fields.iter().flat_map(|(_, f)| f.scalars()).collect(),
             Self::Option(inner) => std::iter::once(Ty::Bool).chain(inner.scalars()).collect(),
             Self::Enum(_, variants) => std::iter::once(Ty::I32)
@@ -497,8 +532,19 @@ pub enum Elem {
     F64,
     /// 4 bytes, 0 or 1.
     Bool,
-    /// 1 byte, read as an `i32` from 0 to 255: the bytes of a string.
+    /// 1 byte, read as an `i32` from 0 to 255: the bytes of a string, or a
+    /// `u8`.
     U8,
+    /// 1 byte, read as an `i32` from -128 to 127: an `i8` (decision 0024).
+    I8,
+    /// 2 bytes, read sign-extended: an `i16`.
+    I16,
+    /// 2 bytes, read zero-extended: a `u16`.
+    U16,
+    /// 4 bytes, as [`Self::I32`], that JavaScript reads unsigned: a `u32`.
+    U32,
+    /// 8 bytes, as [`Self::I64`], that JavaScript reads unsigned: a `u64`.
+    U64,
     /// 4 bytes: a buffer the buffer owns, an element of an array of strings
     /// or of arrays. Read, it is lent (`borrowed`); stored, it is taken
     /// (`owned`), and the element it replaces is released.
@@ -510,13 +556,14 @@ impl Elem {
     #[must_use]
     pub const fn shape(self) -> u32 {
         match self {
-            Self::U8 => 1,
-            Self::I32 => 2,
-            Self::I64 => 3,
+            Self::U8 | Self::I8 => 1,
+            Self::I32 | Self::U32 => 2,
+            Self::I64 | Self::U64 => 3,
             Self::F32 => 4,
             Self::F64 => 5,
             Self::Bool => 6,
             Self::Handle => 7,
+            Self::I16 | Self::U16 => 8,
         }
     }
 
@@ -524,9 +571,10 @@ impl Elem {
     #[must_use]
     pub const fn size(self) -> u32 {
         match self {
-            Self::U8 => 1,
-            Self::I32 | Self::F32 | Self::Bool | Self::Handle => 4,
-            Self::I64 | Self::F64 => 8,
+            Self::U8 | Self::I8 => 1,
+            Self::I16 | Self::U16 => 2,
+            Self::I32 | Self::U32 | Self::F32 | Self::Bool | Self::Handle => 4,
+            Self::I64 | Self::U64 | Self::F64 => 8,
         }
     }
 
@@ -534,9 +582,9 @@ impl Elem {
     #[must_use]
     pub const fn ty(self) -> Ty {
         match self {
-            Self::I32 | Self::U8 => Ty::I32,
+            Self::I32 | Self::U8 | Self::I8 | Self::I16 | Self::U16 | Self::U32 => Ty::I32,
             Self::Handle => Ty::Borrowed,
-            Self::I64 => Ty::I64,
+            Self::I64 | Self::U64 => Ty::I64,
             Self::F32 => Ty::F32,
             Self::F64 => Ty::F64,
             Self::Bool => Ty::Bool,
@@ -557,6 +605,40 @@ impl Elem {
         })
     }
 
+    /// The element type of an array of one of decision 0024's integers.
+    #[must_use]
+    pub const fn of_int(kind: IntKind) -> Self {
+        match kind {
+            IntKind::I8 => Self::I8,
+            IntKind::I16 => Self::I16,
+            IntKind::U8 => Self::U8,
+            IntKind::U16 => Self::U16,
+            IntKind::U32 => Self::U32,
+            IntKind::U64 => Self::U64,
+        }
+    }
+
+    /// The kind of the runtime's sorts (`arr_sort`, `arr_sort_index`): the
+    /// low two bits 0 for `i32`, 1 `i64`, 2 `f32`, 3 `f64`; 4 added for an
+    /// unsigned integer; 8 for elements of one byte, 16 for two, which the
+    /// runtime widens to an `i32` to sort them. Strings are 32.
+    #[must_use]
+    pub const fn sort_kind(self) -> i64 {
+        match self {
+            Self::I32 | Self::Bool => 0,
+            Self::I64 => 1,
+            Self::F32 => 2,
+            Self::F64 => 3,
+            Self::U32 => 4,
+            Self::U64 => 5,
+            Self::I8 => 8,
+            Self::U8 => 8 | 4,
+            Self::I16 => 16,
+            Self::U16 => 16 | 4,
+            Self::Handle => 32,
+        }
+    }
+
     /// The type of a value stored into an element: a handle is taken.
     #[must_use]
     pub const fn stored(self) -> Ty {
@@ -571,6 +653,11 @@ impl Elem {
     pub const fn name(self) -> &'static str {
         match self {
             Self::U8 => "u8",
+            Self::I8 => "i8",
+            Self::I16 => "i16",
+            Self::U16 => "u16",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
             Self::Handle => "handle",
             other => other.ty().name(),
         }
@@ -684,6 +771,13 @@ pub enum RuntimeFn {
     /// [`Self::FmtInt`] writes them, without a string of their own: a
     /// template's integers (decision 0017).
     FmtIntAppend,
+    /// `(n: i64) -> owned`: the decimal digits of `n` read as unsigned, a
+    /// `u64` (decision 0024).
+    FmtUint,
+    /// `(n: i64) -> i32`: the number of bytes [`Self::FmtUint`] writes.
+    FmtUintLen,
+    /// `(s, n: i64)`: the digits of `n`, read as unsigned, appended to `s`.
+    FmtUintAppend,
     /// `(strings: i32, shape: i32) -> owned`: a new, empty map or set
     /// ([decision 0005]); `strings` when its keys are strings it owns;
     /// `shape` the number of value slots in its low byte, and above it one
@@ -786,7 +880,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 55] = [
+    pub const ALL: [Self; 58] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -842,6 +936,9 @@ impl RuntimeFn {
         Self::FmtIntAppend,
         Self::FloatRem,
         Self::BufEqual,
+        Self::FmtUint,
+        Self::FmtUintLen,
+        Self::FmtUintAppend,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -889,6 +986,9 @@ impl RuntimeFn {
             Self::MapPutAtSLent => "map_put_at_s_lent",
             Self::FmtIntLen => "fmt_int_len",
             Self::FmtIntAppend => "fmt_int_append",
+            Self::FmtUint => "fmt_uint",
+            Self::FmtUintLen => "fmt_uint_len",
+            Self::FmtUintAppend => "fmt_uint_append",
             Self::FloatRem => "f64_rem",
             Self::BufEqual => "buf_equal",
             Self::MapStore => "map_store",
@@ -911,7 +1011,7 @@ impl RuntimeFn {
     #[must_use]
     pub const fn receiver(self) -> Ty {
         match self {
-            Self::FmtInt | Self::FmtIntLen => Ty::I64,
+            Self::FmtInt | Self::FmtIntLen | Self::FmtUint | Self::FmtUintLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat | Self::FloatRem => Ty::F64,
             Self::MapNew => Ty::I32,
@@ -945,6 +1045,8 @@ impl RuntimeFn {
             | Self::MapValueH => &[Ty::I32, Ty::I32],
             Self::Trim
             | Self::FmtIntLen
+            | Self::FmtUintLen
+            | Self::FmtUint
             | Self::StrCursor
             | Self::ParseFloat
             | Self::Upper
@@ -963,7 +1065,11 @@ impl RuntimeFn {
             | Self::MapKeyI
             | Self::MapKeyS => &[Ty::I32],
             Self::Replace | Self::ReplaceAll => &[Ty::Borrowed, Ty::Borrowed],
-            Self::MapFindI | Self::MapDeleteI | Self::MapPutI | Self::FmtIntAppend => &[Ty::I64],
+            Self::MapFindI
+            | Self::MapDeleteI
+            | Self::MapPutI
+            | Self::FmtIntAppend
+            | Self::FmtUintAppend => &[Ty::I64],
             Self::MapPutS => &[Ty::Owned],
             Self::MapPutAtI => &[Ty::I32, Ty::I64],
             Self::MapPutAtS => &[Ty::I32, Ty::Owned],
@@ -992,7 +1098,8 @@ impl RuntimeFn {
             | Self::MapPutAtI
             | Self::MapPutAtS
             | Self::MapPutAtSLent
-            | Self::FmtIntLen => Ty::I32,
+            | Self::FmtIntLen
+            | Self::FmtUintLen => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt
@@ -1010,7 +1117,8 @@ impl RuntimeFn {
             | Self::MapStoreF
             | Self::MapStoreH
             | Self::MapClear
-            | Self::FmtIntAppend => Ty::Void,
+            | Self::FmtIntAppend
+            | Self::FmtUintAppend => Ty::Void,
             _ => Ty::Owned,
         }
     }
@@ -1089,6 +1197,11 @@ pub enum UnOp {
     Not,
     /// `~x` on an integer.
     BitNot,
+    /// A conversion that reads its integer operand, or makes its integer
+    /// result, as unsigned: an unsigned integer to a float, a `u32` widened to
+    /// 64 bits with zeros, a float to an unsigned integer, saturating
+    /// (decision 0024).
+    ConvertU,
 }
 
 /// Binary operators. Integer arithmetic wraps around; division by zero traps.
@@ -1114,6 +1227,20 @@ pub enum BinOp {
     Shl,
     /// `>>`, arithmetic, shift count taken modulo the width.
     Shr,
+    /// `/` on unsigned integers; traps on zero (decision 0024).
+    DivU,
+    /// `%` on unsigned integers; traps on zero.
+    RemU,
+    /// `>>` on unsigned integers, logical.
+    ShrU,
+    /// `<` on unsigned integers.
+    LtU,
+    /// `<=` on unsigned integers.
+    LeU,
+    /// `>` on unsigned integers.
+    GtU,
+    /// `>=` on unsigned integers.
+    GeU,
     /// `==`
     Eq,
     /// `!=`
@@ -1151,6 +1278,13 @@ impl BinOp {
             Self::BitXor => "^",
             Self::Shl => "<<",
             Self::Shr => ">>",
+            Self::DivU => "/u",
+            Self::RemU => "%u",
+            Self::ShrU => ">>u",
+            Self::LtU => "<u",
+            Self::LeU => "<=u",
+            Self::GtU => ">u",
+            Self::GeU => ">=u",
             Self::Eq => "==",
             Self::Ne => "!=",
             Self::Lt => "<",
@@ -1169,7 +1303,16 @@ impl BinOp {
     pub const fn is_comparison(self) -> bool {
         matches!(
             self,
-            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge
+            Self::Eq
+                | Self::Ne
+                | Self::Lt
+                | Self::Le
+                | Self::Gt
+                | Self::Ge
+                | Self::LtU
+                | Self::LeU
+                | Self::GtU
+                | Self::GeU
         )
     }
 }
@@ -1530,6 +1673,7 @@ fn expr(e: &Expr) -> String {
                 UnOp::Neg => "neg",
                 UnOp::Not => "not",
                 UnOp::BitNot => "bitnot",
+                UnOp::ConvertU => "convert_u",
             };
             format!("({ty}.{op} {})", expr(operand))
         }

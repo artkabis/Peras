@@ -7,6 +7,7 @@
 //! runtime first says whether `s` is an integer in range, then, only then,
 //! reads it.
 
+use perasc_check::ty::IntTy;
 use perasc_syntax::ast::ExprId;
 
 use super::heap::Mode;
@@ -21,8 +22,21 @@ impl Lowering<'_> {
         base: ExprId,
         mode: Mode,
     ) -> Vec<Expr> {
+        let kind = self.int_kind(base);
         let receiver = self.expr(state, base);
-        Self::stringified_value(state, receiver, mode)
+        // A `u32` widened with zeros; a `u64` written as unsigned (decision
+        // 0024).
+        match kind {
+            Some(IntTy::U64) => {
+                let text = runtime(RuntimeFn::FmtUint, vec![receiver]);
+                Self::fresh(state, vec![text], mode)
+            }
+            Some(IntTy::U32) => {
+                let text = runtime(RuntimeFn::FmtInt, vec![widened_int(receiver, kind)]);
+                Self::fresh(state, vec![text], mode)
+            }
+            _ => Self::stringified_value(state, receiver, mode),
+        }
     }
 
     /// A number or a boolean, lowered, as a new string.
@@ -134,6 +148,7 @@ impl Lowering<'_> {
                 pieces.extend(self.buffer(state, value).into_iter().map(Piece::Text));
                 continue;
             }
+            let kind = self.int_kind(value);
             let receiver = self.expr(state, value);
             if matches!(receiver.ty, Ty::Bool | Ty::F32 | Ty::F64) {
                 pieces.extend(
@@ -142,18 +157,12 @@ impl Lowering<'_> {
                         .map(Piece::Text),
                 );
             } else {
-                let n_value = if receiver.ty == Ty::I64 {
-                    receiver
-                } else {
-                    Expr {
-                        kind: ExprKind::Convert(Box::new(receiver)),
-                        ty: Ty::I64,
-                    }
-                };
+                let n_value = widened_int(receiver, kind);
                 // Evaluated here, in order, and read twice.
                 let n = state.temp(Ty::I64);
                 state.pre.push(Stmt::Set(n, n_value));
-                pieces.push(Piece::Int(super::local_expr(state, n)));
+                let unsigned = kind == Some(IntTy::U64);
+                pieces.push(Piece::Int(super::local_expr(state, n), unsigned));
             }
         }
         let room = pieces
@@ -163,7 +172,14 @@ impl Lowering<'_> {
                     kind: ExprKind::Buf(BufOp::Len, vec![p.clone()]),
                     ty: Ty::I32,
                 },
-                Piece::Int(n) => runtime(RuntimeFn::FmtIntLen, vec![n.clone()]),
+                Piece::Int(n, unsigned) => {
+                    let f = if *unsigned {
+                        RuntimeFn::FmtUintLen
+                    } else {
+                        RuntimeFn::FmtIntLen
+                    };
+                    runtime(f, vec![n.clone()])
+                }
             })
             .reduce(|a, b| super::binary(BinOp::Add, a, b))
             .unwrap_or(Expr {
@@ -180,8 +196,12 @@ impl Lowering<'_> {
                     BufStmt::Append(Elem::U8),
                     vec![super::heap::borrowed(joined), piece],
                 ),
-                Piece::Int(n) => Stmt::Expr(runtime(
-                    RuntimeFn::FmtIntAppend,
+                Piece::Int(n, unsigned) => Stmt::Expr(runtime(
+                    if unsigned {
+                        RuntimeFn::FmtUintAppend
+                    } else {
+                        RuntimeFn::FmtIntAppend
+                    },
                     vec![super::heap::borrowed(joined), n],
                 )),
             });
@@ -272,7 +292,25 @@ fn runtime(f: RuntimeFn, operands: Vec<Expr>) -> Expr {
 
 /// A piece of a template literal: a string, lent, or an integer, written
 /// into the template's string (decision 0017).
+/// An integer as an `i64` the runtime writes: a `u32` widened with zeros,
+/// any other with its sign.
+fn widened_int(receiver: Expr, kind: Option<IntTy>) -> Expr {
+    if receiver.ty == Ty::I64 {
+        return receiver;
+    }
+    let op = if kind == Some(IntTy::U32) {
+        ExprKind::Unary(crate::UnOp::ConvertU, Box::new(receiver))
+    } else {
+        ExprKind::Convert(Box::new(receiver))
+    };
+    Expr {
+        kind: op,
+        ty: Ty::I64,
+    }
+}
+
 enum Piece {
     Text(Expr),
-    Int(Expr),
+    /// An integer of 64 bits, and whether it is read as unsigned, a `u64`.
+    Int(Expr, bool),
 }

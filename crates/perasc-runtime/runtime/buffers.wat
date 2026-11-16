@@ -947,6 +947,13 @@
         (i32.store (local.get $a) (i32.load (local.get $b)))
         (i32.store (local.get $b) (i32.wrap_i64 (local.get $t)))
         (return)))
+    ;; An `i16` or a `u16` (decision 0024).
+    (if (i32.eq (local.get $es) (i32.const 2))
+      (then
+        (local.set $t (i64.extend_i32_u (i32.load16_u (local.get $a))))
+        (i32.store16 (local.get $a) (i32.load16_u (local.get $b)))
+        (i32.store16 (local.get $b) (i32.wrap_i64 (local.get $t)))
+        (return)))
     (local.set $t (i64.extend_i32_u (i32.load8_u (local.get $a))))
     (i32.store8 (local.get $a) (i32.load8_u (local.get $b)))
     (i32.store8 (local.get $b) (i32.wrap_i64 (local.get $t))))
@@ -1240,59 +1247,116 @@
       (then (memory.copy (local.get $data) (local.get $src) (local.get $bytes))))
     (call $release (local.get $block) (i32.const 0)))
 
-  ;; Sorts the numbers of `h` in increasing order, in place: `kind` is 0 for
-  ;; `i32`, 1 `i64`, 2 `f32`, 3 `f64`. Below 64 numbers, an insertion sort;
-  ;; above, a radix sort in a constant number of passes, time n.
+  ;; Sorts the numbers of `h` in increasing order, in place. `kind`'s low two
+  ;; bits are 0 for `i32`, 1 `i64`, 2 `f32`, 3 `f64`; 4 is added for an
+  ;; unsigned integer, 8 for elements of one byte and 16 for two (decision
+  ;; 0024, `Elem::sort_kind`). Below 64 numbers, an insertion sort; above, a
+  ;; radix sort in a constant number of passes, time n.
   (func (export "arr_sort") (param $h i32) (param $kind i32)
-    (local $n i32) (local $data i32) (local $float i32) (local $i i32) (local $at i32)
+    (local $n i32) (local $data i32) (local $float i32)
     (local.set $n (i32.load (local.get $h)))
     (if (i32.lt_u (local.get $n) (i32.const 2)) (then (return)))
     (local.set $data (i32.load offset=8 (local.get $h)))
-    (local.set $float (i32.ge_u (local.get $kind) (i32.const 2)))
+    (if (i32.and (local.get $kind) (i32.const 24))
+      (then (return (call $sort_narrow (local.get $data) (local.get $n) (local.get $kind)))))
+    (local.set $float (i32.ge_u (i32.and (local.get $kind) (i32.const 3)) (i32.const 2)))
+    ;; An unsigned integer turned signed in the same order, and back.
     (if (i32.and (local.get $kind) (i32.const 1))
-      (then
-        (local.set $i (i32.const 0))
-        (block $keyed
-          (loop $next
-            (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
-            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
-            (i64.store (local.get $at) (call $key64 (i64.load (local.get $at)) (local.get $float)))
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-            (br $next)))
-        (if (i32.lt_u (local.get $n) (i32.const 64))
-          (then (call $insert64 (local.get $data) (local.get $n)))
-          (else (call $radix64 (local.get $data) (local.get $n))))
-        (local.set $i (i32.const 0))
-        (block $back
-          (loop $next
-            (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
-            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
-            (i64.store (local.get $at) (call $unkey64 (i64.load (local.get $at)) (local.get $float)))
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-            (br $next))))
-      (else
-        (local.set $i (i32.const 0))
-        (block $keyed
-          (loop $next
-            (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
-            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
-            (i32.store (local.get $at) (call $key32 (i32.load (local.get $at)) (local.get $float)))
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-            (br $next)))
-        (if (i32.lt_u (local.get $n) (i32.const 64))
-          (then (call $insert32 (local.get $data) (local.get $n)))
-          (else (call $radix32 (local.get $data) (local.get $n))))
-        (local.set $i (i32.const 0))
-        (block $back
-          (loop $next
-            (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
-            (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
-            (i32.store (local.get $at) (call $unkey32 (i32.load (local.get $at)) (local.get $float)))
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-            (br $next))))))
+      (then (call $sort64 (local.get $data) (local.get $n) (local.get $float)
+        (if (result i64) (i32.and (local.get $kind) (i32.const 4))
+          (then (i64.const 0x8000000000000000)) (else (i64.const 0)))))
+      (else (call $sort32 (local.get $data) (local.get $n) (local.get $float)
+        (if (result i32) (i32.and (local.get $kind) (i32.const 4))
+          (then (i32.const 0x80000000)) (else (i32.const 0)))))))
+
+  ;; The `n` numbers of 8 bytes at `data`, sorted in place: each made a key,
+  ;; its bits first flipped by `flip`, the keys sorted, then made numbers.
+  (func $sort64 (param $data i32) (param $n i32) (param $float i32) (param $flip i64)
+    (local $i i32) (local $at i32)
+    (block $keyed
+      (loop $next
+        (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+        (i64.store (local.get $at)
+          (call $key64 (i64.xor (i64.load (local.get $at)) (local.get $flip)) (local.get $float)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (if (i32.lt_u (local.get $n) (i32.const 64))
+      (then (call $insert64 (local.get $data) (local.get $n)))
+      (else (call $radix64 (local.get $data) (local.get $n))))
+    (local.set $i (i32.const 0))
+    (block $back
+      (loop $next
+        (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+        (i64.store (local.get $at)
+          (i64.xor (call $unkey64 (i64.load (local.get $at)) (local.get $float)) (local.get $flip)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next))))
+
+  ;; The `n` numbers of 4 bytes at `data`, sorted in place, as `$sort64`.
+  (func $sort32 (param $data i32) (param $n i32) (param $float i32) (param $flip i32)
+    (local $i i32) (local $at i32)
+    (block $keyed
+      (loop $next
+        (br_if $keyed (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+        (i32.store (local.get $at)
+          (call $key32 (i32.xor (i32.load (local.get $at)) (local.get $flip)) (local.get $float)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (if (i32.lt_u (local.get $n) (i32.const 64))
+      (then (call $insert32 (local.get $data) (local.get $n)))
+      (else (call $radix32 (local.get $data) (local.get $n))))
+    (local.set $i (i32.const 0))
+    (block $back
+      (loop $next
+        (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+        (i32.store (local.get $at)
+          (i32.xor (call $unkey32 (i32.load (local.get $at)) (local.get $float)) (local.get $flip)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next))))
+
+  ;; The element `i` of one or two bytes at `data`, of `kind` (see
+  ;; `arr_sort`), as an `i32` extended as its type reads it: signed or not,
+  ;; every value compares as a signed `i32` in its own order.
+  (func $narrow_at (param $data i32) (param $i i32) (param $kind i32) (result i32)
+    (if (result i32) (i32.and (local.get $kind) (i32.const 8))
+      (then (if (result i32) (i32.and (local.get $kind) (i32.const 4))
+        (then (i32.load8_u (i32.add (local.get $data) (local.get $i))))
+        (else (i32.load8_s (i32.add (local.get $data) (local.get $i))))))
+      (else (if (result i32) (i32.and (local.get $kind) (i32.const 4))
+        (then (i32.load16_u (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 1)))))
+        (else (i32.load16_s (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 1)))))))))
+
+  ;; Sorts `n` elements of one or two bytes: widened to `i32`s in a block of
+  ;; their own, sorted there, then stored back at their width.
+  (func $sort_narrow (param $data i32) (param $n i32) (param $kind i32)
+    (local $wide i32) (local $i i32) (local $x i32)
+    (local.set $wide (call $alloc (call $bytes (local.get $n) (i32.const 4) (i32.const 0)) (i32.const 0)))
+    (block $widened
+      (loop $next
+        (br_if $widened (i32.ge_u (local.get $i) (local.get $n)))
+        (i32.store (i32.add (local.get $wide) (i32.shl (local.get $i) (i32.const 2)))
+          (call $narrow_at (local.get $data) (local.get $i) (local.get $kind)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (call $sort32 (local.get $wide) (local.get $n) (i32.const 0) (i32.const 0))
+    (local.set $i (i32.const 0))
+    (block $back
+      (loop $next
+        (br_if $back (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $x (i32.load (i32.add (local.get $wide) (i32.shl (local.get $i) (i32.const 2)))))
+        (if (i32.and (local.get $kind) (i32.const 8))
+          (then (i32.store8 (i32.add (local.get $data) (local.get $i)) (local.get $x)))
+          (else (i32.store16 (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 1))) (local.get $x))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (call $release (local.get $wide) (i32.const 0)))
 
   ;; `sortBy`: the indices of the keys of `h` in order, a new array of `i32`.
-  ;; `kind` is 0 for `i32`, 1 `i64`, 2 `f32`, 3 `f64`, 4 strings. Numbers
+  ;; `kind` is that of `arr_sort`, or 32 for strings. Numbers
   ;; become keys of 64 bits in the order of `sort()`, every bit flipped when
   ;; `desc`, then a radix sort carries their indices: equal keys keep their
   ;; order either way. Strings are merged by their bytes, UTF-8, the order of
@@ -1310,21 +1374,32 @@
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $next)))
     (if (i32.lt_u (local.get $n) (i32.const 2)) (then (return (local.get $out))))
-    (if (i32.eq (local.get $kind) (i32.const 4))
+    (if (i32.eq (local.get $kind) (i32.const 32))
       (then (call $merge_strings (i32.load offset=8 (local.get $h)) (local.get $idx) (local.get $n) (local.get $desc)))
       (else (call $radix_index (i32.load offset=8 (local.get $h)) (local.get $idx) (local.get $n) (local.get $kind) (local.get $desc))))
     (local.get $out))
 
-  ;; The key of the number at `i` of `data`, of `kind` 0 to 3: an unsigned
-  ;; integer of 64 bits in the same order.
+;; The key of the number at `i` of `data`, of the `kind` of `arr_sort`: an
+  ;; unsigned integer of 64 bits in the same order.
   (func $sort_key (param $data i32) (param $i i32) (param $kind i32) (result i64)
+    (local $float i32)
+    (if (i32.and (local.get $kind) (i32.const 24))
+      (then (return (i64.extend_i32_u (call $key32
+        (call $narrow_at (local.get $data) (local.get $i) (local.get $kind)) (i32.const 0))))))
+    (local.set $float (i32.ge_u (i32.and (local.get $kind) (i32.const 3)) (i32.const 2)))
     (if (result i64) (i32.and (local.get $kind) (i32.const 1))
       (then (call $key64
-        (i64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
-        (i32.ge_u (local.get $kind) (i32.const 2))))
+        (i64.xor
+          (i64.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 3))))
+          (if (result i64) (i32.and (local.get $kind) (i32.const 4))
+            (then (i64.const 0x8000000000000000)) (else (i64.const 0))))
+        (local.get $float)))
       (else (i64.extend_i32_u (call $key32
-        (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
-        (i32.ge_u (local.get $kind) (i32.const 2)))))))
+        (i32.xor
+          (i32.load (i32.add (local.get $data) (i32.shl (local.get $i) (i32.const 2))))
+          (if (result i32) (i32.and (local.get $kind) (i32.const 4))
+            (then (i32.const 0x80000000)) (else (i32.const 0))))
+        (local.get $float))))))
 
   ;; Radix sort of the keys of `data`, carrying the indices at `idx`: 8 digits
   ;; of 8 bits, a digit the same in every key skipped. Below 64, an insertion
@@ -1633,6 +1708,51 @@
     (if (local.get $neg)
       (then (i32.store8 (i32.sub (local.get $p) (i32.const 1)) (i32.const 45)))))
 
+  ;; The digits of `x` read as unsigned, a `u64` (decision 0024): `fmt_int`
+  ;; without its sign.
+  (func (export "fmt_uint") (param $x i64) (result i32)
+    (local $h i32) (local $p i32) (local $end i32) (local $n i32)
+    (local.set $h (call $buf_new (i32.const 20) (i32.const 1) (i32.const 0)))
+    (local.set $end (i32.add (i32.load offset=8 (local.get $h)) (i32.const 20)))
+    (local.set $p (local.get $end))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p)
+        (i32.add (i32.const 48) (i32.wrap_i64 (i64.rem_u (local.get $x) (i64.const 10)))))
+      (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+      (br_if $digit (i64.ne (local.get $x) (i64.const 0))))
+    (local.set $n (i32.sub (local.get $end) (local.get $p)))
+    (memory.copy (i32.load offset=8 (local.get $h)) (local.get $p) (local.get $n))
+    (i32.store (local.get $h) (local.get $n))
+    (local.get $h))
+
+  ;; The number of bytes `fmt_uint` writes for `x`.
+  (func $fmt_uint_len (export "fmt_uint_len") (param $x i64) (result i32)
+    (local $n i32)
+    (local.set $n (i32.const 1))
+    (block $done
+      (loop $more
+        (br_if $done (i64.lt_u (local.get $x) (i64.const 10)))
+        (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+        (local.set $n (i32.add (local.get $n) (i32.const 1)))
+        (br $more)))
+    (local.get $n))
+
+  ;; The digits of `x`, read as unsigned, appended to the string `h`.
+  (func (export "fmt_uint_append") (param $h i32) (param $x i64)
+    (local $n i32) (local $p i32)
+    (local.set $n (call $fmt_uint_len (local.get $x)))
+    (call $buf_reserve (local.get $h) (local.get $n) (i32.const 1) (i32.const 0))
+    (local.set $p (i32.add (i32.load offset=8 (local.get $h))
+      (i32.add (i32.load (local.get $h)) (local.get $n))))
+    (i32.store (local.get $h) (i32.add (i32.load (local.get $h)) (local.get $n)))
+    (loop $digit
+      (local.set $p (i32.sub (local.get $p) (i32.const 1)))
+      (i32.store8 (local.get $p)
+        (i32.add (i32.const 48) (i32.wrap_i64 (i64.rem_u (local.get $x) (i64.const 10)))))
+      (local.set $x (i64.div_u (local.get $x) (i64.const 10)))
+      (br_if $digit (i64.ne (local.get $x) (i64.const 0)))))
+
   ;; `true` or `false`, their bytes stored as one word, little-endian.
   (func (export "fmt_bool") (param $b i32) (result i32)
     (local $h i32) (local $at i32)
@@ -1676,7 +1796,8 @@
   ;; Whether buffers `a` and `b` hold the same elements, by `==` on each
   ;; (decision 0021, finding F305): `shape`'s low four bits say their kind,
   ;; 1 a byte, 2 an `i32`, 3 an `i64`, 4 an `f32`, 5 an `f64`, 6 a `bool`,
-  ;; 7 a handle, whose buffers are compared with the shape's next four bits.
+  ;; 7 a handle, whose buffers are compared with the shape's next four bits,
+  ;; 8 an integer of two bytes (decision 0024).
   ;; Bytes and integers compare as bytes; floats as floats, NaN unequal to
   ;; itself and 0 equal to -0.
   (func $buf_equal (export "buf_equal") (param $a i32) (param $b i32) (param $shape i32) (result i32)
@@ -1692,6 +1813,8 @@
       (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 2))))))
     (if (i32.eq (local.get $kind) (i32.const 3))
       (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 3))))))
+    (if (i32.eq (local.get $kind) (i32.const 8))
+      (then (return (call $same (local.get $da) (local.get $db) (i32.shl (local.get $n) (i32.const 1))))))
     (block $done
       (loop $next
         (br_if $done (i32.ge_u (local.get $i) (local.get $n)))

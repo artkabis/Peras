@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0024-integer-types.md](../../en/decisions/0024-integer-types.md)._
 
-_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; étape 4 de la [décision 0021](0021-phases-4-and-5.md), constat F302._
+_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour ; construite, ses critères tenus (voir le [Registre](#registre)) ; étape 4 de la [décision 0021](0021-phases-4-and-5.md), constat F302._
 
 ## Contexte
 
@@ -64,3 +64,23 @@ L’étape n’arrive qu’avec tous ceux-ci, en plus des [critères de la déci
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+**Tous les types entiers dans les modules owned : arrivé.**
+
+- **Ce qui a changé.**
+  - L’IR gagne `convert_u`, une conversion qui lit ou fait un entier non signé, et les non signés `/u`, `%u`, `>>u`, `<u`, `<=u`, `>u` et `>=u` ; WebAssembly a une instruction pour chacun, le backend Rust passe par `u32` ou `u64`, et l’interpréteur les calcule comme Rust. Le vérificateur de libération contrôle leurs types.
+  - L’abaissement, `lower/ints.rs`, garde chaque valeur canonique : après `+`, `-`, `*`, `<<`, `-x` et `~x`, un type étroit est masqué ou étendu par le signe. Avec les contrôles de dépassement, un type étroit compare le résultat exact à son intervalle, `u32` et `u64` par une comparaison non signée ou une division ; `MIN / -1` d’un `i8` ou d’un `i16` arrête le programme dans tous les builds, comme pour `i32`. Une conversion d’un flottant vers un type étroit sature vers un `i32`, puis vers le type.
+  - Les tableaux rangent chaque élément à sa largeur : `Elem` gagne `I8`, `I16`, `U16`, `U32` et `U64`, chargés avec la bonne extension. Les `arr_sort` et `arr_sort_index` du runtime prennent les sortes non signées et les éléments d’un ou deux octets, élargis pour être triés, et `buf_equal` les éléments de deux octets.
+  - Le chargeur enveloppe chaque valeur que JavaScript donne à son type, dans un paramètre, un champ, un tableau, une table ou un ensemble, rend `u32` et `u64` positifs ou nuls, et un `PerasArray` a les sortes `i8`, `i16`, `u16`, `u32` et `u64`. Une clé de table ou d’ensemble est élargie par l’extension de son type, un `u32` par des zéros.
+  - `u64` est écrit par `fmt_uint`, nouveau dans le runtime ; un littéral `u64` au-delà de `i64::MAX` garde ses bits.
+- **Les tests, critère par critère.**
+  1. `crates/perasc-driver/tests/integers.rs` : pour chacun des six types, un module de 29 fonctions, `+`, `-` et `*` qui rebouclent, `/`, `%`, `<<`, `>>`, `&`, `|`, `^`, `min`, `max`, les cinq comparaisons, les conversions vers chaque type numérique et depuis `f32` et `f64`, contre l’arithmétique de Rust sur ce type, bit à bit : 10 000 cas par type en release, 400 en debug, moins d’une seconde dans les deux. Les bornes sont tirées une fois sur quatre ; les flottants comprennent NaN, les infinis et des valeurs hors de l’intervalle du type.
+  2. `overflow.rs` : pour chaque type, `+` et `*` au-delà du maximum et `-` sous le minimum arrêtent un build de debug et rebouclent en production ; `MIN / -1` arrête les deux.
+  3. `integers.test.ts`, sur les deux allocateurs : chaque type comme paramètre, résultat, champ, élément de tableau, tableau `inout`, clé de table, élément d’ensemble et variable de module, contre les mêmes appels écrits en JavaScript, avec des nombres hors intervalle donnés ; `u32` au-delà de 2³¹ et `u64` au-delà de 2⁶³ reviennent positifs ; les `PerasArray` de chaque sorte se voient comme leurs tableaux typés ; rien ne reste vivant.
+  4. Le test différentiel gagne des locales `u8`, `u16`, `u32`, `u64`, `i8` et `i16` et un `Array<i16>` trié court et au-delà de 64 éléments ; il passe 2 000 graines. Retirer le rétrécissement après une addition `u8` fait échouer `overflow.rs` (`u8 add wrapped`) ; comparer des `u32` comme signés fait échouer l’oracle dès ses premiers cas. L’oracle du test différentiel est l’interpréteur de l’IR : il voit une optimisation qui traite mal ces opérations, pas un abaissement qui le fait, que l’oracle voit.
+  5. La référence des types, l’état, `E0900`, `E0249` et la référence des méthodes, en anglais et en français.
+- **Trouvé en chemin**, chacun corrigé avec un test qui échoue sans le correctif : le vectoriseur lisait un tableau d’octets par voies de quatre (F007) ; `is_simple` laissait une division non signée sortir d’une boucle qui ne tourne pas (F008) ; `reverse()` mélangeait les octets d’éléments de deux octets (F009).
+- **Écarts par rapport au texte ci-dessus.**
+  - Dans un tableau de structures, un champ de ces types prend les quatre octets d’un `i32` (ou les huit d’un `i64`) : seul un `Array<T>` de l’un d’eux est rangé à sa largeur. Le chargeur enveloppe un tel champ tout de même.
+  - `sort()`, `includes`, `indexOf` et les clés de `sortBy` ne prenaient que `i32`, `i64` et les flottants, dans les deux modes (F109) ; ils prennent maintenant tous les types entiers, un changement du vérificateur que le texte ci-dessus ne nommait pas.
+  - Le backend Rust écrit ces opérations en passant par `u32` et `u64`, ce qu’un test unitaire vérifie dans le texte qu’il écrit (`unsigned_operations_go_through_unsigned_types`) ; un build par `--backend rust` n’a pas été exécuté de bout en bout.

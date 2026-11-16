@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use perasc_check::ty::{IntTy, Ty as CheckTy};
+use perasc_check::ty::Ty as CheckTy;
 use perasc_syntax::ast::{ExprId, ExprKind as AstExpr, Type};
 
 use super::heap::{self, Mode};
@@ -55,7 +55,12 @@ impl Lowering<'_> {
                 }
                 Some(out)
             }
-            CheckTy::Array(inner) => nested(self.shapes(inner)?),
+            // An array of one of decision 0024's integers stores each at its
+            // width; in a structure, it takes the four bytes of an `i32`.
+            CheckTy::Array(inner) => match super::ints::array_elem(inner) {
+                Some(elem) => Some(vec![HANDLE | (elem.shape() << 4)]),
+                None => nested(self.shapes(inner)?),
+            },
             CheckTy::String => Some(vec![HANDLE | (Elem::U8.shape() << 4)]),
             other => {
                 let elem = Elem::of(Self::ir_type(other)?)?;
@@ -261,10 +266,16 @@ impl Lowering<'_> {
                     pass,
                 }))
             }
-            CheckTy::Array(inner) => match Self::ir_type(inner).and_then(Elem::of) {
+            CheckTy::Array(inner) => match super::ints::array_elem(inner)
+                .or_else(|| Self::ir_type(inner).and_then(Elem::of))
+            {
                 Some(elem) => Shape::Array(elem, pass),
                 None => Shape::Records(Box::new(self.shape_in(inner, pass, deeper)), pass),
             },
+            // The loader converts these each way (decision 0024).
+            CheckTy::Int(kind) if super::ints::is_other(*kind) => {
+                Shape::Int(super::ints::int_kind(*kind))
+            }
             other => Shape::Value(Self::ir_type(other).unwrap_or(Ty::Void)),
         }
     }
@@ -568,15 +579,22 @@ impl Lowering<'_> {
                     return Vec::new();
                 }
             };
+            let kind = self.int_kind(base);
             let receiver = self.expr(state, base);
             let mark = state.pre.len();
             let arg = args.first().map(|&a| self.expr(state, a));
             let mut operands = [receiver];
             state.keep_before(mark, &mut operands);
             let [receiver] = operands;
-            return match arg {
-                Some(arg) => checked(state, op, receiver, arg),
-                None => Vec::new(),
+            return match (arg, kind) {
+                // An option: whether the exact result fits, then the value
+                // (decision 0024).
+                (Some(arg), Some(kind)) => {
+                    let (value, fits) = super::ints::checked_parts(state, op, receiver, arg, kind);
+                    vec![fits, value]
+                }
+                (Some(arg), None) => checked(state, op, receiver, arg),
+                (None, _) => Vec::new(),
             };
         }
         // A structure's copy: each buffer copied, with those it owns
@@ -1303,7 +1321,7 @@ fn reads(e: &Expr, local: LocalId) -> bool {
 /// when they do not.
 fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
     match ty {
-        CheckTy::Int(IntTy::I32 | IntTy::I64)
+        CheckTy::Int(_)
         | CheckTy::Float(_)
         | CheckTy::Bool
         | CheckTy::String
@@ -1314,7 +1332,6 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Set(_) => Ok(()),
         CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
-        CheckTy::Int(_) => Err("integer-type"),
         _ => Err("struct"),
     }
 }

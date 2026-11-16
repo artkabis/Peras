@@ -99,7 +99,9 @@ pub fn is_simple(e: &Expr) -> bool {
         ExprKind::Const(_) | ExprKind::Local(_) => true,
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => is_simple(x),
         ExprKind::Binary(op, a, b) => {
-            !matches!(op, BinOp::Div | BinOp::Rem) && is_simple(a) && is_simple(b)
+            !matches!(op, BinOp::Div | BinOp::Rem | BinOp::DivU | BinOp::RemU)
+                && is_simple(a)
+                && is_simple(b)
         }
         // A call, an allocation or a change of owner is never moved, nor a
         // read of a module variable, which a call may change (decision 0023).

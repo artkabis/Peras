@@ -77,3 +77,26 @@ fn module_variables_are_cells_with_no_unsafe() {
     assert!(rust.contains("thread_local!"), "{rust}");
     insta::assert_snapshot!(rust);
 }
+
+/// Decision 0024: the unsigned operations read their operands as unsigned,
+/// through `u32` or `u64`, and a conversion of a `u32` to a wider type
+/// extends it by zeros.
+#[test]
+fn unsigned_operations_go_through_unsigned_types() {
+    let rust = source(&module(
+        "export fn f(a: u32, b: u32): bool {\n  return a / b > a % b && (a >> 3) < b;\n}\n\
+         export fn g(a: u32): u64 {\n  return a.toU64();\n}\n\
+         export fn h(a: u64, b: u64): u64 {\n  return a / b;\n}\n",
+    ));
+    for expected in [
+        "as u32) / ((",
+        "as u32) % ((",
+        "as u32).wrapping_shr(",
+        "as u32) > ((",
+        "as u32) < ((",
+        "as u32) as i64",
+        "as u64) / ((",
+    ] {
+        assert!(rust.contains(expected), "{expected} in\n{rust}");
+    }
+}
