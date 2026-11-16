@@ -109,3 +109,13 @@ _Each part is recorded here as it lands._
   - **W2 reads the length and the first two bytes** (`startsWith`) rather than one byte at an index: no method reads one.
   - **Memory is the module's memory after each workload**, which only grows: the most blocks alive at once needs a counter the allocator does not keep.
 - **What the measures say**: F writes as B, the easiest, and runs as D, the fastest, where D can run at all. It is the option to propose to the owner, who chooses.
+- **2026-11-16, the step: option F lands** (`572bfd9`).
+  - The ownership pass decides which closures cannot escape (`Analysis::escaping` holds those that can); lowering lends what the others capture, and copies into an environment that owns it what the escaping ones capture. An environment counts the buffers it owns, its first slots, and releases them with its last holder; a buffer it lends is read through `env.handle`. A function value captured follows the same rule. `closure-heap` and its UI test go.
+  - Criteria:
+    1. `closures.peras` keeps the IR of a closure lending an array, one copying a string because it escapes, one copying it because it moves after, and a closure capturing a closure, lent.
+    2. `closures.test.ts`, on both allocators, against the managed module: the five programs of the protocol, a map and a set captured (frozen in a `const` first, finding F110), a structure holding a string, a closure capturing a closure. The same results, nothing alive.
+    3. Lending what an escaping closure captures, on purpose in the lowering, fails both end-to-end runs: on debug a value read from a released block trips an overflow check, on TLSF the results differ. Copying everywhere is option B, measured.
+    4. The differential test gains two closures over two strings each, one escaping into an array; it passes 2,000 seeds. Reading the handle of slot 0 for every slot, on purpose in the WebAssembly generator, fails both differential tests at seed 23. With one string per closure it passed: the mutation did not reach the rule (finding M024), and the statement was changed.
+    5. An environment told it owns nothing, on purpose in the generator, leaves 30 blocks alive, which the end-to-end test catches.
+    6. Measures at `572bfd9`, nothing else running: `bench-closures.mjs` gives F 0.360, 0.204 and 0.104 times B's time on W1, 0.988 on W2, 0.991 on W3, as the prototype did. The dashboard, `node scripts/ab-data.mjs 2a0a5aa`, 1,000,000 rows, 20 rounds: 370.3 ms before, 364.8 ms after, a ratio of 1.035, from 0.847 to 1.217, the same summary.
+    7. The guide's page on functions, the status, `E0900`, findings F308 and F110, the roadmap, the changelog and `CLAUDE.md`, in English and in French. The CLI reference does not change.
