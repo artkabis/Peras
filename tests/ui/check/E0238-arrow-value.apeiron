@@ -9,7 +9,7 @@ fn untyped(): i32 {
   return twice(1);
 }
 
-// A function type only for a variable, a parameter or a result.
+// A function type in an array too (decision 0025).
 fn later(_fs: Array<() => void>): void {}
 
 // JavaScript would call it with functions nothing checks.

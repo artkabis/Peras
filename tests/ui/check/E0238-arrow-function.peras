@@ -1,5 +1,6 @@
-// E0238: an arrow function is written in place, as the argument of an array
-// method that takes one; it is not a value yet.
+// E0238: an arrow function takes the types of its parameters from where it is
+// written: the method it is given to, or the types written on them. A value
+// that is not a function where a method takes one is a mismatch (E0210).
 export fn values(xs: Array<i32>): i32 {
   const twice = (x) => x * 2;
   const a = xs.map(twice);

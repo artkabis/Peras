@@ -12,8 +12,9 @@
 
 use wasm_encoder::reencode::{Error as ReencodeError, Reencode, RoundtripReencoder};
 use wasm_encoder::{
-    CodeSection, DataCountSection, DataSection, EntityType, ExportKind, ExportSection,
-    FunctionSection, GlobalSection, ImportSection, MemorySection, StartSection, TypeSection,
+    CodeSection, DataCountSection, DataSection, ElementSection, EntityType, ExportKind,
+    ExportSection, FunctionSection, GlobalSection, ImportSection, MemorySection, StartSection,
+    TableSection, TypeSection,
 };
 use wasmparser::{ExternalKind, Parser, Payload, TypeRef};
 
@@ -40,6 +41,10 @@ struct Parts<'a> {
     data_count: u32,
     type_count: u32,
     global_count: u32,
+    /// The table of functions used as values, and the segment that fills
+    /// it (decision 0025): the module's only.
+    tables: Option<wasmparser::TableSectionReader<'a>>,
+    elements: Option<wasmparser::ElementSectionReader<'a>>,
 }
 
 impl Parts<'_> {
@@ -92,8 +97,10 @@ fn read(wasm: &[u8]) -> Result<Parts<'_>, PruneError> {
                 parts.data_count = section.count();
                 parts.data = Some(section);
             }
-            Payload::TableSection(_) | Payload::ElementSection(_) | Payload::TagSection(_) => {
-                return Err("a module with tables, elements or tags is not linked".to_owned());
+            Payload::TableSection(section) => parts.tables = Some(section),
+            Payload::ElementSection(section) => parts.elements = Some(section),
+            Payload::TagSection(_) => {
+                return Err("a module with tags is not linked".to_owned());
             }
             _ => {}
         }
@@ -152,6 +159,9 @@ pub fn link(runtime: &[u8], module: &[u8]) -> Result<Vec<u8>, PruneError> {
     }
     if !m.memories.is_empty() || m.imports.iter().any(|i| matches!(i.ty, TypeRef::Global(_))) {
         return Err("the module must import its memory and no global".to_owned());
+    }
+    if r.tables.is_some() || r.elements.is_some() {
+        return Err("the runtime must have no table".to_owned());
     }
     let (mut r_map, mut m_map, kept) = plan(&r, &m)?;
     let mut out = wasm_encoder::Module::new();
@@ -263,6 +273,14 @@ fn head(
     }
     out.section(&functions);
 
+    if let Some(section) = m.tables.clone() {
+        let mut tables = TableSection::new();
+        m_map
+            .parse_table_section(&mut tables, section)
+            .map_err(err)?;
+        out.section(&tables);
+    }
+
     let mut memories = MemorySection::new();
     for &memory in &r.memories {
         memories.memory(RoundtripReencoder.memory_type(memory).map_err(err)?);
@@ -334,6 +352,13 @@ fn tail(
         out.section(&StartSection {
             function_index: r_map.function_index(start).map_err(err)?,
         });
+    }
+    if let Some(section) = m.elements.clone() {
+        let mut elements = ElementSection::new();
+        m_map
+            .parse_element_section(&mut elements, section)
+            .map_err(err)?;
+        out.section(&elements);
     }
     let data_count = r.data_count + m.data_count;
     if data_count > 0 {

@@ -1,4 +1,5 @@
-// Arrow functions with statements, and function types, are managed modules'.
+// Arrow functions with statements are managed modules'; function types are
+// written in both (decision 0025).
 export fn total(xs: Array<i32>): Array<i32> {
   return xs.map((x) => {
     return x * 2;

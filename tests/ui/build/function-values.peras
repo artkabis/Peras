@@ -1,0 +1,27 @@
+// Functions as values (decision 0025): an `i32`, the function's position in
+// the module's table; a call through one is an indirect call.
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn label(s: String): String {
+  return `<${s}>`;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn run(n: i32): i32 {
+  const fs: Array<(i32) => i32> = [twice, (x: i32): i32 => x + 1];
+  let total = apply(twice, n);
+  for (let i = 0; i < fs.length; i++) {
+    total += (fs[i])(n);
+  }
+  return total + fs.map((f) => f(n)).reduce((a, x) => a + x, 0);
+}
+
+export fn shown(s: String): i32 {
+  const f = label;
+  return f(s).length;
+}

@@ -245,7 +245,7 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
             // A bounds check reads the length only.
             Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
             Stmt::Buf(..) | Stmt::Release(_) => return Err(Refusal::Heap),
-            Stmt::CallMany { .. } => return Err(Refusal::Calls),
+            Stmt::CallMany { .. } | Stmt::CallManyIndirect { .. } => return Err(Refusal::Calls),
             // Each thread has its own module variables (decision 0023).
             Stmt::SetGlobal(..) => return Err(Refusal::Global),
             Stmt::Return(_) | Stmt::ReturnMany(_) => return Err(Refusal::Exits),
@@ -257,7 +257,7 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
         Ok(())
     })?;
     walk_exprs(body, &mut |e| match &e.kind {
-        ExprKind::Call(..) => Err(Refusal::Calls),
+        ExprKind::Call(..) | ExprKind::CallIndirect(..) => Err(Refusal::Calls),
         ExprKind::Global(_) => Err(Refusal::Global),
         ExprKind::Buf(BufOp::Get(_), args) => {
             let reads_written = args
@@ -518,6 +518,13 @@ impl Rename {
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
+            ExprKind::Env(op, args) => {
+                ExprKind::Env(*op, args.iter().map(|a| self.expr(a)).collect())
+            }
+            ExprKind::CallIndirect(callee, args) => ExprKind::CallIndirect(
+                Box::new(self.expr(callee)),
+                args.iter().map(|a| self.expr(a)).collect(),
+            ),
             ExprKind::Convert(x) => ExprKind::Convert(Box::new(self.expr(x))),
             ExprKind::Math(op, x) => ExprKind::Math(*op, Box::new(self.expr(x))),
             ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(self.expr(x))),

@@ -8,7 +8,8 @@ En mode possédé, Peras gère la mémoire sans ramasse-miettes et sans que vous
 
 - Chaque valeur sur le tas a un seul propriétaire : une variable, un champ ou un paramètre `sink`.
 - Lire une valeur l’emprunte. L’affecter, la renvoyer, ou la passer à un paramètre `sink`, à une structure ou à `push` la **déplace** : l’ancien nom ne contient plus rien tant qu’il ne reçoit pas une nouvelle valeur ([E0204](../errors/E0204.md)).
-- Seul le propriétaire peut déplacer une valeur : un paramètre qui n’est pas `sink`, un champ ou un élément ne font que l’emprunter ([E0209](../errors/E0209.md)). Déplacez une copie, `xs.copy()`, pour garder les deux.
+- Seul le propriétaire peut déplacer une valeur : un paramètre qui n’est pas `sink`, un élément, ou un champ d’une structure que la fonction ne possède pas ne font que l’emprunter ([E0209](../errors/E0209.md)). Déplacez une copie, `xs.copy()`, pour garder les deux.
+- Un champ se déplace hors d’une structure que la fonction possède, une variable ou un paramètre `sink` : `const country = row.country;`. Les autres champs de la structure restent utilisables ; la structure elle-même, ou le champ, ne peuvent plus servir tant que le champ ne reçoit pas une nouvelle valeur ([E0204](../errors/E0204.md), [décision 0025](../decisions/0025-moved-fields-and-function-values.md)).
 - Aucune référence n’est jamais stockée dans une structure ou un tableau, si bien qu’il n’y a jamais de durée de vie à écrire, contrairement à Rust.
 - Le partage sera explicite, avec `Rc<T>`, visible dans le type.
 

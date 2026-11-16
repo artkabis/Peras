@@ -7,7 +7,7 @@
 //! `f64` is an error whose fix inserts the explicit `.toF64()`.
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Symbol, Type, UnaryOp};
+use perasc_syntax::ast::{BinaryOp, Convention, ExprId, ExprKind, Symbol, Type, UnaryOp};
 
 use crate::errors::{self, Conversion};
 use crate::generics::GenericUse;
@@ -24,7 +24,10 @@ impl Checker<'_> {
             && matches!(self.ast.expr(id).kind, ExprKind::Lambda { .. })
         {
             let wanted = (**ret != Ty::Void).then_some(&**ret);
+            self.value_arrows.insert(id);
             self.arrow(id, params, wanted);
+            // Its type, for code generation (decision 0025).
+            self.expr_types.insert(id, expected.clone());
             return;
         }
         let actual = self.infer(id, Some(expected));
@@ -52,10 +55,14 @@ impl Checker<'_> {
                 self.report(errors::integer_for_float(span, &literal, expected));
                 false
             }
-            // `render` where a `() => void` is expected, in a managed module.
-            (Ty::Fn(fn_id, _), Ty::Callback(params, ret)) if self.managed => {
+            // A function that cannot be a value: generic, or with a parameter
+            // `sink` or `inout` (decision 0025).
+            (Ty::Fn(fn_id, _), Ty::Callback(params, ret)) => {
                 let fits = self.fns.get(fn_id.0).is_some_and(|sig| {
-                    sig.generics.is_empty() && sig.params == *params && sig.ret == **ret
+                    sig.generics.is_empty()
+                        && sig.conventions.iter().all(|c| *c == Convention::Let)
+                        && sig.params == *params
+                        && sig.ret == **ret
                 });
                 if !fits {
                     self.report(errors::mismatch(span, expected, actual, None));
@@ -192,14 +199,13 @@ impl Checker<'_> {
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Array(items) => self.array(items, expected),
             ExprKind::Tuple(items) => self.tuple_expr(items, expected),
-            ExprKind::Lambda { .. } if self.managed => self.arrow_value(id),
-            ExprKind::Lambda { .. } => {
-                self.report(errors::arrow_outside(span));
-                Ty::Error
-            }
+            // An arrow function as a value, in both modes (decision 0025); in
+            // an owned module, code generation refuses one that captures.
+            ExprKind::Lambda { .. } => self.arrow_value(id),
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
+                    self.capture(index, span);
                 }
                 self.read_name(*symbol, span)
             }
@@ -327,6 +333,13 @@ impl Checker<'_> {
         match binding.kind {
             // A structure or `Some` alone is not a value: it must be called.
             Kind::Struct(_) | Kind::Some | Kind::Ok | Kind::Err => Ty::Error,
+            // A function of the module, not called: a value of a function
+            // type (decision 0025); one that cannot be stays `fn name`, which
+            // no function type takes.
+            Kind::Fn(id) => {
+                let ty = binding.ty.clone();
+                self.function_value(id).unwrap_or(ty)
+            }
             _ => binding.ty.clone(),
         }
     }
@@ -529,6 +542,7 @@ impl Checker<'_> {
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(callee, index);
+                    self.capture(index, callee_expr.span);
                 }
                 let written: Vec<Ty> = types.iter().map(|t| self.resolve_type(t)).collect();
                 let call = Call {
@@ -537,6 +551,17 @@ impl Checker<'_> {
                     span,
                     types: (!types.is_empty()).then_some(written),
                 };
+                // A variable of a function type is a value the call goes
+                // through: its type, for code generation (decision 0025).
+                let held = self
+                    .scopes
+                    .lookup(*symbol)
+                    .and_then(|i| self.scopes.bindings.get(i))
+                    .filter(|b| matches!(b.ty, Ty::Callback(..)) && !matches!(b.kind, Kind::Fn(_)))
+                    .map(|b| b.ty.clone());
+                if let Some(ty) = held {
+                    self.expr_types.insert(callee, ty);
+                }
                 self.call_name(*symbol, &call, args, expected)
             }
             ExprKind::Field { base, name } => {
@@ -1009,7 +1034,7 @@ fn operand_allowed(op: BinaryOp, ty: &Ty) -> bool {
         return true;
     }
     match op {
-        BinaryOp::Eq | BinaryOp::Ne => !matches!(ty, Ty::Void | Ty::Fn(..)),
+        BinaryOp::Eq | BinaryOp::Ne => !matches!(ty, Ty::Void | Ty::Fn(..) | Ty::Callback(..)),
         BinaryOp::Add => ty.is_numeric() || *ty == Ty::String,
         BinaryOp::Sub
         | BinaryOp::Mul

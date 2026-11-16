@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 38 } else { 39 };
+    let choices = if depth == 0 { 41 } else { 42 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -141,6 +141,15 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // An array of `i16` at its width, sorted by insertion when short, and
         // at 71 elements by the runtime's radix sort.
         37 => "w16 = w16.wrappingSub(1234).wrappingMul(3); s8 = (s8 ^ i.toI8()).wrappingAdd(-100); ws.push(w16); if (ws.length % 9 == 8) { ws.sort(); acc += ws[0].toI32() % 100 + ws[ws.length - 1].toI32() % 100; } if (ws.length > 70) { ws = []; } acc += (w16 / 7).toI32() % 50 + (s8 % 9).toI32(); if (s8 < -50 || w16 >= 1000) { acc += 4; }".to_owned(),
+        // A field moved out of a structure made in the turn, on one branch
+        // only; the rest of it is still read (decision 0025).
+        38 => "let q = Pair(`${k}${i}`, i); if (i % 2 == 0) { const taken = q.name; acc += taken.length; } else { acc += q.name.length * 2; } acc += q.count;".to_owned(),
+        // A dispatch through an array of functions, one an arrow function,
+        // and a function chosen by a call (decision 0025).
+        39 => "const fs: Array<(i32) => i32> = [inc, dbl, (x: i32): i32 => x % 7]; const g = pickFn(i); acc += (fs[i % 3])(acc % 1000) + g(i);".to_owned(),
+        // Closures made in a loop over the turn's values, copied, and called
+        // through an array of functions and after it (decision 0026).
+        40 => "const c = i % 11; const d = acc % 13; let cs: Array<(i32) => i32> = []; for (let t = 0; t < 3; t++) { const e = t * c + d; cs.push((x: i32): i32 => x * 3 + e - c); } const h = cs[i % 3]; for (const q of cs) { acc += q(i) % 97; } acc += h(d) % 89;".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -195,6 +204,21 @@ fn spun(n: i32): i32 {{
     total += bumped(j) - before % 50;
   }}
   return total;
+}}
+
+fn inc(x: i32): i32 {{
+  return x + 1;
+}}
+
+fn dbl(x: i32): i32 {{
+  return x * 2 % 1000;
+}}
+
+fn pickFn(i: i32): (i32) => i32 {{
+  if (i % 2 == 0) {{
+    return inc;
+  }}
+  return dbl;
 }}
 
 export fn f(n: i32): i32 {{

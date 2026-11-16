@@ -1,0 +1,87 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/function-values.peras
+---
+ir:
+fn twice(%0 x: i32) -> i32
+  return (i32.* %0 2:i32)
+fn label(%0 s: borrowed) -> owned
+  local %1 tmp: owned
+  %1 = (buf.new.u8 (i32.+ (i32.+ (buf.len (buf.static #0 @32 )) (buf.len %0)) (buf.len (buf.static #1 @64 ))))
+  buf.append.u8 (borrow %1) (buf.static #0 @32 )
+  buf.append.u8 (borrow %1) %0
+  buf.append.u8 (borrow %1) (buf.static #1 @64 )
+  return (move %1)
+fn apply(%0 f: borrowed, %1 x: i32) -> i32
+  return (call_indirect %0 %1)
+export fn run(%0 n: i32) -> i32
+  local %1 tmp: owned
+  local %2 tmp: owned
+  local %3 tmp: owned
+  local %4 fs: owned
+  local %5 tmp: owned
+  local %6 total: i32
+  local %7 i: i32
+  local %8 tmp: i32
+  local %9 tmp: owned
+  local %10 tmp: i32
+  local %11 tmp: i32
+  local %12 tmp: i32
+  local %13 tmp: i32
+  local %14 x: i32
+  local %15 tmp: i32
+  local %16 tmp: i32
+  %1 = (buf.new.handle 2:i32)
+  %2 = (env.static #5 @96 )
+  buf.push.handle (borrow %1) (move %2)
+  %3 = (env.static #6 @112 )
+  buf.push.handle (borrow %1) (move %3)
+  %4 = (move %1)
+  %5 = (env.static #5 @96 )
+  %6 = (call #2 (borrow %5) %0)
+  buf.release (move %5)
+  %7 = 0:i32
+  loop while (i32.< %7 (buf.len (borrow %4)))
+    check_index %7 (buf.len (borrow %4))
+    %6 = (i32.+ %6 (call_indirect (buf.get.handle (borrow %4) %7) %0))
+  step
+    %7 = (i32.+ %7 1:i32)
+  %8 = (buf.len (borrow %4))
+  %9 = (buf.new.i32 %8)
+  %10 = 0:i32
+  loop while (i32.< %10 %8)
+    buf.push.i32 (borrow %9) (call_indirect (buf.get.handle (borrow %4) %10) %0)
+  step
+    %10 = (i32.+ %10 1:i32)
+  %11 = (buf.len (borrow %9))
+  %12 = 0:i32
+  %13 = 0:i32
+  loop while (i32.< %13 %11)
+    %14 = (buf.get.i32 (borrow %9) %13)
+    %15 = (i32.+ %12 %14)
+    %12 = %15
+  step
+    %13 = (i32.+ %13 1:i32)
+  %16 = (i32.+ %6 %12)
+  buf.release (move %9)
+  buf.release (move %4)
+  return %16
+export fn shown(%0 s: borrowed) -> i32
+  local %1 tmp: owned
+  local %2 f: owned
+  local %3 tmp: owned
+  local %4 tmp: i32
+  %1 = (env.static #7 @128 )
+  %2 = (move %1)
+  %3 = (call_indirect (borrow %2) %0)
+  %4 = (buf.len (borrow %3))
+  buf.release (move %3)
+  buf.release (move %2)
+  return %4
+fn twice__value(%0 x: i32, %1 env: borrowed) -> i32
+  return (call #0 %0)
+fn run__arrow0(%0 x: i32, %1 env: borrowed) -> i32
+  return (i32.+ %0 1:i32)
+fn label__value(%0 s: borrowed, %1 env: borrowed) -> owned
+  return (call #1 %0)

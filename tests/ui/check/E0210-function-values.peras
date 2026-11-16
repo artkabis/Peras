@@ -1,0 +1,69 @@
+// E0210: a function is a value of a function type when its signature fits
+// (decision 0025); one that cannot be a value is not one of any function type.
+struct Box {
+  n: i32;
+}
+
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn named(s: String): i32 {
+  return s.length;
+}
+
+fn largest<T: Ord>(a: T, b: T): T {
+  return a.max(b);
+}
+
+fn take(xs: sink Array<i32>): i32 {
+  return xs.length;
+}
+
+fn bump(x: inout i32): i32 {
+  x += 1;
+  return x;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn mismatched(n: i32): i32 {
+  return apply(named, n);
+}
+
+export fn generic(n: i32): i32 {
+  return apply(largest, n);
+}
+
+export fn conventions(xs: Array<i32>): i32 {
+  const f: (Array<i32>) => i32 = take;
+  const g: (i32) => i32 = bump;
+  return f(xs) + g(1);
+}
+
+export fn compared(n: i32): bool {
+  const f = twice;
+  return f == twice || n > 0;
+}
+
+// Allowed: a variable, an argument, a result, a field, an element, an option.
+struct Op {
+  run: (i32) => i32;
+}
+
+fn choose(k: i32): (i32) => i32 {
+  if (k > 0) {
+    return twice;
+  }
+  return (x) => x + 1;
+}
+
+export fn fine(n: i32): i32 {
+  const f = twice;
+  const op = Op(choose(n));
+  const fs: Array<(i32) => i32> = [twice, (x: i32): i32 => x - 1];
+  const maybe: Option<(i32) => i32> = Some(f);
+  return f(n) + apply(twice, n) + (op.run)(n) + (fs[1])(n) + apply(maybe.unwrapOr(twice), n);
+}

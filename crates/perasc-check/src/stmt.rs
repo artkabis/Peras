@@ -236,6 +236,7 @@ impl Checker<'_> {
                     return self.infer(target, None);
                 };
                 self.resolved.insert(target, index);
+                self.capture(index, expr.span);
                 self.check_mutable(index, expr.span);
                 // A managed `inout` parameter shares its caller's value: it
                 // can be changed, not replaced. One JavaScript copies is

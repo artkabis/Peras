@@ -1,0 +1,29 @@
+// Closures (decision 0026): an arrow function used as a value that captures
+// numbers, booleans or a structure of them gets a new environment, one `i64`
+// slot per scalar, which it reads first; a copy of the value adds to its
+// count; one that captures nothing has a static environment.
+struct Point {
+  x: f64;
+  y: f32;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+fn makeAdder(k: i64): (i32) => i32 {
+  return (x: i32): i32 => x + k.toI32();
+}
+
+export fn numbers(n: i32, p: Point, on: bool): i32 {
+  const scaled = (x: i32): i32 => x + p.x.toI32() + p.y.toI32() + one(on);
+  const copy = scaled;
+  return apply(scaled, n) + copy(1) + apply(makeAdder(7), n) + apply((x) => x * 2, n);
+}
+
+fn one(on: bool): i32 {
+  if (on) {
+    return 1;
+  }
+  return 0;
+}

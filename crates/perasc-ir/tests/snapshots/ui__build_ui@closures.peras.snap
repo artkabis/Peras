@@ -1,0 +1,52 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/closures.peras
+---
+ir:
+fn apply(%0 f: borrowed, %1 x: i32) -> i32
+  return (call_indirect %0 %1)
+fn makeAdder(%0 k: i64) -> owned
+  local %1 tmp: owned
+  %1 = (env.new #4 %0)
+  return (move %1)
+export fn numbers(%0 n: i32, %1 p_x: f64, %2 p_y: f32, %3 on: bool) -> i32
+  local %4 tmp: owned
+  local %5 scaled: owned
+  local %6 copy: owned
+  local %7 tmp: owned
+  local %8 tmp: i32
+  local %9 tmp: owned
+  local %10 tmp: i32
+  local %11 tmp: i32
+  %4 = (env.new #5 (i64.bits %1) (i64.from_i32 (i32.bits %2)) (i64.from_bool %3))
+  %5 = (move %4)
+  %6 = (buf.clone (borrow %5))
+  %8 = (i32.+ (call #0 (borrow %5) %0) (call_indirect (borrow %6) 1:i32))
+  %7 = (call #1 7:i64)
+  %10 = (i32.+ %8 (call #0 (borrow %7) %0))
+  %9 = (env.static #6 @32 )
+  %11 = (i32.+ %10 (call #0 (borrow %9) %0))
+  buf.release (move %7)
+  buf.release (move %9)
+  buf.release (move %6)
+  buf.release (move %5)
+  return %11
+fn one(%0 on: bool) -> i32
+  if %0
+    return 1:i32
+  return 0:i32
+fn makeAdder__arrow0(%0 x: i32, %1 env: borrowed) -> i32
+  local %2 k: i64
+  %2 = (env.load 0 %1)
+  return (i32.+ %0 (i32.from_i64 %2))
+fn numbers__arrow1(%0 x: i32, %1 env: borrowed) -> i32
+  local %2 p_x: f64
+  local %3 p_y: f32
+  local %4 on: bool
+  %2 = (f64.bits (env.load 0 %1))
+  %3 = (f32.bits (i32.from_i64 (env.load 1 %1)))
+  %4 = (bool.from_i64 (env.load 2 %1))
+  return (i32.+ (i32.+ (i32.+ %0 (i32.from_f64 %2)) (i32.from_f32 %3)) (call #3 %4))
+fn numbers__arrow2(%0 x: i32, %1 env: borrowed) -> i32
+  return (i32.* %0 2:i32)

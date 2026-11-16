@@ -1,0 +1,19 @@
+// E0238: JavaScript would call an exported function with functions nothing
+// checks: one that takes or gives a function, even inside a structure or an
+// option, is not exported (decision 0025).
+struct Handler {
+  name: String;
+  run: (i32) => i32;
+}
+
+export fn run(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn handler(h: Handler): i32 {
+  return (h.run)(1);
+}
+
+export fn maybe(f: Option<(i32) => i32>): bool {
+  return f.isSome();
+}

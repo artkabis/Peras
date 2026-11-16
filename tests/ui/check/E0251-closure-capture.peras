@@ -1,0 +1,34 @@
+// E0251: in an owned module, an arrow function used as a value copies what it
+// captures when it is made (decision 0026), so it cannot capture a `let` or
+// an `inout` parameter, which can change after.
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn later(n: i32): i32 {
+  let k = 1;
+  const f = (x: i32): i32 => x + k;
+  k = 100;
+  return apply(f, n);
+}
+
+fn grow(total: inout i32, n: i32): void {
+  total += apply((x) => x + total, n);
+}
+
+export fn grown(n: i32): i32 {
+  let total = 1;
+  grow(&total, n);
+  return total;
+}
+
+// Accepted: a `const` and a parameter captured, a function value copied and
+// both copies called, and a `let` read by an arrow function given in place.
+export fn fine(n: i32, xs: Array<i32>): i32 {
+  const k = 2;
+  const f = (x: i32): i32 => x * k + n;
+  const g = f;
+  let m = 3;
+  m += 1;
+  return f(1) + g(2) + xs.map((x) => x + m).length;
+}

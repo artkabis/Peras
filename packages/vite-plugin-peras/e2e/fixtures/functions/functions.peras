@@ -1,0 +1,178 @@
+// Decision 0025, both parts: fields moved out of structures, and functions as
+// values. The same source is built as an owned module and as a managed one,
+// which is JavaScript, and both must give the same.
+
+struct Place {
+  city: String;
+  zip: i32;
+}
+
+struct Row {
+  country: String;
+  place: Place;
+  tags: Array<String>;
+  amount: i32;
+}
+
+fn row(n: i32): Row {
+  return Row(`c${n}`, Place(`p${n}`, n), [`t${n}`, "u"], n);
+}
+
+// Part A: a field taken out, the rest of the structure still read.
+export fn taken(n: i32): String {
+  const r = row(n);
+  const c = r.country;
+  const city = r.place.city;
+  return `${c}|${city}|${r.place.zip}|${r.tags.length}|${r.amount}`;
+}
+
+export fn branches(n: i32): String {
+  let r = row(n);
+  if (n % 2 == 0) {
+    const c = r.country;
+    r.country = `${c}!`;
+  }
+  return r.country;
+}
+
+export fn gathered(n: i32): Array<String> {
+  let out: Array<String> = [];
+  for (let i = 0; i < n; i++) {
+    const r = row(i);
+    if (i == 7) {
+      break;
+    }
+    if (i % 3 == 0) {
+      continue;
+    }
+    out.push(r.country);
+    out.push(r.place.city);
+  }
+  return out;
+}
+
+fn parsed(n: i32): Option<i32> {
+  if (n > 3) {
+    return None;
+  }
+  return Some(n * 10);
+}
+
+export fn early(n: i32): String {
+  const r = row(n);
+  const tags = r.tags;
+  const k = parsed(n).unwrapOr(-1);
+  if (k < 0) {
+    return r.country;
+  }
+  return `${tags.length}|${k}|${r.country}`;
+}
+
+// Part B: functions as values.
+struct Op {
+  name: String;
+  run: (i32) => i32;
+}
+
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn square(x: i32): i32 {
+  return x * x;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+fn choose(k: i32): (i32) => i32 {
+  if (k > 1) {
+    return square;
+  }
+  if (k > 0) {
+    return twice;
+  }
+  return (x) => x - 1;
+}
+
+export fn applied(n: i32): i32 {
+  return apply(twice, n) + apply(square, n) + apply((x) => x + 100, n);
+}
+
+export fn table(n: i32): i32 {
+  const fs: Array<(i32) => i32> = [twice, square, (x: i32): i32 => x + 7];
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    total += (fs[i % 3])(i);
+  }
+  return total;
+}
+
+export fn chosen(k: i32, n: i32): i32 {
+  const f = choose(k);
+  return f(n);
+}
+
+export fn ops(n: i32): String {
+  const all = [Op("twice", twice), Op("square", square)];
+  let text = "";
+  for (const op of all) {
+    text += `${op.name}=${(op.run)(n)};`;
+  }
+  let maybe: Option<(i32) => i32> = None;
+  if (n < 3) {
+    maybe = Some(square);
+  }
+  return `${text}${apply(maybe.unwrapOr(twice), n)}`;
+}
+
+fn shout(s: String): String {
+  return `${s.toUpperCase()}!`;
+}
+
+fn pair(s: String): Row {
+  return row(s.length);
+}
+
+export fn strings(words: Array<String>): Array<String> {
+  const f: (String) => String = shout;
+  let out: Array<String> = [];
+  for (const w of words) {
+    out.push(f(w));
+    // A string the function owns, lent to the call, released after it.
+    const own = `${w}?`;
+    out.push(f(own));
+    const make = pair;
+    const r = make(w);
+    out.push(r.country);
+  }
+  return out;
+}
+
+fn amount(r: Row): i32 {
+  return r.amount;
+}
+
+fn country(r: Row): String {
+  return r.country.copy();
+}
+
+fn add(acc: i32, x: i32): i32 {
+  return acc + x;
+}
+
+fn big(x: i32): bool {
+  return x > 3;
+}
+
+export fn methods(n: i32): String {
+  let rows: Array<Row> = [];
+  for (let i = 0; i < n; i++) {
+    rows.push(row((i * 37) % 11));
+  }
+  rows.sortBy(amount);
+  const names = rows.map(country);
+  const xs = rows.map(amount);
+  return `${names.join(",")}|${xs.filter(big).length}|${xs.map(twice).reduce(add, 0)}`;
+}

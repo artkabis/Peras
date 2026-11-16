@@ -8,10 +8,6 @@ diagnostics:
     primary 8:18-8:19: check-arrow-param-label
     cause: check-arrow-why
     fix: check-arrow-param-fix { name: "x" }
-  error[E0238] check-arrow-type
-    primary 13:21-13:31: check-arrow-type-label
-    cause: check-arrow-why
-    fix: check-arrow-type-fix
   error[E0238] check-arrow-export { name: "run" }
     primary 16:11-16:14: check-arrow-export-label
     cause: check-arrow-why

@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0238-function-export.peras
+---
+diagnostics:
+  error[E0238] check-arrow-export { name: "run" }
+    primary 9:11-9:14: check-arrow-export-label
+    cause: check-arrow-why
+    fix: check-arrow-export-fix
+  error[E0238] check-arrow-export { name: "handler" }
+    primary 13:11-13:18: check-arrow-export-label
+    cause: check-arrow-why
+    fix: check-arrow-export-fix
+  error[E0238] check-arrow-export { name: "maybe" }
+    primary 17:11-17:16: check-arrow-export-label
+    cause: check-arrow-why
+    fix: check-arrow-export-fix

@@ -1,0 +1,127 @@
+// Decision 0026: closures in owned modules. The same source is built as an
+// owned module and as a managed one, which is JavaScript, and both must give
+// the same; nothing may be left alive.
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+fn makeAdder(k: i32): (i32) => i32 {
+  return (x: i32): i32 => x + k;
+}
+
+// A closure returned, copied, and given to a function.
+export fn adders(k: i32, n: i32): i32 {
+  const add = makeAdder(k);
+  const copy = add;
+  return add(n) + copy(1) + apply(add, 2) + apply(makeAdder(n), k);
+}
+
+// Closures over a loop's `const`, called after the loop.
+export fn looped(n: i32): i32 {
+  let fs: Array<(i32) => i32> = [];
+  for (let i = 0; i < n; i++) {
+    const j = i * 3;
+    fs.push((x: i32): i32 => x * 10 + j);
+  }
+  let total = 0;
+  for (const f of fs) {
+    total += f(n);
+  }
+  return total + fs.length;
+}
+
+// A closure copied 100 times into an array, which is then released.
+export fn copies(k: i32): i32 {
+  const f = makeAdder(k);
+  let all: Array<(i32) => i32> = [];
+  for (let i = 0; i < 100; i++) {
+    all.push(f);
+  }
+  let total = 0;
+  for (let i = 0; i < all.length; i++) {
+    total += (all[i])(i);
+  }
+  return total;
+}
+
+struct Step {
+  size: i32;
+  run: (i32) => i32;
+}
+
+// A closure in a structure and in an option.
+export fn held(k: i32, on: bool): i32 {
+  const step = Step(k, makeAdder(k * 2));
+  const again = step;
+  let maybe: Option<(i32) => i32> = None;
+  if (on) {
+    maybe = Some(makeAdder(k + 1));
+  }
+  return (step.run)(1) + (again.run)(again.size) + apply(maybe.unwrapOr(makeAdder(-1)), 5);
+}
+
+// A closure replaced while held, and one made by a closure.
+export fn replaced(k: i32): i32 {
+  let f = makeAdder(1);
+  const first = f(k);
+  f = makeAdder(k);
+  const outer = (a: i32): i32 => apply((b: i32): i32 => a + b + k, 1);
+  return first + f(k) + outer(2);
+}
+
+// Every kind of number and `bool`, captured at its edges.
+export fn keptI8(v: i8): i8 {
+  const f = (): i8 => v;
+  return f();
+}
+
+export fn keptU32(v: u32): u32 {
+  const f = (): u32 => v;
+  return f();
+}
+
+export fn keptI64(v: i64): i64 {
+  const f = (): i64 => v;
+  return f();
+}
+
+export fn keptU64(v: u64): u64 {
+  const f = (): u64 => v;
+  return f();
+}
+
+export fn keptF32(v: f32): f32 {
+  const f = (): f32 => v;
+  return f();
+}
+
+export fn keptF64(v: f64): f64 {
+  const f = (): f64 => v;
+  return f();
+}
+
+export fn keptBool(v: bool, w: bool): bool {
+  const f = (): bool => v && !w;
+  return f();
+}
+
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+// A structure of numbers captured, slot by slot, and several captures.
+export fn mixed(x: f64, y: f64, n: i32, on: bool): f64 {
+  const p = Point(x, y);
+  const scale = n.toF64();
+  const f = (t: f64): f64 => p.x * t + p.y * scale + flag(on);
+  return f(2.0);
+}
+
+fn flag(on: bool): f64 {
+  if (on) {
+    return 1.0;
+  }
+  return 0.0;
+}

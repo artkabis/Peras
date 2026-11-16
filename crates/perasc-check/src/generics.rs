@@ -156,7 +156,7 @@ impl Checker<'_> {
             Ty::Error => true,
             Ty::Param(i, _) => self.param_of(*i).is_some_and(|p| p.meets(bound)),
             _ => match bound {
-                Bound::Eq => !matches!(ty, Ty::Void | Ty::Fn(..)),
+                Bound::Eq => !matches!(ty, Ty::Void | Ty::Fn(..) | Ty::Callback(..)),
                 Bound::Ord | Bound::Numeric => ty.is_numeric(),
                 Bound::Integer => ty.is_integer(),
                 Bound::Float => ty.is_float(),

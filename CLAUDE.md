@@ -41,6 +41,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A flawed run is kept with its flaw**, archived, and its correction listed as a departure from the protocol.
 - **Never say a thing is online, deployed or passing before seeing it**: read the workflow's run, not the workflow's file (M005).
 - **A cancelled job is a failure, and a test is timed in the debug build the CI runs**: the Rust job stops at 20 minutes, and one test of 2,000,000 pairs took all of it unnoticed (M022).
+- **A step of a plan meets the plan's criteria too**: before saying it landed, read the criteria of the decision that orders it, not only its own; decision 0021's roadmap was missed three times (M025).
 - **"All checks pass" means the CI of the last commit, read on GitHub**, and locally every `--check` script of `scripts/`, not only those of the files touched: a change of defaults breaks the scripts that relied on them (M007).
 
 ## Code: the traps already fallen into
@@ -51,6 +52,8 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **Profile by removing, not by guessing.** A profile that adds steps one at a time can blame the step added when the cost is in what it forces (F201: `parseI32` blamed, the copies of a stored `split` guilty). Compare variants that differ by one thing, and check that an optimization is taken before crediting it with a gain. A variant that removes a step and its calls together blames the step for the calls' cost (M013).
 - **The end-to-end tests use `target/release/perasc`**: `cargo build --release -p perasc` before `pnpm run e2e`, or they test the compiler as it was (M018).
 - **A round trip can hide a difference**: a test that compares what a module gives back passes through the loader both ways; compare what the module computes from each input too (F217).
+- **A mutation must reach what it tests** (M024): a change of the lowering alone does nothing where the checker decides, and a change of both is caught by the checker first. Put the mutation where the rule is, and see the test fail.
+- **The differential test sees the passes after lowering, not lowering itself** (M026): its oracle is the lowered IR, interpreted. A mutation of the lowering passes it; one of the generator or of the interpreter fails it. What lowering computes is held by the end-to-end tests against the managed module.
 - **An optimization passes the differential test before it lands** (`crates/perasc-driver/tests/differential.rs`): once with `PERAS_DIFFERENTIAL_SEEDS=2000`, and once with the optimization broken on purpose, to see the test fail (M015). Extend its generator with what the optimization touches.
 - **A new operation or element type is looked for wherever its neighbours are matched**: `grep` every `BinOp::Div`, every `Elem::`, every size the runtime tests. An unsigned division was taken for one that cannot stop the program (F008), bytes for lanes of four (F007), and `reverse()` knew no element of two bytes (F009).
 - **Write Peras as a user would before claiming what it can do.** The frictions found that way go to the findings, with the diagnostic as evidence.
@@ -60,7 +63,8 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 What a program can rely on, and what it cannot yet; the details and their evidence are in the findings and in [the status](docs/en/reference/status.md).
 
 - `Option`: `isSome()`, `isNone()`, `unwrapOr(x)` (evaluates `x` whenever doing so can be seen; a quiet fallback, literals, reads and copies, is made only when needed: F209), and `?`. No `unwrap`, no `let … else`; a `match` whose arm leaves a loop gives no value (F101, F104, F105).
-- Structures have `copy()` (F102), unless they hold a resource, a JavaScript value or a function. An argument moved is not readable by a later argument of the same call (F103).
+- Structures have `copy()` (F102), unless they hold a resource, a JavaScript value or a function. An argument moved is not readable by a later argument of the same call (F103). A field moves out of a structure the function owns, `const c = row.country;`; the rest stays usable (decision 0025).
+- Functions are values in both modes: `(i32) => i32` wherever a type is, copied freely; arguments lent; not across to JavaScript (decision 0025). In an owned module, an arrow function used as a value captures numbers, booleans and structures of them, copied when it is made; a `let` or `inout` captured is E0251, a string, array or function value captured is E0900 `closure-heap` (decision 0026). A function value is a counted environment, static when it captures nothing; the table's functions take it last.
 - Modules: a `.peras` file imports functions, structures and enumerations of other `.peras` files, compiled into one module; not generics, not the methods of an imported structure, no `as`, no cycle (decision 0022).
 - Module variables (`let` at the top of a `.peras`): numbers, booleans, and structures, enumerations and options of them, a constant initial value; not strings or arrays, not `inout`, not in a `parallel for` (decision 0023).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).

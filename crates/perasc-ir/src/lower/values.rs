@@ -111,8 +111,13 @@ impl Lowering<'_> {
                     .map(|(path, _)| (path, Ty::Owned))
                     .collect())
             }
-            // A string, a map or a set is one handle, wherever it is held.
+            // A string, a map or a set is one handle, wherever it is held;
+            // a function value too, its environment (decision 0026).
             CheckTy::String | CheckTy::Map(..) | CheckTy::Set(_) => {
+                Ok(vec![(String::new(), Ty::Owned)])
+            }
+            CheckTy::Callback(params, ret) => {
+                params.iter().try_for_each(compiled).and(compiled(ret))?;
                 Ok(vec![(String::new(), Ty::Owned)])
             }
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
@@ -318,8 +323,22 @@ impl Lowering<'_> {
     }
 
     /// The scalars of any expression, taken or only read: its buffers then
-    /// move, or are lent.
+    /// move, or are lent. A function value taken without being moved, which
+    /// copies freely, is held once more (decision 0026).
     pub(super) fn value_as(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
+        let values = self.value_parts(state, id, mode);
+        if mode == Mode::Consume && self.check_type(id).is_some_and(|t| self.holds_fn(&t)) {
+            return Self::retained(values);
+        }
+        values
+    }
+
+    /// [`Self::value_as`], before a function value is held once more.
+    fn value_parts(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
+        if self.applied.contains_key(&id) {
+            let values = self.apply(state, id);
+            return Self::fresh(state, values, mode);
+        }
         if !self.is_aggregate(id) {
             return vec![self.expr(state, id)];
         }
@@ -352,11 +371,18 @@ impl Lowering<'_> {
                     self.value_as(state, init, mode)
                 } else if self.ast.name(*symbol) == "None" {
                     self.none(id)
+                } else if let Some(&target) = self.fns.get(symbol) {
+                    // A function of the module as a value (decision 0026).
+                    self.named_value(state, target, mode)
+                } else if self.generic.contains_key(symbol) {
+                    self.unsupported(span, "function-value");
+                    Vec::new()
                 } else {
                     self.unsupported(span, "global");
                     Vec::new()
                 }
             }
+            AstExpr::Lambda { .. } => self.arrow_value(state, id, mode),
             AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
@@ -387,13 +413,26 @@ impl Lowering<'_> {
                 self.match_values(state, id, *scrutinee, arms, mode)
             }
             AstExpr::Field { base, name } => {
-                // A field is read from its structure, which keeps it.
+                // A field is read from its structure, which keeps it, unless
+                // the checker moved it out (decision 0025): its buffers then
+                // leave the structure, whose other leaves stay live.
                 let fields = self.value_as(state, *base, Mode::Borrow);
                 let base_ty = self.check_type(*base);
                 let picked = base_ty.and_then(|t| self.field(&t, self.ast.name(name.symbol)));
-                match picked {
-                    Some((offset, len, _)) => Self::pick(state, fields, offset, len),
-                    None => Vec::new(),
+                let Some((offset, len, _)) = picked else {
+                    return Vec::new();
+                };
+                let picked = Self::pick(state, fields, offset, len);
+                if mode == Mode::Consume && self.analysis.moves.contains(&id) {
+                    picked
+                        .into_iter()
+                        .map(|e| match e.kind {
+                            ExprKind::Borrow(l) => heap::moved(state, l),
+                            _ => e,
+                        })
+                        .collect()
+                } else {
+                    picked
                 }
             }
             _ => {
@@ -414,6 +453,10 @@ impl Lowering<'_> {
         mode: Mode,
     ) -> Vec<Expr> {
         let span = self.ast.expr(id).span;
+        if self.is_value_callee(state, callee) {
+            let values = self.call_value(state, callee, args);
+            return Self::fresh(state, values, mode);
+        }
         match self.ast.expr(callee).kind {
             AstExpr::Name(symbol) => {
                 let function = self.callee(id, symbol);
@@ -504,6 +547,11 @@ impl Lowering<'_> {
                 })
                 .collect(),
             CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
+            // The environment of no function, static (decision 0026).
+            CheckTy::Callback(..) => vec![Expr {
+                kind: ExprKind::Env(crate::EnvOp::Zero, Vec::new()),
+                ty: Ty::Owned,
+            }],
             CheckTy::Struct(id, _) => self
                 .analysis
                 .structs
@@ -1224,6 +1272,7 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Result(..)
             | CheckTy::Map(..)
             | CheckTy::Set(_)
+            | CheckTy::Callback(..)
     )
 }
 
@@ -1313,7 +1362,12 @@ fn reads(e: &Expr, local: LocalId) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, local),
         ExprKind::Binary(_, a, b) => reads(a, local) || reads(b, local),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().any(|a| reads(a, local)),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
+            args.iter().any(|a| reads(a, local))
+        }
+        ExprKind::CallIndirect(callee, args) => {
+            reads(callee, local) || args.iter().any(|a| reads(a, local))
+        }
     }
 }
 
@@ -1330,6 +1384,7 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Enum(..)
         | CheckTy::Map(..)
         | CheckTy::Set(_) => Ok(()),
+        CheckTy::Callback(params, ret) => params.iter().try_for_each(compiled).and(compiled(ret)),
         CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         _ => Err("struct"),

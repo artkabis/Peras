@@ -55,16 +55,12 @@ impl Lowering<'_> {
             return None;
         }
         let &lambda = args.first()?;
-        // Statements in an arrow function are refused in an owned module.
-        let AstExpr::Lambda {
-            params,
-            body: perasc_syntax::ast::LambdaBody::Expr(body),
-            ..
-        } = &self.ast.expr(lambda).kind
-        else {
+        // Statements in an arrow function are refused in an owned module. A
+        // function given by its value is called at each turn, the value
+        // itself standing for the body (decision 0025).
+        let Some((params, body, applied)) = self.function_argument(lambda) else {
             return Some(Vec::new());
         };
-        let (params, body) = (params.clone(), *body);
         let element = match self.check_type(base) {
             Some(CheckTy::Array(inner)) => *inner,
             _ => return Some(Vec::new()),
@@ -112,6 +108,10 @@ impl Lowering<'_> {
             |this, state| {
                 let mut out = Vec::new();
                 state.open();
+                if let Some(ret) = &applied {
+                    let given = applied_args(state, &goal, (columns, buffers), &i_expr);
+                    this.applied.insert(body, (given, ret.clone()));
+                }
                 if let (Goal::Reduce(acc), Some((name, _))) = (&goal, params.first()) {
                     bind_locals(state, name, acc);
                 }
@@ -127,6 +127,7 @@ impl Lowering<'_> {
         state.pre = outer_pre;
         state.drops = outer_drops;
         state.pre.extend(lowered);
+        self.applied.remove(&body);
         if let (Goal::Map(keys), "sortBy" | "sortByDescending") = (&goal, method) {
             Self::sort_by_keys(state, keys, buffers, method == "sortByDescending");
             return Some(Vec::new());
@@ -153,6 +154,37 @@ impl Lowering<'_> {
             Goal::FindIndex(index) => Self::found(state, index, columns, buffers),
         };
         Some(Self::fresh(state, values, mode))
+    }
+
+    /// The function given to `map` and the others: an arrow function's
+    /// parameters and value; or a function given by its value, which stands
+    /// for its own body, with the type of its result (decision 0025).
+    /// Statements in an arrow function are refused in an owned module: no
+    /// values, `Some(empty)`, for one.
+    #[allow(clippy::type_complexity)]
+    fn function_argument(
+        &self,
+        lambda: ExprId,
+    ) -> Option<(
+        Vec<(Ident, Option<perasc_syntax::ast::Type>)>,
+        ExprId,
+        Option<CheckTy>,
+    )> {
+        Some(match &self.ast.expr(lambda).kind {
+            AstExpr::Lambda {
+                params,
+                body: perasc_syntax::ast::LambdaBody::Expr(body),
+                ..
+            } => (params.clone(), *body, None),
+            _ => match self.check_type(lambda) {
+                Some(CheckTy::Callback(_, ret))
+                    if !matches!(self.ast.expr(lambda).kind, AstExpr::Lambda { .. }) =>
+                {
+                    (Vec::new(), lambda, Some(*ret))
+                }
+                _ => return None,
+            },
+        })
     }
 
     /// `sortBy`, after the loop computed the keys: the runtime gives their
@@ -241,7 +273,11 @@ impl Lowering<'_> {
         Some(match method {
             // `sortBy`: the keys, computed as `map` computes its values.
             "map" | "sortBy" | "sortByDescending" => {
-                let value_ty = self.check_type(body).unwrap_or(CheckTy::Void);
+                let value_ty = match self.check_type(body) {
+                    // A function given by its value: its result (decision 0025).
+                    Some(CheckTy::Callback(_, ret)) => *ret,
+                    other => other.unwrap_or(CheckTy::Void),
+                };
                 let result = self.columns(Some(&CheckTy::Array(Box::new(value_ty))))?;
                 Goal::Map(
                     result
@@ -752,6 +788,26 @@ fn bind_locals(state: &mut FnState, name: &Ident, locals: &[LocalId]) {
 }
 
 /// The element of a column at `i`; a buffer copied when `owned` is asked.
+/// The arguments of a function given by its value to `map` and the others
+/// (decision 0025): the accumulator, then the element, lent.
+fn applied_args(state: &FnState, goal: &Goal, array: (&[Elem], &[Expr]), i: &Expr) -> Vec<Expr> {
+    let (columns, buffers) = array;
+    let mut given = Vec::new();
+    if let Goal::Reduce(acc) = goal {
+        for &a in acc {
+            given.push(if state.is_owned(a) {
+                super::heap::borrowed(a)
+            } else {
+                super::local_expr(state, a)
+            });
+        }
+    }
+    for (buffer, &elem) in buffers.iter().zip(columns) {
+        given.push(element_at(buffer, i, elem, false));
+    }
+    given
+}
+
 fn element_at(buffer: &Expr, i: &Expr, elem: Elem, owned: bool) -> Expr {
     let value = Expr {
         kind: ExprKind::Buf(BufOp::Get(elem), vec![buffer.clone(), i.clone()]),

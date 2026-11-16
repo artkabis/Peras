@@ -1,0 +1,14 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0251-closure-capture.peras
+---
+diagnostics:
+  error[E0251] check-closure-capture { name: "k", kind: "let" }
+    primary 10:34-10:35: check-closure-capture-label { kind: "let" }
+    cause: check-closure-capture-why
+    fix: check-closure-capture-fix { kind: "let" }
+  error[E0251] check-closure-capture { name: "total", kind: "inout" }
+    primary 16:29-16:34: check-closure-capture-label { kind: "inout" }
+    cause: check-closure-capture-why
+    fix: check-closure-capture-fix { kind: "inout" }

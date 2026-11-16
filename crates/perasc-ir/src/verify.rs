@@ -6,7 +6,8 @@
 //! an `i32`, or one integer type for another, could reach the module unnoticed.
 
 use crate::{
-    BinOp, BufOp, BufStmt, Const, Expr, ExprKind, Function, LocalId, MathOp, Module, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, EnvOp, Expr, ExprKind, Function, LocalId, MathOp, Module, Stmt,
+    Ty, UnOp,
 };
 
 /// Checks a module; every problem is described in one line.
@@ -83,7 +84,9 @@ impl<'a> Verifier<'a> {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
             ExprKind::Alloc(_)
             | ExprKind::Call(..)
-            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _) => {
+            | ExprKind::CallIndirect(..)
+            | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _)
+            | ExprKind::Env(EnvOp::Static(..) | EnvOp::New(_) | EnvOp::Zero, _) => {
                 self.expr(value);
             }
             ExprKind::Buf(BufOp::Runtime(f), _) if f.result() == Ty::Owned => {
@@ -359,6 +362,11 @@ impl<'a> Verifier<'a> {
                 callee,
                 args,
             } => self.call_many(targets, *callee, args),
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => self.call_many_indirect(targets, callee, args),
             Stmt::ReturnMany(values) => self.return_many(values),
             Stmt::Buf(op, args) => self.buf_stmt(*op, args),
             Stmt::Release(local) => {
@@ -501,6 +509,113 @@ impl<'a> Verifier<'a> {
         }
     }
 
+    /// `targets = call_indirect callee args` (decision 0025).
+    fn call_many_indirect(&mut self, targets: &[crate::LocalId], callee: &Expr, args: &[Expr]) {
+        self.function_value(callee);
+        for arg in args {
+            self.argument(arg);
+        }
+        for target in targets {
+            if self.local_type(target.0).is_none() {
+                self.problem(&format!(
+                    "call_indirect into %{}, which does not exist",
+                    target.0
+                ));
+            }
+        }
+    }
+
+    /// A function value, its environment (decision 0026): the function it
+    /// names exists and takes an environment last; its slots are `i64`; a
+    /// static one is below the heap.
+    fn env_expr(&mut self, op: EnvOp, args: &[Expr], ty: Ty) {
+        let named = match op {
+            EnvOp::Static(id, _) | EnvOp::New(id) => Some(id),
+            EnvOp::Zero | EnvOp::Load(_) => None,
+        };
+        if let Some(id) = named {
+            let last = usize::try_from(id.0)
+                .ok()
+                .and_then(|i| self.module.functions.get(i))
+                .and_then(|f| {
+                    let last = usize::try_from(f.param_count).ok()?.checked_sub(1)?;
+                    f.locals.get(last).map(|l| l.ty)
+                });
+            if last != Some(Ty::Borrowed) {
+                self.problem(&format!(
+                    "env of fn #{}, which does not take an environment last",
+                    id.0
+                ));
+            }
+        }
+        if let EnvOp::Static(_, at) = op
+            && (at < crate::STATIC_START || at % 16 != 0 || at + 16 > crate::STATIC_END)
+        {
+            self.problem(&format!("env.static @{at} is not below the heap"));
+        }
+        let expected = match op {
+            EnvOp::Static(..) | EnvOp::Zero => {
+                self.operands("env", args, &[]);
+                Ty::Owned
+            }
+            EnvOp::New(_) => {
+                let slots = vec![Ty::I64; args.len()];
+                self.operands("env.new", args, &slots);
+                Ty::Owned
+            }
+            EnvOp::Load(_) => {
+                self.buffer(args.first());
+                self.operands("env.load", args.get(1..).unwrap_or(&[]), &[]);
+                Ty::I64
+            }
+        };
+        if ty != expected {
+            self.problem(&format!("{op:?} typed {}", ty.name()));
+        }
+    }
+
+    /// A call through a function value (decision 0025).
+    fn function_expr(&mut self, e: &Expr) {
+        if let ExprKind::CallIndirect(callee, args) = &e.kind {
+            self.function_value(callee);
+            for arg in args {
+                self.argument(arg);
+            }
+        }
+    }
+
+    /// The same bits as the other type of their width (decision 0026).
+    fn bits(&mut self, operand: &Expr, to: Ty) {
+        self.expr(operand);
+        if !matches!(
+            (operand.ty, to),
+            (Ty::F64, Ty::I64) | (Ty::I64, Ty::F64) | (Ty::F32, Ty::I32) | (Ty::I32, Ty::F32)
+        ) {
+            self.problem(&format!("bits of {} as {}", operand.ty.name(), to.name()));
+        }
+    }
+
+    /// A numeric conversion, or a `bool` kept in an environment's slot
+    /// (decision 0026).
+    fn convert(&mut self, operand: &Expr, to: Ty) {
+        self.expr(operand);
+        let numeric = |t: Ty| t.is_int() || t.is_float();
+        let slot = matches!((operand.ty, to), (Ty::Bool, Ty::I64) | (Ty::I64, Ty::Bool));
+        if !slot && (!numeric(operand.ty) || !numeric(to)) {
+            self.problem(&format!(
+                "conversion from {} to {}",
+                operand.ty.name(),
+                to.name()
+            ));
+        }
+    }
+
+    /// The function value an indirect call goes through: its environment,
+    /// lent (decision 0026).
+    fn function_value(&mut self, callee: &Expr) {
+        self.buffer(Some(callee));
+    }
+
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => {
@@ -542,13 +657,15 @@ impl<'a> Verifier<'a> {
             // A conversion to or from an unsigned integer: numbers, of two
             // types or of one (decision 0024).
             ExprKind::Unary(UnOp::ConvertU, operand) => self.convert_u(operand, e.ty),
+            // The same bits, as the other type of their width (decision 0026).
+            ExprKind::Unary(UnOp::Bits, operand) => self.bits(operand, e.ty),
             ExprKind::Unary(op, operand) => {
                 self.expr(operand);
                 let valid = match op {
                     UnOp::Neg => operand.ty.is_int() || operand.ty.is_float(),
                     UnOp::Not => operand.ty == Ty::Bool,
                     UnOp::BitNot => operand.ty.is_int(),
-                    UnOp::ConvertU => false,
+                    UnOp::ConvertU | UnOp::Bits => false,
                 };
                 if !valid || e.ty != operand.ty {
                     self.problem(&format!(
@@ -560,6 +677,8 @@ impl<'a> Verifier<'a> {
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs, e.ty),
             ExprKind::Buf(op, args) => self.buf_expr(*op, args, e.ty),
+            ExprKind::Env(op, args) => self.env_expr(*op, args, e.ty),
+            ExprKind::CallIndirect(..) => self.function_expr(e),
             ExprKind::Call(id, args) => {
                 let results = if e.ty == Ty::Void { vec![] } else { vec![e.ty] };
                 if let Some(callee) = self.call(*id, args, &results)
@@ -571,17 +690,7 @@ impl<'a> Verifier<'a> {
                     ));
                 }
             }
-            ExprKind::Convert(operand) => {
-                self.expr(operand);
-                let numeric = |t: Ty| t.is_int() || t.is_float();
-                if !numeric(operand.ty) || !numeric(e.ty) {
-                    self.problem(&format!(
-                        "conversion from {} to {}",
-                        operand.ty.name(),
-                        e.ty.name()
-                    ));
-                }
-            }
+            ExprKind::Convert(operand) => self.convert(operand, e.ty),
             ExprKind::Math(op, operand) => {
                 self.expr(operand);
                 let valid = match op {

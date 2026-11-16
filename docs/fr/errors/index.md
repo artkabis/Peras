@@ -74,6 +74,8 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0238](E0238.md) | Fonction fléchée là où aucune ne peut aller                                       | noms et types      |
 | [E0248](E0248.md) | Une promesse jamais attendue                                                      | noms et types      |
 | [E0249](E0249.md) | Une clé de tri qui n’est ni un nombre ni une chaîne                               | noms et types      |
+| [E0250](E0250.md) | Des modules qui s’importent l’un l’autre                                          | noms et types      |
+| [E0251](E0251.md) | Une fermeture qui capture ce qui peut changer                                     | noms et types      |
 | [E0247](E0247.md) | Une déclaration extern qui ne peut pas être gardée                                | noms et types      |
 | [E0246](E0246.md) | Une propriété qui ne peut qu’être lue                                             | noms et types      |
 | [E0245](E0245.md) | Une ressource sans propriétaire                                                   | noms et types      |

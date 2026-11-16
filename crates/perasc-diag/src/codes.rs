@@ -166,6 +166,9 @@ pub const FLOATING_PROMISE: ErrorCode = ErrorCode::new(248);
 pub const SORT_KEY: ErrorCode = ErrorCode::new(249);
 /// Owned modules that import each other in a cycle.
 pub const IMPORT_CYCLE: ErrorCode = ErrorCode::new(250);
+/// An arrow function used as a value, in an owned module, that captures a
+/// `let` or an `inout` parameter.
+pub const CLOSURE_CAPTURE: ErrorCode = ErrorCode::new(251);
 /// A valid construct that code generation does not support yet.
 pub const NOT_SUPPORTED_YET: ErrorCode = ErrorCode::new(900);
 
@@ -301,6 +304,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(FLOATING_PROMISE, "check-floating-promise", "E0248"),
     active!(SORT_KEY, "check-sort-key", "E0249"),
     active!(IMPORT_CYCLE, "check-import-cycle", "E0250"),
+    active!(CLOSURE_CAPTURE, "check-closure-capture", "E0251"),
     active!(NOT_SUPPORTED_YET, "gen-unsupported", "E0900"),
 ];
 

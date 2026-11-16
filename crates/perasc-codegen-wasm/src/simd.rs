@@ -336,12 +336,15 @@ fn reads_any(e: &Expr, locals: &[LocalId]) -> bool {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => locals.contains(l),
         ExprKind::Const(_) | ExprKind::Global(_) => false,
+        ExprKind::CallIndirect(callee, args) => {
+            reads_any(callee, locals) || args.iter().any(|a| reads_any(a, locals))
+        }
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads_any(x, locals),
         ExprKind::Binary(_, a, b) => reads_any(a, locals) || reads_any(b, locals),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().any(|a| reads_any(a, locals))
         }
     }
@@ -403,12 +406,14 @@ fn count_reads(e: &Expr, local: LocalId) -> usize {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => usize::from(*l == local),
         ExprKind::Const(_) | ExprKind::Global(_) => 0,
+        ExprKind::CallIndirect(callee, args) => count_reads(callee, local)
+            .saturating_add(saturating_sum(args.iter().map(|a| count_reads(a, local)))),
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => count_reads(x, local),
         ExprKind::Binary(_, a, b) => count_reads(a, local).saturating_add(count_reads(b, local)),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             saturating_sum(args.iter().map(|a| count_reads(a, local)))
         }
     }

@@ -1,0 +1,7 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0251-closure-capture.apeiron
+---
+diagnostics:
+  none

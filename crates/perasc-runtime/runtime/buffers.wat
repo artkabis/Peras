@@ -23,6 +23,14 @@
   ;; own block, whose bytes belong to the string it was split from. Releasing
   ;; it releases that block only; a copy of it is an ordinary DEEP array.
   (global $VIEWS i32 (i32.const 0x400))
+  ;; An environment of a function value (decision 0026), not a buffer: its
+  ;; header is +0 the function's position in the table, +4 how many hold it,
+  ;; 0 when it is static, +8 0, +12 SHARED, then its slots, 8 bytes each,
+  ;; written when it is made and never after. A copy adds one to its count, a
+  ;; release takes one, and the last frees its block; a static one, written
+  ;; below the heap when the module is instantiated, is neither counted nor
+  ;; freed. It holds only numbers: nothing it holds can keep it alive.
+  (global $SHARED i32 (i32.const 0x2000))
   ;; The most bytes of elements kept in the header's block.
   (global $INLINE_MAX i32 (i32.const 256))
 
@@ -104,6 +112,21 @@
   ;; elements are buffers, then its elements.
   (func $buf_release (export "buf_release") (param $h i32) (param $site i32)
     (local $data i32) (local $len i32) (local $deep i32) (local $i i32) (local $shape i32)
+    ;; An environment: one fewer holds it. Released twice, its block holds
+    ;; the debug allocator's poison, without SHARED: the release below
+    ;; catches it.
+    (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $SHARED))
+      (then
+        (local.set $len (i32.load offset=4 (local.get $h)))
+        (if (i32.eqz (local.get $len))
+          (then (return)))
+        (local.set $len (i32.sub (local.get $len) (i32.const 1)))
+        (if (local.get $len)
+          (then
+            (i32.store offset=4 (local.get $h) (local.get $len))
+            (return)))
+        (call $release (local.get $h) (local.get $site))
+        (return)))
     ;; A map: its header first, which catches a block released twice, then
     ;; its keys and blocks, from what the header held.
     (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $MAP))
@@ -140,6 +163,13 @@
   ;; A copy of a buffer, with copies of the buffers it owns.
   (func $buf_clone (export "buf_clone") (param $h i32) (param $site i32) (result i32)
     (local $copy i32) (local $len i32) (local $size i32) (local $i i32) (local $at i32)
+    ;; An environment is shared: one more holds it, unless it is static.
+    (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $SHARED))
+      (then
+        (local.set $len (i32.load offset=4 (local.get $h)))
+        (if (local.get $len)
+          (then (i32.store offset=4 (local.get $h) (i32.add (local.get $len) (i32.const 1)))))
+        (return (local.get $h))))
     ;; A map: its own copy, keys and values included.
     (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $MAP))
       (then (return (call $map_clone (local.get $h) (local.get $site)))))

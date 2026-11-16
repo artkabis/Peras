@@ -91,6 +91,49 @@ export fn twice(): i32 {
 
 From JavaScript, a structure passed `inout` is an object whose fields are updated after the call. A number, an option or a string cannot be passed `inout` from JavaScript, which passes them by value; such a function can still be called from Peras.
 
+## Functions as values
+
+A function is a value of a function type, `(i32) => i32`, written wherever a type is: a parameter, a result, a variable, a field, an element of an array, an option ([decision 0025](../decisions/0025-moved-fields-and-function-values.md)). A function of the module is one by its name, and an arrow function is one wherever it is not given in place to `map` and the others. A value of a function type is called as a function is, and copied freely.
+
+```peras build
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn applied(n: i32): i32 {
+  const steps: Array<(i32) => i32> = [twice, (x: i32): i32 => x + 1];
+  let total = apply(twice, n);
+  for (let i = 0; i < steps.length; i++) {
+    total += (steps[i])(n);
+  }
+  return total;
+}
+```
+
+- **The arguments are lent**, and the result is the caller's: a function type says no `sink` nor `inout`, so a function with such a parameter is not a value of one ([E0210](../errors/E0210.md)), nor is a generic function.
+- **`xs.map(twice)`** gives a function to `map` and the others by its name, which calls it directly, as `(x) => twice(x)` would.
+- **An arrow function that captures**, `(x) => x + k`, is a closure ([decision 0026](../decisions/0026-closures.md)). In an owned module, it copies what it captures when it is made: a `const` or a parameter, which cannot change after; a `let` or an `inout` parameter is refused ([E0251](../errors/E0251.md)). It captures numbers, booleans, and structures, options and enumerations of them; a string, an array, a map, a set or a function value captured is not compiled yet ([E0900](../errors/E0900.md)). A managed module captures by reference, as JavaScript does.
+- **JavaScript** never receives nor gives a function of an owned module: an exported function that takes or gives one is refused ([E0238](../errors/E0238.md)).
+- In WebAssembly, a function value is its environment: the position of its function in a table of the module, and the values it captured. A copy counts one more holder, and the last to let go frees it; a function that captures nothing has a static environment, which costs no allocation. A call through a value is an indirect call.
+
+A closure keeps what it captured, and its copies share it:
+
+```peras build
+fn makeAdder(k: i32): (i32) => i32 {
+  return (x: i32): i32 => x + k;
+}
+
+export fn added(k: i32, n: i32): i32 {
+  const add = makeAdder(k);
+  const same = add;
+  return add(n) + same(1);
+}
+```
+
 ## Built-in methods
 
 Numbers have methods, called with a dot: conversions, `abs`, `sqrt`, wrapping and checked arithmetic. The [method reference](../reference/methods.md) lists them all.

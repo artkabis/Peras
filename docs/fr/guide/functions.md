@@ -91,6 +91,49 @@ export fn twice(): i32 {
 
 Depuis JavaScript, une structure passée `inout` est un objet dont les champs sont mis à jour après l’appel. Un nombre, une option ou une chaîne ne peuvent pas être passés `inout` depuis JavaScript, qui les passe par valeur ; une telle fonction reste appelable depuis Peras.
 
+## Les fonctions comme valeurs
+
+Une fonction est une valeur d’un type fonction, `(i32) => i32`, qui s’écrit partout où un type s’écrit : un paramètre, un résultat, une variable, un champ, un élément de tableau, une option ([décision 0025](../decisions/0025-moved-fields-and-function-values.md)). Une fonction du module en est une par son nom, et une fonction fléchée en est une partout où elle n’est pas donnée sur place à `map` et aux autres. Une valeur d’un type fonction s’appelle comme une fonction, et se copie librement.
+
+```peras build
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn applied(n: i32): i32 {
+  const steps: Array<(i32) => i32> = [twice, (x: i32): i32 => x + 1];
+  let total = apply(twice, n);
+  for (let i = 0; i < steps.length; i++) {
+    total += (steps[i])(n);
+  }
+  return total;
+}
+```
+
+- **Les arguments sont prêtés**, et le résultat appartient à l’appelant : un type fonction ne dit ni `sink` ni `inout`, si bien qu’une fonction avec un tel paramètre n’en est pas une valeur ([E0210](../errors/E0210.md)), pas plus qu’une fonction générique.
+- **`xs.map(twice)`** donne une fonction à `map` et aux autres par son nom, qui l’appelle directement, comme le ferait `(x) => twice(x)`.
+- **Une fonction fléchée qui capture**, `(x) => x + k`, est une fermeture ([décision 0026](../decisions/0026-closures.md)). Dans un module owned, elle copie ce qu’elle capture quand elle est faite : un `const` ou un paramètre, qui ne peuvent pas changer ensuite ; un `let` ou un paramètre `inout` est refusé ([E0251](../errors/E0251.md)). Elle capture des nombres, des booléens, et des structures, options et énumérations de ceux-ci ; une chaîne, un tableau, une table, un ensemble ou une valeur fonction capturés ne sont pas encore compilés ([E0900](../errors/E0900.md)). Un module managed capture par référence, comme JavaScript.
+- **JavaScript** ne reçoit ni ne donne jamais une fonction d’un module owned : une fonction exportée qui en prend ou en rend une est refusée ([E0238](../errors/E0238.md)).
+- En WebAssembly, une valeur fonction est son environnement : la position de sa fonction dans une table du module, et les valeurs qu’elle a capturées. Une copie compte un détenteur de plus, et le dernier à la lâcher la libère ; une fonction qui ne capture rien a un environnement statique, qui ne coûte aucune allocation. Un appel à travers une valeur est un appel indirect.
+
+Une fermeture garde ce qu’elle a capturé, et ses copies le partagent :
+
+```peras build
+fn makeAdder(k: i32): (i32) => i32 {
+  return (x: i32): i32 => x + k;
+}
+
+export fn added(k: i32, n: i32): i32 {
+  const add = makeAdder(k);
+  const same = add;
+  return add(n) + same(1);
+}
+```
+
 ## Méthodes intégrées
 
 Les nombres ont des méthodes, appelées avec un point : conversions, `abs`, `sqrt`, arithmétique qui reboucle ou qui vérifie. La [référence des méthodes](../reference/methods.md) les liste toutes.

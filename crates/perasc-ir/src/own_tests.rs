@@ -675,3 +675,43 @@ fn random_programs_and_their_mutants() {
         "{programs} programs, {mutants} mutants"
     );
 }
+
+/// Decision 0025: a call through a function value lends its arguments, and
+/// gives a result the caller owns. One that moves an argument in is refused:
+/// the function it reaches may lend it on, never release it.
+#[test]
+fn a_call_through_a_function_value_only_lends() {
+    // The function value is an environment (decision 0026), here the static
+    // one of `peek`, which takes its environment last and nothing else.
+    let env = Expr {
+        kind: ExprKind::Env(crate::EnvOp::Static(FnId(2), 32), Vec::new()),
+        ty: Ty::Owned,
+    };
+    let call = |callee: Expr| Expr {
+        kind: ExprKind::CallIndirect(Box::new(callee), Vec::new()),
+        ty: Ty::I32,
+    };
+    let release = Stmt::Buf(crate::BufStmt::Release, vec![moved(1)]);
+    let lent = module(
+        Ty::I32,
+        owned(1),
+        vec![
+            Stmt::Set(LocalId(1), env.clone()),
+            Stmt::Set(LocalId(0), call(borrowed(1))),
+            release,
+            Stmt::Return(Some(get(0))),
+        ],
+    );
+    accepted(&lent);
+    let given = module(
+        Ty::I32,
+        owned(1),
+        vec![
+            Stmt::Set(LocalId(1), env),
+            Stmt::Set(LocalId(0), call(moved(1))),
+            Stmt::Return(Some(get(0))),
+        ],
+    );
+    // The verifier of types refuses it first: an environment is lent.
+    refused(&given, "a buffer operand must be borrowed");
+}

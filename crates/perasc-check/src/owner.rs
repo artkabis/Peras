@@ -31,8 +31,15 @@ use crate::scope::Kind;
 use crate::ty::Ty;
 use crate::{Checker, errors};
 
-/// The variables moved on a path, with where each was moved.
-type Moved = BTreeMap<usize, Span>;
+/// The places moved on a path, with where each was moved: a variable, and
+/// the fields on the way to what moved, none for the whole variable
+/// (decision 0025).
+type Moved = BTreeMap<(usize, Vec<String>), Span>;
+
+/// Forgets what moved of `binding` at `place` or below it: it has a new value.
+fn give_back(moved: &mut Moved, binding: usize, place: &[String]) {
+    moved.retain(|(b, p), _| !(*b == binding && p.starts_with(place)));
+}
 
 /// A path through the code: what it moved, and whether it still goes on.
 #[derive(Clone, Default)]
@@ -96,6 +103,10 @@ pub(crate) struct Owner<'c, 'a> {
     iterated: Vec<(usize, Span)>,
     /// One entry per statement being checked, innermost last.
     uses: Vec<Uses>,
+    /// The variables a `for…of` gives: each element is lent, not owned.
+    lent: HashSet<usize>,
+    /// How many arrow functions the expression being checked is inside.
+    in_lambda: u32,
 }
 
 impl<'c, 'a> Owner<'c, 'a> {
@@ -112,6 +123,8 @@ impl<'c, 'a> Owner<'c, 'a> {
             reported: HashSet::new(),
             iterated: Vec::new(),
             uses: Vec::new(),
+            lent: HashSet::new(),
+            in_lambda: 0,
         }
     }
 
@@ -214,7 +227,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 }
                 // A new variable, also at each turn of a loop.
                 if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
-                    path.moved.remove(&binding);
+                    give_back(&mut path.moved, binding, &[]);
                     path.given.insert(binding, local.name.span);
                 }
             }
@@ -270,7 +283,8 @@ impl<'c, 'a> Owner<'c, 'a> {
             } => {
                 self.expr_alone(*iterable, Use::Read, path);
                 if let Some(&binding) = self.checker.declared.get(&name.span.start) {
-                    path.moved.remove(&binding);
+                    give_back(&mut path.moved, binding, &[]);
+                    self.lent.insert(binding);
                 }
                 let root = self.root(*iterable);
                 let span = self.checker.ast.expr(*iterable).span;
@@ -350,7 +364,11 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
         if let Some(update) = update {
             let mut after = Path {
-                moved: back.iter().flatten().map(|(k, v)| (*k, *v)).collect(),
+                moved: back
+                    .iter()
+                    .flatten()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect(),
                 given: path.given.clone(),
                 gone: false,
             };
@@ -368,11 +386,31 @@ impl<'c, 'a> Owner<'c, 'a> {
             ExprKind::Name(_) if op == AssignOp::Assign => {
                 if let Some(&binding) = self.checker.resolved.get(&target) {
                     self.not_iterated(binding, expr.span);
-                    path.moved.remove(&binding);
+                    give_back(&mut path.moved, binding, &[]);
                     path.given.insert(binding, expr.span);
                 }
             }
             ExprKind::Paren(inner) => self.target(*inner, op, path),
+            // `row.country = …`: the field gets a value, moved or not, unless
+            // what holds it moved (decision 0025).
+            ExprKind::Field { .. }
+                if op == AssignOp::Assign && self.field_chain(target).is_some() =>
+            {
+                let Some((root, place)) = self.field_chain(target) else {
+                    return;
+                };
+                let holder = path
+                    .moved
+                    .iter()
+                    .find(|((b, q), _)| *b == root && q.len() < place.len() && place.starts_with(q))
+                    .map(|((_, q), at)| (q.clone(), *at));
+                if let Some((q, at)) = holder {
+                    let name = self.place_name(root, &q);
+                    self.report(errors::moved(expr.span, &name, at, None, false));
+                    return;
+                }
+                give_back(&mut path.moved, root, &place);
+            }
             _ => {
                 let before = self.uses.last().map_or(0, |u| u.reads.len());
                 self.expr(target, Use::Read, path);
@@ -414,6 +452,11 @@ impl<'c, 'a> Owner<'c, 'a> {
                 }
                 *path = joined;
             }
+            ExprKind::Field { .. } if self.field_chain(id).is_some() => {
+                if let Some((root, place)) = self.field_chain(id) {
+                    self.field(id, (root, &place), span, mode, path);
+                }
+            }
             ExprKind::Field { base, .. } => {
                 self.expr(*base, Use::Read, path);
                 if mode == Use::Consume && self.moves(id) {
@@ -452,8 +495,10 @@ impl<'c, 'a> Owner<'c, 'a> {
             // Statements in an arrow function are refused in an owned module.
             ExprKind::Lambda { body, .. } => {
                 if let LambdaBody::Expr(body) = body {
+                    self.in_lambda += 1;
                     self.expr(*body, mode, path);
                     self.expr(*body, mode, path);
+                    self.in_lambda -= 1;
                 }
             }
             ExprKind::Array(items) | ExprKind::Tuple(items) => {
@@ -480,7 +525,17 @@ impl<'c, 'a> Owner<'c, 'a> {
         {
             uses.reads.push((binding, Vec::new(), span));
         }
-        if let Some(&moved_at) = path.moved.get(&binding) {
+        let part = path
+            .moved
+            .iter()
+            .find(|((b, q), _)| *b == binding && !q.is_empty())
+            .map(|((_, q), at)| (q.clone(), *at));
+        if let (None, Some((field, moved_at))) = (path.moved.get(&(binding, Vec::new())), part) {
+            let name = self.binding_name(binding);
+            self.report(errors::moved_part(span, &name, &field.join("."), moved_at));
+            return;
+        }
+        if let Some(&moved_at) = path.moved.get(&(binding, Vec::new())) {
             let name = self.binding_name(binding);
             let copyable = self.copyable(binding);
             let given = path.given.get(&binding).copied().or_else(|| {
@@ -519,10 +574,130 @@ impl<'c, 'a> Owner<'c, 'a> {
             Some(Kind::Pattern) => self.cannot_move(id, span, "binding"),
             _ => {
                 self.not_iterated(binding, span);
-                path.moved.insert(binding, span);
+                path.moved.insert((binding, Vec::new()), span);
                 self.checker.moves.insert(id);
             }
         }
+    }
+
+    /// A field read or moved, `row.country` (decision 0025): refused when it,
+    /// what holds it or a part of it moved. It moves out of a structure the
+    /// function owns; anything else only lends its fields (`E0209`).
+    fn field(
+        &mut self,
+        id: ExprId,
+        (root, place): (usize, &[String]),
+        span: Span,
+        mode: Use,
+        path: &mut Path,
+    ) {
+        let hit = path
+            .moved
+            .iter()
+            .find(|((b, q), _)| *b == root && (place.starts_with(q) || q.starts_with(place)))
+            .map(|((_, q), at)| (q.clone(), *at));
+        if let Some((q, at)) = hit {
+            // The whole variable moved: reported on its name, as any use of
+            // it is, with its fix.
+            if q.is_empty()
+                && let Some(name_id) = self.chain_root(id)
+            {
+                let name_span = self.checker.ast.expr(name_id).span;
+                self.name(name_id, name_span, Use::Read, path);
+                return;
+            }
+            if place.starts_with(&q) {
+                // This field, or what holds it, moved.
+                let name = self.place_name(root, &q);
+                let given = if q.is_empty() {
+                    path.given.get(&root).copied()
+                } else {
+                    None
+                };
+                let copyable = matches!(
+                    self.checker.expr_types.get(&id),
+                    Some(Ty::Array(_) | Ty::String)
+                );
+                self.report(errors::moved(span, &name, at, given, copyable));
+            } else {
+                // A part of it moved.
+                let name = self.place_name(root, place);
+                let rest = q.get(place.len()..).unwrap_or_default().join(".");
+                self.report(errors::moved_part(span, &name, &rest, at));
+            }
+            return;
+        }
+        if mode == Use::Consume && self.moves(id) {
+            if self.owns(root) && self.in_lambda == 0 {
+                path.moved.insert((root, place.to_vec()), span);
+                self.checker.moves.insert(id);
+            } else {
+                self.cannot_move(id, span, "field");
+            }
+        }
+    }
+
+    /// A field of a variable, `row.place.city`, through fields only: the
+    /// variable and the fields on the way.
+    fn field_chain(&self, id: ExprId) -> Option<(usize, Vec<String>)> {
+        match &self.checker.ast.expr(id).kind {
+            ExprKind::Name(_) => {
+                let binding = *self.checker.resolved.get(&id)?;
+                let kind = &self.checker.scopes.bindings.get(binding)?.kind;
+                matches!(
+                    kind,
+                    Kind::Local { .. } | Kind::Param { .. } | Kind::Global { .. } | Kind::Pattern
+                )
+                .then(|| (binding, Vec::new()))
+            }
+            ExprKind::Paren(inner) => self.field_chain(*inner),
+            ExprKind::Field { base, name } => {
+                let (root, mut place) = self.field_chain(*base)?;
+                place.push(self.checker.name(name.symbol).to_owned());
+                Some((root, place))
+            }
+            _ => None,
+        }
+    }
+
+    /// The name a chain of fields starts from: `row` in `row.place.city`.
+    fn chain_root(&self, mut id: ExprId) -> Option<ExprId> {
+        loop {
+            match &self.checker.ast.expr(id).kind {
+                ExprKind::Name(_) => return Some(id),
+                ExprKind::Field { base, .. } => id = *base,
+                ExprKind::Paren(inner) => id = *inner,
+                _ => return None,
+            }
+        }
+    }
+
+    /// Whether the function owns the value of a variable: a local, not the
+    /// element a `for…of` lends, or a `sink` parameter.
+    fn owns(&self, binding: usize) -> bool {
+        if self.lent.contains(&binding) {
+            return false;
+        }
+        matches!(
+            self.checker.scopes.bindings.get(binding).map(|b| &b.kind),
+            Some(
+                Kind::Local { .. }
+                    | Kind::Param {
+                        convention: Convention::Sink,
+                        ..
+                    }
+            )
+        )
+    }
+
+    /// `row.country`, as a message names it.
+    fn place_name(&self, root: usize, place: &[String]) -> String {
+        let mut name = self.binding_name(root);
+        for field in place {
+            name.push('.');
+            name.push_str(field);
+        }
+        name
     }
 
     /// `E0207` when a variable that a `for…of` goes through changes size or
@@ -534,37 +709,48 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
+    /// A call to a method: `self` is an argument, written before the dot.
+    fn method_call(
+        &mut self,
+        target: Target,
+        (base, text): (ExprId, &str),
+        args: &[ExprId],
+        span: Span,
+        path: &mut Path,
+    ) {
+        let (conventions, receiver) = match target {
+            Target::Fn { id, receiver } => (
+                self.conventions.get(id.0).cloned().unwrap_or_default(),
+                receiver,
+            ),
+            Target::Interface {
+                interface, method, ..
+            } => {
+                let conventions = self
+                    .checker
+                    .interfaces
+                    .get(interface)
+                    .and_then(|i| i.methods.iter().find(|m| m.name == method))
+                    .map(|m| m.conventions.clone())
+                    .unwrap_or_default();
+                (conventions, true)
+            }
+        };
+        let mut all = Vec::with_capacity(args.len() + 1);
+        if receiver {
+            all.push(base);
+        }
+        all.extend_from_slice(args);
+        self.arguments(text, &all, &conventions, span, path, receiver);
+    }
+
     fn call(&mut self, id: ExprId, callee: ExprId, args: &[ExprId], span: Span, path: &mut Path) {
         let callee_expr = self.checker.ast.expr(callee);
         if let ExprKind::Field { base, name } = &callee_expr.kind
             && let Some(target) = self.checker.method_calls.get(&id).cloned()
         {
-            // A method: `self` is an argument, written before the dot.
-            let (conventions, receiver) = match target {
-                Target::Fn { id, receiver } => (
-                    self.conventions.get(id.0).cloned().unwrap_or_default(),
-                    receiver,
-                ),
-                Target::Interface {
-                    interface, method, ..
-                } => {
-                    let conventions = self
-                        .checker
-                        .interfaces
-                        .get(interface)
-                        .and_then(|i| i.methods.iter().find(|m| m.name == method))
-                        .map(|m| m.conventions.clone())
-                        .unwrap_or_default();
-                    (conventions, true)
-                }
-            };
-            let mut all = Vec::with_capacity(args.len() + 1);
-            if receiver {
-                all.push(*base);
-            }
-            all.extend_from_slice(args);
             let text = self.checker.name(name.symbol).to_owned();
-            self.arguments(&text, &all, &conventions, span, path, receiver);
+            self.method_call(target, (*base, &text), args, span, path);
             return;
         }
         match &callee_expr.kind {
@@ -580,6 +766,14 @@ impl<'c, 'a> Owner<'c, 'a> {
                         let conventions = self.conventions.get(id.0).cloned().unwrap_or_default();
                         let name = self.checker.name(*symbol).to_owned();
                         self.arguments(&name, args, &conventions, span, path, false);
+                    }
+                    // A function value lends its arguments: a function type
+                    // has no `sink` parameter (decision 0025).
+                    Some(Kind::Local { .. } | Kind::Param { .. } | Kind::Global { .. }) => {
+                        self.expr(callee, Use::Read, path);
+                        for &arg in args {
+                            self.expr(arg, Use::Read, path);
+                        }
                     }
                     // A constructor and `Some` take their arguments.
                     _ => {
@@ -630,6 +824,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 }
             }
             _ => {
+                self.expr(callee, Use::Read, path);
                 for &arg in args {
                     self.expr(arg, Use::Read, path);
                 }
@@ -843,7 +1038,9 @@ impl<'c, 'a> Owner<'c, 'a> {
 fn merge(path: &mut Path, other: &Path) {
     match (path.gone, other.gone) {
         (true, false) => *path = other.clone(),
-        (false, false) => path.moved.extend(other.moved.iter().map(|(k, v)| (*k, *v))),
+        (false, false) => path
+            .moved
+            .extend(other.moved.iter().map(|(k, v)| (k.clone(), *v))),
         // A path that left does not reach what follows.
         (_, true) => {}
     }
