@@ -6,6 +6,9 @@
 // not survive (decision 0017). Not a measure under a protocol: the check of
 // one change.
 // Usage: node scripts/ab-data.mjs <git ref before> [<git ref after>] [--rows N]
+//   [--before-source <file>]
+// With --before-source, the side before compiles that file instead: the same
+// compiler on both sides then compares two versions of the dashboard.
 // The ref after is the working tree when it is left out. Each ref is built
 // in a worktree of its own under target/ab-data, with its own target folder.
 // Prints both medians and the median and range of the ratio before / after,
@@ -20,9 +23,12 @@ const root = join(import.meta.dirname, "..");
 const work = join(root, "target", "ab-data");
 const rowsAt = process.argv.indexOf("--rows");
 const rows = rowsAt < 0 ? 1_000_000 : Number(process.argv[rowsAt + 1]);
+const sourceAt = process.argv.indexOf("--before-source");
+const beforeSource = sourceAt < 0 ? undefined : process.argv[sourceAt + 1];
+const options = new Set(["--rows", "--before-source"]);
 const [beforeRef, afterRef] = process.argv
   .slice(2)
-  .filter((a, i, all) => a !== "--rows" && all[i - 1] !== "--rows");
+  .filter((a, i, all) => !options.has(a) && !options.has(all[i - 1] ?? ""));
 if (beforeRef === undefined)
   throw new Error("usage: node scripts/ab-data.mjs <ref before> [<ref after>]");
 
@@ -65,9 +71,10 @@ for (const [name, ref] of [
   const out = join(work, "build", name);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  const dashboard = join(root, "bench", "data", "dashboard.peras");
   run(perascOf(ref), [
     "build",
-    join(root, "bench", "data", "dashboard.peras"),
+    name === "before" && beforeSource !== undefined ? beforeSource : dashboard,
     "--allocator",
     "tlsf",
     "--out",
