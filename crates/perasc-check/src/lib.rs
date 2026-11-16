@@ -982,7 +982,7 @@ impl<'a> Checker<'a> {
             && params
                 .iter()
                 .chain(std::iter::once(&ret))
-                .any(|t| matches!(t, Ty::Callback(..)))
+                .any(|t| self.holds_function(t))
         {
             self.report(errors::arrow_export(decl.name.span, &name));
         }
@@ -1397,6 +1397,45 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Whether a value of `ty` holds a function, which cannot cross to
+    /// JavaScript: a function type, or a structure, an option, an array…
+    /// holding one (decision 0025).
+    pub(crate) fn holds_function(&self, ty: &Ty) -> bool {
+        self.holds_function_in(ty, 0)
+    }
+
+    fn holds_function_in(&self, ty: &Ty, depth: u32) -> bool {
+        if depth > 32 {
+            return false;
+        }
+        let deeper = |t: &Ty| self.holds_function_in(t, depth + 1);
+        match ty {
+            Ty::Callback(..) | Ty::Fn(..) => true,
+            Ty::Option(t) | Ty::Array(t) | Ty::Set(t) => deeper(t),
+            Ty::Result(a, b) | Ty::Map(a, b) => deeper(a) || deeper(b),
+            Ty::Struct(id, _) => self
+                .structs
+                .get(id.0)
+                .is_some_and(|s| s.fields.iter().any(|(_, f)| deeper(f))),
+            Ty::Enum(id, _) => self
+                .enums
+                .get(id.0)
+                .is_some_and(|e| e.variants.iter().any(|(_, fs)| fs.iter().any(deeper))),
+            _ => false,
+        }
+    }
+
+    /// A function of the module as a value, `twice` where it is not called:
+    /// of a function type, unless it is generic or takes a parameter `sink`
+    /// or `inout`, which a function type cannot say (decision 0025).
+    pub(crate) fn function_value(&self, id: FnId) -> Option<Ty> {
+        let sig = self.fns.get(id.0)?;
+        let plain = sig.generics.is_empty()
+            && !sig.has_self
+            && sig.conventions.iter().all(|c| *c == Convention::Let);
+        plain.then(|| Ty::Callback(sig.params.clone(), Box::new(sig.ret.clone())))
+    }
+
     /// The declared or inferred type of a `let` or `const`, its value checked.
     fn local_type(&mut self, local: &Local) -> Ty {
         let annotated = local.ty.as_ref().map(|t| self.value_type(t));
@@ -1430,16 +1469,11 @@ impl<'a> Checker<'a> {
     }
 
     /// `(A, B) => R`, where `callback_ok` says one may be written.
+    /// Outside an `extern` block, a function type is written wherever a type
+    /// is, in both modes (decision 0025).
     fn function_type(&mut self, span: Span, params: &[Type], ret: &Type, callback_ok: bool) -> Ty {
-        if !callback_ok {
-            let d = if self.flags.in_extern {
-                errors::extern_decl(span, "callback", "")
-            } else if self.managed {
-                errors::arrow_type_place(span)
-            } else {
-                errors::managed_only(span, "function-type")
-            };
-            self.report(d);
+        if !callback_ok && self.flags.in_extern {
+            self.report(errors::extern_decl(span, "callback", ""));
             return Ty::Error;
         }
         let params: Vec<Ty> = params.iter().map(|t| self.resolve_type(t)).collect();

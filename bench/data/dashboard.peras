@@ -92,7 +92,8 @@ export fn summarize(text: String): Summary {
     }
     kept += 1;
     const t = row.ts;
-    const country = row.country.copy();
+    // Taken: `row` keeps its other fields (decision 0025, F214).
+    const country = row.country;
     const p = row.product;
     const user = row.user;
     const revenue = row.amount.toI64() * row.qty.toI64();

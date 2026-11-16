@@ -1,0 +1,35 @@
+// E0209: a field moves out of a structure the function owns only (decision
+// 0025): not out of a lent parameter, the element of a `for…of`, an element
+// of an array, a module variable, or a variable an arrow function captures.
+struct Row {
+  country: String;
+  amount: i32;
+}
+
+let last = Row("fr", 1);
+
+export fn lent(r: Row): String {
+  return r.country;
+}
+
+export fn each(rows: Array<Row>): i32 {
+  let n = 0;
+  for (const r of rows) {
+    const c = r.country;
+    n += c.length;
+  }
+  return n;
+}
+
+export fn element(rows: Array<Row>): String {
+  return rows[0].country;
+}
+
+export fn global(): String {
+  return last.country;
+}
+
+export fn captured(xs: Array<i32>): Array<String> {
+  const r = Row("fr", 1);
+  return xs.map((x) => r.country);
+}

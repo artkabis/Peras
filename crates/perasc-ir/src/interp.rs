@@ -89,6 +89,7 @@ pub fn run_with_heap(
                     .iter()
                     .map(|g| constant(g.init, g.ty))
                     .collect(),
+                table: module.fn_table(),
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
@@ -128,6 +129,8 @@ struct Machine<'a> {
     maps: std::collections::BTreeMap<u32, Table>,
     /// The module variables, from their initial values (decision 0023).
     globals: Vec<Value>,
+    /// The functions used as values, by position (decision 0025).
+    table: Vec<FnId>,
 }
 
 /// A constant of type `ty`, as a value.
@@ -354,14 +357,37 @@ impl Machine<'_> {
                 for arg in args {
                     values.push(self.expr(arg, locals)?);
                 }
-                for (target, value) in targets.iter().zip(self.call_all(*callee, &values)?) {
-                    if let Some(slot) = slot(locals, *target) {
-                        *slot = value;
-                    }
+                let results = self.call_all(*callee, &values)?;
+                store(locals, targets, results);
+                Flow::Normal
+            }
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => {
+                let callee = self.callee(callee, locals)?;
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
                 }
+                let results = self.call_all(callee, &values)?;
+                store(locals, targets, results);
                 Flow::Normal
             }
         })
+    }
+
+    /// The function a function value names: its position in the table.
+    fn callee(&mut self, callee: &Expr, locals: &mut Vec<Value>) -> Result<FnId, Trap> {
+        match self.expr(callee, locals)? {
+            Value::I32(i) => usize::try_from(i)
+                .ok()
+                .and_then(|i| self.table.get(i))
+                .copied()
+                .ok_or(Trap::Unreachable),
+            _ => Err(Trap::Unreachable),
+        }
     }
 
     fn expr(&mut self, e: &Expr, locals: &mut Vec<Value>) -> Result<Value, Trap> {
@@ -425,6 +451,21 @@ impl Machine<'_> {
                     values.push(self.expr(arg, locals)?);
                 }
                 self.call(*id, &values)?
+            }
+            ExprKind::FnRef(id) => Value::I32(
+                self.table
+                    .iter()
+                    .position(|f| f == id)
+                    .and_then(|p| i32::try_from(p).ok())
+                    .ok_or(Trap::Unreachable)?,
+            ),
+            ExprKind::CallIndirect(callee, args) => {
+                let callee = self.callee(callee, locals)?;
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
+                }
+                self.call(callee, &values)?
             }
             ExprKind::Convert(x) => convert(self.expr(x, locals)?, e.ty),
             ExprKind::Math(op, x) => math(*op, self.expr(x, locals)?),
@@ -1387,6 +1428,15 @@ const fn stored(elem: Elem, value: Value) -> Value {
         #[allow(clippy::cast_possible_truncation)]
         (Elem::I16, Value::I32(v)) => Value::I32(v as i16 as i32),
         _ => value,
+    }
+}
+
+/// The results of a call, each into its target.
+fn store(locals: &mut [Value], targets: &[crate::LocalId], results: Vec<Value>) {
+    for (target, value) in targets.iter().zip(results) {
+        if let Some(slot) = slot(locals, *target) {
+            *slot = value;
+        }
     }
 }
 

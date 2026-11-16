@@ -6,6 +6,7 @@
 //! `inout` and the other constructs listed in `E0900`) is reported, every
 //! occurrence at once, instead of being miscompiled.
 
+mod fnvalues;
 mod format;
 mod functional;
 mod heap;
@@ -138,6 +139,10 @@ pub fn lower_units(
         body_span: Span::new(0, 0),
         jobs: Vec::new(),
         job_base: 0,
+        applied: HashMap::new(),
+        arrows: Vec::new(),
+        unit: 0,
+        in_arrow: false,
     };
     let mut tables: Vec<Names> = Vec::with_capacity(units.len());
     let mut errors: Vec<Vec<Diagnostic>> = vec![Vec::new(); units.len()];
@@ -302,6 +307,7 @@ impl<'a> Lowering<'a> {
                 }
             }
             self.args.clone_from(args);
+            self.unit = *u;
             let jobs = self.jobs.len();
             let mut function = self.function(decl);
             job_units.extend(std::iter::repeat_n(*u, self.jobs.len() - jobs));
@@ -312,6 +318,26 @@ impl<'a> Lowering<'a> {
             }
             functions.push(function);
             if let Some(e) = errors.get_mut(*u) {
+                e.append(&mut self.diagnostics);
+            }
+        }
+        // The arrow functions used as values, each in the place kept for it
+        // among the jobs; one may use another.
+        let mut next = 0;
+        while let Some(&(id, arrow, u)) = self.arrows.get(next) {
+            next += 1;
+            if let (Some(unit), Some(table)) = (units.get(u), tables.get(u)) {
+                self.enter(unit, table, u == root);
+            }
+            self.unit = u;
+            let jobs = self.jobs.len();
+            let function = self.arrow_function(arrow);
+            job_units.extend(std::iter::repeat_n(u, self.jobs.len() - jobs));
+            let at = usize::try_from(id.0 - self.job_base).unwrap_or(usize::MAX);
+            if let Some(slot) = self.jobs.get_mut(at) {
+                *slot = function;
+            }
+            if let Some(e) = errors.get_mut(u) {
                 e.append(&mut self.diagnostics);
             }
         }
@@ -525,6 +551,18 @@ struct Lowering<'a> {
     jobs: Vec<Function>,
     /// The id of the first job: the number of other functions.
     job_base: u32,
+    /// A function given to `map` and the others by its value, not written
+    /// as an arrow function (decision 0025): the scalars of this turn's
+    /// element, its arguments, and the type of its result.
+    applied: HashMap<ExprId, (Vec<Expr>, CheckTy)>,
+    /// Arrow functions used as values, to lower after the other functions:
+    /// the function each becomes, its expression, and its unit.
+    arrows: Vec<(FnId, ExprId, usize)>,
+    /// The unit whose functions are being lowered.
+    unit: usize,
+    /// Whether an arrow function used as a value is being lowered: a name
+    /// not found there is one it captures (decision 0025).
+    in_arrow: bool,
     /// The functions that are not generic, by name.
     fns: HashMap<Symbol, FnId>,
     /// The functions and methods that are not generic, by their index in
@@ -723,7 +761,8 @@ impl Lowering<'_> {
     /// The IR type of a checker type, or `None` for types not compiled yet.
     fn ir_type(ty: &CheckTy) -> Option<Ty> {
         Some(match ty {
-            CheckTy::Int(IntTy::I32) | CheckTy::IntLit => Ty::I32,
+            // A function value is its position in the table (decision 0025).
+            CheckTy::Int(IntTy::I32) | CheckTy::IntLit | CheckTy::Callback(..) => Ty::I32,
             // Every other integer in an `i32` or an `i64` (decision 0024).
             CheckTy::Int(kind) => ints::storage(*kind),
             CheckTy::Float(FloatTy::F32) => Ty::F32,
@@ -772,8 +811,21 @@ impl Lowering<'_> {
         if let Some(&init) = self.constants.get(&symbol) {
             return self.expr(state, init);
         }
-        let function = self.fns.contains_key(&symbol) || self.generic.contains_key(&symbol);
-        let feature = if function { "function-value" } else { "global" };
+        // A function of the module as a value (decision 0025).
+        if let Some(&id) = self.fns.get(&symbol) {
+            return Expr {
+                kind: ExprKind::FnRef(id),
+                ty: Ty::I32,
+            };
+        }
+        let function = self.generic.contains_key(&symbol);
+        let feature = if function {
+            "function-value"
+        } else if self.in_arrow {
+            "closure"
+        } else {
+            "global"
+        };
         self.unsupported(span, feature);
         zero(ty)
     }
@@ -1537,6 +1589,9 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
+        if self.applied.contains_key(&id) {
+            return self.applied_expr(state, id);
+        }
         if self.is_aggregate(id) {
             // Structures and options go through `value`: never a single scalar.
             let span = self.ast.expr(id).span;
@@ -1594,7 +1649,8 @@ impl Lowering<'_> {
             }
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
-            AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),
+            // A value: a function of its own (decision 0025).
+            AstExpr::Lambda { .. } => return self.arrow_ref(id),
             AstExpr::Field { base, .. } if self.is_buffer(*base) || self.is_map(*base) => {
                 return self.array_length(state, *base);
             }
@@ -1731,6 +1787,13 @@ impl Lowering<'_> {
         ty: Ty,
         span: Span,
     ) -> Expr {
+        if self.is_value_callee(state, callee) {
+            return self
+                .call_value(state, callee, args)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| zero(ty));
+        }
         match &self.ast.expr(callee).kind {
             AstExpr::Name(symbol) => {
                 let Some(id) = self.callee(call, *symbol) else {

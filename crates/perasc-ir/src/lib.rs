@@ -467,6 +467,16 @@ pub enum Stmt {
         /// Its arguments.
         args: Vec<Expr>,
     },
+    /// Calls the function a value names (decision 0025) and stores its
+    /// results, in order: [`Self::CallMany`] through a function value.
+    CallManyIndirect {
+        /// One local per result.
+        targets: Vec<LocalId>,
+        /// The function value, an `i32`: see [`ExprKind::FnRef`].
+        callee: Expr,
+        /// Its arguments, lent: a function type has no `sink` parameter.
+        args: Vec<Expr>,
+    },
 }
 
 /// An expression and its type.
@@ -517,6 +527,13 @@ pub enum ExprKind {
     Global(GlobalId),
     /// A value computed from a buffer: see [`BufOp`].
     Buf(BufOp, Vec<Expr>),
+    /// A function of the module as a value, an `i32` (decision 0025): its
+    /// position in [`Module::fn_table`].
+    FnRef(FnId),
+    /// A call to the function a value names, with one result or none: the
+    /// signature is that of its arguments and of the expression. WebAssembly
+    /// checks it when it calls.
+    CallIndirect(Box<Expr>, Vec<Expr>),
 }
 
 /// How an element is stored in a buffer.
@@ -1445,6 +1462,78 @@ impl Module {
         found.into_iter().collect()
     }
 
+    /// The functions used as values, in the order of their positions
+    /// (decision 0025): `FnRef(f)` is the position of `f` here.
+    #[must_use]
+    pub fn fn_table(&self) -> Vec<FnId> {
+        let mut found = std::collections::BTreeSet::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if let ExprKind::FnRef(id) = e.kind {
+                    found.insert(id.0);
+                }
+            });
+        }
+        found.into_iter().map(FnId).collect()
+    }
+
+    /// The signatures of the calls through function values, each once: the
+    /// types of the arguments, then of the results (decision 0025).
+    #[must_use]
+    pub fn indirect_signatures(&self) -> Vec<(Vec<Ty>, Vec<Ty>)> {
+        fn stmts(f: &Function, body: &[Stmt], out: &mut Vec<(Vec<Ty>, Vec<Ty>)>) {
+            for stmt in body {
+                match stmt {
+                    Stmt::CallManyIndirect { targets, args, .. } => {
+                        let results = targets
+                            .iter()
+                            .map(|t| {
+                                usize::try_from(t.0)
+                                    .ok()
+                                    .and_then(|i| f.locals.get(i))
+                                    .map_or(Ty::Void, |l| l.ty)
+                            })
+                            .collect();
+                        let sig = (args.iter().map(|a| a.ty).collect(), results);
+                        if !out.contains(&sig) {
+                            out.push(sig);
+                        }
+                    }
+                    Stmt::If {
+                        then, otherwise, ..
+                    } => {
+                        stmts(f, then, out);
+                        stmts(f, otherwise, out);
+                    }
+                    Stmt::Loop { body, step, .. } => {
+                        stmts(f, body, out);
+                        stmts(f, step, out);
+                    }
+                    Stmt::Block(body) => stmts(f, body, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| {
+                if let ExprKind::CallIndirect(_, args) = &e.kind {
+                    let results = if e.ty == Ty::Void {
+                        Vec::new()
+                    } else {
+                        vec![e.ty]
+                    };
+                    let sig = (args.iter().map(|a| a.ty).collect(), results);
+                    if !out.contains(&sig) {
+                        out.push(sig);
+                    }
+                }
+            });
+            stmts(f, &f.body, &mut out);
+        }
+        out
+    }
+
     /// The functions of the runtime the module calls, in the order of
     /// [`RuntimeFn::ALL`]: a module imports these only.
     #[must_use]
@@ -1497,6 +1586,12 @@ fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
                     each_in(e, visit);
                 }
             }
+            Stmt::CallManyIndirect { callee, args, .. } => {
+                each_in(callee, visit);
+                for e in args {
+                    each_in(e, visit);
+                }
+            }
             Stmt::Leave(_)
             | Stmt::Break
             | Stmt::Continue
@@ -1525,11 +1620,18 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
                 each_in(a, visit);
             }
         }
+        ExprKind::CallIndirect(callee, args) => {
+            each_in(callee, visit);
+            for a in args {
+                each_in(a, visit);
+            }
+        }
         ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_) => {}
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => {}
     }
 }
 
@@ -1645,6 +1747,21 @@ fn write_stmts(out: &mut String, stmts: &[Stmt], level: usize) {
                     args.join(" ")
                 );
             }
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => {
+                let targets: Vec<String> = targets.iter().map(|t| format!("%{}", t.0)).collect();
+                let args: Vec<String> = args.iter().map(expr).collect();
+                let _ = writeln!(
+                    out,
+                    "{pad}{} = call_indirect {} {}",
+                    targets.join(", "),
+                    expr(callee),
+                    args.join(" ")
+                );
+            }
             Stmt::Break => {
                 let _ = writeln!(out, "{pad}break");
             }
@@ -1696,6 +1813,11 @@ fn expr(e: &Expr) -> String {
         ExprKind::Math(op, operand) => format!("({ty}.{} {})", op.name(), expr(operand)),
         ExprKind::Alloc(size) => format!("(alloc {})", expr(size)),
         ExprKind::Move(l) => format!("(move %{})", l.0),
+        ExprKind::FnRef(id) => format!("(fn #{})", id.0),
+        ExprKind::CallIndirect(callee, args) => {
+            let args: Vec<String> = args.iter().map(expr).collect();
+            format!("(call_indirect {} {})", expr(callee), args.join(" "))
+        }
         ExprKind::Borrow(l) => format!("(borrow %{})", l.0),
         ExprKind::Buf(op, args) => {
             let args: Vec<String> = args.iter().map(expr).collect();

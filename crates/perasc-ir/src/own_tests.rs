@@ -675,3 +675,41 @@ fn random_programs_and_their_mutants() {
         "{programs} programs, {mutants} mutants"
     );
 }
+
+/// Decision 0025: a call through a function value lends its arguments, and
+/// gives a result the caller owns. One that moves an argument in is refused:
+/// the function it reaches may lend it on, never release it.
+#[test]
+fn a_call_through_a_function_value_only_lends() {
+    let call = |arg: Expr| Expr {
+        kind: ExprKind::CallIndirect(
+            Box::new(Expr {
+                kind: ExprKind::FnRef(FnId(2)),
+                ty: Ty::I32,
+            }),
+            vec![arg],
+        ),
+        ty: Ty::I32,
+    };
+    let lent = module(
+        Ty::I32,
+        owned(1),
+        vec![
+            Stmt::Set(LocalId(1), alloc(8)),
+            Stmt::Set(LocalId(0), call(borrowed(1))),
+            Stmt::Release(LocalId(1)),
+            Stmt::Return(Some(get(0))),
+        ],
+    );
+    accepted(&lent);
+    let given = module(
+        Ty::I32,
+        owned(1),
+        vec![
+            Stmt::Set(LocalId(1), alloc(8)),
+            Stmt::Set(LocalId(0), call(moved(1))),
+            Stmt::Return(Some(get(0))),
+        ],
+    );
+    refused(&given, "moved into a call through a function value");
+}

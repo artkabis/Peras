@@ -588,6 +588,25 @@ pub fn moved(
     )
 }
 
+/// `E0204`: a structure used whole after one of its fields moved out
+/// (decision 0025).
+pub fn moved_part(span: Span, name: &str, field: &str, moved_at: Span) -> Diagnostic {
+    diagnostic(
+        codes::USE_AFTER_MOVE,
+        Message::new("check-moved-part")
+            .text("name", name)
+            .text("field", field),
+        vec![
+            primary(span, Message::new("check-moved-part-label")),
+            secondary(moved_at, Message::new("check-moved-here-label")),
+        ],
+        Fix {
+            message: Message::new("check-moved-part-fix").text("field", field),
+            edits: Vec::new(),
+        },
+    )
+}
+
 /// `E0209`: a parameter that only borrows its value moves it.
 pub fn move_borrowed_parameter(span: Span, name: &str, sink_at: Option<u32>) -> Diagnostic {
     let fix = match sink_at {
@@ -1069,17 +1088,6 @@ pub fn map_key(span: Span, ty: &Ty) -> Diagnostic {
     )
 }
 
-/// `E0238`: an arrow function where no method takes one.
-pub fn arrow_outside(span: Span) -> Diagnostic {
-    simple(
-        codes::ARROW_FUNCTION,
-        Message::new("check-arrow"),
-        span,
-        Message::new("check-arrow-label"),
-        Message::new("check-arrow-fix"),
-    )
-}
-
 /// `E0238`: a parameter of an arrow function used as a value, without its type.
 pub fn arrow_param_type(span: Span, name: &str) -> Diagnostic {
     simple(
@@ -1091,17 +1099,6 @@ pub fn arrow_param_type(span: Span, name: &str) -> Diagnostic {
     )
 }
 
-/// `E0238`: a function type elsewhere than for a variable, a parameter or a result.
-pub fn arrow_type_place(span: Span) -> Diagnostic {
-    simple(
-        codes::ARROW_FUNCTION,
-        Message::new("check-arrow-type"),
-        span,
-        Message::new("check-arrow-type-label"),
-        Message::new("check-arrow-type-fix"),
-    )
-}
-
 /// `E0238`: an exported function that takes or gives a function.
 pub fn arrow_export(span: Span, name: &str) -> Diagnostic {
     simple(
@@ -1110,17 +1107,6 @@ pub fn arrow_export(span: Span, name: &str) -> Diagnostic {
         span,
         Message::new("check-arrow-export-label"),
         Message::new("check-arrow-export-fix"),
-    )
-}
-
-/// `E0238`: a method that takes an arrow function was given something else.
-pub fn arrow_expected(span: Span) -> Diagnostic {
-    simple(
-        codes::ARROW_FUNCTION,
-        Message::new("check-arrow-expected"),
-        span,
-        Message::new("check-arrow-expected-label"),
-        Message::new("check-arrow-expected-fix"),
     )
 }
 

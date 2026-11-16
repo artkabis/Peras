@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0025-moved-fields-and-function-values.md](../../fr/decisions/0025-moved-fields-and-function-values.md)._
 
-_Status: proposed on 2026-11-16, with its criteria registered before any code; the last part of step 4 of [decision 0021](0021-phases-4-and-5.md), findings F214 and F308._
+_Status: proposed on 2026-11-16, with its criteria registered before any code; accepted by the owner the same day, part B with real function values, both parts to land as one batch; the last part of step 4 of [decision 0021](0021-phases-4-and-5.md), findings F214 and F308._
 
 ## Context
 

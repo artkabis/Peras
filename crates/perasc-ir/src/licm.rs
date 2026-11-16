@@ -69,6 +69,15 @@ fn map_exprs(stmts: Vec<Stmt>, f: &mut impl FnMut(Expr) -> Expr) -> Vec<Stmt> {
                 callee,
                 args: args.into_iter().map(|e| map_expr(e, f)).collect(),
             },
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => Stmt::CallManyIndirect {
+                targets,
+                callee: map_expr(callee, f),
+                args: args.into_iter().map(|e| map_expr(e, f)).collect(),
+            },
             Stmt::If {
                 cond,
                 then,
@@ -101,6 +110,10 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         ExprKind::Call(id, args) => {
             ExprKind::Call(id, args.into_iter().map(|a| map_expr(a, f)).collect())
         }
+        ExprKind::CallIndirect(callee, args) => ExprKind::CallIndirect(
+            Box::new(map_expr(*callee, f)),
+            args.into_iter().map(|a| map_expr(a, f)).collect(),
+        ),
         ExprKind::Convert(x) => ExprKind::Convert(Box::new(map_expr(*x, f))),
         ExprKind::Math(op, x) => ExprKind::Math(op, Box::new(map_expr(*x, f))),
         ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(map_expr(*x, f))),
@@ -111,7 +124,8 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_)) => kind,
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_)) => kind,
     };
     f(Expr { kind, ty: e.ty })
 }
@@ -199,7 +213,7 @@ fn count_sets(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
     for stmt in stmts {
         match stmt {
             Stmt::Set(LocalId(l), _) => *out.entry(*l).or_default() += 1,
-            Stmt::CallMany { targets, .. } => {
+            Stmt::CallMany { targets, .. } | Stmt::CallManyIndirect { targets, .. } => {
                 for LocalId(l) in targets {
                     *out.entry(*l).or_default() += 1;
                 }
@@ -233,6 +247,12 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
                     count_expr_reads(e, out);
                 }
             }
+            Stmt::CallManyIndirect { callee, args, .. } => {
+                count_expr_reads(callee, out);
+                for e in args {
+                    count_expr_reads(e, out);
+                }
+            }
             Stmt::If {
                 cond,
                 then,
@@ -261,7 +281,13 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
 
 fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Global(_) => {}
+        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => {}
+        ExprKind::CallIndirect(callee, args) => {
+            count_expr_reads(callee, out);
+            for a in args {
+                count_expr_reads(a, out);
+            }
+        }
         ExprKind::Local(LocalId(l)) | ExprKind::Move(LocalId(l)) | ExprKind::Borrow(LocalId(l)) => {
             *out.entry(*l).or_default() += 1;
         }

@@ -305,15 +305,22 @@ fn quiet_stmt(stmt: &Stmt, held: &[LocalId]) -> bool {
             ) && args.iter().all(quiet_expr)
         }
         // A module variable written may be a bound: kept as written.
-        Stmt::Release(_) | Stmt::CallMany { .. } | Stmt::SetGlobal(..) => false,
+        Stmt::Release(_)
+        | Stmt::CallMany { .. }
+        | Stmt::CallManyIndirect { .. }
+        | Stmt::SetGlobal(..) => false,
     }
 }
 
 /// Whether evaluating `e` calls nothing and moves nothing.
 fn quiet_expr(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Borrow(_) | ExprKind::Global(_) => true,
-        ExprKind::Call(..) | ExprKind::Move(_) => false,
+        ExprKind::Const(_)
+        | ExprKind::Local(_)
+        | ExprKind::Borrow(_)
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => true,
+        ExprKind::Call(..) | ExprKind::CallIndirect(..) | ExprKind::Move(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
@@ -327,7 +334,9 @@ fn quiet_expr(e: &Expr) -> bool {
 pub(crate) fn assigns(stmts: &[Stmt], local: LocalId) -> bool {
     stmts.iter().any(|stmt| match stmt {
         Stmt::Set(l, _) => *l == local,
-        Stmt::CallMany { targets, .. } => targets.contains(&local),
+        Stmt::CallMany { targets, .. } | Stmt::CallManyIndirect { targets, .. } => {
+            targets.contains(&local)
+        }
         Stmt::If {
             then, otherwise, ..
         } => assigns(then, local) || assigns(otherwise, local),

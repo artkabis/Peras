@@ -1,0 +1,31 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0209-field-not-owned.peras
+---
+diagnostics:
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 12:10-12:19: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      12:19-12:19 -> ".copy()"
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 18:15-18:24: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      18:24-18:24 -> ".copy()"
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 25:10-25:25: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      25:25-25:25 -> ".copy()"
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 29:10-29:22: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      29:22-29:22 -> ".copy()"
+  error[E0209] check-move-out { what: "field", name: "" }
+    primary 34:24-34:33: check-move-out-label
+    cause: check-move-out-why
+    fix: check-fix-copy
+      34:33-34:33 -> ".copy()"

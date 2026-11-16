@@ -243,15 +243,77 @@ impl<'a> Emitter<'a> {
                 let values: Vec<String> = values.iter().map(|v| self.expr(v)).collect();
                 let _ = writeln!(out, "{pad}return ({});", values.join(", "));
             }
+            Stmt::CallMany { .. } | Stmt::CallManyIndirect { .. } => {
+                let _ = writeln!(out, "{pad}{}", self.call_many_stmt(stmt));
+            }
+        }
+    }
+
+    /// A call with several results, direct or through a function value.
+    fn call_many_stmt(&self, stmt: &Stmt) -> String {
+        match stmt {
             Stmt::CallMany {
                 targets,
                 callee,
                 args,
-            } => {
-                let line = self.call_many(targets, *callee, args);
-                let _ = writeln!(out, "{pad}{line}");
+            } => self.call_many(targets, *callee, args),
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => self.call_many_indirect(targets, callee, args),
+            _ => String::new(),
+        }
+    }
+
+    /// `(a, b) = match …;`: a call through a function value with several
+    /// results, into its targets.
+    fn call_many_indirect(
+        &self,
+        targets: &[perasc_ir::LocalId],
+        callee: &Expr,
+        args: &[Expr],
+    ) -> String {
+        let results: Vec<Ty> = targets
+            .iter()
+            .map(|t| {
+                usize::try_from(t.0)
+                    .ok()
+                    .and_then(|i| self.function.locals.get(i))
+                    .map_or(Ty::Void, |l| l.ty)
+            })
+            .collect();
+        let names: Vec<String> = targets
+            .iter()
+            .map(|t| self.var(usize::try_from(t.0).unwrap_or(0)))
+            .collect();
+        let call = self.indirect(callee, args, &results);
+        format!("({}) = {call};", names.join(", "))
+    }
+
+    /// A call through a function value (decision 0025): a `match` on its
+    /// position in the table, over the functions of the same signature.
+    fn indirect(&self, callee: &Expr, args: &[Expr], results: &[Ty]) -> String {
+        let params: Vec<Ty> = args.iter().map(|a| a.ty).collect();
+        let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+        let mut arms = String::new();
+        for (position, id) in self.module.fn_table().into_iter().enumerate() {
+            let Some(f) = usize::try_from(id.0)
+                .ok()
+                .and_then(|i| self.module.functions.get(i))
+            else {
+                continue;
+            };
+            let same =
+                f.params().map(|l| l.ty).eq(params.iter().copied()) && f.results() == results;
+            if same {
+                let _ = write!(arms, "{position} => p_{}({}), ", f.name, args.join(", "));
             }
         }
+        format!(
+            "(match {} {{ {arms}_ => unreachable!() }})",
+            self.expr(callee)
+        )
     }
 
     /// `(a, b) = p_f(args);`: a call with several results, into its targets.
@@ -310,6 +372,23 @@ impl<'a> Emitter<'a> {
             ExprKind::Binary(op, lhs, rhs) => {
                 let (a, b) = (self.expr(lhs), self.expr(rhs));
                 binary(*op, lhs.ty, &a, &b)
+            }
+            ExprKind::FnRef(id) => {
+                let position = self
+                    .module
+                    .fn_table()
+                    .iter()
+                    .position(|f| f == id)
+                    .unwrap_or(0);
+                format!("{position}i32")
+            }
+            ExprKind::CallIndirect(callee, args) => {
+                let results = if e.ty == Ty::Void {
+                    Vec::new()
+                } else {
+                    vec![e.ty]
+                };
+                self.indirect(callee, args, &results)
             }
             ExprKind::Call(id, args) => {
                 let name = usize::try_from(id.0)

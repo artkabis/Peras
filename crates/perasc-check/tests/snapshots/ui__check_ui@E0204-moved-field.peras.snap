@@ -1,0 +1,36 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0204-moved-field.peras
+---
+diagnostics:
+  error[E0204] check-moved { name: "r.country" }
+    primary 21:10-21:26: check-moved-label
+    secondary 20:13-20:22: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-fix
+  error[E0204] check-moved-part { name: "r", field: "country" }
+    primary 27:13-27:14: check-moved-part-label
+    secondary 26:13-26:22: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-part-fix { field: "country" }
+  error[E0204] check-moved { name: "r.country" }
+    primary 37:10-37:26: check-moved-label
+    secondary 35:9-35:18: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-fix
+  error[E0204] check-moved { name: "r.country" }
+    primary 44:15-44:24: check-moved-loop-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      44:24-44:24 -> ".copy()"
+  error[E0204] check-moved { name: "r.place" }
+    primary 53:10-53:29: check-moved-label
+    secondary 52:13-52:20: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-fix
+  error[E0204] check-moved { name: "r.place" }
+    primary 59:3-59:15: check-moved-label
+    secondary 58:13-58:20: check-moved-here-label
+    cause: check-moved-why
+    fix: check-moved-fix

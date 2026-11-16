@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 mod simd;
 
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, IntKind, JsShape,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, FnId, Function, HostMath, IntKind, JsShape,
     MapShape, MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
@@ -76,9 +76,37 @@ struct Host<'m> {
     /// For each function of the module that is a job run on threads, the
     /// import that dispatches it.
     dispatch: &'m [Option<u32>],
+    /// The functions used as values, by their position in the table
+    /// (decision 0025).
+    table: &'m [FnId],
+    /// The signatures of the calls through function values, whose types
+    /// follow the functions' own from `indirect_types`.
+    indirect: &'m [(Vec<Ty>, Vec<Ty>)],
+    indirect_types: u32,
 }
 
 impl Host<'_> {
+    /// The type of a call through a function value with these arguments and
+    /// results.
+    fn indirect_type(self, args: &[Expr], results: &[Ty]) -> u32 {
+        let params: Vec<Ty> = args.iter().map(|a| a.ty).collect();
+        let position = self
+            .indirect
+            .iter()
+            .position(|(p, r)| *p == params && r.as_slice() == results)
+            .unwrap_or(0);
+        self.indirect_types + u32::try_from(position).unwrap_or(0)
+    }
+
+    /// The position of a function in the table.
+    fn table_position(self, id: FnId) -> i32 {
+        self.table
+            .iter()
+            .position(|&f| f == id)
+            .and_then(|p| i32::try_from(p).ok())
+            .unwrap_or(0)
+    }
+
     fn index(self, h: HostMath) -> u32 {
         let position = self.math.iter().position(|&m| m == h).unwrap_or(0);
         self.first + u32::try_from(position).unwrap_or(0)
@@ -368,23 +396,23 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
         (job_types, heap_imports + math_imports),
     );
     let type_offset = job_types + job_imports;
+    let table = module.fn_table();
+    let indirect = module.indirect_signatures();
     let host = Host {
         first: heap_imports,
         runtime: &runtime,
         math: &math,
         dispatch: &dispatch,
+        table: &table,
+        indirect: &indirect,
+        indirect_types: type_offset + u32::try_from(module.functions.len()).unwrap_or(0),
     };
     let mut sites = Vec::new();
     let mut vectors = false;
     for (position, function) in module.functions.iter().enumerate() {
         let position = u32::try_from(position).unwrap_or(u32::MAX);
         let index = position + offset;
-        let params: Vec<ValType> = function.params().filter_map(|l| val_type(l.ty)).collect();
-        let results: Vec<ValType> = function
-            .results()
-            .into_iter()
-            .filter_map(val_type)
-            .collect();
+        let (params, results) = signature(function);
         types.ty().function(params, results);
         // Its type comes after the import types, as its index after the imports.
         functions.function(position + type_offset);
@@ -403,17 +431,27 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
             &module.data,
         ));
     }
+    // The types of the calls through function values (decision 0025).
+    indirect_types_into(&mut types, &indirect);
     let mut wasm = wasm_encoder::Module::new();
     wasm.section(&types);
     if heap || !math.is_empty() || !jobs.is_empty() {
         wasm.section(&imports);
     }
     wasm.section(&functions);
+    // The functions used as values, in one table that nothing else changes.
+    let table_sections = table_sections(&table, offset);
+    if let Some((tables, _)) = &table_sections {
+        wasm.section(tables);
+    }
     // The module variables, each with its initial value (decision 0023).
     if !module.globals.is_empty() {
         wasm.section(&globals_section(module));
     }
     wasm.section(&exports);
+    if let Some((_, elements)) = &table_sections {
+        wasm.section(elements);
+    }
     // String literals: passive segments, copied into a new buffer when used;
     // then those only read, written below the heap (decision 0016).
     let data = data_section(module);
@@ -429,6 +467,51 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
         vectors,
         sites,
     }
+}
+
+/// The WebAssembly types of a function's parameters and results.
+fn signature(function: &Function) -> (Vec<ValType>, Vec<ValType>) {
+    let params = function.params().filter_map(|l| val_type(l.ty)).collect();
+    let results = function
+        .results()
+        .into_iter()
+        .filter_map(val_type)
+        .collect();
+    (params, results)
+}
+
+/// The types of the calls through function values, in order.
+fn indirect_types_into(types: &mut TypeSection, indirect: &[(Vec<Ty>, Vec<Ty>)]) {
+    for (params, results) in indirect {
+        let params: Vec<ValType> = params.iter().filter_map(|&t| val_type(t)).collect();
+        let results: Vec<ValType> = results.iter().filter_map(|&t| val_type(t)).collect();
+        types.ty().function(params, results);
+    }
+}
+
+/// The table of the functions used as values, and the segment that fills it
+/// once, at instantiation (decision 0025); none when there are none.
+fn table_sections(
+    table: &[FnId],
+    offset: u32,
+) -> Option<(wasm_encoder::TableSection, wasm_encoder::ElementSection)> {
+    let size = u64::try_from(table.len()).ok().filter(|&n| n > 0)?;
+    let mut tables = wasm_encoder::TableSection::new();
+    tables.table(wasm_encoder::TableType {
+        element_type: wasm_encoder::RefType::FUNCREF,
+        table64: false,
+        minimum: size,
+        maximum: Some(size),
+        shared: false,
+    });
+    let indices: Vec<u32> = table.iter().map(|f| f.0 + offset).collect();
+    let mut elements = wasm_encoder::ElementSection::new();
+    elements.active(
+        None,
+        &wasm_encoder::ConstExpr::i32_const(0),
+        wasm_encoder::Elements::Functions(std::borrow::Cow::Owned(indices)),
+    );
+    Some((tables, elements))
 }
 
 /// What an enclosing structured instruction is, to compute `br` depths.
@@ -474,9 +557,37 @@ struct FnEncoder<'a> {
     simd: bool,
     /// The bytes of each literal, for their lengths.
     data: &'a [Vec<u8>],
+    /// The function's locals, for the types of an indirect call's results.
+    locals: &'a [perasc_ir::Local],
 }
 
 impl<'a> FnEncoder<'a> {
+    /// `targets = call_indirect callee args` (decision 0025): the arguments,
+    /// the value, the call, then the results, the last on top.
+    fn call_many_indirect(&mut self, targets: &[perasc_ir::LocalId], callee: &Expr, args: &[Expr]) {
+        for arg in args {
+            self.expr(arg);
+        }
+        self.expr(callee);
+        let results: Vec<Ty> = targets
+            .iter()
+            .map(|t| {
+                usize::try_from(t.0)
+                    .ok()
+                    .and_then(|i| self.locals.get(i))
+                    .map_or(Ty::Void, |l| l.ty)
+            })
+            .collect();
+        let type_index = self.host.indirect_type(args, &results);
+        self.emit(&I::CallIndirect {
+            type_index,
+            table_index: 0,
+        });
+        for target in targets.iter().rev() {
+            self.emit(&I::LocalSet(target.0));
+        }
+    }
+
     fn encode(
         function: &'a Function,
         (offset, simd): (u32, bool),
@@ -528,6 +639,7 @@ impl<'a> FnEncoder<'a> {
             temp_v128: count + 6,
             simd,
             data,
+            locals: &function.locals,
         };
         encoder.stmts(&function.body);
         if function.ret != Ty::Void {
@@ -643,6 +755,11 @@ impl<'a> FnEncoder<'a> {
                     self.emit(&I::LocalSet(target.0));
                 }
             }
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => self.call_many_indirect(targets, callee, args),
             Stmt::Release(local) => {
                 self.emit(&I::LocalGet(local.0));
                 self.releases += 1;
@@ -748,6 +865,26 @@ impl<'a> FnEncoder<'a> {
                     .copied()
                     .flatten();
                 self.emit(&I::Call(dispatcher.unwrap_or(id.0 + self.offset)));
+            }
+            ExprKind::FnRef(id) => {
+                let position = self.host.table_position(*id);
+                self.emit(&I::I32Const(position));
+            }
+            ExprKind::CallIndirect(callee, args) => {
+                for arg in args {
+                    self.expr(arg);
+                }
+                self.expr(callee);
+                let results = if e.ty == Ty::Void {
+                    Vec::new()
+                } else {
+                    vec![e.ty]
+                };
+                let type_index = self.host.indirect_type(args, &results);
+                self.emit(&I::CallIndirect {
+                    type_index,
+                    table_index: 0,
+                });
             }
             ExprKind::Convert(operand) => {
                 self.expr(operand);

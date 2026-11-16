@@ -127,21 +127,23 @@ impl Checker<'_> {
             body,
         } = &expr.kind
         else {
-            // In a managed module, a function already made: a variable, a
-            // parameter, or a function of the module by its name.
-            if self.managed {
-                let value = ret.cloned().unwrap_or(Ty::Void);
-                let wanted = Ty::Callback(params.to_vec(), Box::new(value.clone()));
-                let actual = self.infer(id, Some(&wanted));
-                return if self.coerce(id, &actual, &wanted) {
-                    value
-                } else {
-                    Ty::Error
-                };
+            // A function already made: a variable, a parameter, or a function
+            // of the module by its name, in both modes (decision 0025). With
+            // no value required, its own result is the value (finding F010).
+            let actual = self.infer(id, None);
+            if let (None, Ty::Callback(given, value)) = (ret, &actual)
+                && given.as_slice() == params
+            {
+                return (**value).clone();
             }
-            self.infer(id, None);
-            self.report(errors::arrow_expected(expr.span));
-            return Ty::Error;
+            // With no value required, any result fits: shown as `?`.
+            let value = ret.cloned().unwrap_or(Ty::Error);
+            let wanted = Ty::Callback(params.to_vec(), Box::new(value.clone()));
+            return if self.coerce(id, &actual, &wanted) {
+                value
+            } else {
+                Ty::Error
+            };
         };
         if written.len() != params.len() {
             self.report(errors::argument_count(

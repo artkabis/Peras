@@ -100,3 +100,21 @@ fn unsigned_operations_go_through_unsigned_types() {
         assert!(rust.contains(expected), "{expected} in\n{rust}");
     }
 }
+
+/// Decision 0025: a call through a function value is a `match` on its
+/// position in the table, over the functions of its signature only.
+#[test]
+fn a_call_through_a_value_matches_on_the_table() {
+    let rust = source(&module(
+        "fn twice(x: i32): i32 {\n  return x * 2;\n}\n\
+         fn odd(x: i32): bool {\n  return x % 2 == 1;\n}\n\
+         export fn f(n: i32): i32 {\n  const g = twice;\n  const h = odd;\n  if (h(n)) {\n    return g(n);\n  }\n  return 0;\n}\n",
+    ));
+    // `twice` is at 0 and `odd` at 1; each call lists its own signature's.
+    assert!(rust.contains("0 => p_twice("), "{rust}");
+    assert!(rust.contains("1 => p_odd("), "{rust}");
+    assert!(
+        !rust.contains("0 => p_odd(") && !rust.contains("1 => p_twice("),
+        "{rust}"
+    );
+}

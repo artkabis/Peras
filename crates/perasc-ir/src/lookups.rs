@@ -148,11 +148,15 @@ fn children(e: &Expr) -> Vec<&Expr> {
         }
         ExprKind::Binary(_, a, b) => vec![a, b],
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().collect(),
+        ExprKind::CallIndirect(callee, args) => {
+            std::iter::once(&**callee).chain(args.iter()).collect()
+        }
         ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_) => Vec::new(),
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => Vec::new(),
     }
 }
 
@@ -224,11 +228,18 @@ fn reuse(e: &mut Expr, known: &[Known]) {
                 reuse(arg, known);
             }
         }
+        ExprKind::CallIndirect(callee, args) => {
+            reuse(callee, known);
+            for arg in args {
+                reuse(arg, known);
+            }
+        }
         ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_) => {}
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => {}
     }
 }
 
@@ -258,11 +269,14 @@ fn take_lookup(e: &mut Expr, holder: LocalId) -> Option<(Expr, u32, Key)> {
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
             args.iter_mut().find_map(|arg| take_lookup(arg, holder))
         }
+        ExprKind::CallIndirect(callee, args) => take_lookup(callee, holder)
+            .or_else(|| args.iter_mut().find_map(|arg| take_lookup(arg, holder))),
         ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_) => None,
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => None,
     }
 }
 
@@ -477,6 +491,25 @@ impl Pass<'_> {
                         forget_local(&mut known, t.0, false);
                     }
                     out.push(Stmt::CallMany {
+                        targets,
+                        callee,
+                        args,
+                    });
+                }
+                Stmt::CallManyIndirect {
+                    targets,
+                    mut callee,
+                    mut args,
+                } => {
+                    reuse(&mut callee, &known);
+                    for arg in &mut args {
+                        reuse(arg, &known);
+                        forget_maps(&mut known, arg);
+                    }
+                    for t in &targets {
+                        forget_local(&mut known, t.0, false);
+                    }
+                    out.push(Stmt::CallManyIndirect {
                         targets,
                         callee,
                         args,

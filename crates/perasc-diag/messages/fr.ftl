@@ -352,6 +352,9 @@ check-moved-here-label = déplacé ici
 check-moved-loop-label = déplacé ici au tour précédent de la boucle
 check-moved-why = Une valeur sur le tas, un tableau, une chaîne ou une structure qui en contient, a un seul propriétaire. L’affecter, la renvoyer ou la passer à un paramètre `sink` la déplace : l’ancien nom ne contient plus rien tant qu’il ne reçoit pas une nouvelle valeur.
 check-moved-fix = donne une nouvelle valeur à la variable avant de l’utiliser à nouveau
+check-moved-part = `{ $name }` est utilisé en entier après que son champ `{ $field }` a été déplacé
+check-moved-part-label = utilisé ici, sans son champ
+check-moved-part-fix = donne d’abord une nouvelle valeur à `{ $field }`, ou utilise les autres champs un par un
 check-fix-copy = déplace plutôt une copie, avec `.copy()`
 
 # E0205
@@ -833,6 +836,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [for-of] les boucles `for…of`
     [place] les affectations de champs et d’éléments
     [function-value] les fonctions utilisées comme valeurs
+    [closure] les fonctions fléchées qui capturent une variable, utilisées comme valeurs
     [borrow] l’opérateur d’emprunt `&`
     [float-remainder] `%` sur des flottants
     [string] les chaînes

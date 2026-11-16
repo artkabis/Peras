@@ -83,6 +83,7 @@ impl<'a> Verifier<'a> {
             ExprKind::Move(local) => self.handle(*local, Ty::Owned, value.ty),
             ExprKind::Alloc(_)
             | ExprKind::Call(..)
+            | ExprKind::CallIndirect(..)
             | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _) => {
                 self.expr(value);
             }
@@ -359,6 +360,11 @@ impl<'a> Verifier<'a> {
                 callee,
                 args,
             } => self.call_many(targets, *callee, args),
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => self.call_many_indirect(targets, callee, args),
             Stmt::ReturnMany(values) => self.return_many(values),
             Stmt::Buf(op, args) => self.buf_stmt(*op, args),
             Stmt::Release(local) => {
@@ -501,6 +507,52 @@ impl<'a> Verifier<'a> {
         }
     }
 
+    /// `targets = call_indirect callee args` (decision 0025).
+    fn call_many_indirect(&mut self, targets: &[crate::LocalId], callee: &Expr, args: &[Expr]) {
+        self.function_value(callee);
+        for arg in args {
+            self.argument(arg);
+        }
+        for target in targets {
+            if self.local_type(target.0).is_none() {
+                self.problem(&format!(
+                    "call_indirect into %{}, which does not exist",
+                    target.0
+                ));
+            }
+        }
+    }
+
+    /// A function as a value, or a call through one (decision 0025).
+    fn function_expr(&mut self, e: &Expr) {
+        match &e.kind {
+            ExprKind::FnRef(id) => {
+                let exists = usize::try_from(id.0)
+                    .ok()
+                    .and_then(|i| self.module.functions.get(i))
+                    .is_some();
+                if e.ty != Ty::I32 || !exists {
+                    self.problem(&format!("fn #{} is not an i32 naming a function", id.0));
+                }
+            }
+            ExprKind::CallIndirect(callee, args) => {
+                self.function_value(callee);
+                for arg in args {
+                    self.argument(arg);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The function value an indirect call goes through: an `i32`.
+    fn function_value(&mut self, callee: &Expr) {
+        self.expr(callee);
+        if callee.ty != Ty::I32 {
+            self.problem(&format!("call_indirect through a {}", callee.ty.name()));
+        }
+    }
+
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => {
@@ -560,6 +612,7 @@ impl<'a> Verifier<'a> {
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs, e.ty),
             ExprKind::Buf(op, args) => self.buf_expr(*op, args, e.ty),
+            ExprKind::FnRef(_) | ExprKind::CallIndirect(..) => self.function_expr(e),
             ExprKind::Call(id, args) => {
                 let results = if e.ty == Ty::Void { vec![] } else { vec![e.ty] };
                 if let Some(callee) = self.call(*id, args, &results)

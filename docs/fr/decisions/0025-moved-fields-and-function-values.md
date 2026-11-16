@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0025-moved-fields-and-function-values.md](../../en/decisions/0025-moved-fields-and-function-values.md)._
 
-_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; dernière partie de l’étape 4 de la [décision 0021](0021-phases-4-and-5.md), constats F214 et F308._
+_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour, la partie B en vraies valeurs fonctions, les deux parties à livrer en un seul lot ; dernière partie de l’étape 4 de la [décision 0021](0021-phases-4-and-5.md), constats F214 et F308._
 
 ## Contexte
 

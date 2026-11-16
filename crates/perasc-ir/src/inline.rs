@@ -182,6 +182,15 @@ impl Copy {
                     callee: *callee,
                     args: args.iter().map(|a| self.expr(a)).collect(),
                 }),
+                Stmt::CallManyIndirect {
+                    targets,
+                    callee,
+                    args,
+                } => out.push(Stmt::CallManyIndirect {
+                    targets: targets.iter().map(|t| shift(*t, self.base)).collect(),
+                    callee: self.expr(callee),
+                    args: args.iter().map(|a| self.expr(a)).collect(),
+                }),
                 Stmt::If {
                     cond,
                     then,
@@ -229,6 +238,11 @@ impl Copy {
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
+            ExprKind::FnRef(id) => ExprKind::FnRef(*id),
+            ExprKind::CallIndirect(callee, args) => ExprKind::CallIndirect(
+                Box::new(self.expr(callee)),
+                args.iter().map(|a| self.expr(a)).collect(),
+            ),
             ExprKind::Convert(x) => ExprKind::Convert(Box::new(self.expr(x))),
             ExprKind::Math(op, x) => ExprKind::Math(*op, Box::new(self.expr(x))),
             ExprKind::Alloc(x) => ExprKind::Alloc(Box::new(self.expr(x))),
@@ -257,6 +271,8 @@ fn hoistable(e: &Expr, id: FnId) -> bool {
         | ExprKind::Alloc(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
+        | ExprKind::FnRef(_)
+        | ExprKind::CallIndirect(..)
         | ExprKind::Buf(..) => false,
         ExprKind::Binary(_, a, b) => {
             (hoistable(a, id) && is_simple(b)) || (is_simple(a) && hoistable(b, id))
@@ -316,9 +332,12 @@ pub fn needs_reset(function: &Function) -> Vec<LocalId> {
 
 fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Global(_) => true,
+        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => true,
         ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {
             assigned.contains(&local.0)
+        }
+        ExprKind::CallIndirect(callee, args) => {
+            reads_only(callee, assigned) && args.iter().all(|a| reads_only(a, assigned))
         }
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => {
             reads_only(x, assigned)
@@ -342,6 +361,9 @@ fn size(stmts: &[Stmt]) -> usize {
             Stmt::ReturnMany(values)
             | Stmt::CallMany { args: values, .. }
             | Stmt::Buf(_, values) => 1 + values.iter().map(expr_size).sum::<usize>(),
+            Stmt::CallManyIndirect { callee, args, .. } => {
+                1 + expr_size(callee) + args.iter().map(expr_size).sum::<usize>()
+            }
             Stmt::If {
                 cond,
                 then,
@@ -366,7 +388,11 @@ fn expr_size(e: &Expr) -> usize {
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_) => 0,
+        | ExprKind::Global(_)
+        | ExprKind::FnRef(_) => 0,
+        ExprKind::CallIndirect(callee, args) => {
+            expr_size(callee) + args.iter().map(expr_size).sum::<usize>()
+        }
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)

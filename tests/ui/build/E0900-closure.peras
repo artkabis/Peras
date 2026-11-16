@@ -1,0 +1,14 @@
+// E0900: an arrow function that captures a variable is not a value yet
+// (decision 0025); given in place to a method, it captures what it reads.
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn shifted(n: i32, k: i32): i32 {
+  return apply((x) => x + k, n);
+}
+
+// Allowed: one that captures nothing, and one given in place.
+export fn fine(xs: Array<i32>, k: i32): i32 {
+  return apply((x) => x + 1, k) + xs.map((x) => x + k).length;
+}

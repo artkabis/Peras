@@ -1,0 +1,10 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/E0900-closure.peras
+---
+diagnostics:
+  error[E0900] gen-unsupported { feature: "closure" }
+    primary 8:27-8:28: gen-unsupported-label { feature: "closure" }
+    cause: gen-unsupported-why
+    fix: gen-unsupported-fix

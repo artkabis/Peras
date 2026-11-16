@@ -1,0 +1,71 @@
+// E0204: a field moved out of its structure (decision 0025), then used again:
+// the field, what holds it, or the whole structure.
+struct Place {
+  city: String;
+  zip: i32;
+}
+
+struct Row {
+  country: String;
+  place: Place;
+  amount: i32;
+}
+
+fn row(n: i32): Row {
+  return Row("fr", Place("paris", n), n);
+}
+
+export fn reread(n: i32): i32 {
+  const r = row(n);
+  const c = r.country;
+  return r.country.length + c.length;
+}
+
+export fn whole(n: i32): i32 {
+  const r = row(n);
+  const c = r.country;
+  const s = r;
+  return c.length + s.amount;
+}
+
+export fn branch(n: i32): i32 {
+  const r = row(n);
+  let c = "";
+  if (n > 2) {
+    c = r.country;
+  }
+  return r.country.length + c.length;
+}
+
+export fn looped(n: i32): i32 {
+  const r = row(n);
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const c = r.country;
+    total += c.length;
+  }
+  return total;
+}
+
+export fn inside(n: i32): i32 {
+  const r = row(n);
+  const p = r.place;
+  return r.place.city.length + p.zip;
+}
+
+export fn holder(n: i32): i32 {
+  let r = row(n);
+  const p = r.place;
+  r.place.city = "x";
+  return p.zip;
+}
+
+// Allowed: the other fields, a field given a new value, a field two deep.
+export fn fine(n: i32): i32 {
+  let r = row(n);
+  const c = r.country;
+  const city = r.place.city;
+  r.country = "new";
+  const s = r.country;
+  return c.length + city.length + r.amount + r.place.zip + s.length;
+}

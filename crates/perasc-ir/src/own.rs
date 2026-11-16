@@ -106,13 +106,13 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::CallMany { targets, args, .. } => {
-                for arg in args {
-                    expr(arg, &mut state)?;
-                }
-                for target in targets {
-                    self.fill(&mut state, *target)?;
-                }
+                self.call_many(None, args, targets, &mut state)?;
             }
+            Stmt::CallManyIndirect {
+                targets,
+                callee,
+                args,
+            } => self.call_many(Some(callee), args, targets, &mut state)?,
             Stmt::ReturnMany(values) => {
                 for value in values {
                     expr(value, &mut state)?;
@@ -248,6 +248,28 @@ impl<'a> Checker<'a> {
     }
 
     /// `local` receives a value; an `owned` local must be empty first.
+    /// A call with several results: its arguments, through a function value
+    /// lent only (decision 0025), then its targets filled.
+    fn call_many(
+        &self,
+        callee: Option<&Expr>,
+        args: &[Expr],
+        targets: &[LocalId],
+        state: &mut State,
+    ) -> Result<(), String> {
+        if let Some(callee) = callee {
+            expr(callee, state)?;
+            lent_only(args)?;
+        }
+        for arg in args {
+            expr(arg, state)?;
+        }
+        for target in targets {
+            self.fill(state, *target)?;
+        }
+        Ok(())
+    }
+
     fn fill(&self, state: &mut State, local: LocalId) -> Result<(), String> {
         if self.is_owned(local) {
             if holds(state, local) {
@@ -272,7 +294,14 @@ impl<'a> Checker<'a> {
 /// The state after an expression, evaluated left to right.
 fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Global(_) => {}
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => {}
+        ExprKind::CallIndirect(callee, args) => {
+            expr(callee, state)?;
+            lent_only(args)?;
+            for arg in args {
+                expr(arg, state)?;
+            }
+        }
         ExprKind::Move(local) | ExprKind::Borrow(local) => {
             if !holds(state, *local) {
                 return Err(format!(
@@ -310,6 +339,21 @@ fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The arguments of a call through a function value are lent: a function
+/// type has no `sink` parameter (decision 0025).
+fn lent_only(args: &[Expr]) -> Result<(), String> {
+    match args.iter().find(|a| matches!(a.kind, ExprKind::Move(_))) {
+        Some(Expr {
+            kind: ExprKind::Move(local),
+            ..
+        }) => Err(format!(
+            "%{} is moved into a call through a function value, which only lends",
+            local.0
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// The common state of the paths that meet; `None` if none does.

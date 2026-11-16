@@ -353,6 +353,9 @@ check-moved-loop-label = moved here in the previous turn of the loop
 check-moved-why = A value on the heap, an array, a string, or a structure holding one, has a single owner. Assigning it, returning it or passing it to a `sink` parameter moves it: the old name holds nothing until it is given a new value.
 check-moved-fix = give the variable a new value before it is used again
 check-fix-copy = move a copy instead, with `.copy()`
+check-moved-part = `{ $name }` is used whole after its field `{ $field }` was moved out
+check-moved-part-label = used here, without its field
+check-moved-part-fix = give `{ $field }` a new value first, or use the other fields one by one
 
 # E0205
 check-immutable = cannot modify { $kind ->
@@ -833,6 +836,7 @@ gen-unsupported = code generation does not support { $feature ->
     [for-of] `for…of` loops
     [place] assignments to fields and elements
     [function-value] functions used as values
+    [closure] arrow functions that capture a variable, used as values
     [borrow] the borrow operator `&`
     [float-remainder] `%` on floats
     [string] strings

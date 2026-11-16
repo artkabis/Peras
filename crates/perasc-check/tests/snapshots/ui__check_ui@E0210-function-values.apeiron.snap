@@ -1,0 +1,18 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0210-function-values.apeiron
+---
+diagnostics:
+  error[E0210] check-mismatch { expected: "(i32) => i32", found: "(String) => i32" }
+    primary 24:16-24:21: check-mismatch-label { found: "(String) => i32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "(i32) => i32" }
+  error[E0210] check-mismatch { expected: "(i32) => i32", found: "fn largest" }
+    primary 28:16-28:23: check-mismatch-label { found: "fn largest" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix { expected: "(i32) => i32" }
+  error[E0221] check-operator { operator: "==", type: "(i32) => i32" }
+    primary 33:10-33:11: check-operator-label { type: "(i32) => i32" }
+    cause: check-operator-why
+    fix: check-operator-fix { operator: "==" }
