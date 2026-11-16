@@ -22,6 +22,9 @@ What lets a program say precisely what its data can be.
 - ~~**Generics**, on functions and structures, with constraints~~: done, on enumerations too, see [generics](../guide/generics.md); with built-in constraints, and interfaces for your own.
 - ~~**Methods on structures** (`impl`) and **interfaces** for shared behaviour, resolved at compile time~~: done, see [methods and interfaces](../guide/methods.md).
 - ~~Tuples, type aliases, module-level constants compiled~~: done, see [types](types.md#tuples) and [module constants](../guide/basics.md#module-constants).
+- ~~Module variables compiled~~: done for numbers, booleans, and structures, enumerations and options of them ([decision 0023](../decisions/0023-module-variables.md)); strings and arrays next.
+- ~~Every integer type compiled, `i8` to `u64`~~: done, arrays stored at each element's width ([decision 0024](../decisions/0024-integer-types.md), [types](types.md)).
+- ~~A field moved out of a structure, and functions as values in owned modules~~: done ([decision 0025](../decisions/0025-moved-fields-and-function-values.md), [functions](../guide/functions.md#functions-as-values)); closures, arrow functions that capture as values, next.
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

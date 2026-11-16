@@ -22,6 +22,9 @@ Ce qui permet à un programme de dire précisément ce que ses données peuvent 
 - ~~**Des génériques**, sur les fonctions et les structures, avec des contraintes~~ : fait, sur les énumérations aussi, voir [génériques](../guide/generics.md) ; avec des contraintes prédéfinies, et des interfaces pour les vôtres.
 - ~~**Des méthodes sur les structures** (`impl`) et **des interfaces** pour les comportements partagés, résolues à la compilation~~ : fait, voir [méthodes et interfaces](../guide/methods.md).
 - ~~Tuples, alias de types, constantes de module compilées~~ : fait, voir [types](types.md#tuples) et [constantes de module](../guide/basics.md#constantes-de-module).
+- ~~Variables de module compilées~~ : fait pour les nombres, les booléens, et les structures, énumérations et options de ceux-ci ([décision 0023](../decisions/0023-module-variables.md)) ; chaînes et tableaux ensuite.
+- ~~Tous les types entiers compilés, de `i8` à `u64`~~ : fait, les tableaux rangés à la largeur de chaque élément ([décision 0024](../decisions/0024-integer-types.md), [types](types.md)).
+- ~~Un champ déplacé hors d’une structure, et les fonctions comme valeurs dans les modules owned~~ : fait ([décision 0025](../decisions/0025-moved-fields-and-function-values.md), [fonctions](../guide/functions.md#les-fonctions-comme-valeurs)) ; les fermetures, fonctions fléchées qui capturent comme valeurs, ensuite.
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

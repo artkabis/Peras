@@ -41,6 +41,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A flawed run is kept with its flaw**, archived, and its correction listed as a departure from the protocol.
 - **Never say a thing is online, deployed or passing before seeing it**: read the workflow's run, not the workflow's file (M005).
 - **A cancelled job is a failure, and a test is timed in the debug build the CI runs**: the Rust job stops at 20 minutes, and one test of 2,000,000 pairs took all of it unnoticed (M022).
+- **A step of a plan meets the plan's criteria too**: before saying it landed, read the criteria of the decision that orders it, not only its own; decision 0021's roadmap was missed three times (M025).
 - **"All checks pass" means the CI of the last commit, read on GitHub**, and locally every `--check` script of `scripts/`, not only those of the files touched: a change of defaults breaks the scripts that relied on them (M007).
 
 ## Code: the traps already fallen into
