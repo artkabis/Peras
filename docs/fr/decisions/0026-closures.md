@@ -118,7 +118,14 @@ _Chaque partie est consignée ici à son arrivée._
     5. Le vérificateur de libération refuse un environnement fait et jamais libéré, exprès dans l’abaissement : `%3 still holds a block when the function returns: it leaks`.
     6. `reinterpretations_match_rusts_bits` et `captured_numbers_come_back_bit_for_bit` : chaque borne de `f32` et `f64`, NaN avec une charge, NaN signalant et −0 compris, dans l’interpréteur et en WebAssembly.
     7. `static_environments_are_positions` tient le Rust produit ; et un module de valeurs qui ne capturent rien, construit avec `--backend rust` et avec le backend direct, a donné les mêmes 16 résultats dans Node. `bench-backends.mjs --check` passe.
-    8. Mesures : dans la partie suivante de ce registre.
+    8. Mesures, après le commit de l’étape (`3a750e8`), sur un Intel Xeon à 2,10 GHz, 4 cœurs, TLSF, 21 tours de 20 000 000 d’appels dans un même processus, l’ordre alterné (`calls.mjs`, gardé hors du dépôt) :
+       - à travers une fermeture, 77,9 ms contre 81,8 ms directement, un rapport de 0,941 en médiane, de 0,874 à 1,128 ;
+       - une fonction nommée à travers une valeur, 75,7 ms contre 75,5 ms avec le compilateur de la décision 0025 (`1daaf30`), un rapport de 1,007, de 0,733 à 1,083 : aucun coût trouvé pour l’environnement statique ;
+       - le module avec une fonction nommée comme valeur fait 224 octets contre 169 dans la décision 0025 : 55 octets pour l’adaptateur et le paramètre de l’environnement. Avec une fermeture, 3 444 octets : un environnement compté lie l’allocateur, comme toute valeur du tas ;
+       - le tableau de bord, qui ne fait aucune valeur fonction, `node scripts/ab-data.mjs 1daaf30`, 1 000 000 de lignes, 20 tours : 344,8 ms avant, 353,1 ms après, un rapport avant / après de 1,011 en médiane, de 0,775 à 1,314, le même résumé.
+
+       Rapportées, pas des conditions.
+
     9. La page du guide sur les fonctions, l’état, `E0900`, le nouveau `E0251` et l’index des erreurs (auquel manquait `E0250` aussi), la référence de la CLI, les constats F308, F011 et M026, la feuille de route et le journal des changements, en anglais et en français.
 - **Écarts au texte ci-dessus.**
   - L’environnement est le dernier paramètre, pas le premier.

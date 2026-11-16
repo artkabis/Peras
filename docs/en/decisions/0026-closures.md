@@ -118,7 +118,14 @@ _Each part is recorded here as it lands._
     5. The release verifier refuses an environment made and never released, on purpose in the lowering: `%3 still holds a block when the function returns: it leaks`.
     6. `reinterpretations_match_rusts_bits` and `captured_numbers_come_back_bit_for_bit`: every edge of `f32` and `f64`, NaN with a payload, a signalling NaN and −0 included, in the interpreter and in WebAssembly.
     7. `static_environments_are_positions` holds the Rust written; and a module of values that capture nothing, built with `--backend rust` and with the direct backend, gave the same 16 results in Node. `bench-backends.mjs --check` passes.
-    8. Measures: in the next part of this record.
+    8. Measures, after the commit of the step (`3a750e8`), on an Intel Xeon at 2.10 GHz, 4 cores, TLSF, 21 rounds of 20,000,000 calls in one process, the order alternating (`calls.mjs`, kept outside the repository):
+       - through a closure, 77.9 ms against 81.8 ms directly, a ratio of 0.941 in the median, from 0.874 to 1.128;
+       - a named function through a value, 75.7 ms against 75.5 ms with decision 0025's compiler (`1daaf30`), a ratio of 1.007, from 0.733 to 1.083: no cost found for the static environment;
+       - the module with a named function as a value is 224 bytes against 169 in decision 0025: 55 bytes for the adapter and the environment's parameter. With a closure, 3,444 bytes: a counted environment links the allocator, as any heap value does;
+       - the dashboard, which makes no function value, `node scripts/ab-data.mjs 1daaf30`, 1,000,000 rows, 20 rounds: 344.8 ms before, 353.1 ms after, a ratio before / after of 1.011 in the median, from 0.775 to 1.314, the same summary.
+
+       Reported, not conditions.
+
     9. The guide's page on functions, the status, `E0900`, the new `E0251` and the index of errors (which lacked `E0250` too), the CLI reference, findings F308, F011 and M026, the roadmap and the changelog, in English and in French.
 - **Departures from the text above.**
   - The environment is the last parameter, not the first.
