@@ -399,6 +399,7 @@ impl Machine<'_> {
                 }
                 self.buf_op(*op, &values)?
             }
+            ExprKind::Unary(UnOp::ConvertU, x) => convert_u(self.expr(x, locals)?, e.ty),
             ExprKind::Unary(op, x) => unary(*op, self.expr(x, locals)?),
             ExprKind::Binary(BinOp::And, a, b) => {
                 if self.expr(a, locals)? == Value::Bool(true) {
@@ -860,6 +861,23 @@ impl Machine<'_> {
         use crate::RuntimeFn as F;
         Ok(Some(match (f, operands.first()) {
             (F::FmtInt, Some(Value::I64(n))) => self.string(n.to_string().as_bytes()),
+            // A `u64`: the same bits, read as unsigned (decision 0024).
+            #[allow(clippy::cast_sign_loss)]
+            (F::FmtUint, Some(Value::I64(n))) => self.string((*n as u64).to_string().as_bytes()),
+            #[allow(clippy::cast_sign_loss)]
+            (F::FmtUintLen, Some(Value::I64(n))) => {
+                Value::I32(i32::try_from((*n as u64).to_string().len()).unwrap_or(0))
+            }
+            (F::FmtUintAppend, Some(&buf)) => {
+                let Some(Value::I64(n)) = operands.get(1) else {
+                    return Err(Trap::Unreachable);
+                };
+                #[allow(clippy::cast_sign_loss)]
+                let digits = (*n as u64).to_string();
+                self.elements(buf)?
+                    .extend(digits.bytes().map(|b| Value::I32(i32::from(b))));
+                Value::Void
+            }
             (F::FloatRem, Some(Value::F64(x))) => match operands.get(1) {
                 Some(Value::F64(y)) => Value::F64(x % y),
                 _ => return Err(Trap::Unreachable),
@@ -882,7 +900,15 @@ impl Machine<'_> {
                 self.string(text?.as_bytes())
             }
             (
-                F::FmtInt | F::FmtIntLen | F::FmtIntAppend | F::FmtBool | F::FmtFloat | F::FloatRem,
+                F::FmtInt
+                | F::FmtIntLen
+                | F::FmtIntAppend
+                | F::FmtUint
+                | F::FmtUintLen
+                | F::FmtUintAppend
+                | F::FmtBool
+                | F::FmtFloat
+                | F::FloatRem,
                 _,
             ) => {
                 return Err(Trap::Unreachable);
@@ -968,6 +994,9 @@ impl Machine<'_> {
             | F::FmtInt
             | F::FmtIntLen
             | F::FmtIntAppend
+            | F::FmtUint
+            | F::FmtUintLen
+            | F::FmtUintAppend
             | F::FloatRem
             | F::FmtBool
             | F::FmtFloat => {
@@ -999,14 +1028,14 @@ impl Machine<'_> {
             return self.permute(operand(0)?, operand(1)?);
         }
         let desc = operand(2)? != Value::I32(0);
-        self.sort_index(operand(0)?, desc)
+        self.sort_index(operand(0)?, desc, unsigned_kind(operands.get(1)))
     }
 
     /// `arr_sort_index`: the order of `sortBy`, as the runtime's: numbers as
     /// `sort()` orders them, every NaN last; strings by their bytes, UTF-8,
     /// the order of their code points. Stable; `desc` reverses the order of
     /// the keys, not that of equal ones.
-    fn sort_index(&mut self, keys: Value, desc: bool) -> Result<Value, Trap> {
+    fn sort_index(&mut self, keys: Value, desc: bool, unsigned: bool) -> Result<Value, Trap> {
         let keys = self.elements(keys)?.clone();
         let mut texts = Vec::new();
         for key in &keys {
@@ -1023,10 +1052,11 @@ impl Machine<'_> {
         let mut order: Vec<usize> = (0..keys.len()).collect();
         order.sort_by(|&i, &j| {
             let o = match (keys.get(i).map(number), keys.get(j).map(number)) {
-                (Some(Value::I32(x)), Some(Value::I32(y))) => x.cmp(&y),
-                (Some(Value::I64(x)), Some(Value::I64(y))) => x.cmp(&y),
-                (Some(Value::F32(x)), Some(Value::F32(y))) => x.total_cmp(&y),
-                (Some(Value::F64(x)), Some(Value::F64(y))) => x.total_cmp(&y),
+                (Some(x), Some(y))
+                    if !matches!(x, Value::Handle(_)) && !matches!(y, Value::Handle(_)) =>
+                {
+                    compare_numbers(&x, &y, unsigned)
+                }
                 _ => texts.get(i).cmp(&texts.get(j)),
             };
             if desc { o.reverse() } else { o }
@@ -1133,6 +1163,7 @@ impl Machine<'_> {
                 Value::Void
             }
             F::ArrSort => {
+                let unsigned = unsigned_kind(operands.get(1));
                 let elements = self.elements(first)?;
                 // JavaScript's order for typed arrays, as the runtime's: -0
                 // before +0, every NaN last, as the canonical NaN.
@@ -1143,13 +1174,7 @@ impl Machine<'_> {
                         _ => {}
                     }
                 }
-                elements.sort_by(|a, b| match (a, b) {
-                    (Value::I32(x), Value::I32(y)) => x.cmp(y),
-                    (Value::I64(x), Value::I64(y)) => x.cmp(y),
-                    (Value::F32(x), Value::F32(y)) => x.total_cmp(y),
-                    (Value::F64(x), Value::F64(y)) => x.total_cmp(y),
-                    _ => std::cmp::Ordering::Equal,
-                });
+                elements.sort_by(|a, b| compare_numbers(a, b, unsigned));
                 Value::Void
             }
             F::ArrIndexOfStr => {
@@ -1330,10 +1355,37 @@ impl Machine<'_> {
     }
 }
 
-/// A value as a buffer stores it: a byte keeps its low 8 bits.
+/// Whether the `kind` of a runtime sort says unsigned integers
+/// (`Elem::sort_kind`).
+fn unsigned_kind(kind: Option<&Value>) -> bool {
+    matches!(kind, Some(Value::I32(k)) if k & 4 != 0)
+}
+
+/// Two numbers in the order of the runtime's sorts: unsigned integers by
+/// their bits read unsigned, floats with every NaN last.
+#[allow(clippy::cast_sign_loss)]
+fn compare_numbers(a: &Value, b: &Value, unsigned: bool) -> std::cmp::Ordering {
+    match (a, b) {
+        (Value::I32(x), Value::I32(y)) if unsigned => (*x as u32).cmp(&(*y as u32)),
+        (Value::I64(x), Value::I64(y)) if unsigned => (*x as u64).cmp(&(*y as u64)),
+        (Value::I32(x), Value::I32(y)) => x.cmp(y),
+        (Value::I64(x), Value::I64(y)) => x.cmp(y),
+        (Value::F32(x), Value::F32(y)) => x.total_cmp(y),
+        (Value::F64(x), Value::F64(y)) => x.total_cmp(y),
+        _ => std::cmp::Ordering::Equal,
+    }
+}
+
+/// A value as a buffer stores it: a byte keeps its low 8 bits, extended as
+/// its type reads it, and two bytes their low 16.
 const fn stored(elem: Elem, value: Value) -> Value {
     match (elem, value) {
         (Elem::U8, Value::I32(v)) => Value::I32(v & 0xFF),
+        (Elem::U16, Value::I32(v)) => Value::I32(v & 0xFFFF),
+        #[allow(clippy::cast_possible_truncation)]
+        (Elem::I8, Value::I32(v)) => Value::I32(v as i8 as i32),
+        #[allow(clippy::cast_possible_truncation)]
+        (Elem::I16, Value::I32(v)) => Value::I32(v as i16 as i32),
         _ => value,
     }
 }
@@ -1359,7 +1411,7 @@ fn unary(op: UnOp, v: Value) -> Value {
 }
 
 macro_rules! int_op {
-    ($op:expr, $a:expr, $b:expr, $wrap:ident) => {{
+    ($op:expr, $a:expr, $b:expr, $wrap:ident, $u:ty) => {{
         let (a, b) = ($a, $b);
         Ok($wrap(match $op {
             BinOp::Add => a.wrapping_add(b),
@@ -1385,6 +1437,25 @@ macro_rules! int_op {
             BinOp::Le => return Ok(Value::Bool(a <= b)),
             BinOp::Gt => return Ok(Value::Bool(a > b)),
             BinOp::Ge => return Ok(Value::Bool(a >= b)),
+            // Unsigned: the same bits, read as unsigned (decision 0024).
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+            BinOp::DivU | BinOp::RemU => {
+                if b == 0 {
+                    return Err(Trap::Arithmetic);
+                }
+                let (x, y) = (a as $u, b as $u);
+                (if $op == BinOp::DivU { x / y } else { x % y }) as _
+            }
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+            BinOp::ShrU => (a as $u).wrapping_shr(b as u32) as _,
+            #[allow(clippy::cast_sign_loss)]
+            BinOp::LtU => return Ok(Value::Bool((a as $u) < (b as $u))),
+            #[allow(clippy::cast_sign_loss)]
+            BinOp::LeU => return Ok(Value::Bool((a as $u) <= (b as $u))),
+            #[allow(clippy::cast_sign_loss)]
+            BinOp::GtU => return Ok(Value::Bool((a as $u) > (b as $u))),
+            #[allow(clippy::cast_sign_loss)]
+            BinOp::GeU => return Ok(Value::Bool((a as $u) >= (b as $u))),
             BinOp::And | BinOp::Or | BinOp::Pow | BinOp::Atan2 => {
                 return Err(Trap::Unreachable);
             }
@@ -1418,8 +1489,8 @@ macro_rules! float_op {
 fn binary(op: BinOp, a: Value, b: Value) -> Result<Value, Trap> {
     use Value::{Bool, F32, F64, I32, I64};
     match (a, b) {
-        (I32(a), I32(b)) => int_op!(op, a, b, I32),
-        (I64(a), I64(b)) => int_op!(op, a, b, I64),
+        (I32(a), I32(b)) => int_op!(op, a, b, I32, u32),
+        (I64(a), I64(b)) => int_op!(op, a, b, I64, u64),
         (F32(a), F32(b)) => float_op!(op, a, b, F32),
         (F64(a), F64(b)) => float_op!(op, a, b, F64),
         (Bool(a), Bool(b)) => Ok(Bool(if op == BinOp::Eq { a == b } else { a != b })),
@@ -1447,6 +1518,31 @@ fn convert(v: Value, to: Ty) -> Value {
         (_, Ty::I64) => Value::I64(wide as i64),
         (_, Ty::F32) => Value::F32(wide as f32),
         (_, Ty::F64) => Value::F64(wide),
+        (other, _) => other,
+    }
+}
+
+/// [`UnOp::ConvertU`]: an unsigned integer to a float or widened with
+/// zeros, or a float to an unsigned integer, saturating, `NaN` to 0, as
+/// WebAssembly's `trunc_sat_u` does (decision 0024).
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+fn convert_u(v: Value, to: Ty) -> Value {
+    match (v, to) {
+        (Value::I32(x), Ty::I64) => Value::I64(i64::from(x as u32)),
+        (Value::I32(x), Ty::F32) => Value::F32(x as u32 as f32),
+        (Value::I32(x), Ty::F64) => Value::F64(f64::from(x as u32)),
+        (Value::I64(x), Ty::F32) => Value::F32(x as u64 as f32),
+        (Value::I64(x), Ty::F64) => Value::F64(x as u64 as f64),
+        (Value::I64(x), Ty::I32) => Value::I32(x as i32),
+        (Value::F32(x), Ty::I32) => Value::I32(x as u32 as i32),
+        (Value::F64(x), Ty::I32) => Value::I32(x as u32 as i32),
+        (Value::F32(x), Ty::I64) => Value::I64(x as u64 as i64),
+        (Value::F64(x), Ty::I64) => Value::I64(x as u64 as i64),
         (other, _) => other,
     }
 }

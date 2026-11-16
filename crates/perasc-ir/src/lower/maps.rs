@@ -246,6 +246,14 @@ impl Lowering<'_> {
                 .unwrap_or_else(|| int(0, Ty::I32));
         }
         let e = self.expr(state, arg);
+        // A `u32` widened by zeros, as its type reads it (decision 0024); the
+        // other unsigned types are already zero-extended in their `i32`.
+        if self.int_kind(arg) == Some(perasc_check::ty::IntTy::U32) {
+            return Expr {
+                kind: ExprKind::Unary(crate::UnOp::ConvertU, Box::new(e)),
+                ty: Ty::I64,
+            };
+        }
         widen(state, e)
     }
 

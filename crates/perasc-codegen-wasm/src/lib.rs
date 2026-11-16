@@ -12,8 +12,8 @@ use std::fmt::Write as _;
 mod simd;
 
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, JsShape, MapShape,
-    MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, Function, HostMath, IntKind, JsShape,
+    MapShape, MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataCountSection, DataSection, EntityType, ExportKind,
@@ -1019,6 +1019,25 @@ impl<'a> FnEncoder<'a> {
 
     fn unary(&mut self, op: UnOp, operand: &Expr, ty: Ty) {
         match (op, ty) {
+            // An unsigned conversion (decision 0024).
+            (UnOp::ConvertU, _) => {
+                self.expr(operand);
+                let instruction = match (operand.ty, ty) {
+                    (Ty::I32, Ty::I64) => I::I64ExtendI32U,
+                    (Ty::I32, Ty::F32) => I::F32ConvertI32U,
+                    (Ty::I32, Ty::F64) => I::F64ConvertI32U,
+                    (Ty::I64, Ty::F32) => I::F32ConvertI64U,
+                    (Ty::I64, Ty::F64) => I::F64ConvertI64U,
+                    (Ty::I64, Ty::I32) => I::I32WrapI64,
+                    (Ty::F32, Ty::I32) => I::I32TruncSatF32U,
+                    (Ty::F64, Ty::I32) => I::I32TruncSatF64U,
+                    (Ty::F32, Ty::I64) => I::I64TruncSatF32U,
+                    (Ty::F64, Ty::I64) => I::I64TruncSatF64U,
+                    // The same type: nothing to do; the verifier refuses the rest.
+                    _ => return,
+                };
+                self.emit(&instruction);
+            }
             (UnOp::Neg, Ty::I32) => {
                 self.emit(&I::I32Const(0));
                 self.expr(operand);
@@ -1167,8 +1186,11 @@ const fn mem(offset: u64, size: u32) -> MemArg {
 const fn load(elem: Elem) -> I<'static> {
     match elem {
         Elem::U8 => I::I32Load8U(mem(0, 1)),
-        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Load(mem(0, 4)),
-        Elem::I64 => I::I64Load(mem(0, 8)),
+        Elem::I8 => I::I32Load8S(mem(0, 1)),
+        Elem::I16 => I::I32Load16S(mem(0, 2)),
+        Elem::U16 => I::I32Load16U(mem(0, 2)),
+        Elem::I32 | Elem::U32 | Elem::Bool | Elem::Handle => I::I32Load(mem(0, 4)),
+        Elem::I64 | Elem::U64 => I::I64Load(mem(0, 8)),
         Elem::F32 => I::F32Load(mem(0, 4)),
         Elem::F64 => I::F64Load(mem(0, 8)),
     }
@@ -1176,9 +1198,10 @@ const fn load(elem: Elem) -> I<'static> {
 
 const fn store(elem: Elem) -> I<'static> {
     match elem {
-        Elem::U8 => I::I32Store8(mem(0, 1)),
-        Elem::I32 | Elem::Bool | Elem::Handle => I::I32Store(mem(0, 4)),
-        Elem::I64 => I::I64Store(mem(0, 8)),
+        Elem::U8 | Elem::I8 => I::I32Store8(mem(0, 1)),
+        Elem::I16 | Elem::U16 => I::I32Store16(mem(0, 2)),
+        Elem::I32 | Elem::U32 | Elem::Bool | Elem::Handle => I::I32Store(mem(0, 4)),
+        Elem::I64 | Elem::U64 => I::I64Store(mem(0, 8)),
         Elem::F32 => I::F32Store(mem(0, 4)),
         Elem::F64 => I::F64Store(mem(0, 8)),
     }
@@ -1208,6 +1231,13 @@ const fn int32(op: BinOp) -> I<'static> {
         BinOp::Le => I::I32LeS,
         BinOp::Gt => I::I32GtS,
         BinOp::Ge => I::I32GeS,
+        BinOp::DivU => I::I32DivU,
+        BinOp::RemU => I::I32RemU,
+        BinOp::ShrU => I::I32ShrU,
+        BinOp::LtU => I::I32LtU,
+        BinOp::LeU => I::I32LeU,
+        BinOp::GtU => I::I32GtU,
+        BinOp::GeU => I::I32GeU,
         BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
@@ -1230,6 +1260,13 @@ const fn int64(op: BinOp) -> I<'static> {
         BinOp::Le => I::I64LeS,
         BinOp::Gt => I::I64GtS,
         BinOp::Ge => I::I64GeS,
+        BinOp::DivU => I::I64DivU,
+        BinOp::RemU => I::I64RemU,
+        BinOp::ShrU => I::I64ShrU,
+        BinOp::LtU => I::I64LtU,
+        BinOp::LeU => I::I64LeU,
+        BinOp::GtU => I::I64GtU,
+        BinOp::GeU => I::I64GeU,
         BinOp::Pow | BinOp::Atan2 => I::Unreachable,
     }
 }
@@ -1625,7 +1662,7 @@ fn crosses_map(module: &Module) -> bool {
             Shape::Object(_, fields) => fields.iter().any(|(_, f)| has(f)),
             Shape::Option(inner) | Shape::Records(inner, _) => has(inner),
             Shape::Enum(_, variants) => variants.iter().any(|(_, f)| f.iter().any(has)),
-            Shape::Value(_) | Shape::Array(..) | Shape::String(_) => false,
+            Shape::Value(_) | Shape::Int(_) | Shape::Array(..) | Shape::String(_) => false,
         }
     }
     module
@@ -1635,6 +1672,19 @@ fn crosses_map(module: &Module) -> bool {
         .any(|s| s.params.iter().any(|(_, p)| has(p)) || s.result.as_ref().is_some_and(has))
 }
 
+/// A number or a `BigInt` given by JavaScript, wrapped to `kind` as a typed
+/// array of that type stores it (decision 0024).
+fn js_wrap(kind: IntKind, value: &str) -> String {
+    match kind {
+        IntKind::I8 => format!("(({value} << 24) >> 24)"),
+        IntKind::I16 => format!("(({value} << 16) >> 16)"),
+        IntKind::U8 => format!("({value} & 255)"),
+        IntKind::U16 => format!("({value} & 65535)"),
+        IntKind::U32 => format!("({value} >>> 0)"),
+        IntKind::U64 => format!("BigInt.asUintN(64, {value})"),
+    }
+}
+
 /// What the loader needs to know of a map's key: whether it is a string,
 /// and the kind of an integer or boolean key.
 fn map_key(map: &MapShape) -> (u8, &'static str) {
@@ -1642,6 +1692,13 @@ fn map_key(map: &MapShape) -> (u8, &'static str) {
         Shape::String(_) => (1, "\"i64\""),
         Shape::Value(Ty::I32) => (0, "\"i32\""),
         Shape::Value(Ty::Bool) => (0, "\"bool\""),
+        // Decision 0024: wrapped to its type, then widened by its extension.
+        Shape::Int(IntKind::U64) => (0, "\"u64\""),
+        Shape::Int(IntKind::U32) => (0, "\"u32\""),
+        Shape::Int(IntKind::U16) => (0, "\"u16\""),
+        Shape::Int(IntKind::U8) => (0, "\"u8\""),
+        Shape::Int(IntKind::I16) => (0, "\"i16\""),
+        Shape::Int(IntKind::I8) => (0, "\"i8\""),
         _ => (0, "\"i64\""),
     }
 }
@@ -1700,6 +1757,16 @@ fn record_columns(
     out: &mut Vec<(String, String)>,
 ) {
     match shape {
+        Shape::Int(kind) => {
+            let zero = if *kind == IntKind::U64 { "0n" } else { "0" };
+            let read = if optional {
+                format!("({path} ?? {zero})")
+            } else {
+                path.to_owned()
+            };
+            let elem = if *kind == IntKind::U64 { "i64" } else { "i32" };
+            out.push((js_wrap(*kind, &read), elem.to_owned()));
+        }
         Shape::Value(ty) => {
             let elem = Elem::of(*ty).unwrap_or(Elem::I32);
             let value = if optional {
@@ -1787,7 +1854,7 @@ fn record_columns(
 /// which are changed in place.
 fn numbers(shape: &Shape) -> usize {
     match shape {
-        Shape::Value(_) => 1,
+        Shape::Value(_) | Shape::Int(_) => 1,
         Shape::Object(_, fields) => fields.iter().map(|(_, f)| numbers(f)).sum(),
         Shape::Option(inner) => 1 + numbers(inner),
         Shape::Enum(..) => shape.scalars().len(),
@@ -1798,7 +1865,7 @@ fn numbers(shape: &Shape) -> usize {
 /// `p.x = $r[1];` for each number of an `inout` object, in order.
 fn write_back(path: &str, shape: &Shape, many: bool, index: &mut usize, out: &mut Vec<String>) {
     match shape {
-        Shape::Value(_) => {
+        Shape::Value(_) | Shape::Int(_) => {
             let value = rebuild(shape, many, index);
             out.push(format!("{path} = {value};"));
         }
@@ -1835,6 +1902,11 @@ const fn elem_kind(elem: Elem) -> &'static str {
         Elem::F64 => "f64",
         Elem::Bool => "bool",
         Elem::U8 => "u8",
+        Elem::I8 => "i8",
+        Elem::I16 => "i16",
+        Elem::U16 => "u16",
+        Elem::U32 => "u32",
+        Elem::U64 => "u64",
         Elem::Handle => "ptr",
     }
 }
@@ -1865,6 +1937,30 @@ fn flatten_array(path: &str, elem: Elem, pass: Pass, optional: bool, out: &mut M
     if pass != Pass::Sink {
         out.post
             .push(format!("if ({copied}) $runtime.buf_release({buffer}, 0);"));
+    }
+    out.args.push(buffer);
+}
+
+/// A map or a set passed as a parameter: a new map in the module's memory,
+/// its entries given back to an `inout` one.
+fn flatten_map(path: &str, map: &MapShape, optional: bool, out: &mut Marshal) {
+    let buffer = format!("$a{}", out.pre.len());
+    let source = if optional {
+        format!("({path} ?? [])")
+    } else {
+        path.to_owned()
+    };
+    out.pre
+        .push(format!("const {buffer} = {};", to_map(&source, map, 0)));
+    // An `inout` map gets the function's entries back, in order.
+    if map.pass == Pass::Inout {
+        let (strings, key, kinds, build) = map_reader(map);
+        out.post.push(format!(
+            "{path}.clear(); $readMap({buffer}, {strings}, {key}, [{kinds}], {build}, {path});"
+        ));
+    }
+    if map.pass != Pass::Sink {
+        out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
     }
     out.args.push(buffer);
 }
@@ -1934,27 +2030,7 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             }
             out.args.push(buffer);
         }
-        Shape::Map(map) => {
-            let buffer = format!("$a{}", out.pre.len());
-            let source = if optional {
-                format!("({path} ?? [])")
-            } else {
-                path.to_owned()
-            };
-            out.pre
-                .push(format!("const {buffer} = {};", to_map(&source, map, 0)));
-            // An `inout` map gets the function's entries back, in order.
-            if map.pass == Pass::Inout {
-                let (strings, key, kinds, build) = map_reader(map);
-                out.post.push(format!(
-                    "{path}.clear(); $readMap({buffer}, {strings}, {key}, [{kinds}], {build}, {path});"
-                ));
-            }
-            if map.pass != Pass::Sink {
-                out.post.push(format!("$runtime.buf_release({buffer}, 0);"));
-            }
-            out.args.push(buffer);
-        }
+        Shape::Map(map) => flatten_map(path, map, optional, out),
         Shape::Value(ty) if optional => {
             let zero = match ty {
                 Ty::I64 => "0n",
@@ -1964,6 +2040,17 @@ fn flatten(path: &str, shape: &Shape, optional: bool, out: &mut Marshal) {
             out.args.push(format!("({path} ?? {zero})"));
         }
         Shape::Value(_) => out.args.push(path.to_owned()),
+        // Wrapped to its type, as a typed array of it stores a number
+        // (decision 0024).
+        Shape::Int(kind) => {
+            let read = if optional {
+                let zero = if *kind == IntKind::U64 { "0n" } else { "0" };
+                format!("({path} ?? {zero})")
+            } else {
+                path.to_owned()
+            };
+            out.args.push(js_wrap(*kind, &read));
+        }
         Shape::Object(_, fields) => {
             let dot = if optional { "?." } else { "." };
             for (field, value) in fields {
@@ -2006,6 +2093,16 @@ fn rebuild_at(
                 format!("{scalar} !== 0")
             } else {
                 scalar
+            }
+        }
+        // A `u32` or a `u64` is never negative (decision 0024).
+        Shape::Int(kind) => {
+            let scalar = at(*index);
+            *index += 1;
+            match kind {
+                IntKind::U32 => format!("({scalar} >>> 0)"),
+                IntKind::U64 => format!("BigInt.asUintN(64, {scalar})"),
+                _ => scalar,
             }
         }
         // A tuple is an array.
@@ -2392,7 +2489,7 @@ const $tagOf = (kind, names) => {
 /// The loader's helpers for arrays and strings, which cross the boundary as
 /// copies: into a new buffer, and out of one.
 const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and out of one.\n\
-         const $kinds = { i32: [4, \"getInt32\", \"setInt32\"], i64: [8, \"getBigInt64\", \"setBigInt64\"], f32: [4, \"getFloat32\", \"setFloat32\"], f64: [8, \"getFloat64\", \"setFloat64\"], bool: [4, \"getInt32\", \"setInt32\"], u8: [1, \"getUint8\", \"setUint8\"], ptr: [4, \"getInt32\", \"setInt32\"] };\n\
+         const $kinds = { i32: [4, \"getInt32\", \"setInt32\"], i64: [8, \"getBigInt64\", \"setBigInt64\"], f32: [4, \"getFloat32\", \"setFloat32\"], f64: [8, \"getFloat64\", \"setFloat64\"], bool: [4, \"getInt32\", \"setInt32\"], u8: [1, \"getUint8\", \"setUint8\"], i8: [1, \"getInt8\", \"setInt8\"], i16: [2, \"getInt16\", \"setInt16\"], u16: [2, \"getUint16\", \"setUint16\"], u32: [4, \"getUint32\", \"setUint32\"], u64: [8, \"getBigUint64\", \"setBigUint64\"], ptr: [4, \"getInt32\", \"setInt32\"] };\n\
          const $toBuf = (values, kind) => {\n  \
          const [size, , set] = $kinds[kind];\n  \
          const n = values.length;\n  \
@@ -2423,7 +2520,7 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          };\n\
          // An array of numbers can also stay in the module's memory, and be\n\
          // passed and read with no copy: a `PerasArray`, made by `__perasHeap.array`.\n\
-         const $typed = { i32: Int32Array, i64: BigInt64Array, f32: Float32Array, f64: Float64Array, bool: Int32Array, u8: Uint8Array };\n\
+         const $typed = { i32: Int32Array, i64: BigInt64Array, f32: Float32Array, f64: Float64Array, bool: Int32Array, u8: Uint8Array, i8: Int8Array, i16: Int16Array, u16: Uint16Array, u32: Uint32Array, u64: BigUint64Array };\n\
          const $collected = new FinalizationRegistry((h) => $runtime.buf_release(h, 0));\n\
          class PerasArray {\n  \
          #h; #kind;\n  \
@@ -2550,7 +2647,7 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          // Maps and sets cross as copies, in insertion order: into a new map in\n\
          // the module's memory, and out into a new Map or Set. A key or a\n\
          // scalar is kept in 64 bits: an i32 or a bool as a BigInt.\n\
-         const $mapInt = (x, kind) => (kind === \"i64\" ? x : kind === \"bool\" ? (x ? 1n : 0n) : BigInt(x));\n\
+         const $mapInt = (x, kind) => (kind === \"i64\" ? x : kind === \"bool\" ? (x ? 1n : 0n) : kind === \"u64\" ? BigInt.asIntN(64, x) : kind === \"u32\" ? BigInt(x >>> 0) : kind === \"u16\" ? BigInt(x & 65535) : kind === \"u8\" ? BigInt(x & 255) : kind === \"i16\" ? BigInt((x << 16) >> 16) : kind === \"i8\" ? BigInt((x << 24) >> 24) : BigInt(x));\n\
          const $toMap = (source, strings, slots, keyKind, columns) => {\n  \
          const h = $runtime.map_new(strings, slots);\n  \
          for (const item of source) {\n    \
@@ -2570,7 +2667,7 @@ const HEAP_HELPERS: &str = "// Arrays cross as copies: into a new buffer, and ou
          const out = into ?? (build === undefined ? new Set() : new Map());\n  \
          for (let e = $runtime.map_next(h, 0); e >= 0; e = $runtime.map_next(h, e + 1)) {\n    \
          const i = strings ? 0n : $runtime.map_key_i(h, e);\n    \
-         const k = strings ? $readStr($runtime.map_key_s(h, e)) : keyKind === \"i64\" ? i : keyKind === \"bool\" ? i !== 0n : Number(i);\n    \
+         const k = strings ? $readStr($runtime.map_key_s(h, e)) : keyKind === \"i64\" ? i : keyKind === \"u64\" ? BigInt.asUintN(64, i) : keyKind === \"bool\" ? i !== 0n : Number(i);\n    \
          if (build === undefined) {\n      \
          out.add(k);\n      \
          continue;\n    \
@@ -2659,14 +2756,14 @@ pub fn dts(module: &Module) -> String {
     if module.uses_heap() {
         out.push_str(
             "/** The kinds of number a `PerasArray` holds, and the typed array that views each. */\n\
-             export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array }\n\
+             export interface PerasKinds { i32: Int32Array; i64: BigInt64Array; f32: Float32Array; f64: Float64Array; bool: Int32Array; u8: Uint8Array; i8: Int8Array; i16: Int16Array; u16: Uint16Array; u32: Uint32Array; u64: BigUint64Array }\n\
              /** An array of numbers in the module's memory, passed to its functions with no copy. */\n\
              export declare class PerasArray<K extends keyof PerasKinds> {\n  \
              readonly kind: K;\n  \
              readonly length: number;\n  \
              /** A view of the elements, with no copy; valid until the next call into the module. */\n  \
              view(): PerasKinds[K];\n  \
-             toArray(): (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[];\n  \
+             toArray(): (K extends \"i64\" | \"u64\" ? bigint : K extends \"bool\" ? boolean : number)[];\n  \
              /** Gives its memory back; released when collected otherwise. */\n  \
              release(): void;\n\
              }\n\
@@ -2674,7 +2771,7 @@ pub fn dts(module: &Module) -> String {
              export declare const __perasHeap: {\n  \
              live(): number;\n  \
              checkLeaks(): void;\n  \
-             array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends \"i64\" ? bigint : K extends \"bool\" ? boolean : number)[]): PerasArray<K>;\n\
+             array<K extends keyof PerasKinds>(kind: K, init: number | readonly (K extends \"i64\" | \"u64\" ? bigint : K extends \"bool\" ? boolean : number)[]): PerasArray<K>;\n\
              };\n",
         );
         // A module with `parallel for` loops says how many threads run them.
@@ -2746,6 +2843,12 @@ fn union(variants: &[(String, Vec<Shape>)]) -> String {
 fn ts_shape(shape: &Shape) -> String {
     match shape {
         Shape::Value(ty) => ts_scalar(*ty).to_owned(),
+        Shape::Int(kind) => if *kind == IntKind::U64 {
+            "bigint"
+        } else {
+            "number"
+        }
+        .to_owned(),
         // A result has no name of its own: its union is written in place.
         Shape::Enum(name, variants) if name.is_empty() => format!("({})", union(variants)),
         Shape::Object(name, fields) if name.is_empty() => {
@@ -2804,7 +2907,13 @@ fn ts_param(shape: &Shape) -> String {
                 Elem::I64 => " | BigInt64Array",
                 Elem::F32 => " | Float32Array",
                 Elem::F64 => " | Float64Array",
-                Elem::Bool | Elem::U8 | Elem::Handle => "",
+                Elem::U8 => " | Uint8Array",
+                Elem::I8 => " | Int8Array",
+                Elem::I16 => " | Int16Array",
+                Elem::U16 => " | Uint16Array",
+                Elem::U32 => " | Uint32Array",
+                Elem::U64 => " | BigUint64Array",
+                Elem::Bool | Elem::Handle => "",
             };
             format!(
                 "{}{typed} | PerasArray<\"{}\">",

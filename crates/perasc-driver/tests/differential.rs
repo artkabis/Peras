@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 35 } else { 36 };
+    let choices = if depth == 0 { 38 } else { 39 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -134,6 +134,13 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // call is not the value after it (decision 0023).
         // `spun` uses no memory: the optimizations run on its loop.
         34 => "for (let j = 0; j < 3; j++) { const before = tally; acc += bumped(j + i) - before % 50; } if (tally % 2 == 0) { tally += 1; } acc += tally % 7 + spun(i);".to_owned(),
+        // The integer types of decision 0024: unsigned division, remainder,
+        // shifts and comparisons, each kept in its canonical form.
+        35 => "b8 = b8.wrappingMul(31).wrappingAdd(i.toU8()); h16 = h16.wrappingAdd(b8.toU16() << 3); if (b8 > 200) { acc += 1; } acc += (b8 / 3).toI32() + (h16 % 1000).toI32() + (h16 >> 13).toI32();".to_owned(),
+        36 => "u = u.wrappingMul(2654435761).wrappingAdd(i.toU32()); if (u > 3000000000) { acc += 2; } acc += (u >> 28).toI32() + (u % 97).toI32(); big = big.wrappingMul(6364136223846793005).wrappingAdd(u.toU64()); if (big > 9223372036854775808) { acc += 3; } acc += (big >> 60).toI32() + (big % 13).toI32() + (big / 3000000000000000000).toI32();".to_owned(),
+        // An array of `i16` at its width, sorted by insertion when short, and
+        // at 71 elements by the runtime's radix sort.
+        37 => "w16 = w16.wrappingSub(1234).wrappingMul(3); s8 = (s8 ^ i.toI8()).wrappingAdd(-100); ws.push(w16); if (ws.length % 9 == 8) { ws.sort(); acc += ws[0].toI32() % 100 + ws[ws.length - 1].toI32() % 100; } if (ws.length > 70) { ws = []; } acc += (w16 / 7).toI32() % 50 + (s8 % 9).toI32(); if (s8 < -50 || w16 >= 1000) { acc += 4; }".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -197,6 +204,13 @@ export fn f(n: i32): i32 {{
   let ids: Set<i32> = Set.new();
   let wide: Map<i64, i32> = Map.new();
   let names: Map<i32, String> = Map.new();
+  let b8: u8 = 7;
+  let h16: u16 = 0;
+  let u: u32 = 4000000000;
+  let big: u64 = 1;
+  let s8: i8 = 0;
+  let w16: i16 = -3;
+  let ws: Array<i16> = [];
   let k = \"a\";
   let s = \"\";
   let acc = 0;
@@ -212,6 +226,7 @@ export fn f(n: i32): i32 {{
   for (const x of ids) {{
     acc = (acc + x % 1000) % 100003;
   }}
+  acc = (acc + b8.toI32() + h16.toI32() + (u % 1000).toI32() + (big % 1000).toI32() + s8.toI32() + w16.toI32() + ws.length) % 100003;
   return acc + tally % 1000 + m.size * 1000 + names.size * 100 + ids.size + wide.size * 10 + s.length + k.length;
 }}
 "

@@ -4,14 +4,14 @@
 
 | Type  | Taille  | Intervalle                | État                                         |
 | ----- | ------- | ------------------------- | -------------------------------------------- |
-| `i8`  | 8 bits  | −128 à 127                | <span class="status checked">vérifié</span>  |
-| `i16` | 16 bits | −32 768 à 32 767          | <span class="status checked">vérifié</span>  |
+| `i8`  | 8 bits  | −128 à 127                | <span class="status compiled">compilé</span> |
+| `i16` | 16 bits | −32 768 à 32 767          | <span class="status compiled">compilé</span> |
 | `i32` | 32 bits | environ ±2,1 × 10⁹        | <span class="status compiled">compilé</span> |
 | `i64` | 64 bits | environ ±9,2 × 10¹⁸       | <span class="status compiled">compilé</span> |
-| `u8`  | 8 bits  | 0 à 255                   | <span class="status checked">vérifié</span>  |
-| `u16` | 16 bits | 0 à 65 535                | <span class="status checked">vérifié</span>  |
-| `u32` | 32 bits | 0 à environ 4,3 × 10⁹     | <span class="status checked">vérifié</span>  |
-| `u64` | 64 bits | 0 à environ 1,8 × 10¹⁹    | <span class="status checked">vérifié</span>  |
+| `u8`  | 8 bits  | 0 à 255                   | <span class="status compiled">compilé</span> |
+| `u16` | 16 bits | 0 à 65 535                | <span class="status compiled">compilé</span> |
+| `u32` | 32 bits | 0 à environ 4,3 × 10⁹     | <span class="status compiled">compilé</span> |
+| `u64` | 64 bits | 0 à environ 1,8 × 10¹⁹    | <span class="status compiled">compilé</span> |
 | `f32` | 32 bits | IEEE 754 simple précision | <span class="status compiled">compilé</span> |
 | `f64` | 64 bits | IEEE 754 double précision | <span class="status compiled">compilé</span> |
 
@@ -19,7 +19,8 @@ Les règles, les mêmes dans chaque backend :
 
 - `+`, `-`, `*` sur les entiers arrêtent le programme sur un dépassement dans un build de debug, le défaut de `perasc build` et du serveur de développement de Vite, par une `RangeError` qui le dit, et rebouclent dans un build de production (`--allocator tlsf`), où vérifier coûterait du temps, comme en Rust ; `wrappingAdd`, `wrappingSub` et `wrappingMul` rebouclent exprès dans les deux, `checkedAdd` et les autres renvoient `None` à la place. Un compteur de boucle `i++` sous `i < borne` n’est pas vérifié : il ne peut pas dépasser ;
 - la division et le reste entiers par zéro arrêtent le programme, comme `MIN / -1` ;
-- les conversions de flottant vers entier arrondissent vers zéro et saturent ; NaN devient 0 ;
+- les conversions de flottant vers entier arrondissent vers zéro et saturent ; NaN devient 0 ; entre entiers, `toU8()` et les autres gardent les bits de poids faible, comme le `as` de Rust ;
+- à la frontière avec JavaScript, `i64` et `u64` sont des `BigInt` et les autres des nombres ; une valeur que JavaScript donne est enveloppée à son type, comme un tableau typé de ce type la range (300 donné comme `u8` vaut 44), et un `u32` ou un `u64` revient positif ou nul ([décision 0024](../decisions/0024-integer-types.md)). Un `Array<u8>` est rangé un octet par élément, et un `PerasArray` de `u8`, `i8`, `i16`, `u16`, `u32` ou `u64` se voit comme son tableau typé ;
 - aucune conversion n’est implicite : [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).
 
 ### Littéraux

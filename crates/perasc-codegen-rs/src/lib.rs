@@ -291,6 +291,17 @@ impl<'a> Emitter<'a> {
             ExprKind::Unary(op, operand) => {
                 let x = self.expr(operand);
                 match op {
+                    // An unsigned conversion: through Rust's unsigned type, its
+                    // `as` saturating from floats as WebAssembly's does.
+                    UnOp::ConvertU => {
+                        let unsigned = |t: Ty| if t == Ty::I64 { "u64" } else { "u32" };
+                        let to = rust_type(e.ty);
+                        if operand.ty.is_int() {
+                            format!("((({x}) as {}) as {to})", unsigned(operand.ty))
+                        } else {
+                            format!("((({x}) as {}) as {to})", unsigned(e.ty))
+                        }
+                    }
                     UnOp::Neg if e.ty.is_int() => format!("({x}).wrapping_neg()"),
                     UnOp::Neg => format!("(-{x})"),
                     UnOp::Not | UnOp::BitNot => format!("(!{x})"),
@@ -342,6 +353,21 @@ fn binary(op: BinOp, ty: Ty, a: &str, b: &str) -> String {
         BinOp::Shr => format!("{a}.wrapping_shr({b} as u32)"),
         BinOp::Pow => format!("((({a}) as f64).powf(({b}) as f64) as {})", rust_type(ty)),
         BinOp::Atan2 => format!("((({a}) as f64).atan2(({b}) as f64) as {})", rust_type(ty)),
+        // Unsigned: the same bits through Rust's unsigned type (decision 0024).
+        BinOp::DivU | BinOp::RemU | BinOp::ShrU => {
+            let u = if ty == Ty::I64 { "u64" } else { "u32" };
+            let s = rust_type(ty);
+            match op {
+                BinOp::DivU => format!("((({a}) as {u}) / (({b}) as {u})) as {s}"),
+                BinOp::RemU => format!("((({a}) as {u}) % (({b}) as {u})) as {s}"),
+                _ => format!("((({a}) as {u}).wrapping_shr(({b}) as u32)) as {s}"),
+            }
+        }
+        BinOp::LtU | BinOp::LeU | BinOp::GtU | BinOp::GeU => {
+            let u = if ty == Ty::I64 { "u64" } else { "u32" };
+            let symbol = op.symbol().trim_end_matches('u');
+            format!("((({a}) as {u}) {symbol} (({b}) as {u}))")
+        }
         // Integer `/` traps on zero and on `MIN / -1`, as `i32.div_s` does.
         other => format!("({a} {} {b})", other.symbol()),
     }

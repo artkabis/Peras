@@ -26,13 +26,13 @@ pub const FUNCTION_METHODS: [&str; 9] = [
     "sortByDescending",
 ];
 
-/// Whether `sortBy` orders by values of this type: `i32`, `i64`, `f32`,
-/// `f64` and strings.
+/// Whether `sortBy` orders by values of this type: integers, floats and
+/// strings.
 #[must_use]
-pub fn is_sort_key(ty: &Ty) -> bool {
+pub const fn is_sort_key(ty: &Ty) -> bool {
     matches!(
         ty,
-        Ty::Int(IntTy::I32 | IntTy::I64) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit | Ty::String
+        Ty::Int(_) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit | Ty::String
     )
 }
 

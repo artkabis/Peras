@@ -150,7 +150,7 @@ export fn largest(orders: Array<Order>, count: i32): Array<Order> {
 }
 ```
 
-- **La clé** est un `i32`, un `i64`, un `f32`, un `f64` (`number`) ou une `String`, calculée une fois par élément ([E0249](../errors/E0249.md)). Les nombres sont dans l’ordre de `sort()` : -0 avant +0, NaN à la fin. Les chaînes sont dans l’ordre de leurs points de code Unicode, le même dans les deux modes ; le `<` de JavaScript compare des unités UTF-16, qui ne diffèrent qu’entre les caractères au-delà de U+FFFF et ceux de U+E000 à U+FFFF.
+- **La clé** est un entier de n’importe quel type, un `f32`, un `f64` (`number`) ou une `String`, calculée une fois par élément ([E0249](../errors/E0249.md)). Les nombres sont dans l’ordre de `sort()` : -0 avant +0, NaN à la fin. Les chaînes sont dans l’ordre de leurs points de code Unicode, le même dans les deux modes ; le `<` de JavaScript compare des unités UTF-16, qui ne diffèrent qu’entre les caractères au-delà de U+FFFF et ceux de U+E000 à U+FFFF.
 - **Stable** : les éléments de clés égales gardent leur ordre, en décroissant aussi. `sortByDescending` renverse l’ordre des clés : NaN vient donc en premier.
 - **Rapide** : les nombres sont triés par leurs bits, un tri par base qui emporte les indices des éléments, en un temps proportionnel à la longueur ; les chaînes par comparaison. Mesuré contre le `sort((a, b) => a.amount - b.amount)` de TypeScript ([résultats](../../../bench/sort/RESULTS.md)) : par un nombre, 3 à 7 fois plus rapide dès 10 000 éléments, dans les deux modes ; par une chaîne, aussi rapide dans un module managed, 1,1 à 1,4 fois dans un module owned.
 

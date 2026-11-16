@@ -75,7 +75,6 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "export fn f(s: inout String): void { s += \"a\"; }",
             "inout-string",
         ),
-        ("fn f(x: u8): u8 { return x; }", "integer-type"),
     ] {
         let errors = lowered(source).err().unwrap_or_default();
         assert!(!errors.is_empty(), "{source}: no error");

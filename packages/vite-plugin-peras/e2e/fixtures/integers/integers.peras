@@ -1,0 +1,115 @@
+// Every integer type of decision 0024 across the boundary: as a parameter, a
+// result, a field, an array element, a map key and a module variable.
+
+export struct Pixel {
+  r: u8;
+  g: u8;
+  b: u8;
+  depth: i16;
+  id: u32;
+  stamp: u64;
+}
+
+export fn mix(a: i8, b: i16, c: u8, d: u16, e: u32, f: u64): u64 {
+  let s: i64 = a.toI64() + b.toI64() + c.toI64() + d.toI64() + e.toI64();
+  return s.toU64().wrappingAdd(f);
+}
+
+export fn echo8(x: i8): i8 {
+  return x;
+}
+
+export fn echoU32(x: u32): u32 {
+  return x;
+}
+
+export fn echoU64(x: u64): u64 {
+  return x;
+}
+
+export fn brighter(p: Pixel): Pixel {
+  return Pixel(p.r.wrappingAdd(10), p.g, p.b / 2, p.depth.wrappingSub(1), p.id + 1, p.stamp);
+}
+
+export fn grey(ps: Array<Pixel>): Array<u8> {
+  let out: Array<u8> = [];
+  for (const p of ps) {
+    out.push(((p.r.toU16() + p.g.toU16() + p.b.toU16()) / 3).toU8());
+  }
+  return out;
+}
+
+export fn invert(xs: Array<u8>): Array<u8> {
+  return xs.map((x) => 255 - x);
+}
+
+export fn halve(xs: inout Array<i16>): void {
+  for (let i = 0; i < xs.length; i++) {
+    xs[i] = xs[i] / 2;
+  }
+}
+
+export fn hashes(n: i32): Array<u32> {
+  let out: Array<u32> = [];
+  let h: u32 = 2166136261;
+  for (let i = 0; i < n; i++) {
+    h = (h ^ i.toU32()).wrappingMul(16777619);
+    out.push(h);
+  }
+  return out;
+}
+
+export fn largest(xs: Array<u64>): u64 {
+  let best: u64 = 0;
+  for (const x of xs) {
+    best = best.max(x);
+  }
+  return best;
+}
+
+export fn ordered(xs: Array<u32>): Array<u32> {
+  let ys = xs.copy();
+  ys.sort();
+  return ys;
+}
+
+export fn histogram(xs: Array<u8>): Map<u8, i32> {
+  let m: Map<u8, i32> = Map.new();
+  for (const x of xs) {
+    m.set(x, m.get(x).unwrapOr(0) + 1);
+  }
+  return m;
+}
+
+export fn owners(ids: Set<u32>): u32 {
+  let s: u32 = 0;
+  for (const id of ids) {
+    s = s ^ id;
+  }
+  return s;
+}
+
+let ticks: u16 = 65530;
+
+export fn tick(): u16 {
+  ticks = ticks.wrappingAdd(4);
+  return ticks;
+}
+
+export fn backwards(xs: Array<i16>): Array<i16> {
+  let a = xs.copy();
+  a.reverse();
+  return a.concat(xs.slice(1, 3));
+}
+
+export fn sortedBytes(xs: Array<i8>): Array<i8> {
+  let ys = xs.copy();
+  ys.sort();
+  return ys;
+}
+
+export fn byStamp(ps: Array<Pixel>): Array<u32> {
+  let qs = ps.copy();
+  qs.sortByDescending((p) => p.stamp);
+  return qs.map((p) => p.id);
+}

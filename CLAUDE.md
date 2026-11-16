@@ -52,6 +52,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **The end-to-end tests use `target/release/perasc`**: `cargo build --release -p perasc` before `pnpm run e2e`, or they test the compiler as it was (M018).
 - **A round trip can hide a difference**: a test that compares what a module gives back passes through the loader both ways; compare what the module computes from each input too (F217).
 - **An optimization passes the differential test before it lands** (`crates/perasc-driver/tests/differential.rs`): once with `PERAS_DIFFERENTIAL_SEEDS=2000`, and once with the optimization broken on purpose, to see the test fail (M015). Extend its generator with what the optimization touches.
+- **A new operation or element type is looked for wherever its neighbours are matched**: `grep` every `BinOp::Div`, every `Elem::`, every size the runtime tests. An unsigned division was taken for one that cannot stop the program (F008), bytes for lanes of four (F007), and `reverse()` knew no element of two bytes (F009).
 - **Write Peras as a user would before claiming what it can do.** The frictions found that way go to the findings, with the diagnostic as evidence.
 
 ## Peras as it is today
@@ -63,6 +64,6 @@ What a program can rely on, and what it cannot yet; the details and their eviden
 - Modules: a `.peras` file imports functions, structures and enumerations of other `.peras` files, compiled into one module; not generics, not the methods of an imported structure, no `as`, no cycle (decision 0022).
 - Module variables (`let` at the top of a `.peras`): numbers, booleans, and structures, enumerations and options of them, a constant initial value; not strings or arrays, not `inout`, not in a `parallel for` (decision 0023).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).
-- Integers: `i32` and `i64` compiled; `i8`, `i16`, `u8`, `u16`, `u32`, `u64` checked only (F302).
+- Integers: all eight compiled (decision 0024). JavaScript's values are wrapped to their type, `u32` and `u64` come back non-negative, `u64` as a `BigInt`. An `Array<u8>` is a byte an element; in an array of structures, such a field takes four bytes.
 - A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).
 - Slow: adding to a large `Set` (F215), a key built per row only to be looked up (F202). Fast: `split`, sorts by a key, `get` then `set` of one key (F216).

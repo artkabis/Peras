@@ -4,14 +4,14 @@
 
 | Type  | Size    | Range                     | Status                                        |
 | ----- | ------- | ------------------------- | --------------------------------------------- |
-| `i8`  | 8 bits  | −128 to 127               | <span class="status checked">checked</span>   |
-| `i16` | 16 bits | −32,768 to 32,767         | <span class="status checked">checked</span>   |
+| `i8`  | 8 bits  | −128 to 127               | <span class="status compiled">compiled</span> |
+| `i16` | 16 bits | −32,768 to 32,767         | <span class="status compiled">compiled</span> |
 | `i32` | 32 bits | about ±2.1 × 10⁹          | <span class="status compiled">compiled</span> |
 | `i64` | 64 bits | about ±9.2 × 10¹⁸         | <span class="status compiled">compiled</span> |
-| `u8`  | 8 bits  | 0 to 255                  | <span class="status checked">checked</span>   |
-| `u16` | 16 bits | 0 to 65,535               | <span class="status checked">checked</span>   |
-| `u32` | 32 bits | 0 to about 4.3 × 10⁹      | <span class="status checked">checked</span>   |
-| `u64` | 64 bits | 0 to about 1.8 × 10¹⁹     | <span class="status checked">checked</span>   |
+| `u8`  | 8 bits  | 0 to 255                  | <span class="status compiled">compiled</span> |
+| `u16` | 16 bits | 0 to 65,535               | <span class="status compiled">compiled</span> |
+| `u32` | 32 bits | 0 to about 4.3 × 10⁹      | <span class="status compiled">compiled</span> |
+| `u64` | 64 bits | 0 to about 1.8 × 10¹⁹     | <span class="status compiled">compiled</span> |
 | `f32` | 32 bits | IEEE 754 single precision | <span class="status compiled">compiled</span> |
 | `f64` | 64 bits | IEEE 754 double precision | <span class="status compiled">compiled</span> |
 
@@ -19,7 +19,8 @@ Rules, the same in every backend:
 
 - integer `+`, `-`, `*` stop the program on an overflow in a debug build, the default of `perasc build` and of Vite's dev server, with a `RangeError` that says so, and wrap around in a production build (`--allocator tlsf`), where checking would cost time, as in Rust; `wrappingAdd`, `wrappingSub` and `wrappingMul` wrap on purpose in both, `checkedAdd` and the others return `None` instead. A loop counter `i++` under `i < bound` is not checked: it cannot overflow;
 - integer division and remainder by zero stop the program, as does `MIN / -1`;
-- float to integer conversions round toward zero and saturate; NaN becomes 0;
+- float to integer conversions round toward zero and saturate; NaN becomes 0; between integers, `toU8()` and the others keep the low bits, as Rust's `as` does;
+- at the boundary with JavaScript, `i64` and `u64` are `BigInt`s and the others numbers; a value JavaScript gives is wrapped to its type, as a typed array of that type stores it (300 given as a `u8` is 44), and a `u32` or a `u64` comes back non-negative ([decision 0024](../decisions/0024-integer-types.md)). An `Array<u8>` is stored a byte an element, and a `PerasArray` of `u8`, `i8`, `i16`, `u16`, `u32` or `u64` is viewed as its typed array;
 - no conversion is implicit: [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).
 
 ### Literals

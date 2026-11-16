@@ -11,7 +11,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | Feature                                                                                                             | Status                                        |
 | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
 | `i32`, `i64`, `f32`, `f64`, `bool`                                                                                  | <span class="status compiled">compiled</span> |
-| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                              | <span class="status checked">checked</span>   |
+| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                              | <span class="status compiled">compiled</span> |
 | structures, nested, as parameters and results                                                                       | <span class="status compiled">compiled</span> |
 | `Option<T>`, `Some`, `None`, `?`                                                                                    | <span class="status compiled">compiled</span> |
 | `Array<T>` of any type                                                                                              | <span class="status compiled">compiled</span> |

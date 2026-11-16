@@ -179,11 +179,11 @@ fn collection_method(me: &Ty, name: &str) -> Option<Method> {
     Some(Method { params, ret })
 }
 
-/// Whether `sort()` orders elements of this type: `i32`, `i64` and floats.
-fn sortable(element: &Ty) -> bool {
+/// Whether `sort()` orders elements of this type: integers and floats.
+const fn sortable(element: &Ty) -> bool {
     matches!(
         element,
-        Ty::Int(IntTy::I32 | IntTy::I64) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit
+        Ty::Int(_) | Ty::Float(_) | Ty::IntLit | Ty::FloatLit
     )
 }
 

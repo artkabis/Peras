@@ -487,6 +487,20 @@ impl<'a> Verifier<'a> {
         }
     }
 
+    /// `convert_u` of `operand` to `to`.
+    fn convert_u(&mut self, operand: &Expr, to: Ty) {
+        self.expr(operand);
+        let numeric = |t: Ty| t.is_int() || t.is_float();
+        let int_side = operand.ty.is_int() || to.is_int();
+        if !numeric(operand.ty) || !numeric(to) || !int_side {
+            self.problem(&format!(
+                "convert_u from {} to {}",
+                operand.ty.name(),
+                to.name()
+            ));
+        }
+    }
+
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => {
@@ -525,12 +539,16 @@ impl<'a> Verifier<'a> {
                 "%{} is moved or borrowed where only an assignment, a return or an argument can take it",
                 local.0
             )),
+            // A conversion to or from an unsigned integer: numbers, of two
+            // types or of one (decision 0024).
+            ExprKind::Unary(UnOp::ConvertU, operand) => self.convert_u(operand, e.ty),
             ExprKind::Unary(op, operand) => {
                 self.expr(operand);
                 let valid = match op {
                     UnOp::Neg => operand.ty.is_int() || operand.ty.is_float(),
                     UnOp::Not => operand.ty == Ty::Bool,
                     UnOp::BitNot => operand.ty.is_int(),
+                    UnOp::ConvertU => false,
                 };
                 if !valid || e.ty != operand.ty {
                     self.problem(&format!(
@@ -606,7 +624,14 @@ impl<'a> Verifier<'a> {
                 | BinOp::BitOr
                 | BinOp::BitXor
                 | BinOp::Shl
-                | BinOp::Shr => operand.is_int(),
+                | BinOp::Shr
+                | BinOp::DivU
+                | BinOp::RemU
+                | BinOp::ShrU
+                | BinOp::LtU
+                | BinOp::LeU
+                | BinOp::GtU
+                | BinOp::GeU => operand.is_int(),
                 BinOp::Pow | BinOp::Atan2 => operand.is_float(),
             };
         let expected = if op.is_comparison() || matches!(op, BinOp::And | BinOp::Or) {

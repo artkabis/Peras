@@ -9,6 +9,7 @@
 mod format;
 mod functional;
 mod heap;
+mod ints;
 mod maps;
 mod matching;
 mod parallel;
@@ -446,14 +447,14 @@ impl<'a> Lowering<'a> {
         state: &mut FnState,
         globals: &[GlobalId],
         op: AssignOp,
-        value: ExprId,
+        (value, kind): (ExprId, Option<IntTy>),
         out: &mut Vec<Stmt>,
     ) {
         let values = self.value(state, value);
         state.flush(out);
         if let (Some(op), [global], [value]) = (assign_op(op), globals, values.as_slice()) {
             let current = self.global_expr(*global);
-            let value = self.arith(state, op, current, value.clone());
+            let value = self.arith(state, op, current, value.clone(), kind);
             state.flush(out);
             out.push(Stmt::SetGlobal(*global, value));
             return;
@@ -475,7 +476,7 @@ impl<'a> Lowering<'a> {
     fn step_global(
         &mut self,
         state: &mut FnState,
-        globals: &[GlobalId],
+        (globals, kind): (&[GlobalId], Option<IntTy>),
         op: BinOp,
         out: &mut Vec<Stmt>,
     ) {
@@ -484,7 +485,7 @@ impl<'a> Lowering<'a> {
         };
         let current = self.global_expr(global);
         let one = one(current.ty);
-        let value = self.arith(state, op, current, one);
+        let value = self.arith(state, op, current, one, kind);
         state.flush(out);
         out.push(Stmt::SetGlobal(global, value));
     }
@@ -723,7 +724,8 @@ impl Lowering<'_> {
     fn ir_type(ty: &CheckTy) -> Option<Ty> {
         Some(match ty {
             CheckTy::Int(IntTy::I32) | CheckTy::IntLit => Ty::I32,
-            CheckTy::Int(IntTy::I64) => Ty::I64,
+            // Every other integer in an `i32` or an `i64` (decision 0024).
+            CheckTy::Int(kind) => ints::storage(*kind),
             CheckTy::Float(FloatTy::F32) => Ty::F32,
             CheckTy::Float(FloatTy::F64) | CheckTy::FloatLit => Ty::F64,
             CheckTy::Bool => Ty::Bool,
@@ -961,11 +963,15 @@ impl Lowering<'_> {
                 }
             }
         }
-        let shape = (decl.exported && self.root && has_struct).then(|| JsShape {
+        let result_shape = ret_ty
+            .filter(|t| *t != CheckTy::Void)
+            .map(|t| self.shape(&t));
+        // The loader converts the integers of decision 0024 each way.
+        has_struct |= shapes.iter().any(|(_, p)| ints::shape_has_int(p))
+            || result_shape.as_ref().is_some_and(ints::shape_has_int);
+        let shape = (decl.exported && self.root && has_struct).then_some(JsShape {
             params: shapes,
-            result: ret_ty
-                .filter(|t| *t != CheckTy::Void)
-                .map(|t| self.shape(&t)),
+            result: result_shape,
             writeback,
         });
         Function {
@@ -1079,7 +1085,17 @@ impl Lowering<'_> {
     /// `a op b`; with overflow checks, `+`, `-` and `*` on integers computed
     /// as `checkedAdd` and the others are, the program stopped when the
     /// result does not fit.
-    fn arith(&mut self, state: &mut FnState, op: BinOp, a: Expr, b: Expr) -> Expr {
+    fn arith(
+        &mut self,
+        state: &mut FnState,
+        op: BinOp,
+        a: Expr,
+        b: Expr,
+        kind: Option<IntTy>,
+    ) -> Expr {
+        if let Some(kind) = kind.filter(|k| ints::is_other(*k)) {
+            return self.other_arith(state, op, a, b, kind);
+        }
         if !self.overflow_checks
             || !matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul)
             || !matches!(a.ty, Ty::I32 | Ty::I64)
@@ -1166,7 +1182,8 @@ impl Lowering<'_> {
                     } else {
                         BinOp::Sub
                     };
-                    self.step_global(state, &globals, op, out);
+                    let kind = self.int_kind(*target);
+                    self.step_global(state, (&globals, kind), op, out);
                     return;
                 }
                 let Some(locals) = self.place(state, *target) else {
@@ -1182,7 +1199,8 @@ impl Lowering<'_> {
                 } else {
                     BinOp::Sub
                 };
-                let value = self.arith(state, op, current, one);
+                let kind = self.int_kind(*target);
+                let value = self.arith(state, op, current, one, kind);
                 state.flush(out);
                 out.push(Stmt::Set(local, value));
             }
@@ -1428,7 +1446,8 @@ impl Lowering<'_> {
             return;
         }
         if let Some(globals) = self.global_place(state, target) {
-            self.assign_globals(state, &globals, op, value, out);
+            let kind = self.int_kind(target);
+            self.assign_globals(state, &globals, op, (value, kind), out);
             return;
         }
         let Some(locals) = self.place(state, target) else {
@@ -1439,7 +1458,8 @@ impl Lowering<'_> {
         match (assign_op(op), locals.as_slice(), values.as_slice()) {
             (Some(op), [local], [value]) => {
                 let current = local_expr(state, *local);
-                let value = self.arith(state, op, current, value.clone());
+                let kind = self.int_kind(target);
+                let value = self.arith(state, op, current, value.clone(), kind);
                 state.flush(out);
                 out.push(Stmt::Set(*local, value));
             }
@@ -1527,7 +1547,10 @@ impl Lowering<'_> {
         let ast_expr = self.ast.expr(id);
         let span = ast_expr.span;
         let kind = match &ast_expr.kind {
-            AstExpr::Int(value) => ExprKind::Const(int_const(*value, false)),
+            AstExpr::Int(value) => ExprKind::Const(match self.int_kind(id) {
+                Some(kind) => ints::literal(*value, kind),
+                None => int_const(*value, false),
+            }),
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => match state.lookup(*symbol) {
@@ -1539,17 +1562,7 @@ impl Lowering<'_> {
                 if let (UnaryOp::Neg, AstExpr::Int(value)) = (op, &self.ast.expr(*operand).kind) {
                     ExprKind::Const(int_const(*value, true))
                 } else {
-                    let op = match op {
-                        UnaryOp::Neg => UnOp::Neg,
-                        UnaryOp::Not => UnOp::Not,
-                        UnaryOp::BitNot => UnOp::BitNot,
-                        // `await` is refused in an owned module by the checker.
-                        UnaryOp::Borrow | UnaryOp::Await => {
-                            self.unsupported(span, "borrow");
-                            return zero(ty);
-                        }
-                    };
-                    ExprKind::Unary(op, Box::new(self.expr(state, *operand)))
+                    return self.unary(state, *op, *operand, ty, span);
                 }
             }
             AstExpr::Binary { op, lhs, rhs }
@@ -1558,6 +1571,7 @@ impl Lowering<'_> {
                 return self.buffer_eq(state, *lhs, *rhs, *op == BinaryOp::Eq, span);
             }
             AstExpr::Binary { op, lhs, rhs } => {
+                let kind = self.int_kind(*lhs);
                 let lhs = self.expr(state, *lhs);
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
                     return self.short_circuit(state, *op, lhs, *rhs);
@@ -1570,7 +1584,7 @@ impl Lowering<'_> {
                 if *op == BinaryOp::Rem && lhs.ty.is_float() {
                     return float_rem(lhs, rhs);
                 }
-                return self.arith(state, bin_op(*op), lhs, rhs);
+                return self.arith(state, bin_op(*op), lhs, rhs, kind);
             }
             AstExpr::Call { callee, args, .. } => {
                 return self.call(state, id, *callee, args, ty, span);
@@ -1617,6 +1631,37 @@ impl Lowering<'_> {
             AstExpr::Error => return zero(ty),
         };
         Expr { kind, ty }
+    }
+
+    /// `-x`, `!x`, `~x`.
+    fn unary(
+        &mut self,
+        state: &mut FnState,
+        op: UnaryOp,
+        operand: ExprId,
+        ty: Ty,
+        span: Span,
+    ) -> Expr {
+        let op = match op {
+            UnaryOp::Neg => UnOp::Neg,
+            UnaryOp::Not => UnOp::Not,
+            UnaryOp::BitNot => UnOp::BitNot,
+            // `await` is refused in an owned module by the checker.
+            UnaryOp::Borrow | UnaryOp::Await => {
+                self.unsupported(span, "borrow");
+                return zero(ty);
+            }
+        };
+        let kind = self.int_kind(operand);
+        let unary = Expr {
+            kind: ExprKind::Unary(op, Box::new(self.expr(state, operand))),
+            ty,
+        };
+        // `-` of the smallest `i8`, `~` of a `u8`: back to the type.
+        match kind {
+            Some(kind) => ints::narrow(unary, kind),
+            None => unary,
+        }
     }
 
     /// `a && b`, `a || b`. When `b` needs statements first, they run only when
@@ -1724,7 +1769,8 @@ impl Lowering<'_> {
             AstExpr::Field { base, name } => {
                 let receiver = self.expr(state, *base);
                 let method = self.ast.name(name.symbol);
-                self.method(state, receiver, method, args, ty, span)
+                let from = self.check_type(*base);
+                self.method(state, (receiver, from), method, args, (ty, call), span)
             }
             _ => self.not_yet(span, "function-value", ty),
         }
@@ -1734,14 +1780,25 @@ impl Lowering<'_> {
     fn method(
         &mut self,
         state: &mut FnState,
-        receiver: Expr,
+        (receiver, from): (Expr, Option<CheckTy>),
         method: &str,
         args: &[ExprId],
-        ty: Ty,
+        (ty, call): (Ty, ExprId),
         span: Span,
     ) -> Expr {
-        if let Some(chosen) = self.ordering(state, receiver.clone(), method, args) {
+        let kind = match &from {
+            Some(CheckTy::Int(kind)) if ints::is_other(*kind) => Some(*kind),
+            _ => None,
+        };
+        let unsigned = kind.is_some_and(ints::is_unsigned);
+        if let Some(chosen) = self.ordering(state, receiver.clone(), method, (args, unsigned)) {
             return chosen;
+        }
+        // Every conversion between numbers (decision 0024).
+        if perasc_check::builtins::is_conversion(method)
+            && let (Some(from), Some(to)) = (&from, self.check_type(call))
+        {
+            return Self::number_conversion(state, receiver, from, &to);
         }
         let math = match method {
             "abs" => Some(MathOp::Abs),
@@ -1812,7 +1869,11 @@ impl Lowering<'_> {
             let mut operands = [receiver];
             state.keep_before(mark, &mut operands);
             let [receiver] = operands;
-            return binary(op, receiver, arg);
+            let wrapped = binary(op, receiver, arg);
+            return match kind {
+                Some(kind) => ints::narrow(wrapped, kind),
+                None => wrapped,
+            };
         }
         self.not_yet(span, "method", ty)
     }
