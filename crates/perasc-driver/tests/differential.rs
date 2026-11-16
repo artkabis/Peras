@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 41 } else { 42 };
+    let choices = if depth == 0 { 42 } else { 43 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -150,6 +150,10 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // Closures made in a loop over the turn's values, copied, and called
         // through an array of functions and after it (decision 0026).
         40 => "const c = i % 11; const d = acc % 13; let cs: Array<(i32) => i32> = []; for (let t = 0; t < 3; t++) { const e = t * c + d; cs.push((x: i32): i32 => x * 3 + e - c); } const h = cs[i % 3]; for (const q of cs) { acc += q(i) % 97; } acc += h(d) % 89;".to_owned(),
+        // Strings captured (decision 0027): one closure only called, which
+        // lends what it captures, one escaping into an array, which copies.
+        // Two strings each, so that a wrong slot reads the wrong one.
+        41 => "const word = `${k}${i % 7}`; const tail = `${s}|${word}|`; const lent = (x: i32): i32 => x + word.length * 3 + tail.length; let held: Array<(i32) => i32> = []; held.push((x: i32): i32 => x * 2 + tail.length * 5 + word.length); acc += lent(i) % 13 + (held[0])(acc % 50) % 17;".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

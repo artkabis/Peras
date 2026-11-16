@@ -849,7 +849,6 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [place] les affectations de champs et d’éléments
     [function-value] les fonctions utilisées comme valeurs
     [closure] les fonctions fléchées qui capturent une variable, utilisées comme valeurs
-    [closure-heap] les fonctions fléchées utilisées comme valeurs qui capturent une chaîne, un tableau, une table, un ensemble, une valeur fonction, ou une valeur qui en tient une
     [borrow] l’opérateur d’emprunt `&`
     [float-remainder] `%` sur des flottants
     [string] les chaînes

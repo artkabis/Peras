@@ -59,7 +59,7 @@ Four quantities, as the owner asked: speed, load on the processor, memory and by
 **Option F**, found by measuring the others: what a closure captures on the heap is copied into its environment, which owns it, unless the closure cannot escape, and then it is lent.
 
 - A closure cannot escape when it is given in place as an argument, or kept in a `const` that is only called or given as an argument, and nothing it captures moves while it lives. The ownership pass decides it, function by function, and lowering lends or copies.
-- A function value captured is held once more, as a copy of it is ([decision 0026](0026-closures.md)).
+- A function value captured follows the same rule: lent where the closure cannot escape, held once more where it escapes, as a copy of it is ([decision 0026](0026-closures.md)).
 - The program is written as option B asks: no new notion, no new error. The refusal `closure-heap` goes.
 - The prototype switch `PERAS_PROTO_CLOSURE` stays, for the measure script only; without it, a build is option F.
 

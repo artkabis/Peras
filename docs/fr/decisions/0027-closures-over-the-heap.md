@@ -59,7 +59,7 @@ Quatre grandeurs, comme le propriétaire l’a demandé : la vitesse, la charge 
 **L’option F**, trouvée en mesurant les autres : ce qu’une fermeture capture sur le tas est copié dans son environnement, qui le possède, sauf si la fermeture ne peut pas s’échapper, et alors il est prêté.
 
 - Une fermeture ne peut pas s’échapper quand elle est donnée sur place comme argument, ou gardée dans un `const` qui est seulement appelé ou donné comme argument, et que rien de ce qu’elle capture ne se déplace tant qu’elle vit. La passe de propriété le décide, fonction par fonction, et l’abaissement prête ou copie.
-- Une valeur fonction capturée est tenue une fois de plus, comme l’est une copie d’elle ([décision 0026](0026-closures.md)).
+- Une valeur fonction capturée suit la même règle : prêtée là où la fermeture ne peut pas s’échapper, tenue une fois de plus là où elle s’échappe, comme l’est une copie d’elle ([décision 0026](0026-closures.md)).
 - Le programme s’écrit comme l’option B le demande : aucune notion nouvelle, aucune erreur nouvelle. Le refus `closure-heap` disparaît.
 - L’interrupteur de prototype `PERAS_PROTO_CLOSURE` reste, pour le script de mesure seulement ; sans lui, une construction est l’option F.
 

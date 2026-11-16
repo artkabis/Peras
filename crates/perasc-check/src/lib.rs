@@ -254,17 +254,18 @@ pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
     errors::import_cycle(span, path)
 }
 
-/// The option of decision 0027 a prototype build follows, from the
-/// environment variable `PERAS_PROTO_CLOSURE`: `move`, `copy` or `lend` for
-/// what a closure does with a string, an array or a function value it
-/// captures, and `auto`, found by measuring them: copied, unless the closure
-/// cannot escape, then lent. None refuses them (`closure-heap`). For the
-/// measures only.
+/// What a closure does with a string, an array, a map, a set or a function
+/// value it captures (decision 0027): `auto`, option F, copied into its
+/// environment unless the closure cannot escape, then lent. The other
+/// options measured, `move`, `copy` and `lend`, are built when the
+/// environment variable `PERAS_PROTO_CLOSURE` names one, for the measure
+/// script only (`scripts/bench-closures.mjs`).
 #[must_use]
-pub fn proto_closure() -> Option<String> {
+pub fn proto_closure() -> String {
     std::env::var("PERAS_PROTO_CLOSURE")
         .ok()
-        .filter(|m| matches!(m.as_str(), "move" | "copy" | "lend" | "auto"))
+        .filter(|m| matches!(m.as_str(), "move" | "copy" | "lend"))
+        .unwrap_or_else(|| "auto".to_owned())
 }
 
 /// The exported functions of an owned module's source, as a managed module

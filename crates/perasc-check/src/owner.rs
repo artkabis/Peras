@@ -721,9 +721,7 @@ impl<'c, 'a> Owner<'c, 'a> {
     /// value takes what it captures that lives on the heap, which moves into
     /// its environment where it is made.
     fn captures_moved(&mut self, id: ExprId, path: &mut Path) {
-        if crate::proto_closure().as_deref() != Some("move")
-            || !self.checker.value_arrows.contains(&id)
-        {
+        if crate::proto_closure() != "move" || !self.checker.value_arrows.contains(&id) {
             return;
         }
         let span = self.checker.ast.expr(id).span;
@@ -750,7 +748,7 @@ impl<'c, 'a> Owner<'c, 'a> {
     /// D refuses it, and says so; the option found by measuring (`auto`)
     /// copies what it captures instead.
     fn escapes(&mut self, lambda: ExprId, span: Span, what: &'static str) -> bool {
-        if crate::proto_closure().as_deref() == Some("auto") {
+        if crate::proto_closure() == "auto" {
             self.checker.escaping.insert(lambda);
             false
         } else {
@@ -762,7 +760,7 @@ impl<'c, 'a> Owner<'c, 'a> {
     /// Option D, prototyped, or the option found by measuring: an arrow
     /// function used as a value that lends what it captures on the heap.
     fn is_lending(&self, id: ExprId) -> bool {
-        matches!(crate::proto_closure().as_deref(), Some("lend" | "auto"))
+        matches!(crate::proto_closure().as_str(), "lend" | "auto")
             && self.checker.value_arrows.contains(&id)
             && self.checker.captures.get(&id).is_some_and(|c| {
                 c.iter().any(|(_, b)| {

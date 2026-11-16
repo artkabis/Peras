@@ -125,3 +125,93 @@ fn flag(on: bool): f64 {
   }
   return 0.0;
 }
+
+// Decision 0027: strings, arrays, maps, sets and function values captured,
+// lent by a closure that cannot escape, copied by one that escapes.
+fn label(prefix: String): (String) => String {
+  return (s: String): String => `${prefix}${s}`;
+}
+
+export fn labelled(word: String): String {
+  const f = label("pre:");
+  return f(word);
+}
+
+export fn filtered(text: String): i32 {
+  const banned = ["a", "the"];
+  const ok = (w: String): bool => !banned.includes(w);
+  return text.split(" ").filter(ok).length;
+}
+
+struct Greeter {
+  name: String;
+  greet: (String) => String;
+}
+
+fn greeter(name: String): Greeter {
+  return Greeter(name.copy(), (s: String): String => `${s}, ${name}`);
+}
+
+export fn greeted(name: String): String {
+  const g = greeter(name);
+  return `${(g.greet)("hello")}|${g.name}`;
+}
+
+export fn tagged(n: i32): i32 {
+  let fs: Array<() => i32> = [];
+  for (let i = 0; i < n; i++) {
+    const tag = `t${i}`;
+    fs.push((): i32 => tag.length);
+  }
+  let total = 0;
+  for (const f of fs) {
+    total += f();
+  }
+  return total;
+}
+
+// What the closure captures moves after it is made, and the closure is
+// called after the move: it must hold a copy.
+export fn usedAfter(s: String): i32 {
+  const word = s.trim();
+  const f = (x: i32): i32 => x + word.length;
+  const before = f(1);
+  const moved = word;
+  return before + moved.length + f(2);
+}
+
+export fn collections(n: i32): i32 {
+  let m: Map<String, i32> = Map.new();
+  m.set("a", n);
+  let ids: Set<i32> = Set.new();
+  ids.add(n);
+  ids.add(n + 1);
+  const words = ["x", "yy", `z${n}`];
+  // Built with `let`, captured once frozen in a `const` (E0251).
+  const table = m;
+  const seen = ids;
+  const f = (k: String): i32 => table.get(k).unwrapOr(-1) + seen.size + words.length;
+  let all: Array<(String) => i32> = [];
+  all.push(f);
+  return f("a") + f("b") + (all[0])("a");
+}
+
+struct Named {
+  name: String;
+  size: i32;
+}
+
+export fn structured(n: i32): i32 {
+  const named = Named(`n${n}`, n);
+  const f = (x: i32): i32 => x + named.size + named.name.length;
+  let fs: Array<(i32) => i32> = [f];
+  return f(1) + (fs[0])(2);
+}
+
+export fn nested(k: i32): i32 {
+  const add = makeAdder(k);
+  const word = `w${k}`;
+  const twice = (x: i32): i32 => add(add(x)) + word.length;
+  let kept: Array<(i32) => i32> = [twice];
+  return twice(1) + (kept[0])(2);
+}

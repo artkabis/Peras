@@ -103,15 +103,14 @@ impl Lowering<'_> {
     /// captures, copied now. A capture that holds a buffer is not compiled
     /// yet (`closure-heap`).
     pub(super) fn arrow_value(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
-        let span = self.ast.expr(id).span;
         let found = self.analysis.captures.get(&id).cloned().unwrap_or_default();
-        // The option found by measuring copies what an escaping closure
-        // captures, and lends to one that cannot escape.
-        let proto = perasc_check::proto_closure().map(|p| match p.as_str() {
+        // Option F copies what an escaping closure captures, and lends to
+        // one that cannot escape (decision 0027).
+        let proto = match perasc_check::proto_closure().as_str() {
             "auto" if self.analysis.escaping.contains(&id) => "copy".to_owned(),
             "auto" => "lent".to_owned(),
-            _ => p,
-        });
+            other => other.to_owned(),
+        };
         // The buffers the environment owns come first, then the rest.
         let mut owned: Vec<Expr> = Vec::new();
         let mut rest: Vec<Expr> = Vec::new();
@@ -130,13 +129,8 @@ impl Lowering<'_> {
             else {
                 continue;
             };
-            let Ok(leaves) = self.leaves(&ty) else {
-                continue;
-            };
-            let heap = leaves.iter().any(|(_, t)| t.is_handle());
-            if heap && proto.is_none() {
-                self.unsupported(span, "closure-heap");
-                planned.push((symbol, ty, None));
+            // A type not compiled is reported where it is declared.
+            if self.leaves(&ty).is_err() {
                 continue;
             }
             let values: Vec<Expr> = match binding {
@@ -165,7 +159,7 @@ impl Lowering<'_> {
                     rest.push(to_slot(value));
                     continue;
                 }
-                if let Some(e) = taken(state, &value, proto.as_deref(), fns) {
+                if let Some(e) = taken(state, &value, Some(proto.as_str()), fns) {
                     at.push((true, owned.len()));
                     owned.push(e);
                 } else {
