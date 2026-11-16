@@ -83,6 +83,7 @@ export const sections: Section[] = [
       "decisions/0024-integer-types",
       "decisions/0025-moved-fields-and-function-values",
       "decisions/0026-closures",
+      "decisions/0027-closures-over-the-heap",
     ],
   },
 ];
