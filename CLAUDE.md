@@ -12,6 +12,7 @@ Read at the start of every session. It holds the rules of the project and the tr
 - **Commits are authored by the owner**, who decides and signs off: in this repository, `git config user.name "Artkabis"` and `git config user.email "8205827+artkabis@users.noreply.github.com"`, set before the first commit of a session. The `Co-Authored-By` line still names who wrote the code.
 - **No force push.** After a pull request is merged, merge `main` into the branch.
 - **Nothing published outside the repository** (forums, social networks) without the owner.
+- **A decision compares its options by measure, not by reasoning alone** (asked by the owner on 2026-11-16). Before choosing, each serious option, the ones under "Not chosen" included, is built as a prototype where it can be, and compared on four things, registered before any measure (M003): speed (time of the operation, A/B in one process, M017), CPU load (time a core is kept busy, as decision 0012 measures it), memory and bytes shipped, and ease of writing (the same program written for each option: lines, notions to learn, errors met). An option that cannot be built is said so, with why, never ranked by a guess (M001).
 
 ## The environment
 
