@@ -81,3 +81,5 @@ _Each step is recorded here as it lands._
 **Step 4, module-level `let` (F306): landed** for numbers, booleans, and structures, enumerations and options of them, as [decision 0023](0023-module-variables.md) designed and records. `u8` to `u64` (F302), a field moved out of a structure (F214) and a function as a value (F308) are next.
 
 **Step 4, every integer type (F302): landed**, as [decision 0024](0024-integer-types.md) designed and records. A field moved out of a structure (F214) and functions as values (F308) are designed by [decision 0025](0025-moved-fields-and-function-values.md), proposed.
+
+**Step 4, a field moved out of a structure (F214) and functions as values (F308): landed**, as [decision 0025](0025-moved-fields-and-function-values.md) designed and records. Step 4 is done.

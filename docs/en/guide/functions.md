@@ -91,6 +91,35 @@ export fn twice(): i32 {
 
 From JavaScript, a structure passed `inout` is an object whose fields are updated after the call. A number, an option or a string cannot be passed `inout` from JavaScript, which passes them by value; such a function can still be called from Peras.
 
+## Functions as values
+
+A function is a value of a function type, `(i32) => i32`, written wherever a type is: a parameter, a result, a variable, a field, an element of an array, an option ([decision 0025](../decisions/0025-moved-fields-and-function-values.md)). A function of the module is one by its name; an arrow function is one when it captures nothing. A value of a function type is called as a function is.
+
+```peras build
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn applied(n: i32): i32 {
+  const steps: Array<(i32) => i32> = [twice, (x: i32): i32 => x + 1];
+  let total = apply(twice, n);
+  for (let i = 0; i < steps.length; i++) {
+    total += (steps[i])(n);
+  }
+  return total;
+}
+```
+
+- **The arguments are lent**, and the result is the caller's: a function type says no `sink` nor `inout`, so a function with such a parameter is not a value of one ([E0210](../errors/E0210.md)), nor is a generic function.
+- **`xs.map(twice)`** gives a function to `map` and the others by its name, which calls it directly, as `(x) => twice(x)` would.
+- **An arrow function that captures a variable**, `(x) => x + k`, is a value in a managed module only; in an owned one it is written in place, as the argument of `map` and the others ([E0900](../errors/E0900.md)).
+- **JavaScript** never receives nor gives a function of an owned module: an exported function that takes or gives one is refused ([E0238](../errors/E0238.md)).
+- In WebAssembly, a function value is the position of the function in a table of the module, and a call through it an indirect call, which costs about what a direct call costs.
+
 ## Built-in methods
 
 Numbers have methods, called with a dot: conversions, `abs`, `sqrt`, wrapping and checked arithmetic. The [method reference](../reference/methods.md) lists them all.

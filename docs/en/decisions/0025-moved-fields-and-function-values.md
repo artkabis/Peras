@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0025-moved-fields-and-function-values.md](../../fr/decisions/0025-moved-fields-and-function-values.md)._
 
-_Status: proposed on 2026-11-16, with its criteria registered before any code; accepted by the owner the same day, part B with real function values, both parts to land as one batch; the last part of step 4 of [decision 0021](0021-phases-4-and-5.md), findings F214 and F308._
+_Status: proposed on 2026-11-16, with its criteria registered before any code; accepted by the owner the same day, part B with real function values, both parts to land as one batch; built, its criteria met (see [Record](#record)); the last part of step 4 of [decision 0021](0021-phases-4-and-5.md), findings F214 and F308._
 
 ## Context
 
@@ -172,3 +172,66 @@ Each part lands only with all of its criteria, in addition to [decision 0021's c
 ## Record
 
 _Each part is recorded here as it lands._
+
+**Both parts: landed together**, as the owner asked, part B with real function values.
+
+- **What changed, part A.**
+  - The ownership pass follows moved places, a variable and the fields on the way, as it follows moved variables.
+    - A field of a local, or of a `sink` parameter, moves.
+    - The field, or what holds it, used after is reported (`E0204`), as is the structure used whole, with a new message for a structure partly moved.
+    - Assigning the field gives it back.
+    - The element of a `for…of`, which a loop lends, is told apart from a local of its own.
+  - The lowering moves the field's locals, which leave the live set; the release verifier accepts every path.
+  - The dashboard takes its country instead of copying it a second time.
+- **What changed, part B.**
+  - The checker:
+    - writes function types wherever a type is, in both modes;
+    - types a function of the module, not called, as one, unless it is generic or takes a parameter `sink` or `inout`;
+    - gives a function by its value to `map` and the others (F010 fixed);
+    - refuses `==` on functions, and an exported function that takes or gives one, even deep in a structure.
+  - The IR gains three forms:
+    - `FnRef`, a function as an `i32`;
+    - `CallIndirect`;
+    - `CallManyIndirect`.
+
+    Every pass that matched a call was read and given them; the compiler listed each match that missed them.
+
+  - The backends and the runtime:
+    - WebAssembly has one `funcref` table, filled once by an element segment, and `call_indirect` with a type per signature;
+    - the linker keeps the module's table and its segment, renumbered;
+    - the Rust backend writes a `match` on the position;
+    - the interpreter calls by position.
+  - An arrow function used as a value becomes a function of its own, lowered after the others, its parameters lent. A name it does not declare is a capture, refused as `closure`.
+  - `xs.map(twice)` calls `twice` directly: the value stands for the body of the loop.
+- **Tests, each criterion in turn.**
+  1. `E0204-moved-field.peras` and `E0209-field-not-owned.peras`: each refusal and each case allowed that the criterion names.
+  2. `functions.test.ts`, on both allocators: a field moved in one branch, in a loop with `break` and `continue`, before an early `return`; nothing left alive. Moving the field without leaving the live set, on purpose, is refused by the release verifier: `holds a block on one path and not on another`.
+  3. The differential test gains a field moved on one branch; it passes 2,000 seeds, and the same mutation fails it at seed 0.
+  4. The dashboard gives the same summary (`bench-data.mjs --check`). Its A/B, `node scripts/ab-data.mjs HEAD --before-source <the dashboard that copies>`, 1,000,000 rows, 20 rounds: 310.3 ms before, 301.6 ms after, a ratio of 1.025 in the median, from 0.788 to 1.446. Reported, not a condition.
+  5. `E0210-function-values.peras` and `.apeiron`, `E0238-function-export.peras`, `E0900-closure.peras`, and `function-values.peras`, whose IR is kept. The checker bug is fixed: `xs.map(twice)` is accepted in a managed module.
+  6. `functions.test.ts`, on both allocators, against the same source built as a managed module:
+     - `apply(twice, x)`;
+     - an array of functions called in a loop;
+     - a function in a field and in an option;
+     - a function chosen by a function;
+     - `map`, `filter`, `reduce` and `sortBy` given functions by name;
+     - strings and structures given and taken, an owned string lent.
+
+     The results are the same, and nothing is left alive.
+
+  7. The differential test gains a dispatch through an array of functions and a function chosen by a call; it passes 2,000 seeds. Calling the next function of the table, on purpose, fails it at seed 11.
+  8. `a_call_through_a_value_matches_on_the_table` holds the Rust written. `a_call_through_a_function_value_only_lends` holds the release verifier: a moved argument is refused, and the test fails without that rule.
+  9. A loop calling a function 20,000,000 times, in one process, the order alternating:
+     - the module is 143 bytes, or 173 with the function as a value: 30 bytes for the table, its segment and a type;
+     - through the value, 77.7 ms against 76.5 ms directly, a ratio of 1.025 in the median, from 0.871 to 1.219.
+
+     Reported, not conditions.
+
+  10. The guide's pages on functions and memory, the status, `E0204`, `E0209`, `E0238` and `E0900`, and findings F214, F308 and F010, in English and in French.
+- **Departures from the text above.**
+  - Both parts land in one batch, as the owner asked, where the text above had A before B.
+  - A generic function is never a value, even when the type expected would give its type arguments: inferring them there is left for later.
+  - A function with a `sink` or `inout` parameter, used as a value, is reported as a mismatch (`E0210`), not with a message of its own.
+  - Calling through a field is written `(s.handler)(x)`: `s.handler(x)` stays a method call.
+  - In criterion 8, the mutation was made in the verifier's test rather than in the lowering. Lending is decided by the ownership pass, so a lowering changed alone does not move anything; changed with the ownership pass, the checker reports the move first.
+  - The A/B of criterion 4 compares two versions of the dashboard with one compiler. `ab-data.mjs` gained `--before-source` for it.

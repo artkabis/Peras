@@ -91,6 +91,35 @@ export fn twice(): i32 {
 
 Depuis JavaScript, une structure passée `inout` est un objet dont les champs sont mis à jour après l’appel. Un nombre, une option ou une chaîne ne peuvent pas être passés `inout` depuis JavaScript, qui les passe par valeur ; une telle fonction reste appelable depuis Peras.
 
+## Les fonctions comme valeurs
+
+Une fonction est une valeur d’un type fonction, `(i32) => i32`, qui s’écrit partout où un type s’écrit : un paramètre, un résultat, une variable, un champ, un élément de tableau, une option ([décision 0025](../decisions/0025-moved-fields-and-function-values.md)). Une fonction du module en est une par son nom ; une fonction fléchée en est une quand elle ne capture rien. Une valeur d’un type fonction s’appelle comme une fonction.
+
+```peras build
+fn twice(x: i32): i32 {
+  return x * 2;
+}
+
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn applied(n: i32): i32 {
+  const steps: Array<(i32) => i32> = [twice, (x: i32): i32 => x + 1];
+  let total = apply(twice, n);
+  for (let i = 0; i < steps.length; i++) {
+    total += (steps[i])(n);
+  }
+  return total;
+}
+```
+
+- **Les arguments sont prêtés**, et le résultat appartient à l’appelant : un type fonction ne dit ni `sink` ni `inout`, si bien qu’une fonction avec un tel paramètre n’en est pas une valeur ([E0210](../errors/E0210.md)), pas plus qu’une fonction générique.
+- **`xs.map(twice)`** donne une fonction à `map` et aux autres par son nom, qui l’appelle directement, comme le ferait `(x) => twice(x)`.
+- **Une fonction fléchée qui capture une variable**, `(x) => x + k`, n’est une valeur que dans un module managed ; dans un module owned, elle s’écrit sur place, comme argument de `map` et des autres ([E0900](../errors/E0900.md)).
+- **JavaScript** ne reçoit ni ne donne jamais une fonction d’un module owned : une fonction exportée qui en prend ou en rend une est refusée ([E0238](../errors/E0238.md)).
+- En WebAssembly, une valeur fonction est la position de la fonction dans une table du module, et un appel à travers elle un appel indirect, qui coûte à peu près ce que coûte un appel direct.
+
 ## Méthodes intégrées
 
 Les nombres ont des méthodes, appelées avec un point : conversions, `abs`, `sqrt`, arithmétique qui reboucle ou qui vérifie. La [référence des méthodes](../reference/methods.md) les liste toutes.

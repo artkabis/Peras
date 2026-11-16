@@ -23,7 +23,8 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | tuples, alias de types                                                                                                    | <span class="status compiled">compilé</span> |
 | chaînes gabarits, `` `${x} items` ``                                                                                      | <span class="status compiled">compilé</span> |
 | `Map`, `Set` à clés entières, booléennes et chaînes ([décision 0005](../decisions/0005-maps-and-sets.md))                 | <span class="status compiled">compilé</span> |
-| fermetures                                                                                                                | <span class="status planned">prévu</span>    |
+| fonctions comme valeurs, types fonctions ([décision 0025](../decisions/0025-moved-fields-and-function-values.md))         | <span class="status compiled">compilé</span> |
+| fermetures : fonctions fléchées qui capturent une variable, comme valeurs dans les modules owned                          | <span class="status planned">prévu</span>    |
 | `Rc<T>`, `Framebuffer`, types de pixels, SIMD                                                                             | <span class="status planned">prévu</span>    |
 
 ## Instructions et expressions

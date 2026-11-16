@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0025-moved-fields-and-function-values.md](../../en/decisions/0025-moved-fields-and-function-values.md)._
 
-_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour, la partie B en vraies valeurs fonctions, les deux parties à livrer en un seul lot ; dernière partie de l’étape 4 de la [décision 0021](0021-phases-4-and-5.md), constats F214 et F308._
+_État : proposée le 2026-11-16, avec ses critères enregistrés avant tout code ; acceptée par le propriétaire le même jour, la partie B en vraies valeurs fonctions, les deux parties à livrer en un seul lot ; construite, ses critères tenus (voir le [Registre](#registre)) ; dernière partie de l’étape 4 de la [décision 0021](0021-phases-4-and-5.md), constats F214 et F308._
 
 ## Contexte
 
@@ -172,3 +172,66 @@ Chaque partie n’arrive qu’avec tous ses critères, en plus des [critères de
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+**Les deux parties : arrivées ensemble**, comme le propriétaire l’a demandé, la partie B en vraies valeurs fonctions.
+
+- **Ce qui a changé, partie A.**
+  - La passe de propriété suit les places déplacées, une variable et les champs du chemin, comme elle suit les variables déplacées.
+    - Un champ d’une locale, ou d’un paramètre `sink`, se déplace.
+    - Le champ, ou ce qui le tient, utilisé ensuite est signalé (`E0204`), comme la structure utilisée en entier, avec un nouveau message pour une structure en partie déplacée.
+    - Affecter le champ le rend.
+    - L’élément d’un `for…of`, qu’une boucle prête, est distingué d’une locale à elle.
+  - L’abaissement déplace les locales du champ, qui quittent l’ensemble des vivantes ; le vérificateur de libération accepte chaque chemin.
+  - Le tableau de bord prend son pays au lieu de le copier une seconde fois.
+- **Ce qui a changé, partie B.**
+  - Le vérificateur :
+    - écrit des types fonctions partout où un type s’écrit, dans les deux modes ;
+    - type une fonction du module, non appelée, comme l’un d’eux, sauf si elle est générique ou prend un paramètre `sink` ou `inout` ;
+    - donne une fonction par sa valeur à `map` et aux autres (F010 corrigé) ;
+    - refuse `==` entre fonctions, et une fonction exportée qui en prend ou en rend une, même au fond d’une structure.
+  - L’IR gagne trois formes :
+    - `FnRef`, une fonction comme `i32` ;
+    - `CallIndirect` ;
+    - `CallManyIndirect`.
+
+    Chaque passe qui distinguait un appel a été lue et les a reçues ; le compilateur a listé chaque `match` qui les manquait.
+
+  - Les backends et le runtime :
+    - WebAssembly a une table `funcref`, remplie une fois par un segment d’éléments, et `call_indirect` avec un type par signature ;
+    - l’éditeur de liens garde la table du module et son segment, renumérotés ;
+    - le backend Rust écrit un `match` sur la position ;
+    - l’interpréteur appelle par position.
+  - Une fonction fléchée utilisée comme valeur devient une fonction à elle, abaissée après les autres, ses paramètres prêtés. Un nom qu’elle ne déclare pas est une capture, refusée comme `closure`.
+  - `xs.map(twice)` appelle `twice` directement : la valeur tient lieu de corps de la boucle.
+- **Les tests, critère par critère.**
+  1. `E0204-moved-field.peras` et `E0209-field-not-owned.peras` : chaque refus et chaque cas permis que le critère nomme.
+  2. `functions.test.ts`, sur les deux allocateurs : un champ déplacé sur une branche, dans une boucle avec `break` et `continue`, avant un `return` anticipé ; rien ne reste vivant. Déplacer le champ sans quitter l’ensemble des vivantes, exprès, est refusé par le vérificateur de libération : `holds a block on one path and not on another`.
+  3. Le test différentiel gagne un champ déplacé sur une branche ; il passe 2 000 graines, et la même mutation le fait échouer à la graine 0.
+  4. Le tableau de bord donne le même résumé (`bench-data.mjs --check`). Son A/B, `node scripts/ab-data.mjs HEAD --before-source <le tableau de bord qui copie>`, 1 000 000 de lignes, 20 tours : 310,3 ms avant, 301,6 ms après, un rapport de 1,025 en médiane, de 0,788 à 1,446. Rapporté, pas une condition.
+  5. `E0210-function-values.peras` et `.apeiron`, `E0238-function-export.peras`, `E0900-closure.peras`, et `function-values.peras`, dont l’IR est gardée. Le bogue du vérificateur est corrigé : `xs.map(twice)` est accepté dans un module managed.
+  6. `functions.test.ts`, sur les deux allocateurs, contre le même source construit comme module managed :
+     - `apply(twice, x)` ;
+     - un tableau de fonctions appelées dans une boucle ;
+     - une fonction dans un champ et dans une option ;
+     - une fonction choisie par une fonction ;
+     - `map`, `filter`, `reduce` et `sortBy` auxquels des fonctions sont données par leur nom ;
+     - des chaînes et des structures données et reçues, une chaîne possédée prêtée.
+
+     Les résultats sont les mêmes, et rien ne reste vivant.
+
+  7. Le test différentiel gagne un aiguillage à travers un tableau de fonctions et une fonction choisie par un appel ; il passe 2 000 graines. Appeler exprès la fonction suivante de la table le fait échouer à la graine 11.
+  8. `a_call_through_a_value_matches_on_the_table` tient le Rust écrit. `a_call_through_a_function_value_only_lends` tient le vérificateur de libération : un argument déplacé est refusé, et le test échoue sans cette règle.
+  9. Une boucle qui appelle une fonction 20 000 000 de fois, dans un même processus, l’ordre alterné :
+     - le module fait 143 octets, ou 173 avec la fonction comme valeur : 30 octets pour la table, son segment et un type ;
+     - à travers la valeur, 77,7 ms contre 76,5 ms directement, un rapport de 1,025 en médiane, de 0,871 à 1,219.
+
+     Rapportés, pas des conditions.
+
+  10. Les pages du guide sur les fonctions et la mémoire, l’état, `E0204`, `E0209`, `E0238` et `E0900`, et les constats F214, F308 et F010, en anglais et en français.
+- **Écarts par rapport au texte ci-dessus.**
+  - Les deux parties arrivent en un lot, comme le propriétaire l’a demandé, là où le texte ci-dessus mettait A avant B.
+  - Une fonction générique n’est jamais une valeur, même quand le type attendu donnerait ses arguments de type : les inférer là est laissé pour plus tard.
+  - Une fonction avec un paramètre `sink` ou `inout`, utilisée comme valeur, est signalée comme une incompatibilité (`E0210`), pas avec un message à elle.
+  - Appeler à travers un champ s’écrit `(s.handler)(x)` : `s.handler(x)` reste un appel de méthode.
+  - Au critère 8, la mutation a été faite dans le test du vérificateur plutôt que dans l’abaissement. Le prêt est décidé par la passe de propriété : un abaissement changé seul ne déplace rien ; changé avec la passe de propriété, le vérificateur signale le déplacement d’abord.
+  - L’A/B du critère 4 compare deux versions du tableau de bord avec un même compilateur. `ab-data.mjs` a gagné `--before-source` pour cela.
