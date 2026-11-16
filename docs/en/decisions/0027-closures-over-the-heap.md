@@ -61,3 +61,36 @@ Set once an option is chosen, with the owner: the UI tests, end to end on both a
 ## Record
 
 _Each part is recorded here as it lands._
+
+- **2026-11-16, the options measured** (`node scripts/bench-closures.mjs`, [results](../../../bench/closures/RESULTS.md); prototypes at `39743d8`, behind `PERAS_PROTO_CLOSURE`). An Intel Xeon at 2.10 GHz, 4 cores, Node 24, 21 rounds, owned modules on TLSF. Every prototype gives the managed module's results on every workload it accepts, and leaves nothing alive.
+  - **Speed**, the median of the ratios to B round by round:
+
+    | Workload                  | A, move | B, copy |         D, lend | F, copy unless lent | managed |
+    | ------------------------- | ------: | ------: | --------------: | ------------------: | ------: |
+    | W1, 16 B, 1,000,000 times |   1.031 |       1 |           0.357 |               0.354 |   0.299 |
+    | W1, 1 KiB, 100,000 times  |   1.006 |       1 |           0.205 |               0.202 |   0.075 |
+    | W1, 64 KiB, 2,000 times   |   1.011 |       1 |           0.106 |               0.105 |   0.004 |
+    | W2, 20,000,000 calls      |   0.995 |       1 |           0.992 |               0.989 |   1.659 |
+    | W3, escaping              |   0.986 |       1 | not expressible |               1.002 |   0.816 |
+
+    A costs what B costs: its programs copy where they would reuse what they captured, and a move saves nothing where the closure is made once. Lending saves the copy wherever a closure is made often, by 3 to 10 times. Called often, all are equal, and 1.66 times as fast as JavaScript.
+
+  - **Load on the processor**: the CPU time over the wall time is between 0.98 and 1.12 for every owned option: one core, nothing more. No difference between the options.
+  - **Memory and bytes**: the module's memory differs only for W1 at 64 KiB: 320 KiB for A, 256 for B, 192 for D and F, the copies needing room. The modules differ by 16 bytes at most (1,922 to 1,931 gzipped), 3.7 times JavaScript's, the allocator's cost.
+  - **Ease of writing**, five programs written from JavaScript:
+
+    |                                      |                 A, move |  B, copy |                      D, lend | F, copy unless lent |
+    | ------------------------------------ | ----------------------: | -------: | ---------------------------: | ------------------: |
+    | Programs that build as written       |                  2 of 5 |   4 of 5 |                       2 of 5 |              4 of 5 |
+    | Errors met                           |                       4 |        1 |                            4 |                   1 |
+    | Lines changed to build               |                      11 |        2 |                           25 |                   2 |
+    | Programs rewritten without a closure |                       0 |        0 |                            3 |                   0 |
+    | Notions JavaScript does not ask for  | `sink`, a capture moves | none new | a closure that cannot escape |            none new |
+
+    The one error of B and F, in P3, is a rule Peras has without closures: a borrowed parameter put into a structure needs `copy()` (`E0209`).
+- **Departures from the protocol.**
+  - **An option was added after measuring**: F, B's copy skipped where the closure cannot escape, chosen by D's escape analysis instead of refused. The first run, of A, B and D only, is kept in [bench/closures/archive](../../../bench/closures/archive/run-1-without-f.md); its figures agree with the second.
+  - **C and E are not built.** C needs a count on every buffer, `Rc<T>` (finding F310), a change of every buffer operation, not a prototype. E is left for F, which differs from it only where a closure escapes, copying where E moves; its figures are not inferred from the others.
+  - **W2 reads the length and the first two bytes** (`startsWith`) rather than one byte at an index: no method reads one.
+  - **Memory is the module's memory after each workload**, which only grows: the most blocks alive at once needs a counter the allocator does not keep.
+- **What the measures say**: F writes as B, the easiest, and runs as D, the fastest, where D can run at all. It is the option to propose to the owner, who chooses.

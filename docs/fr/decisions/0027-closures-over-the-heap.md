@@ -61,3 +61,36 @@ Fixés une fois une option choisie, avec le propriétaire : les tests UI, de bou
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+- **2026-11-16, les options mesurées** (`node scripts/bench-closures.mjs`, [résultats](../../../bench/closures/RESULTS.md) ; prototypes à `39743d8`, derrière `PERAS_PROTO_CLOSURE`). Un Intel Xeon à 2,10 GHz, 4 cœurs, Node 24, 21 tours, modules owned sur TLSF. Chaque prototype donne les résultats du module managed sur chaque charge qu’il accepte, et ne laisse rien de vivant.
+  - **Vitesse**, la médiane des rapports à B, tour par tour :
+
+    | Charge                      | A, déplacer | B, copier |    D, prêter | F, copier sauf prêt | managed |
+    | --------------------------- | ----------: | --------: | -----------: | ------------------: | ------: |
+    | W1, 16 o, 1 000 000 de fois |       1,031 |         1 |        0,357 |               0,354 |   0,299 |
+    | W1, 1 Kio, 100 000 fois     |       1,006 |         1 |        0,205 |               0,202 |   0,075 |
+    | W1, 64 Kio, 2 000 fois      |       1,011 |         1 |        0,106 |               0,105 |   0,004 |
+    | W2, 20 000 000 d’appels     |       0,995 |         1 |        0,992 |               0,989 |   1,659 |
+    | W3, qui s’échappe           |       0,986 |         1 | inexprimable |               1,002 |   0,816 |
+
+    A coûte ce que coûte B : ses programmes copient là où ils réutiliseraient ce qu’ils ont capturé, et un déplacement n’économise rien là où la fermeture est faite une fois. Prêter économise la copie partout où une fermeture est faite souvent, de 3 à 10 fois. Appelées souvent, toutes se valent, et vont 1,66 fois plus vite que JavaScript.
+
+  - **Charge du processeur** : le temps CPU sur le temps écoulé est entre 0,98 et 1,12 pour chaque option owned : un cœur, rien de plus. Aucune différence entre les options.
+  - **Mémoire et octets** : la mémoire du module ne diffère que pour W1 à 64 Kio : 320 Kio pour A, 256 pour B, 192 pour D et F, les copies demandant de la place. Les modules diffèrent de 16 octets au plus (1 922 à 1 931 compressés), 3,7 fois ceux de JavaScript, le coût de l’allocateur.
+  - **Facilité d’écriture**, cinq programmes écrits depuis JavaScript :
+
+    |                                               |                    A, déplacer |       B, copier |                                D, prêter | F, copier sauf prêt |
+    | --------------------------------------------- | -----------------------------: | --------------: | ---------------------------------------: | ------------------: |
+    | Programmes qui se construisent tels qu’écrits |                        2 sur 5 |         4 sur 5 |                                  2 sur 5 |             4 sur 5 |
+    | Erreurs rencontrées                           |                              4 |               1 |                                        4 |                   1 |
+    | Lignes changées pour construire               |                             11 |               2 |                                       25 |                   2 |
+    | Programmes réécrits sans fermeture            |                              0 |               0 |                                        3 |                   0 |
+    | Notions que JavaScript ne demande pas         | `sink`, une capture se déplace | aucune nouvelle | une fermeture qui ne peut pas s’échapper |     aucune nouvelle |
+
+    L’unique erreur de B et F, dans P3, est une règle que Peras a sans fermetures : un paramètre prêté mis dans une structure demande `copy()` (`E0209`).
+- **Écarts au protocole.**
+  - **Une option a été ajoutée après mesure** : F, la copie de B évitée là où la fermeture ne peut pas s’échapper, choisie par l’analyse d’échappement de D au lieu d’être refusée. La première exécution, de A, B et D seules, est gardée dans [bench/closures/archive](../../../bench/closures/archive/run-1-without-f.md) ; ses chiffres concordent avec la seconde.
+  - **C et E ne sont pas construites.** C demande un compte sur chaque tampon, `Rc<T>` (constat F310), un changement de chaque opération sur les tampons, pas un prototype. E est laissée pour F, qui n’en diffère que là où une fermeture s’échappe, en copiant là où E déplace ; ses chiffres ne sont pas déduits des autres.
+  - **W2 lit la longueur et les deux premiers octets** (`startsWith`) plutôt qu’un octet à un indice : aucune méthode n’en lit un.
+  - **La mémoire est celle du module après chaque charge**, qui ne fait que croître : le plus de blocs vivants à la fois demande un compteur que l’allocateur ne tient pas.
+- **Ce que disent les mesures** : F s’écrit comme B, la plus facile, et s’exécute comme D, la plus rapide, là où D peut s’exécuter. C’est l’option à proposer au propriétaire, qui choisit.
