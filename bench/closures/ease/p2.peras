@@ -1,0 +1,6 @@
+// P2: a filter by a captured array of words.
+export fn p2(text: String): i32 {
+  const banned = ["a", "the"];
+  const ok = (w: String): bool => !banned.includes(w);
+  return text.split(" ").filter(ok).length;
+}

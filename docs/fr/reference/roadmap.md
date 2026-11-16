@@ -24,7 +24,7 @@ Ce qui permet à un programme de dire précisément ce que ses données peuvent 
 - ~~Tuples, alias de types, constantes de module compilées~~ : fait, voir [types](types.md#tuples) et [constantes de module](../guide/basics.md#constantes-de-module).
 - ~~Variables de module compilées~~ : fait pour les nombres, les booléens, et les structures, énumérations et options de ceux-ci ([décision 0023](../decisions/0023-module-variables.md)) ; chaînes et tableaux ensuite.
 - ~~Tous les types entiers compilés, de `i8` à `u64`~~ : fait, les tableaux rangés à la largeur de chaque élément ([décision 0024](../decisions/0024-integer-types.md), [types](types.md)).
-- ~~Un champ déplacé hors d’une structure, et les fonctions comme valeurs dans les modules owned~~ : fait ([décision 0025](../decisions/0025-moved-fields-and-function-values.md), [fonctions](../guide/functions.md#les-fonctions-comme-valeurs)) ; ~~les fermetures sur des nombres et des booléens~~ : fait ([décision 0026](../decisions/0026-closures.md)) ; les fermetures sur des chaînes, des tableaux et des valeurs fonctions, ensuite.
+- ~~Un champ déplacé hors d’une structure, et les fonctions comme valeurs dans les modules owned~~ : fait ([décision 0025](../decisions/0025-moved-fields-and-function-values.md), [fonctions](../guide/functions.md#les-fonctions-comme-valeurs)) ; ~~les fermetures sur des nombres et des booléens~~ : fait ([décision 0026](../decisions/0026-closures.md)) ; ~~les fermetures sur des chaînes, des tableaux et des valeurs fonctions~~ : fait ([décision 0027](../decisions/0027-closures-over-the-heap.md)).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

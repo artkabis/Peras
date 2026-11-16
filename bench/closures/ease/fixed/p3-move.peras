@@ -1,0 +1,14 @@
+// P3: a closure kept in a structure, with a captured name.
+struct Greeter {
+  name: String;
+  greet: (String) => String;
+}
+
+fn greeter(name: sink String): Greeter {
+  return Greeter(name.copy(), (s: String): String => `${s}, ${name}`);
+}
+
+export fn p3(name: String): String {
+  const g = greeter(name.copy());
+  return (g.greet)("hello");
+}

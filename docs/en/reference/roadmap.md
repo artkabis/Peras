@@ -24,7 +24,7 @@ What lets a program say precisely what its data can be.
 - ~~Tuples, type aliases, module-level constants compiled~~: done, see [types](types.md#tuples) and [module constants](../guide/basics.md#module-constants).
 - ~~Module variables compiled~~: done for numbers, booleans, and structures, enumerations and options of them ([decision 0023](../decisions/0023-module-variables.md)); strings and arrays next.
 - ~~Every integer type compiled, `i8` to `u64`~~: done, arrays stored at each element's width ([decision 0024](../decisions/0024-integer-types.md), [types](types.md)).
-- ~~A field moved out of a structure, and functions as values in owned modules~~: done ([decision 0025](../decisions/0025-moved-fields-and-function-values.md), [functions](../guide/functions.md#functions-as-values)); ~~closures over numbers and booleans~~: done ([decision 0026](../decisions/0026-closures.md)); closures over strings, arrays and function values, next.
+- ~~A field moved out of a structure, and functions as values in owned modules~~: done ([decision 0025](../decisions/0025-moved-fields-and-function-values.md), [functions](../guide/functions.md#functions-as-values)); ~~closures over numbers and booleans~~: done ([decision 0026](../decisions/0026-closures.md)); ~~closures over strings, arrays and function values~~: done ([decision 0027](../decisions/0027-closures-over-the-heap.md)).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

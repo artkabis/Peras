@@ -849,7 +849,6 @@ gen-unsupported = code generation does not support { $feature ->
     [place] assignments to fields and elements
     [function-value] functions used as values
     [closure] arrow functions that capture a variable, used as values
-    [closure-heap] arrow functions used as values that capture a string, an array, a map, a set, a function value, or a value holding one
     [borrow] the borrow operator `&`
     [float-remainder] `%` on floats
     [string] strings

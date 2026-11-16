@@ -1,0 +1,13 @@
+// P4 under option D: lending closures cannot be stored; the strings are,
+// and one function reads each.
+export fn p4(n: i32): i32 {
+  let tags: Array<String> = [];
+  for (let i = 0; i < n; i++) {
+    tags.push(`t${i}`);
+  }
+  let total = 0;
+  for (const tag of tags) {
+    total += tag.length;
+  }
+  return total;
+}

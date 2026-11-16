@@ -16,10 +16,11 @@ use super::heap::Mode;
 use super::{Binding, FnState, Lowering, values};
 use crate::{BufOp, EnvOp, Expr, ExprKind, FnId, Function, LocalId, Stmt, Ty, UnOp};
 
-/// A name an arrow function captures, its type, and whether it is compiled:
-/// the function rebuilds it from its environment's slots, one per scalar. A
-/// capture refused is only named there, so that its uses report nothing more.
-pub(super) type Capture = (Symbol, CheckTy, bool);
+/// A name an arrow function captures, its type, and the slot of each of its
+/// leaves: the function rebuilds it from its environment's slots, a number
+/// from an `i64`, a buffer lent from its handle. A capture refused has none:
+/// it is only named there, so that its uses report nothing more.
+pub(super) type Capture = (Symbol, CheckTy, Option<Vec<u32>>);
 
 /// An arrow function used as a value, to lower after the other functions:
 /// the function it becomes, its expression, its unit, the type arguments of
@@ -38,6 +39,24 @@ fn placeholder() -> Function {
         more: Vec::new(),
         shape: None,
         body: Vec::new(),
+    }
+}
+
+/// A capture planned: its slots, each among those the environment owns or
+/// the others, numbered once the owned ones are counted.
+type Planned = (Symbol, CheckTy, Option<Vec<(bool, usize)>>);
+
+/// What the environment takes of a buffer captured, by the option of
+/// decision 0027 prototyped: a function value copies freely; a buffer moves
+/// (A) or is copied (B); `None` when it is lent (D).
+fn taken(state: &mut FnState, value: &Expr, proto: Option<&str>, fns: bool) -> Option<Expr> {
+    match (&value.kind, proto) {
+        (_, Some("lend" | "lent")) => None,
+        (ExprKind::Borrow(l), Some("move")) if !fns => Some(super::heap::moved(state, *l)),
+        _ => Some(Expr {
+            kind: ExprKind::Buf(crate::BufOp::Clone, vec![value.clone()]),
+            ty: Ty::Owned,
+        }),
     }
 }
 
@@ -84,10 +103,18 @@ impl Lowering<'_> {
     /// captures, copied now. A capture that holds a buffer is not compiled
     /// yet (`closure-heap`).
     pub(super) fn arrow_value(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
-        let span = self.ast.expr(id).span;
         let found = self.analysis.captures.get(&id).cloned().unwrap_or_default();
-        let mut captures = Vec::new();
-        let mut slots = Vec::new();
+        // Option F copies what an escaping closure captures, and lends to
+        // one that cannot escape (decision 0027).
+        let proto = match perasc_check::proto_closure().as_str() {
+            "auto" if self.analysis.escaping.contains(&id) => "copy".to_owned(),
+            "auto" => "lent".to_owned(),
+            other => other.to_owned(),
+        };
+        // The buffers the environment owns come first, then the rest.
+        let mut owned: Vec<Expr> = Vec::new();
+        let mut rest: Vec<Expr> = Vec::new();
+        let mut planned: Vec<Planned> = Vec::new();
         for (symbol, index) in found {
             // A name the arrow function reads but lowering does not hold as
             // a local, a constant made where it is read, is not a capture.
@@ -102,31 +129,70 @@ impl Lowering<'_> {
             else {
                 continue;
             };
-            let scalars = self
-                .leaves(&ty)
-                .is_ok_and(|l| l.iter().all(|(_, t)| !t.is_handle()));
-            if !scalars {
-                self.unsupported(span, "closure-heap");
-                captures.push((symbol, ty, false));
+            // A type not compiled is reported where it is declared.
+            if self.leaves(&ty).is_err() {
                 continue;
             }
-            let values = match binding {
+            let values: Vec<Expr> = match binding {
                 Binding::Scalar(local) => vec![super::local_expr(state, local)],
                 Binding::Struct(locals) => locals
                     .iter()
-                    .map(|&l| super::local_expr(state, l))
+                    .map(|&l| {
+                        let e = super::local_expr(state, l);
+                        if e.ty == Ty::Owned {
+                            Expr {
+                                kind: ExprKind::Borrow(l),
+                                ty: Ty::Borrowed,
+                            }
+                        } else {
+                            e
+                        }
+                    })
                     .collect(),
                 Binding::Lent(values) => values,
             };
-            slots.extend(values.into_iter().map(to_slot));
-            captures.push((symbol, ty, true));
+            let fns = self.holds_fn(&ty);
+            let mut at = Vec::new();
+            for value in values {
+                if !value.ty.is_handle() {
+                    at.push((false, rest.len()));
+                    rest.push(to_slot(value));
+                    continue;
+                }
+                if let Some(e) = taken(state, &value, Some(proto.as_str()), fns) {
+                    at.push((true, owned.len()));
+                    owned.push(e);
+                } else {
+                    at.push((false, rest.len()));
+                    rest.push(value);
+                }
+            }
+            planned.push((symbol, ty, Some(at)));
         }
+        let count = owned.len();
+        let captures: Vec<Capture> = planned
+            .into_iter()
+            .map(|(symbol, ty, at)| {
+                let slots = at.map(|at| {
+                    at.into_iter()
+                        .map(|(first, i)| {
+                            let slot = if first { i } else { count + i };
+                            u32::try_from(slot).unwrap_or(u32::MAX)
+                        })
+                        .collect()
+                });
+                (symbol, ty, slots)
+            })
+            .collect();
+        let mut slots = owned;
+        slots.extend(rest);
         let function = self.arrow_ref(id, captures);
         let env = if slots.is_empty() {
             self.static_env(function)
         } else {
+            let count = u32::try_from(count).unwrap_or(u32::MAX);
             Expr {
-                kind: ExprKind::Env(EnvOp::New(function), slots),
+                kind: ExprKind::Env(EnvOp::New(function, count), slots),
                 ty: Ty::Owned,
             }
         };
@@ -168,7 +234,7 @@ impl Lowering<'_> {
         } else {
             None
         };
-        let op = at.map_or(EnvOp::New(function), |at| EnvOp::Static(function, at));
+        let op = at.map_or(EnvOp::New(function, 0), |at| EnvOp::Static(function, at));
         Expr {
             kind: ExprKind::Env(op, Vec::new()),
             ty: Ty::Owned,
@@ -269,17 +335,46 @@ impl Lowering<'_> {
     /// The locals of the names an arrow function captures, each set from its
     /// environment's slots, in order; a capture refused is only named.
     fn read_captures(&self, state: &mut FnState, captures: &[Capture], env: LocalId) -> Vec<Stmt> {
+        let lent = || Expr {
+            kind: ExprKind::Local(env),
+            ty: Ty::Borrowed,
+        };
         let mut out = Vec::new();
-        let mut slot = 0;
-        for (symbol, ty, compiled) in captures {
+        for (symbol, ty, slots) in captures {
             let text = self.ast.name(*symbol).to_owned();
             let leaves = self.leaves(ty).unwrap_or_default();
-            if !compiled {
+            let Some(slots) = slots else {
                 let lent: Vec<(String, Ty)> = leaves
                     .into_iter()
                     .map(|(path, t)| (path, if t.is_handle() { Ty::Borrowed } else { t }))
                     .collect();
                 state.add_struct(*symbol, &text, &lent);
+                continue;
+            };
+            // A capture holding a buffer is read from its slots at each
+            // use, its buffers lent, as an element of `for…of` is.
+            if leaves.iter().any(|(_, t)| t.is_handle()) {
+                let values = leaves
+                    .iter()
+                    .zip(slots)
+                    .map(|((_, t), &slot)| {
+                        if t.is_handle() {
+                            Expr {
+                                kind: ExprKind::Env(EnvOp::LoadHandle(slot), vec![lent()]),
+                                ty: Ty::Borrowed,
+                            }
+                        } else {
+                            let read = Expr {
+                                kind: ExprKind::Env(EnvOp::Load(slot), vec![lent()]),
+                                ty: Ty::I64,
+                            };
+                            from_slot(read, *t)
+                        }
+                    })
+                    .collect();
+                if let Some(scope) = state.scopes.last_mut() {
+                    scope.insert(*symbol, Binding::Lent(values));
+                }
                 continue;
             }
             let locals = if values::is_aggregate(ty) {
@@ -288,19 +383,12 @@ impl Lowering<'_> {
                 let ty = leaves.first().map_or(Ty::Void, |(_, t)| *t);
                 vec![state.add(*symbol, &text, ty)]
             };
-            for (local, (_, ty)) in locals.into_iter().zip(&leaves) {
+            for ((local, (_, ty)), &slot) in locals.into_iter().zip(&leaves).zip(slots) {
                 let read = Expr {
-                    kind: ExprKind::Env(
-                        EnvOp::Load(slot),
-                        vec![Expr {
-                            kind: ExprKind::Local(env),
-                            ty: Ty::Borrowed,
-                        }],
-                    ),
+                    kind: ExprKind::Env(EnvOp::Load(slot), vec![lent()]),
                     ty: Ty::I64,
                 };
                 out.push(Stmt::Set(local, from_slot(read, *ty)));
-                slot += 1;
             }
         }
         out

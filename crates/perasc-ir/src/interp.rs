@@ -132,7 +132,7 @@ struct Machine<'a> {
     /// How many hold each environment made by [`EnvOp::New`], as the
     /// runtime counts them (decision 0026): a copy adds one, a release takes
     /// one, and the last frees the block. Its elements are the function's
-    /// number, then the slots.
+    /// number, how many of its first slots it owns, then the slots.
     counts: std::collections::BTreeMap<u32, u32>,
 }
 
@@ -412,16 +412,17 @@ impl Machine<'_> {
         Ok(match (op, values) {
             (EnvOp::Static(id, _), []) => self.static_env(id.0, named(id)),
             (EnvOp::Zero, []) => self.static_env(ZERO_ENV, Value::I32(-1)),
-            (EnvOp::New(id), slots) => {
+            (EnvOp::New(id, owned), slots) => {
                 self.allocated += 1;
-                let mut elements = vec![named(id)];
+                let owned = i32::try_from(owned).unwrap_or(i32::MAX);
+                let mut elements = vec![named(id), Value::I32(owned)];
                 elements.extend_from_slice(slots);
                 self.heap.insert(self.allocated, elements);
                 self.counts.insert(self.allocated, 1);
                 Value::Handle(self.allocated)
             }
-            (EnvOp::Load(slot), [env]) => {
-                let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 1;
+            (EnvOp::Load(slot) | EnvOp::LoadHandle(slot), [env]) => {
+                let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 2;
                 *self.elements(*env)?.get(index).ok_or(Trap::Unchecked)?
             }
             _ => return Err(Trap::Unreachable),
@@ -431,7 +432,9 @@ impl Machine<'_> {
     /// The static environment `number`, made the first time it is used.
     fn static_env(&mut self, number: u32, function: Value) -> Value {
         let key = STATIC | ENV | number;
-        self.heap.entry(key).or_insert_with(|| vec![function]);
+        self.heap
+            .entry(key)
+            .or_insert_with(|| vec![function, Value::I32(0)]);
         Value::Handle(key)
     }
 
@@ -1296,6 +1299,18 @@ impl Machine<'_> {
                 return Ok(());
             }
             self.counts.remove(&block);
+            // The buffers the environment owns, its first slots, go with it.
+            let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
+            let owned = match elements.get(1) {
+                Some(Value::I32(n)) => usize::try_from(*n).unwrap_or(0),
+                _ => 0,
+            };
+            for slot in elements.iter().skip(2).take(owned) {
+                if let Value::Handle(h) = slot {
+                    self.free(*h)?;
+                }
+            }
+            return Ok(());
         }
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
         if let Some(map) = self.maps.remove(&block) {

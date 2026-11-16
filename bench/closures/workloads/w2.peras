@@ -1,0 +1,18 @@
+// W2: one closure capturing a string of 1 KiB, called often; each call reads
+// the length and the first two bytes.
+export fn w2(times: i32): i32 {
+  const s = "ab".repeat(512);
+  const f = (i: i32): i32 => if2(s.startsWith("ab")) + s.length + i % 3;
+  let total = 0;
+  for (let i = 0; i < times; i++) {
+    total = (total + f(i)) % 1000003;
+  }
+  return total;
+}
+
+fn if2(b: bool): i32 {
+  if (b) {
+    return 2;
+  }
+  return 0;
+}

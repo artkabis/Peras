@@ -1,0 +1,9 @@
+// P1 under option D: a lending closure cannot be returned; the prefix is
+// passed with each word instead.
+fn label(prefix: String, s: String): String {
+  return `${prefix}${s}`;
+}
+
+export fn p1(word: String): String {
+  return label("pre:", word);
+}

@@ -1,0 +1,19 @@
+// W3 under option A: the prefix is given to `label`, which moves it into
+// the closure.
+fn label(prefix: sink String): (String) => String {
+  return (s: String): String => `${prefix}${s}`;
+}
+
+export fn w3(count: i32): i32 {
+  let words: Array<String> = [];
+  for (let i = 0; i < count; i++) {
+    words.push(`item-${i % 100000}`);
+  }
+  const f = label("pre:");
+  const out = words.map(f);
+  let total = 0;
+  for (const o of out) {
+    total += o.length;
+  }
+  return total;
+}

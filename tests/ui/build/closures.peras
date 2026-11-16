@@ -27,3 +27,26 @@ fn one(on: bool): i32 {
   }
   return 0;
 }
+
+// Decision 0027: a string, an array or a function value captured. A closure
+// that cannot escape lends it; one that escapes copies it into its
+// environment, which owns it; so does one whose capture moves after.
+fn label(prefix: String): (String) => String {
+  return (s: String): String => `${prefix}${s}`;
+}
+
+fn keep(s: sink String): i32 {
+  return s.length;
+}
+
+export fn heap(word: String, n: i32): i32 {
+  const banned = ["a", "the"];
+  const ok = (w: String): bool => !banned.includes(w);
+  const tag = `t${n}`;
+  const read = (x: i32): i32 => x + tag.length;
+  const first = read(1);
+  const kept = keep(tag);
+  const g = makeAdder(2);
+  const twice = (x: i32): i32 => g(g(x));
+  return [word.copy()].filter(ok).length + label("<")(word).length + first + kept + twice(n);
+}

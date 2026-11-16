@@ -8,7 +8,7 @@ fn apply(%0 f: borrowed, %1 x: i32) -> i32
   return (call_indirect %0 %1)
 fn makeAdder(%0 k: i64) -> owned
   local %1 tmp: owned
-  %1 = (env.new #4 %0)
+  %1 = (env.new #7 %0)
   return (move %1)
 export fn numbers(%0 n: i32, %1 p_x: f64, %2 p_y: f32, %3 on: bool) -> i32
   local %4 tmp: owned
@@ -19,13 +19,13 @@ export fn numbers(%0 n: i32, %1 p_x: f64, %2 p_y: f32, %3 on: bool) -> i32
   local %9 tmp: owned
   local %10 tmp: i32
   local %11 tmp: i32
-  %4 = (env.new #5 (i64.bits %1) (i64.from_i32 (i32.bits %2)) (i64.from_bool %3))
+  %4 = (env.new #8 (i64.bits %1) (i64.from_i32 (i32.bits %2)) (i64.from_bool %3))
   %5 = (move %4)
   %6 = (buf.clone (borrow %5))
   %8 = (i32.+ (call #0 (borrow %5) %0) (call_indirect (borrow %6) 1:i32))
   %7 = (call #1 7:i64)
   %10 = (i32.+ %8 (call #0 (borrow %7) %0))
-  %9 = (env.static #6 @32 )
+  %9 = (env.static #9 @32 )
   %11 = (i32.+ %10 (call #0 (borrow %9) %0))
   buf.release (move %7)
   buf.release (move %9)
@@ -36,6 +36,88 @@ fn one(%0 on: bool) -> i32
   if %0
     return 1:i32
   return 0:i32
+fn label(%0 prefix: borrowed) -> owned
+  local %1 tmp: owned
+  %1 = (env.new #10 owns 1 (buf.clone %0))
+  return (move %1)
+fn keep(%0 s: owned) -> i32
+  local %1 tmp: i32
+  %1 = (buf.len (borrow %0))
+  buf.release (move %0)
+  return %1
+export fn heap(%0 word: borrowed, %1 n: i32) -> i32
+  local %2 tmp: owned
+  local %3 tmp: owned
+  local %4 tmp: owned
+  local %5 banned: owned
+  local %6 tmp: owned
+  local %7 ok: owned
+  local %8 tmp: i64
+  local %9 tmp: owned
+  local %10 tag: owned
+  local %11 tmp: owned
+  local %12 read: owned
+  local %13 first: i32
+  local %14 kept: i32
+  local %15 tmp: owned
+  local %16 g: owned
+  local %17 tmp: owned
+  local %18 twice: owned
+  local %19 tmp: owned
+  local %20 tmp: owned
+  local %21 tmp: i32
+  local %22 tmp: owned
+  local %23 tmp: i32
+  local %24 tmp: owned
+  local %25 tmp: owned
+  local %26 tmp: i32
+  local %27 tmp: i32
+  %2 = (buf.new.handle 2:i32)
+  %3 = (buf.literal #0 )
+  buf.push.handle (borrow %2) (move %3)
+  %4 = (buf.literal #1 )
+  buf.push.handle (borrow %2) (move %4)
+  %5 = (move %2)
+  %6 = (env.new #11 (borrow %5))
+  %7 = (move %6)
+  %8 = (i64.from_i32 %1)
+  %9 = (buf.new.u8 (i32.+ (buf.len (buf.static #2 @48 )) (fmt_int_len %8)))
+  buf.append.u8 (borrow %9) (buf.static #2 @48 )
+  (fmt_int_append (borrow %9) %8)
+  %10 = (move %9)
+  %11 = (env.new #12 owns 1 (buf.clone (borrow %10)))
+  %12 = (move %11)
+  %13 = (call_indirect (borrow %12) 1:i32)
+  %14 = (call #5 (move %10))
+  %15 = (call #1 2:i64)
+  %16 = (move %15)
+  %17 = (env.new #13 (borrow %16))
+  %18 = (move %17)
+  %19 = (buf.new.handle 1:i32)
+  %20 = (buf.clone %0)
+  buf.push.handle (borrow %19) (move %20)
+  %21 = (buf.len (borrow %19))
+  %22 = (buf.new.bool %21)
+  %23 = 0:i32
+  loop while (i32.< %23 %21)
+    buf.push.bool (borrow %22) (call_indirect (borrow %7) (buf.get.handle (borrow %19) %23))
+  step
+    %23 = (i32.+ %23 1:i32)
+  (arr_keep (borrow %19) (borrow %22))
+  %26 = (buf.len (borrow %19))
+  %24 = (call #4 (buf.static #3 @80 ))
+  %25 = (call_indirect (borrow %24) %0)
+  %27 = (i32.+ (i32.+ (i32.+ (i32.+ %26 (buf.len (borrow %25))) %13) %14) (call_indirect (borrow %18) %1))
+  buf.release (move %22)
+  buf.release (move %19)
+  buf.release (move %24)
+  buf.release (move %25)
+  buf.release (move %18)
+  buf.release (move %16)
+  buf.release (move %12)
+  buf.release (move %7)
+  buf.release (move %5)
+  return %27
 fn makeAdder__arrow0(%0 x: i32, %1 env: borrowed) -> i32
   local %2 k: i64
   %2 = (env.load 0 %1)
@@ -50,3 +132,15 @@ fn numbers__arrow1(%0 x: i32, %1 env: borrowed) -> i32
   return (i32.+ (i32.+ (i32.+ %0 (i32.from_f64 %2)) (i32.from_f32 %3)) (call #3 %4))
 fn numbers__arrow2(%0 x: i32, %1 env: borrowed) -> i32
   return (i32.* %0 2:i32)
+fn label__arrow3(%0 s: borrowed, %1 env: borrowed) -> owned
+  local %2 tmp: owned
+  %2 = (buf.new.u8 (i32.+ (buf.len (env.handle 0 %1)) (buf.len %0)))
+  buf.append.u8 (borrow %2) (env.handle 0 %1)
+  buf.append.u8 (borrow %2) %0
+  return (move %2)
+fn heap__arrow4(%0 w: borrowed, %1 env: borrowed) -> bool
+  return (bool.not (i32.>= (arr_index_of_str (env.handle 0 %1) %0) 0:i32))
+fn heap__arrow5(%0 x: i32, %1 env: borrowed) -> i32
+  return (i32.+ %0 (buf.len (env.handle 0 %1)))
+fn heap__arrow6(%0 x: i32, %1 env: borrowed) -> i32
+  return (call_indirect (env.handle 0 %1) (call_indirect (env.handle 0 %1) %0))

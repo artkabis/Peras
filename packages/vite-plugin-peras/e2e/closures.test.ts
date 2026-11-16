@@ -56,6 +56,15 @@ const calls: [string, ...unknown[]][] = [
   ["keptBool", true, false],
   ["keptBool", true, true],
   ["mixed", 1.5, -2.25, 3, true],
+  // Decision 0027: what lives on the heap, captured.
+  ["labelled", "word"],
+  ["filtered", "a cat and the dog"],
+  ["greeted", "Ann"],
+  ["tagged", 12],
+  ["usedAfter", "  word  "],
+  ["collections", 4],
+  ["structured", 5],
+  ["nested", 3],
 ];
 
 function results(m: Module): unknown[] {

@@ -1,0 +1,9 @@
+// P1: a label maker, returned.
+fn label(prefix: String): (String) => String {
+  return (s: String): String => `${prefix}${s}`;
+}
+
+export fn p1(word: String): String {
+  const f = label("pre:");
+  return f(word);
+}

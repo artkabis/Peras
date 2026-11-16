@@ -107,6 +107,10 @@ pub struct Analysis {
     /// reads, each once, in the order first read, with its index in
     /// [`Analysis::bindings`] (decision 0026).
     pub captures: HashMap<ExprId, Vec<(Symbol, usize)>>,
+    /// The arrow functions used as values that escape, or whose capture
+    /// moves while they live: they cannot lend what they capture (decision
+    /// 0027, prototype `auto`).
+    pub escaping: HashSet<ExprId>,
 }
 
 /// A declared name, for code generation.
@@ -248,6 +252,20 @@ pub struct ImportedFn {
 #[must_use]
 pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
     errors::import_cycle(span, path)
+}
+
+/// What a closure does with a string, an array, a map, a set or a function
+/// value it captures (decision 0027): `auto`, option F, copied into its
+/// environment unless the closure cannot escape, then lent. The other
+/// options measured, `move`, `copy` and `lend`, are built when the
+/// environment variable `PERAS_PROTO_CLOSURE` names one, for the measure
+/// script only (`scripts/bench-closures.mjs`).
+#[must_use]
+pub fn proto_closure() -> String {
+    std::env::var("PERAS_PROTO_CLOSURE")
+        .ok()
+        .filter(|m| matches!(m.as_str(), "move" | "copy" | "lend"))
+        .unwrap_or_else(|| "auto".to_owned())
 }
 
 /// The exported functions of an owned module's source, as a managed module
@@ -434,6 +452,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         bindings,
         names: checker.resolved,
         captures: checker.captures,
+        escaping: checker.escaping,
         moves: checker.moves,
         enums: checker
             .enums
@@ -551,6 +570,8 @@ struct Checker<'a> {
     value_arrows: HashSet<ExprId>,
     /// See [`Analysis::captures`].
     captures: HashMap<ExprId, Vec<(Symbol, usize)>>,
+    /// See [`Analysis::escaping`].
+    escaping: HashSet<ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -645,6 +666,7 @@ impl<'a> Checker<'a> {
             arrows: Vec::new(),
             value_arrows: HashSet::new(),
             captures: HashMap::new(),
+            escaping: HashSet::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),

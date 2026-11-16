@@ -1,0 +1,14 @@
+// P3 under option D: a lending closure cannot be kept in a structure; the
+// structure keeps the name, and a function greets with it.
+struct Greeter {
+  name: String;
+}
+
+fn greet(g: Greeter, s: String): String {
+  return `${s}, ${g.name}`;
+}
+
+export fn p3(name: String): String {
+  const g = Greeter(name.copy());
+  return greet(g, "hello");
+}
