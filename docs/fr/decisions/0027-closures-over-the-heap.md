@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0027-closures-over-the-heap.md](../../en/decisions/0027-closures-over-the-heap.md)._
 
-_État : proposée le 2026-11-16, avec ses options et son protocole enregistrés avant qu’aucun prototype ne soit construit ni mesuré ; la première décision choisie en mesurant ses options, comme le propriétaire l’a demandé le même jour. Elle suit la [décision 0026](0026-closures.md), dont elle lève le refus `closure-heap`._
+_État : acceptée par le propriétaire le 2026-11-16, option F, après que ses options ont été mesurées selon un protocole enregistré avant tout prototype ; la première décision choisie en mesurant ses options, comme le propriétaire l’a demandé le même jour. Elle suit la [décision 0026](0026-closures.md), dont elle lève le refus `closure-heap`._
 
 ## Contexte
 
@@ -54,9 +54,24 @@ Quatre grandeurs, comme le propriétaire l’a demandé : la vitesse, la charge 
 6. **Une option non construite** est rapportée comme telle, avec la raison, et classée sur rien de mesuré (constat M001).
 7. **L’exactitude d’abord** : chaque prototype passe les tests de bout en bout de la décision 0026 et les résultats des nouvelles charges contre le module managed, sans rien laisser de vivant, avant que ses temps comptent.
 
-## Critères de l’étape qui suit le choix
+## Décision
 
-Fixés une fois une option choisie, avec le propriétaire : les tests UI, de bout en bout sur les deux allocateurs, le test différentiel, le vérificateur de libération, les docs, comme pour la décision 0026.
+**L’option F**, trouvée en mesurant les autres : ce qu’une fermeture capture sur le tas est copié dans son environnement, qui le possède, sauf si la fermeture ne peut pas s’échapper, et alors il est prêté.
+
+- Une fermeture ne peut pas s’échapper quand elle est donnée sur place comme argument, ou gardée dans un `const` qui est seulement appelé ou donné comme argument, et que rien de ce qu’elle capture ne se déplace tant qu’elle vit. La passe de propriété le décide, fonction par fonction, et l’abaissement prête ou copie.
+- Une valeur fonction capturée est tenue une fois de plus, comme l’est une copie d’elle ([décision 0026](0026-closures.md)).
+- Le programme s’écrit comme l’option B le demande : aucune notion nouvelle, aucune erreur nouvelle. Le refus `closure-heap` disparaît.
+- L’interrupteur de prototype `PERAS_PROTO_CLOSURE` reste, pour le script de mesure seulement ; sans lui, une construction est l’option F.
+
+## Critères de l’étape, enregistrés avant son code
+
+1. **Tests UI** : `closures.peras` gagne une fermeture qui prête une chaîne, une qui la copie parce qu’elle s’échappe, une qui la copie parce que ce qu’elle capture se déplace ensuite, et une valeur fonction capturée ; leur IR est gardée. `E0900-closure.peras` disparaît, avec son refus.
+2. **De bout en bout, sur les deux allocateurs**, contre le même source construit comme module managed : les cinq programmes du protocole, une fermeture qui capture une table, un ensemble, un tableau de chaînes et une structure qui en tient une, et une fermeture qui capture une fermeture. Les résultats sont les mêmes, et rien ne reste vivant.
+3. **Prêter est sûr** : prêter ce que capture une fermeture qui s’échappe, exprès dans l’abaissement, fait échouer les tests de bout en bout (une fermeture qui lit un tampon déjà libéré) ; copier exprès là où elle prête ne change aucun résultat, et la mesure en montre le coût.
+4. **Le test différentiel** gagne des fermetures qui capturent des chaînes, l’une s’échappant dans un tableau, l’autre seulement appelée, et passe 2 000 graines. Lire le mauvais emplacement de poignée, exprès dans le générateur WebAssembly, le fait échouer.
+5. **Le compte tient** : un environnement qui possède des tampons les libère avec son dernier détenteur ; ne lui en faire posséder aucun, exprès, laisse des blocs vivants, que les tests prennent.
+6. **Mesures**, rapportées, pas des conditions : `node scripts/bench-closures.mjs` de nouveau au commit de l’étape, F contre les prototypes ; l’A/B du tableau de bord contre le commit d’avant (`ab-data.mjs`).
+7. **Docs**, en anglais et en français : la page du guide sur les fonctions, l’état, `E0900`, la référence de la CLI si elle change, la suite du constat F308, la feuille de route, le journal des changements, `CLAUDE.md`.
 
 ## Registre
 

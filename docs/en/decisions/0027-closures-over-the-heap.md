@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0027-closures-over-the-heap.md](../../fr/decisions/0027-closures-over-the-heap.md)._
 
-_Status: proposed on 2026-11-16, with its options and its protocol registered before any prototype is built or measured; the first decision chosen by measuring its options, as the owner asked the same day. It follows [decision 0026](0026-closures.md), whose refusal `closure-heap` it lifts._
+_Status: accepted by the owner on 2026-11-16, option F, after its options were measured by a protocol registered before any prototype; the first decision chosen by measuring its options, as the owner asked the same day. It follows [decision 0026](0026-closures.md), whose refusal `closure-heap` it lifts._
 
 ## Context
 
@@ -54,9 +54,24 @@ Four quantities, as the owner asked: speed, load on the processor, memory and by
 6. **An option not built** is reported as such, with why, and ranked on nothing measured (finding M001).
 7. **Correctness first**: every prototype passes the end-to-end tests of decision 0026 and the new workloads' results against the managed module, with nothing left alive, before its times count.
 
-## Criteria of the step that follows the choice
+## Decision
 
-Set once an option is chosen, with the owner: the UI tests, end to end on both allocators, the differential test, the release verifier, the docs, as for decision 0026.
+**Option F**, found by measuring the others: what a closure captures on the heap is copied into its environment, which owns it, unless the closure cannot escape, and then it is lent.
+
+- A closure cannot escape when it is given in place as an argument, or kept in a `const` that is only called or given as an argument, and nothing it captures moves while it lives. The ownership pass decides it, function by function, and lowering lends or copies.
+- A function value captured is held once more, as a copy of it is ([decision 0026](0026-closures.md)).
+- The program is written as option B asks: no new notion, no new error. The refusal `closure-heap` goes.
+- The prototype switch `PERAS_PROTO_CLOSURE` stays, for the measure script only; without it, a build is option F.
+
+## Criteria of the step, registered before its code
+
+1. **UI tests**: `closures.peras` gains a closure lending a string, one copying it because it escapes, one copying it because what it captures moves after, and a function value captured; their IR is kept. `E0900-closure.peras` goes, its refusal with it.
+2. **End to end, on both allocators**, against the same source built as a managed module: the five programs of the protocol, a closure capturing a map, a set, an array of strings and a structure holding one, and a closure capturing a closure. The results are the same, and nothing is left alive.
+3. **Lending is safe**: lending what an escaping closure captures, on purpose in the lowering, fails the end-to-end tests (a closure reading a buffer already released); copying on purpose where it lends changes no result, and the measure shows its cost.
+4. **The differential test** gains closures capturing strings, one escaping into an array, one only called, and passes 2,000 seeds. Reading the wrong handle slot, on purpose in the WebAssembly generator, fails it.
+5. **The count holds**: an environment that owns buffers releases them with its last holder; making it own none, on purpose, leaves blocks alive, which the tests catch.
+6. **Measures**, reported, not conditions: `node scripts/bench-closures.mjs` again at the commit of the step, F against the prototypes; the dashboard's A/B against the commit before (`ab-data.mjs`).
+7. **Docs**, in English and in French: the guide's page on functions, the status, `E0900`, the CLI reference if it changes, finding F308's follow-up, the roadmap, the changelog, `CLAUDE.md`.
 
 ## Record
 
