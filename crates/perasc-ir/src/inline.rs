@@ -238,7 +238,6 @@ impl Copy {
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
-            ExprKind::FnRef(id) => ExprKind::FnRef(*id),
             ExprKind::CallIndirect(callee, args) => ExprKind::CallIndirect(
                 Box::new(self.expr(callee)),
                 args.iter().map(|a| self.expr(a)).collect(),
@@ -250,6 +249,9 @@ impl Copy {
             ExprKind::Borrow(local) => ExprKind::Borrow(shift(*local, self.base)),
             ExprKind::Buf(op, args) => {
                 ExprKind::Buf(*op, args.iter().map(|a| self.expr(a)).collect())
+            }
+            ExprKind::Env(op, args) => {
+                ExprKind::Env(*op, args.iter().map(|a| self.expr(a)).collect())
             }
         };
         Expr { kind, ty: e.ty }
@@ -271,7 +273,7 @@ fn hoistable(e: &Expr, id: FnId) -> bool {
         | ExprKind::Alloc(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::FnRef(_)
+        | ExprKind::Env(..)
         | ExprKind::CallIndirect(..)
         | ExprKind::Buf(..) => false,
         ExprKind::Binary(_, a, b) => {
@@ -332,7 +334,7 @@ pub fn needs_reset(function: &Function) -> Vec<LocalId> {
 
 fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => true,
+        ExprKind::Const(_) | ExprKind::Global(_) => true,
         ExprKind::Local(local) | ExprKind::Move(local) | ExprKind::Borrow(local) => {
             assigned.contains(&local.0)
         }
@@ -343,7 +345,7 @@ fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
             reads_only(x, assigned)
         }
         ExprKind::Binary(_, a, b) => reads_only(a, assigned) && reads_only(b, assigned),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().all(|a| reads_only(a, assigned))
         }
         ExprKind::Alloc(x) => reads_only(x, assigned),
@@ -388,8 +390,7 @@ fn expr_size(e: &Expr) -> usize {
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_)
-        | ExprKind::FnRef(_) => 0,
+        | ExprKind::Global(_) => 0,
         ExprKind::CallIndirect(callee, args) => {
             expr_size(callee) + args.iter().map(expr_size).sum::<usize>()
         }
@@ -398,7 +399,9 @@ fn expr_size(e: &Expr) -> usize {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => expr_size(x),
         ExprKind::Binary(_, a, b) => expr_size(a) + expr_size(b),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().map(expr_size).sum(),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
+            args.iter().map(expr_size).sum()
+        }
     }
 }
 

@@ -141,6 +141,8 @@ pub fn lower_units(
         job_base: 0,
         applied: HashMap::new(),
         arrows: Vec::new(),
+        adapters: HashMap::new(),
+        static_envs: HashMap::new(),
         unit: 0,
         in_arrow: false,
     };
@@ -324,14 +326,15 @@ impl<'a> Lowering<'a> {
         // The arrow functions used as values, each in the place kept for it
         // among the jobs; one may use another.
         let mut next = 0;
-        while let Some(&(id, arrow, u)) = self.arrows.get(next) {
+        while let Some((id, arrow, u, args, captures, name)) = self.arrows.get(next).cloned() {
             next += 1;
             if let (Some(unit), Some(table)) = (units.get(u), tables.get(u)) {
                 self.enter(unit, table, u == root);
             }
             self.unit = u;
+            self.args = args;
             let jobs = self.jobs.len();
-            let function = self.arrow_function(arrow);
+            let function = self.arrow_function(arrow, &captures, name);
             job_units.extend(std::iter::repeat_n(u, self.jobs.len() - jobs));
             let at = usize::try_from(id.0 - self.job_base).unwrap_or(usize::MAX);
             if let Some(slot) = self.jobs.get_mut(at) {
@@ -339,6 +342,18 @@ impl<'a> Lowering<'a> {
             }
             if let Some(e) = errors.get_mut(u) {
                 e.append(&mut self.diagnostics);
+            }
+        }
+        // The adapters of the functions used as values, from what each
+        // function became.
+        for (&target, &adapter) in &self.adapters {
+            let at = usize::try_from(adapter.0 - self.job_base).unwrap_or(usize::MAX);
+            let made = usize::try_from(target.0)
+                .ok()
+                .and_then(|t| functions.get(t))
+                .map(|f| Self::adapter(f, target));
+            if let (Some(slot), Some(made)) = (self.jobs.get_mut(at), made) {
+                *slot = made;
             }
         }
         let mut jobs = std::mem::take(&mut self.jobs);
@@ -556,8 +571,14 @@ struct Lowering<'a> {
     /// element, its arguments, and the type of its result.
     applied: HashMap<ExprId, (Vec<Expr>, CheckTy)>,
     /// Arrow functions used as values, to lower after the other functions:
-    /// the function each becomes, its expression, and its unit.
-    arrows: Vec<(FnId, ExprId, usize)>,
+    /// the function each becomes, its expression, its unit, the type
+    /// arguments of the function around it, what it captures, its name.
+    arrows: Vec<fnvalues::Arrow>,
+    /// The adapter of each function of the module used as a value, through
+    /// which the table reaches it (decision 0026), among the jobs.
+    adapters: HashMap<FnId, FnId>,
+    /// The address of each static environment placed below the heap.
+    static_envs: HashMap<FnId, u32>,
     /// The unit whose functions are being lowered.
     unit: usize,
     /// Whether an arrow function used as a value is being lowered: a name
@@ -761,8 +782,7 @@ impl Lowering<'_> {
     /// The IR type of a checker type, or `None` for types not compiled yet.
     fn ir_type(ty: &CheckTy) -> Option<Ty> {
         Some(match ty {
-            // A function value is its position in the table (decision 0025).
-            CheckTy::Int(IntTy::I32) | CheckTy::IntLit | CheckTy::Callback(..) => Ty::I32,
+            CheckTy::Int(IntTy::I32) | CheckTy::IntLit => Ty::I32,
             // Every other integer in an `i32` or an `i64` (decision 0024).
             CheckTy::Int(kind) => ints::storage(*kind),
             CheckTy::Float(FloatTy::F32) => Ty::F32,
@@ -810,13 +830,6 @@ impl Lowering<'_> {
         // A constant: its value, lowered here.
         if let Some(&init) = self.constants.get(&symbol) {
             return self.expr(state, init);
-        }
-        // A function of the module as a value (decision 0025).
-        if let Some(&id) = self.fns.get(&symbol) {
-            return Expr {
-                kind: ExprKind::FnRef(id),
-                ty: Ty::I32,
-            };
         }
         let function = self.generic.contains_key(&symbol);
         let feature = if function {
@@ -1649,8 +1662,8 @@ impl Lowering<'_> {
             }
             AstExpr::Array(_) => return self.not_yet(span, "array", ty),
             AstExpr::Tuple(_) => return self.not_yet(span, "struct", ty),
-            // A value: a function of its own (decision 0025).
-            AstExpr::Lambda { .. } => return self.arrow_ref(id),
+            // A function value is its environment, as `value` lowers it.
+            AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),
             AstExpr::Field { base, .. } if self.is_buffer(*base) || self.is_map(*base) => {
                 return self.array_length(state, *base);
             }

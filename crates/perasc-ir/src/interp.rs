@@ -6,7 +6,7 @@
 #![allow(clippy::cast_possible_truncation, clippy::float_cmp)]
 
 use crate::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, FnId, MathOp, Module, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, EnvOp, Expr, ExprKind, FnId, MathOp, Module, Stmt, Ty, UnOp,
 };
 
 /// A value.
@@ -89,7 +89,7 @@ pub fn run_with_heap(
                     .iter()
                     .map(|g| constant(g.init, g.ty))
                     .collect(),
-                table: module.fn_table(),
+                counts: std::collections::BTreeMap::new(),
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
@@ -129,8 +129,21 @@ struct Machine<'a> {
     maps: std::collections::BTreeMap<u32, Table>,
     /// The module variables, from their initial values (decision 0023).
     globals: Vec<Value>,
-    /// The functions used as values, by position (decision 0025).
-    table: Vec<FnId>,
+    /// How many hold each environment made by [`EnvOp::New`], as the
+    /// runtime counts them (decision 0026): a copy adds one, a release takes
+    /// one, and the last frees the block. Its elements are the function's
+    /// number, then the slots.
+    counts: std::collections::BTreeMap<u32, u32>,
+}
+
+/// Marks a static environment among the static handles: the function's
+/// number follows, or [`ZERO_ENV`] for [`EnvOp::Zero`].
+const ENV: u32 = 0x4000_0000;
+const ZERO_ENV: u32 = 0x3FFF_FFFF;
+
+/// Whether a handle is a static environment, never counted nor freed.
+const fn is_static_env(block: u32) -> bool {
+    block & STATIC != 0 && block & ENV != 0
 }
 
 /// A constant of type `ty`, as a value.
@@ -366,11 +379,12 @@ impl Machine<'_> {
                 callee,
                 args,
             } => {
-                let callee = self.callee(callee, locals)?;
-                let mut values = Vec::with_capacity(args.len());
+                let mut values = Vec::with_capacity(args.len() + 1);
                 for arg in args {
                     values.push(self.expr(arg, locals)?);
                 }
+                let (callee, env) = self.callee(callee, locals)?;
+                values.push(env);
                 let results = self.call_all(callee, &values)?;
                 store(locals, targets, results);
                 Flow::Normal
@@ -379,15 +393,46 @@ impl Machine<'_> {
     }
 
     /// The function a function value names: its position in the table.
-    fn callee(&mut self, callee: &Expr, locals: &mut Vec<Value>) -> Result<FnId, Trap> {
-        match self.expr(callee, locals)? {
-            Value::I32(i) => usize::try_from(i)
-                .ok()
-                .and_then(|i| self.table.get(i))
-                .copied()
-                .ok_or(Trap::Unreachable),
+    /// The function a value names, and its environment, which the function
+    /// takes last (decision 0026).
+    fn callee(&mut self, callee: &Expr, locals: &mut Vec<Value>) -> Result<(FnId, Value), Trap> {
+        let env = self.expr(callee, locals)?;
+        match self.elements(env)?.first() {
+            Some(Value::I32(id)) => Ok((
+                FnId(u32::try_from(*id).map_err(|_| Trap::Unreachable)?),
+                env,
+            )),
             _ => Err(Trap::Unreachable),
         }
+    }
+
+    /// An environment (decision 0026).
+    fn env_op(&mut self, op: EnvOp, values: &[Value]) -> Result<Value, Trap> {
+        let named = |id: FnId| Value::I32(i32::try_from(id.0).unwrap_or(-1));
+        Ok(match (op, values) {
+            (EnvOp::Static(id, _), []) => self.static_env(id.0, named(id)),
+            (EnvOp::Zero, []) => self.static_env(ZERO_ENV, Value::I32(-1)),
+            (EnvOp::New(id), slots) => {
+                self.allocated += 1;
+                let mut elements = vec![named(id)];
+                elements.extend_from_slice(slots);
+                self.heap.insert(self.allocated, elements);
+                self.counts.insert(self.allocated, 1);
+                Value::Handle(self.allocated)
+            }
+            (EnvOp::Load(slot), [env]) => {
+                let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 1;
+                *self.elements(*env)?.get(index).ok_or(Trap::Unchecked)?
+            }
+            _ => return Err(Trap::Unreachable),
+        })
+    }
+
+    /// The static environment `number`, made the first time it is used.
+    fn static_env(&mut self, number: u32, function: Value) -> Value {
+        let key = STATIC | ENV | number;
+        self.heap.entry(key).or_insert_with(|| vec![function]);
+        Value::Handle(key)
     }
 
     fn expr(&mut self, e: &Expr, locals: &mut Vec<Value>) -> Result<Value, Trap> {
@@ -452,19 +497,20 @@ impl Machine<'_> {
                 }
                 self.call(*id, &values)?
             }
-            ExprKind::FnRef(id) => Value::I32(
-                self.table
-                    .iter()
-                    .position(|f| f == id)
-                    .and_then(|p| i32::try_from(p).ok())
-                    .ok_or(Trap::Unreachable)?,
-            ),
-            ExprKind::CallIndirect(callee, args) => {
-                let callee = self.callee(callee, locals)?;
+            ExprKind::Env(op, args) => {
                 let mut values = Vec::with_capacity(args.len());
                 for arg in args {
                     values.push(self.expr(arg, locals)?);
                 }
+                self.env_op(*op, &values)?
+            }
+            ExprKind::CallIndirect(callee, args) => {
+                let mut values = Vec::with_capacity(args.len() + 1);
+                for arg in args {
+                    values.push(self.expr(arg, locals)?);
+                }
+                let (callee, env) = self.callee(callee, locals)?;
+                values.push(env);
                 self.call(callee, &values)?
             }
             ExprKind::Convert(x) => convert(self.expr(x, locals)?, e.ty),
@@ -1236,8 +1282,20 @@ impl Machine<'_> {
 
     /// Releases a buffer, and the buffers it owns.
     fn free(&mut self, block: u32) -> Result<(), Trap> {
+        // A static environment is never freed; a counted one, by the last
+        // who holds it (decision 0026).
+        if is_static_env(block) {
+            return Ok(());
+        }
         if block & STATIC != 0 {
             return Err(Trap::DoubleRelease);
+        }
+        if let Some(count) = self.counts.get_mut(&block) {
+            *count -= 1;
+            if *count > 0 {
+                return Ok(());
+            }
+            self.counts.remove(&block);
         }
         let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
         if let Some(map) = self.maps.remove(&block) {
@@ -1281,6 +1339,14 @@ impl Machine<'_> {
         let Value::Handle(block) = buf else {
             return Err(Trap::UseAfterRelease);
         };
+        // An environment is shared: one more holds it (decision 0026).
+        if is_static_env(block) {
+            return Ok(buf);
+        }
+        if let Some(count) = self.counts.get_mut(&block) {
+            *count += 1;
+            return Ok(buf);
+        }
         if self.maps.contains_key(&block) {
             return self.clone_map(block, elements);
         }
@@ -1456,6 +1522,10 @@ fn unary(op: UnOp, v: Value) -> Value {
         (UnOp::Not, Value::Bool(x)) => Value::Bool(!x),
         (UnOp::BitNot, Value::I32(x)) => Value::I32(!x),
         (UnOp::BitNot, Value::I64(x)) => Value::I64(!x),
+        (UnOp::Bits, Value::F64(x)) => Value::I64(x.to_bits().cast_signed()),
+        (UnOp::Bits, Value::I64(x)) => Value::F64(f64::from_bits(x.cast_unsigned())),
+        (UnOp::Bits, Value::F32(x)) => Value::I32(x.to_bits().cast_signed()),
+        (UnOp::Bits, Value::I32(x)) => Value::F32(f32::from_bits(x.cast_unsigned())),
         (_, other) => other,
     }
 }
@@ -1558,6 +1628,9 @@ fn convert(v: Value, to: Ty) -> Value {
         _ => 0.0,
     };
     match (v, to) {
+        // A `bool` in an environment's slot (decision 0026).
+        (Value::Bool(x), Ty::I64) => Value::I64(i64::from(x)),
+        (Value::I64(x), Ty::Bool) => Value::Bool(x & 1 != 0),
         (Value::I32(x), Ty::I64) => Value::I64(i64::from(x)),
         (Value::I64(x), Ty::I32) => Value::I32(x as i32),
         (Value::I64(x), Ty::F32) => Value::F32(x as f32),

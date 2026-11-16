@@ -111,8 +111,13 @@ impl Lowering<'_> {
                     .map(|(path, _)| (path, Ty::Owned))
                     .collect())
             }
-            // A string, a map or a set is one handle, wherever it is held.
+            // A string, a map or a set is one handle, wherever it is held;
+            // a function value too, its environment (decision 0026).
             CheckTy::String | CheckTy::Map(..) | CheckTy::Set(_) => {
+                Ok(vec![(String::new(), Ty::Owned)])
+            }
+            CheckTy::Callback(params, ret) => {
+                params.iter().try_for_each(compiled).and(compiled(ret))?;
                 Ok(vec![(String::new(), Ty::Owned)])
             }
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
@@ -318,8 +323,18 @@ impl Lowering<'_> {
     }
 
     /// The scalars of any expression, taken or only read: its buffers then
-    /// move, or are lent.
+    /// move, or are lent. A function value taken without being moved, which
+    /// copies freely, is held once more (decision 0026).
     pub(super) fn value_as(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
+        let values = self.value_parts(state, id, mode);
+        if mode == Mode::Consume && self.check_type(id).is_some_and(|t| self.holds_fn(&t)) {
+            return Self::retained(values);
+        }
+        values
+    }
+
+    /// [`Self::value_as`], before a function value is held once more.
+    fn value_parts(&mut self, state: &mut FnState, id: ExprId, mode: Mode) -> Vec<Expr> {
         if self.applied.contains_key(&id) {
             let values = self.apply(state, id);
             return Self::fresh(state, values, mode);
@@ -356,11 +371,18 @@ impl Lowering<'_> {
                     self.value_as(state, init, mode)
                 } else if self.ast.name(*symbol) == "None" {
                     self.none(id)
+                } else if let Some(&target) = self.fns.get(symbol) {
+                    // A function of the module as a value (decision 0026).
+                    self.named_value(state, target, mode)
+                } else if self.generic.contains_key(symbol) {
+                    self.unsupported(span, "function-value");
+                    Vec::new()
                 } else {
                     self.unsupported(span, "global");
                     Vec::new()
                 }
             }
+            AstExpr::Lambda { .. } => self.arrow_value(state, id, mode),
             AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
             AstExpr::String(text) => self.string_literal(state, text, mode),
@@ -525,6 +547,11 @@ impl Lowering<'_> {
                 })
                 .collect(),
             CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
+            // The environment of no function, static (decision 0026).
+            CheckTy::Callback(..) => vec![Expr {
+                kind: ExprKind::Env(crate::EnvOp::Zero, Vec::new()),
+                ty: Ty::Owned,
+            }],
             CheckTy::Struct(id, _) => self
                 .analysis
                 .structs
@@ -1245,6 +1272,7 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Result(..)
             | CheckTy::Map(..)
             | CheckTy::Set(_)
+            | CheckTy::Callback(..)
     )
 }
 
@@ -1328,13 +1356,15 @@ fn force(state: &mut FnState, value: Expr) -> Expr {
 fn reads(e: &Expr, local: LocalId) -> bool {
     match &e.kind {
         ExprKind::Local(l) | ExprKind::Move(l) | ExprKind::Borrow(l) => *l == local,
-        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => false,
+        ExprKind::Const(_) | ExprKind::Global(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, local),
         ExprKind::Binary(_, a, b) => reads(a, local) || reads(b, local),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().any(|a| reads(a, local)),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
+            args.iter().any(|a| reads(a, local))
+        }
         ExprKind::CallIndirect(callee, args) => {
             reads(callee, local) || args.iter().any(|a| reads(a, local))
         }

@@ -518,7 +518,9 @@ impl Rename {
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
-            ExprKind::FnRef(id) => ExprKind::FnRef(*id),
+            ExprKind::Env(op, args) => {
+                ExprKind::Env(*op, args.iter().map(|a| self.expr(a)).collect())
+            }
             ExprKind::CallIndirect(callee, args) => ExprKind::CallIndirect(
                 Box::new(self.expr(callee)),
                 args.iter().map(|a| self.expr(a)).collect(),

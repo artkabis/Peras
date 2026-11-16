@@ -315,18 +315,14 @@ fn quiet_stmt(stmt: &Stmt, held: &[LocalId]) -> bool {
 /// Whether evaluating `e` calls nothing and moves nothing.
 fn quiet_expr(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Const(_)
-        | ExprKind::Local(_)
-        | ExprKind::Borrow(_)
-        | ExprKind::Global(_)
-        | ExprKind::FnRef(_) => true,
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Borrow(_) | ExprKind::Global(_) => true,
         ExprKind::Call(..) | ExprKind::CallIndirect(..) | ExprKind::Move(_) => false,
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => quiet_expr(x),
         ExprKind::Binary(_, a, b) => quiet_expr(a) && quiet_expr(b),
-        ExprKind::Buf(_, args) => args.iter().all(quiet_expr),
+        ExprKind::Buf(_, args) | ExprKind::Env(_, args) => args.iter().all(quiet_expr),
     }
 }
 

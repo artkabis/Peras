@@ -93,9 +93,12 @@ pub struct FnId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalId(pub u32);
 
-/// The first address of the static literals' headers: address 0 is never a
-/// valid pointer.
-pub const STATIC_START: u32 = 16;
+/// The static environment of no function ([`EnvOp::Zero`]): address 0 is
+/// never a valid pointer, and the 16 bytes after are this header.
+pub const ZERO_ENV: u32 = 16;
+/// The first address of the static literals' headers and static
+/// environments, after [`ZERO_ENV`].
+pub const STATIC_START: u32 = 32;
 /// The end of the static literals: both allocators leave the memory below
 /// 1024 unused.
 pub const STATIC_END: u32 = 1024;
@@ -295,10 +298,12 @@ impl Shape {
 impl Module {
     /// Whether a function allocates, releases or passes heap blocks. The backends
     /// do not compile such code yet: decision 0001 requires the debug allocator
-    /// to be linked in first.
+    /// to be linked in first. Static environments alone are not the heap:
+    /// see [`Module::static_envs_only`].
     #[must_use]
     pub fn uses_heap(&self) -> bool {
-        self.functions.iter().any(Function::uses_heap) || !self.statics().is_empty()
+        (self.functions.iter().any(Function::uses_heap) || !self.statics().is_empty())
+            && !self.static_envs_only()
     }
 
     /// The static literals the module lends ([`BufOp::Static`]): each one's
@@ -472,7 +477,7 @@ pub enum Stmt {
     CallManyIndirect {
         /// One local per result.
         targets: Vec<LocalId>,
-        /// The function value, an `i32`: see [`ExprKind::FnRef`].
+        /// The function value, an environment lent: see [`ExprKind::Env`].
         callee: Expr,
         /// Its arguments, lent: a function type has no `sink` parameter.
         args: Vec<Expr>,
@@ -497,6 +502,31 @@ pub enum Const {
     Float(f64),
     /// A boolean.
     Bool(bool),
+}
+
+/// The environments of function values (decision 0026). A function value is
+/// one handle, its environment: a block that holds the position of its
+/// function in [`Module::fn_table`], how many hold it, and the values it
+/// captured, one `i64` slot each, written when it is made and never after.
+/// A copy of the value adds to the count ([`BufOp::Clone`]), a release takes
+/// from it ([`BufStmt::Release`]), and the last one frees the block. A
+/// static environment, written when the module is instantiated, has no
+/// count: neither changes it, and it is never freed. Every function in the
+/// table takes its environment as its last parameter, lent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EnvOp {
+    /// `[]`: the static environment of a function that captures nothing, an
+    /// `owned` value that costs no allocation, at this address below the
+    /// heap ([`Module::static_envs`]).
+    Static(FnId, u32),
+    /// `[slots…]`, each an `i64`: a new environment of this function,
+    /// counted once, holding the slots in order.
+    New(FnId),
+    /// `[]`: the environment of no function, held by a `None` or an empty
+    /// variant; it is static, at [`ZERO_ENV`], and is never called.
+    Zero,
+    /// `[env]`, lent: the slot at this index, an `i64`.
+    Load(u32),
 }
 
 /// The shapes of expression.
@@ -527,12 +557,13 @@ pub enum ExprKind {
     Global(GlobalId),
     /// A value computed from a buffer: see [`BufOp`].
     Buf(BufOp, Vec<Expr>),
-    /// A function of the module as a value, an `i32` (decision 0025): its
-    /// position in [`Module::fn_table`].
-    FnRef(FnId),
+    /// A function value, its environment (decision 0026): see [`EnvOp`].
+    Env(EnvOp, Vec<Expr>),
     /// A call to the function a value names, with one result or none: the
-    /// signature is that of its arguments and of the expression. WebAssembly
-    /// checks it when it calls.
+    /// arguments given here, then its environment, lent, the function's last
+    /// argument, evaluated after the others. The signature is that of the
+    /// arguments, the environment and the expression; WebAssembly checks it
+    /// when it calls.
     CallIndirect(Box<Expr>, Vec<Expr>),
 }
 
@@ -1219,6 +1250,9 @@ pub enum UnOp {
     /// 64 bits with zeros, a float to an unsigned integer, saturating
     /// (decision 0024).
     ConvertU,
+    /// The same bits, read as the expression's type: an `f64` and an `i64`,
+    /// an `f32` and an `i32`, either way (decision 0026).
+    Bits,
 }
 
 /// Binary operators. Integer arithmetic wraps around; division by zero traps.
@@ -1463,18 +1497,62 @@ impl Module {
     }
 
     /// The functions used as values, in the order of their positions
-    /// (decision 0025): `FnRef(f)` is the position of `f` here.
+    /// (decision 0025): an environment of `f` holds the position of `f` here.
     #[must_use]
     pub fn fn_table(&self) -> Vec<FnId> {
         let mut found = std::collections::BTreeSet::new();
         for f in &self.functions {
             each_expr(&f.body, &mut |e| {
-                if let ExprKind::FnRef(id) = e.kind {
+                if let ExprKind::Env(EnvOp::Static(id, _) | EnvOp::New(id), _) = e.kind {
                     found.insert(id.0);
                 }
             });
         }
         found.into_iter().map(FnId).collect()
+    }
+
+    /// The static environments the module uses, each once, by address:
+    /// the function each names, `None` for [`EnvOp::Zero`].
+    #[must_use]
+    pub fn static_envs(&self) -> Vec<(u32, Option<FnId>)> {
+        let mut found = std::collections::BTreeMap::new();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| match e.kind {
+                ExprKind::Env(EnvOp::Static(id, at), _) => {
+                    found.insert(at, Some(id));
+                }
+                ExprKind::Env(EnvOp::Zero, _) => {
+                    found.insert(ZERO_ENV, None);
+                }
+                _ => {}
+            });
+        }
+        found.into_iter().collect()
+    }
+
+    /// Whether every block the module holds is a static environment: its
+    /// function values capture nothing, and it uses no other heap value.
+    /// Its environments are then only the positions of their functions, and
+    /// no allocator is needed (decision 0026).
+    #[must_use]
+    pub fn static_envs_only(&self) -> bool {
+        let mut only = self.statics().is_empty();
+        for f in &self.functions {
+            each_expr(&f.body, &mut |e| match &e.kind {
+                ExprKind::Env(EnvOp::Static(..) | EnvOp::Zero, _)
+                | ExprKind::Buf(BufOp::Clone, _) => {}
+                ExprKind::Env(..) | ExprKind::Buf(..) | ExprKind::Alloc(_) => only = false,
+                _ => {}
+            });
+            each_stmt(&f.body, &mut |s| {
+                if matches!(s, Stmt::Buf(op, _) if *op != BufStmt::Release && *op != BufStmt::CheckIndex && *op != BufStmt::CheckOverflow)
+                    || matches!(s, Stmt::Release(_))
+                {
+                    only = false;
+                }
+            });
+        }
+        only
     }
 
     /// The signatures of the calls through function values, each once: the
@@ -1494,7 +1572,13 @@ impl Module {
                                     .map_or(Ty::Void, |l| l.ty)
                             })
                             .collect();
-                        let sig = (args.iter().map(|a| a.ty).collect(), results);
+                        let sig = (
+                            args.iter()
+                                .map(|a| a.ty)
+                                .chain(std::iter::once(Ty::Borrowed))
+                                .collect(),
+                            results,
+                        );
                         if !out.contains(&sig) {
                             out.push(sig);
                         }
@@ -1523,7 +1607,13 @@ impl Module {
                     } else {
                         vec![e.ty]
                     };
-                    let sig = (args.iter().map(|a| a.ty).collect(), results);
+                    let sig = (
+                        args.iter()
+                            .map(|a| a.ty)
+                            .chain(std::iter::once(Ty::Borrowed))
+                            .collect(),
+                        results,
+                    );
                     if !out.contains(&sig) {
                         out.push(sig);
                     }
@@ -1615,7 +1705,7 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
             each_in(a, visit);
             each_in(b, visit);
         }
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             for a in args {
                 each_in(a, visit);
             }
@@ -1630,8 +1720,28 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_)
-        | ExprKind::FnRef(_) => {}
+        | ExprKind::Global(_) => {}
+    }
+}
+
+/// Calls `visit` on every statement of `stmts`, nested ones included.
+fn each_stmt(stmts: &[Stmt], visit: &mut impl FnMut(&Stmt)) {
+    for stmt in stmts {
+        visit(stmt);
+        match stmt {
+            Stmt::If {
+                then, otherwise, ..
+            } => {
+                each_stmt(then, visit);
+                each_stmt(otherwise, visit);
+            }
+            Stmt::Loop { body, step, .. } => {
+                each_stmt(body, visit);
+                each_stmt(step, visit);
+            }
+            Stmt::Block(body) => each_stmt(body, visit),
+            _ => {}
+        }
     }
 }
 
@@ -1791,6 +1901,7 @@ fn expr(e: &Expr) -> String {
                 UnOp::Not => "not",
                 UnOp::BitNot => "bitnot",
                 UnOp::ConvertU => "convert_u",
+                UnOp::Bits => "bits",
             };
             format!("({ty}.{op} {})", expr(operand))
         }
@@ -1813,7 +1924,16 @@ fn expr(e: &Expr) -> String {
         ExprKind::Math(op, operand) => format!("({ty}.{} {})", op.name(), expr(operand)),
         ExprKind::Alloc(size) => format!("(alloc {})", expr(size)),
         ExprKind::Move(l) => format!("(move %{})", l.0),
-        ExprKind::FnRef(id) => format!("(fn #{})", id.0),
+        ExprKind::Env(op, args) => {
+            let args: Vec<String> = args.iter().map(expr).collect();
+            let op = match op {
+                EnvOp::Static(id, at) => format!("env.static #{} @{at}", id.0),
+                EnvOp::New(id) => format!("env.new #{}", id.0),
+                EnvOp::Zero => "env.zero".to_owned(),
+                EnvOp::Load(slot) => format!("env.load {slot}"),
+            };
+            format!("({op} {})", args.join(" "))
+        }
         ExprKind::CallIndirect(callee, args) => {
             let args: Vec<String> = args.iter().map(expr).collect();
             format!("(call_indirect {} {})", expr(callee), args.join(" "))

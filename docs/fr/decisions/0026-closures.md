@@ -52,12 +52,12 @@ export fn shifted(n: i32, k: i32): i32 {
 5. **Ce qu’elle capture est copié dans son environnement quand elle est faite.**
    - Nombres et booléens sont rangés sur 64 bits : un entier étendu selon son type, un flottant par ses bits. Pour cela, l’IR gagne les réinterprétations de WebAssembly.
    - Une capture d’une chaîne, d’un tableau, d’une table, d’un ensemble, d’une structure qui en tient, ou d’une valeur fonction est refusée pour l’instant (`E0900`, `closure-heap`). La tenir ferait posséder un tampon à l’environnement : c’est l’étape suivante.
-6. **Chaque fonction de la table prend son environnement en premier**, prêté.
+6. **Chaque fonction de la table prend son environnement en dernier**, prêté, après ses arguments : les arguments sont évalués avant la valeur appelée, si bien que l’appel lit la position de sa fonction dans l’environnement sans une seconde locale par appel imbriqué.
    - Une fermeture lit chaque capture dans son emplacement.
    - Une fonction du module utilisée comme valeur reçoit un adaptateur dans la table, qui prend l’environnement et appelle la fonction. Ses appels directs ne changent pas.
    - `xs.map(twice)` reste un appel direct : la valeur n’est jamais faite.
 7. **Un module managed ne change pas.** Ses fermetures sont celles de JavaScript.
-8. **Le backend Rust ne perd rien.** Une valeur qui ne capture rien y compile comme dans la décision 0025 : son environnement est une constante, ajouter au compte et en retirer ne font rien. Une fermeture qui capture y est refusée avec `E0900`, comme toute autre valeur sur le tas, puisque ce backend ne compile aucun tampon.
+8. **Le backend Rust ne perd rien.** Une valeur qui ne capture rien y compile comme dans la décision 0025 : son environnement est une constante, ajouter au compte et en retirer ne font rien. Une fermeture qui capture y est refusée, comme toute autre valeur sur le tas, puisque ce backend ne compile aucun tampon.
 
 ## Non retenu
 
@@ -104,3 +104,24 @@ L’étape n’arrive qu’avec tous ceux-ci, en plus des [critères de la déci
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+- **2026-11-16, l’étape, en un lot.**
+  - L’IR gagne `ExprKind::Env` (`Static`, `New`, `Zero`, `Load`) et `UnOp::Bits` ; un type fonction s’abaisse en une feuille `owned`, comme une chaîne. Chaque fonction de la table prend son environnement en dernier : les arguments sont évalués avant la valeur appelée, si bien que l’appel y lit la position de sa fonction avec une seule locale de travail.
+  - Le runtime marque un environnement `SHARED` : `buf_clone` ajoute un à son compte, `buf_release` en retire un et libère le bloc à zéro ; un environnement statique, écrit sous le tas par un segment de données, a un compte de 0, que rien ne change. L’environnement vide d’un `None` est à l’adresse fixe `ZERO_ENV`, et les littéraux commencent après.
+  - Un module dont tous les environnements sont statiques (`Module::static_envs_only`) n’a pas besoin du tas : un environnement y est la position de sa fonction, une copie la même position, et une libération ne fait rien. C’est ainsi que le backend Rust continue de compiler les valeurs de la décision 0025.
+  - Le vérificateur note ce que capture chaque fonction fléchée, et refuse, dans un module owned, un `let` ou un paramètre `inout` capturé par une fonction utilisée comme valeur (`E0251`).
+  - Critères :
+    1. `E0251-closure-capture.peras` et `.apeiron`, `E0900-closure.peras` (`closure-heap` : une chaîne, un tableau, une structure qui en tient, une valeur fonction), et `closures.peras`, dont l’IR est gardée.
+    2. `closures.test.ts`, sur les deux allocateurs, contre le même source construit comme module managed : `makeAdder`, des fermetures sur un `const` de boucle, une fermeture dans une structure et dans une option, donnée à `apply` et copiée, des fermetures sur les bornes de `i8`, `u32`, `i64`, `u64`, `f32`, `f64` et `bool`. Les résultats sont les mêmes, et rien ne reste vivant.
+    3. `an_environment_copied_is_freed_once` : 100 copies dans un tableau, puis libérées, ne laissent rien de vivant dans l’interpréteur ni en WebAssembly. Une copie qui ne compte pas, exprès dans le `buf_clone` du runtime, fait arrêter l’appel par l’allocateur de débogage ; dans l’interpréteur, un `DoubleRelease`.
+    4. Le test différentiel gagne des fermetures faites dans une boucle et appelées à travers un tableau ; il passe 2 000 graines. Lire l’emplacement 0 pour chaque emplacement, exprès dans le générateur WebAssembly, fait échouer les deux tests différentiels (la graine 28 entre autres). La même mutation dans l’abaissement passait : constat M026.
+    5. Le vérificateur de libération refuse un environnement fait et jamais libéré, exprès dans l’abaissement : `%3 still holds a block when the function returns: it leaks`.
+    6. `reinterpretations_match_rusts_bits` et `captured_numbers_come_back_bit_for_bit` : chaque borne de `f32` et `f64`, NaN avec une charge, NaN signalant et −0 compris, dans l’interpréteur et en WebAssembly.
+    7. `static_environments_are_positions` tient le Rust produit ; et un module de valeurs qui ne capturent rien, construit avec `--backend rust` et avec le backend direct, a donné les mêmes 16 résultats dans Node. `bench-backends.mjs --check` passe.
+    8. Mesures : dans la partie suivante de ce registre.
+    9. La page du guide sur les fonctions, l’état, `E0900`, le nouveau `E0251` et l’index des erreurs (auquel manquait `E0250` aussi), la référence de la CLI, les constats F308, F011 et M026, la feuille de route et le journal des changements, en anglais et en français.
+- **Écarts au texte ci-dessus.**
+  - L’environnement est le dernier paramètre, pas le premier.
+  - Une fermeture qui capture est refusée par le pilote du backend Rust comme toute valeur du tas, pas avec `E0900`.
+  - La mutation du critère 4 est faite dans le générateur, pas dans l’abaissement (constat M026).
+  - Le bogue F011 a été trouvé et corrigé en chemin : deux fonctions fléchées utilisées comme valeurs avaient le même nom.

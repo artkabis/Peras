@@ -97,6 +97,7 @@ const fn why(code: ErrorCode) -> &'static str {
         248 => "check-floating-promise-why",
         249 => "check-sort-key-why",
         250 => "check-import-cycle-why",
+        251 => "check-closure-capture-why",
         _ => "check-operator-why",
     }
 }
@@ -1156,6 +1157,20 @@ pub fn import_cycle(span: Span, path: &str) -> Diagnostic {
         span,
         Message::new("check-import-cycle-label"),
         Message::new("check-import-cycle-fix"),
+    )
+}
+
+/// `E0251`: an arrow function used as a value, in an owned module, captures
+/// a variable that can change after it is made (decision 0026).
+pub fn closure_capture(span: Span, name: &str, kind: &str) -> Diagnostic {
+    simple(
+        codes::CLOSURE_CAPTURE,
+        Message::new("check-closure-capture")
+            .text("name", name)
+            .text("kind", kind),
+        span,
+        Message::new("check-closure-capture-label").text("kind", kind),
+        Message::new("check-closure-capture-fix").text("kind", kind),
     )
 }
 

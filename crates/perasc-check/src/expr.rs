@@ -24,6 +24,7 @@ impl Checker<'_> {
             && matches!(self.ast.expr(id).kind, ExprKind::Lambda { .. })
         {
             let wanted = (**ret != Ty::Void).then_some(&**ret);
+            self.value_arrows.insert(id);
             self.arrow(id, params, wanted);
             // Its type, for code generation (decision 0025).
             self.expr_types.insert(id, expected.clone());
@@ -204,6 +205,7 @@ impl Checker<'_> {
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
+                    self.capture(index, span);
                 }
                 self.read_name(*symbol, span)
             }
@@ -540,6 +542,7 @@ impl Checker<'_> {
             ExprKind::Name(symbol) => {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(callee, index);
+                    self.capture(index, callee_expr.span);
                 }
                 let written: Vec<Ty> = types.iter().map(|t| self.resolve_type(t)).collect();
                 let call = Call {

@@ -12,8 +12,8 @@ use std::fmt::Write as _;
 mod simd;
 
 use perasc_ir::{
-    BinOp, BufOp, BufStmt, Const, Elem, Expr, ExprKind, FnId, Function, HostMath, IntKind, JsShape,
-    MapShape, MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, Elem, EnvOp, Expr, ExprKind, FnId, Function, HostMath, IntKind,
+    JsShape, MapShape, MathOp, Module, Pass, RuntimeFn, Shape, Stmt, Ty, UnOp,
 };
 use wasm_encoder::{
     BlockType, CodeSection, ConstExpr, DataCountSection, DataSection, EntityType, ExportKind,
@@ -58,6 +58,8 @@ const DEEP: i32 = 0x100;
 /// A buffer whose elements are in its header's block (`$INLINE` in
 /// `perasc-runtime/runtime/buffers.wat`).
 const INLINE: u32 = 0x200;
+/// An environment of a function value, counted (`$SHARED`, decision 0026).
+const SHARED: i32 = 0x2000;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -83,13 +85,21 @@ struct Host<'m> {
     /// follow the functions' own from `indirect_types`.
     indirect: &'m [(Vec<Ty>, Vec<Ty>)],
     indirect_types: u32,
+    /// Whether every environment is static (`Module::static_envs_only`):
+    /// an environment is then its function's position in the table, and
+    /// nothing counts or frees it (decision 0026).
+    positions: bool,
 }
 
 impl Host<'_> {
     /// The type of a call through a function value with these arguments and
     /// results.
     fn indirect_type(self, args: &[Expr], results: &[Ty]) -> u32 {
-        let params: Vec<Ty> = args.iter().map(|a| a.ty).collect();
+        let params: Vec<Ty> = args
+            .iter()
+            .map(|a| a.ty)
+            .chain(std::iter::once(Ty::Borrowed))
+            .collect();
         let position = self
             .indirect
             .iter()
@@ -298,9 +308,15 @@ pub fn jobs(module: &Module) -> Vec<u32> {
 /// as a passive segment, copied into a new buffer when used; then those only
 /// read, each an active segment that writes its header and bytes below the
 /// heap when the module is instantiated (decision 0016, finding F211).
-fn data_section(module: &Module) -> Option<(u32, DataSection)> {
+fn data_section(module: &Module, table: &[FnId]) -> Option<(u32, DataSection)> {
     let statics = module.statics();
-    let count = u32::try_from(module.data.len() + statics.len()).unwrap_or(u32::MAX);
+    // A module whose environments are all static passes positions instead.
+    let envs = if module.static_envs_only() {
+        Vec::new()
+    } else {
+        module.static_envs()
+    };
+    let count = u32::try_from(module.data.len() + statics.len() + envs.len()).unwrap_or(u32::MAX);
     if count == 0 {
         return None;
     }
@@ -320,6 +336,23 @@ fn data_section(module: &Module) -> Option<(u32, DataSection)> {
             block.extend_from_slice(&word.to_le_bytes());
         }
         block.extend_from_slice(bytes);
+        data.active(
+            0,
+            &ConstExpr::i32_const(i32::try_from(at).unwrap_or(0)),
+            block,
+        );
+    }
+    // The static environments (decision 0026): the function's position, a
+    // count of 0, which nothing changes, then SHARED.
+    for (at, function) in envs {
+        let position = function
+            .and_then(|f| table.iter().position(|&t| t == f))
+            .and_then(|p| u32::try_from(p).ok())
+            .unwrap_or(u32::MAX);
+        let mut block = Vec::with_capacity(16);
+        for word in [position, 0, 0, SHARED.cast_unsigned()] {
+            block.extend_from_slice(&word.to_le_bytes());
+        }
         data.active(
             0,
             &ConstExpr::i32_const(i32::try_from(at).unwrap_or(0)),
@@ -406,6 +439,7 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
         table: &table,
         indirect: &indirect,
         indirect_types: type_offset + u32::try_from(module.functions.len()).unwrap_or(0),
+        positions: module.static_envs_only(),
     };
     let mut sites = Vec::new();
     let mut vectors = false;
@@ -454,7 +488,7 @@ pub fn compile_with(module: &Module, simd: bool, threads: bool) -> Compiled {
     }
     // String literals: passive segments, copied into a new buffer when used;
     // then those only read, written below the heap (decision 0016).
-    let data = data_section(module);
+    let data = data_section(module, &table);
     if let Some((count, _)) = &data {
         wasm.section(&DataCountSection { count: *count });
     }
@@ -551,6 +585,10 @@ struct FnEncoder<'a> {
     temp_f64: u32,
     /// The buffer a string literal is copied into.
     temp_buffer: u32,
+    /// A new environment while its slots are written, and the environment
+    /// of an indirect call while its function is read (decision 0026).
+    temp_env: u32,
+    temp_callee: u32,
     /// The first of the vector locals of the function's vector loops.
     temp_v128: u32,
     /// Whether loops may run several turns at once.
@@ -568,7 +606,7 @@ impl<'a> FnEncoder<'a> {
         for arg in args {
             self.expr(arg);
         }
-        self.expr(callee);
+        self.callee(callee);
         let results: Vec<Ty> = targets
             .iter()
             .map(|t| {
@@ -610,6 +648,8 @@ impl<'a> FnEncoder<'a> {
             ValType::F32,
             ValType::F64,
             ValType::I32,
+            ValType::I32,
+            ValType::I32,
         ] {
             locals.push((1, ty));
         }
@@ -636,7 +676,9 @@ impl<'a> FnEncoder<'a> {
             temp_f32: count + 3,
             temp_f64: count + 4,
             temp_buffer: count + 5,
-            temp_v128: count + 6,
+            temp_env: count + 6,
+            temp_callee: count + 7,
+            temp_v128: count + 8,
             simd,
             data,
             locals: &function.locals,
@@ -866,15 +908,12 @@ impl<'a> FnEncoder<'a> {
                     .flatten();
                 self.emit(&I::Call(dispatcher.unwrap_or(id.0 + self.offset)));
             }
-            ExprKind::FnRef(id) => {
-                let position = self.host.table_position(*id);
-                self.emit(&I::I32Const(position));
-            }
+            ExprKind::Env(op, args) => self.env(*op, args),
             ExprKind::CallIndirect(callee, args) => {
                 for arg in args {
                     self.expr(arg);
                 }
-                self.expr(callee);
+                self.callee(callee);
                 let results = if e.ty == Ty::Void {
                     Vec::new()
                 } else {
@@ -893,6 +932,63 @@ impl<'a> FnEncoder<'a> {
                 }
             }
             ExprKind::Math(op, operand) => self.math(*op, operand),
+        }
+    }
+
+    /// The environment of an indirect call, the function's last argument,
+    /// then the position in the table it holds (decision 0026).
+    fn callee(&mut self, callee: &Expr) {
+        self.expr(callee);
+        self.emit(&I::LocalTee(self.temp_callee));
+        self.emit(&I::LocalGet(self.temp_callee));
+        if !self.host.positions {
+            self.emit(&I::I32Load(mem(0, 4)));
+        }
+    }
+
+    /// An environment (decision 0026): static, below the heap; new, its
+    /// header then its slots; or a slot read.
+    fn env(&mut self, op: EnvOp, args: &[Expr]) {
+        let positions = self.host.positions;
+        match op {
+            EnvOp::Static(f, _) if positions => {
+                let position = self.host.table_position(f);
+                self.emit(&I::I32Const(position));
+            }
+            EnvOp::Static(_, at) => self.emit(&I::I32Const(i32::try_from(at).unwrap_or(0))),
+            EnvOp::Zero if positions => self.emit(&I::I32Const(-1)),
+            EnvOp::Zero => {
+                self.emit(&I::I32Const(
+                    i32::try_from(perasc_ir::ZERO_ENV).unwrap_or(0),
+                ));
+            }
+            EnvOp::New(f) => {
+                let bytes = 16 + 8 * args.len();
+                self.emit(&I::I32Const(i32::try_from(bytes).unwrap_or(i32::MAX)));
+                let site = self.alloc_site();
+                self.emit(&I::I32Const(site));
+                self.emit(&I::Call(ALLOC));
+                self.emit(&I::LocalSet(self.temp_env));
+                let position = self.host.table_position(f);
+                for (offset, word) in [(0, position), (4, 1), (8, 0), (12, SHARED)] {
+                    self.emit(&I::LocalGet(self.temp_env));
+                    self.emit(&I::I32Const(word));
+                    self.emit(&I::I32Store(mem(offset, 4)));
+                }
+                for (i, slot) in args.iter().enumerate() {
+                    self.emit(&I::LocalGet(self.temp_env));
+                    self.expr(slot);
+                    let offset = 16 + 8 * u64::try_from(i).unwrap_or(0);
+                    self.emit(&I::I64Store(mem(offset, 8)));
+                }
+                self.emit(&I::LocalGet(self.temp_env));
+            }
+            EnvOp::Load(slot) => {
+                if let Some(env) = args.first() {
+                    self.expr(env);
+                }
+                self.emit(&I::I64Load(mem(16 + 8 * u64::from(slot), 8)));
+            }
         }
     }
 
@@ -943,6 +1039,8 @@ impl<'a> FnEncoder<'a> {
                 self.element_address(buffer, index, Elem::Handle);
                 self.emit(&I::I32Load(mem(0, 4)));
             }
+            // Only static environments: a copy is the same position.
+            (BufOp::Clone, [buffer]) if self.host.positions => self.expr(buffer),
             (BufOp::Clone, [buffer]) => {
                 self.expr(buffer);
                 let site = self.alloc_site();
@@ -1132,6 +1230,11 @@ impl<'a> FnEncoder<'a> {
                 self.frames.pop();
                 self.emit(&I::End);
             }
+            // Only static environments: nothing to release.
+            (BufStmt::Release, [buffer]) if self.host.positions => {
+                self.expr(buffer);
+                self.emit(&I::Drop);
+            }
             (BufStmt::Release, [buffer]) => {
                 self.expr(buffer);
                 self.releases += 1;
@@ -1171,6 +1274,18 @@ impl<'a> FnEncoder<'a> {
                     (Ty::F32, Ty::I64) => I::I64TruncSatF32U,
                     (Ty::F64, Ty::I64) => I::I64TruncSatF64U,
                     // The same type: nothing to do; the verifier refuses the rest.
+                    _ => return,
+                };
+                self.emit(&instruction);
+            }
+            // The same bits as the other type (decision 0026).
+            (UnOp::Bits, _) => {
+                self.expr(operand);
+                let instruction = match (operand.ty, ty) {
+                    (Ty::F64, Ty::I64) => I::I64ReinterpretF64,
+                    (Ty::I64, Ty::F64) => I::F64ReinterpretI64,
+                    (Ty::F32, Ty::I32) => I::I32ReinterpretF32,
+                    (Ty::I32, Ty::F32) => I::F32ReinterpretI32,
                     _ => return,
                 };
                 self.emit(&instruction);
@@ -1443,7 +1558,9 @@ const fn float64(op: BinOp) -> I<'static> {
 const fn conversion(from: Ty, to: Ty) -> Option<I<'static>> {
     Some(match (from, to) {
         (Ty::I32, Ty::I64) => I::I64ExtendI32S,
-        (Ty::I64, Ty::I32) => I::I32WrapI64,
+        // A `bool` in an environment's slot (decision 0026).
+        (Ty::Bool, Ty::I64) => I::I64ExtendI32U,
+        (Ty::I64, Ty::Bool | Ty::I32) => I::I32WrapI64,
         (Ty::I32, Ty::F32) => I::F32ConvertI32S,
         (Ty::I32, Ty::F64) => I::F64ConvertI32S,
         (Ty::I64, Ty::F32) => I::F32ConvertI64S,

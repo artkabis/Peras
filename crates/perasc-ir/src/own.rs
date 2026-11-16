@@ -258,6 +258,7 @@ impl<'a> Checker<'a> {
         state: &mut State,
     ) -> Result<(), String> {
         if let Some(callee) = callee {
+            lent_only(std::slice::from_ref(callee))?;
             expr(callee, state)?;
             lent_only(args)?;
         }
@@ -294,8 +295,9 @@ impl<'a> Checker<'a> {
 /// The state after an expression, evaluated left to right.
 fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => {}
+        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::Global(_) => {}
         ExprKind::CallIndirect(callee, args) => {
+            lent_only(std::slice::from_ref(&**callee))?;
             expr(callee, state)?;
             lent_only(args)?;
             for arg in args {
@@ -332,7 +334,7 @@ fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
         | ExprKind::Alloc(x) => {
             expr(x, state)?;
         }
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             for arg in args {
                 expr(arg, state)?;
             }

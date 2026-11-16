@@ -120,12 +120,14 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         ExprKind::Buf(op, args) => {
             ExprKind::Buf(op, args.into_iter().map(|a| map_expr(a, f)).collect())
         }
+        ExprKind::Env(op, args) => {
+            ExprKind::Env(op, args.into_iter().map(|a| map_expr(a, f)).collect())
+        }
         kind @ (ExprKind::Const(_)
         | ExprKind::Local(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
-        | ExprKind::Global(_)
-        | ExprKind::FnRef(_)) => kind,
+        | ExprKind::Global(_)) => kind,
     };
     f(Expr { kind, ty: e.ty })
 }
@@ -281,7 +283,7 @@ fn count_reads(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
 
 fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => {}
+        ExprKind::Const(_) | ExprKind::Global(_) => {}
         ExprKind::CallIndirect(callee, args) => {
             count_expr_reads(callee, out);
             for a in args {
@@ -299,7 +301,7 @@ fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
             count_expr_reads(a, out);
             count_expr_reads(b, out);
         }
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => {
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             for a in args {
                 count_expr_reads(a, out);
             }

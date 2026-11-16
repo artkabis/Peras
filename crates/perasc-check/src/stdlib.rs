@@ -155,6 +155,8 @@ impl Checker<'_> {
             ));
         }
         self.expr_types.insert(id, Ty::Void);
+        let value = self.value_arrows.contains(&id);
+        self.arrows.push((id, self.scopes.bindings.len(), value));
         self.scopes.push();
         for ((name, annotation), ty) in written.iter().zip(params) {
             let mut ty = ty.clone();
@@ -198,6 +200,7 @@ impl Checker<'_> {
             }
         };
         self.pop_scope();
+        self.arrows.pop();
         value
     }
 
@@ -243,6 +246,7 @@ impl Checker<'_> {
             (None, LambdaBody::Block(_)) => Some(Ty::Void),
             (None, LambdaBody::Expr(_)) => None,
         };
+        self.value_arrows.insert(id);
         let value = self.arrow(id, &types, wanted.as_ref());
         Ty::Callback(types, Box::new(value))
     }

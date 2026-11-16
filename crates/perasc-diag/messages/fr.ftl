@@ -747,6 +747,18 @@ check-import-cycle-label = cet import ferme le cycle
 check-import-cycle-why = Chaque module owned est vérifié contre ce qu’exportent les modules qu’il importe, donc ceux-ci sont vérifiés d’abord : un module ne peut pas dépendre, même par d’autres, de lui-même. Un cycle d’imports est refusé plutôt que résolu, pour que l’ordre de vérification soit l’ordre des fichiers et qu’un lecteur sache toujours quel fichier dépend de quel autre (décision 0022).
 check-import-cycle-fix = déplacez ce que les modules du cycle partagent dans un nouveau fichier `.peras`, que chacun d’eux importe
 
+# E0251
+check-closure-capture = { $kind ->
+    [inout] la fonction fléchée capture `{ $name }`, un paramètre `inout`, qui peut changer après qu’elle est faite
+   *[let] la fonction fléchée capture `{ $name }`, un `let`, qui peut changer après qu’elle est faite
+}
+check-closure-capture-label = capturé ici
+check-closure-capture-why = Dans un module owned, une fonction fléchée utilisée comme valeur copie ce qu’elle capture quand elle est faite, dans son environnement, qui ne change jamais ensuite (décision 0026). JavaScript lirait la variable quand la fonction est appelée, si bien qu’une variable qui peut changer après donnerait deux résultats, un par mode. Un `const` ou un paramètre ne peut pas changer : le copier donne ce que le lire plus tard donnerait.
+check-closure-capture-fix = { $kind ->
+    [inout] copiez le paramètre dans un `const` avant la fonction fléchée, et capturez celui-ci
+   *[let] déclarez-la avec `const`, ou copiez sa valeur dans un `const` avant la fonction fléchée, et capturez celui-ci
+}
+
 # E0245
 check-resource = { $reason ->
     [dropped] cette ressource est libérée dès qu’elle est créée
@@ -837,6 +849,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [place] les affectations de champs et d’éléments
     [function-value] les fonctions utilisées comme valeurs
     [closure] les fonctions fléchées qui capturent une variable, utilisées comme valeurs
+    [closure-heap] les fonctions fléchées utilisées comme valeurs qui capturent une chaîne, un tableau, une table, un ensemble, une valeur fonction, ou une valeur qui en tient une
     [borrow] l’opérateur d’emprunt `&`
     [float-remainder] `%` sur des flottants
     [string] les chaînes

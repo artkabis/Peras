@@ -1,0 +1,12 @@
+// E0251 is an owned module's: a managed module captures by reference, as
+// JavaScript does, so a `let` captured is read when the function is called.
+fn apply(f: (i32) => i32, x: i32): i32 {
+  return f(x);
+}
+
+export fn later(n: i32): i32 {
+  let k = 1;
+  const f = (x: i32): i32 => x + k;
+  k = 100;
+  return apply(f, n);
+}

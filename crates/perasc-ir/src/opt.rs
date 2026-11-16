@@ -96,7 +96,7 @@ fn classify(value: &Expr, id: FnId, ret: Ty) -> Site {
 /// it never calls, never divides (no trap), and always ends.
 pub fn is_simple(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Local(_) | ExprKind::FnRef(_) => true,
+        ExprKind::Const(_) | ExprKind::Local(_) => true,
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => is_simple(x),
         ExprKind::Binary(op, a, b) => {
             !matches!(op, BinOp::Div | BinOp::Rem | BinOp::DivU | BinOp::RemU)
@@ -111,6 +111,7 @@ pub fn is_simple(e: &Expr) -> bool {
         | ExprKind::Alloc(_)
         | ExprKind::Move(_)
         | ExprKind::Borrow(_)
+        | ExprKind::Env(..)
         | ExprKind::Buf(..) => false,
     }
 }
@@ -352,7 +353,7 @@ fn self_call_args<'a>(stmts: &'a [Stmt], id: FnId, ret: Ty, out: &mut Vec<&'a [E
 /// Whether an expression reads a local.
 fn reads(e: &Expr, target: LocalId) -> bool {
     match &e.kind {
-        ExprKind::Const(_) | ExprKind::Global(_) | ExprKind::FnRef(_) => false,
+        ExprKind::Const(_) | ExprKind::Global(_) => false,
         ExprKind::CallIndirect(callee, args) => {
             reads(callee, target) || args.iter().any(|a| reads(a, target))
         }
@@ -362,7 +363,9 @@ fn reads(e: &Expr, target: LocalId) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, target),
         ExprKind::Binary(_, a, b) => reads(a, target) || reads(b, target),
-        ExprKind::Call(_, args) | ExprKind::Buf(_, args) => args.iter().any(|a| reads(a, target)),
+        ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
+            args.iter().any(|a| reads(a, target))
+        }
     }
 }
 

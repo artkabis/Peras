@@ -103,6 +103,10 @@ pub struct Analysis {
     /// The declaration each name read refers to, an index in
     /// [`Analysis::bindings`]: variables, callees and enumerations.
     pub names: HashMap<ExprId, usize>,
+    /// The variables and parameters around each arrow function that it
+    /// reads, each once, in the order first read, with its index in
+    /// [`Analysis::bindings`] (decision 0026).
+    pub captures: HashMap<ExprId, Vec<(Symbol, usize)>>,
 }
 
 /// A declared name, for code generation.
@@ -394,21 +398,19 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
     let enum_origins = checker.enums.iter().map(|e| e.origin.clone()).collect();
     let mut diagnostics = checker.diagnostics;
     diagnostics.sort_by_key(|d| d.primary_span().map(|s| s.start));
-    let types = checker
-        .expr_types
-        .into_iter()
-        .map(|(id, ty)| (id, ty.defaulted()))
-        .collect();
-    let structs = checker
-        .structs
-        .into_iter()
-        .map(|s| (s.name, s.fields))
-        .collect();
     Analysis {
         exported_types,
         diagnostics,
-        types,
-        structs,
+        types: checker
+            .expr_types
+            .into_iter()
+            .map(|(id, ty)| (id, ty.defaulted()))
+            .collect(),
+        structs: checker
+            .structs
+            .into_iter()
+            .map(|s| (s.name, s.fields))
+            .collect(),
         fn_generics,
         instances,
         calls: checker.calls,
@@ -431,6 +433,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         externs: checker.externs,
         bindings,
         names: checker.resolved,
+        captures: checker.captures,
         moves: checker.moves,
         enums: checker
             .enums
@@ -539,6 +542,15 @@ struct Checker<'a> {
     expr_types: HashMap<ExprId, Ty>,
     /// The binding each name expression resolves to.
     resolved: HashMap<ExprId, usize>,
+    /// The arrow functions being checked, innermost last: each one's
+    /// expression, how many bindings existed when it began, so that a name
+    /// it reads among those is one it captures, and whether it is a value
+    /// (decision 0026).
+    arrows: Vec<(ExprId, usize, bool)>,
+    /// The arrow functions checked as values, not given in place.
+    value_arrows: HashSet<ExprId>,
+    /// See [`Analysis::captures`].
+    captures: HashMap<ExprId, Vec<(Symbol, usize)>>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -630,6 +642,9 @@ impl<'a> Checker<'a> {
             returned: Vec::new(),
             expr_types: HashMap::new(),
             resolved: HashMap::new(),
+            arrows: Vec::new(),
+            value_arrows: HashSet::new(),
+            captures: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),
@@ -696,6 +711,38 @@ impl<'a> Checker<'a> {
                 let previous = self.scopes.bindings.get(previous).and_then(|b| b.span);
                 self.report(errors::shadowing(span, &name, previous));
             }
+        }
+    }
+
+    /// A name read or assigned inside arrow functions: a variable or a
+    /// parameter declared around one is one it captures (decision 0026). In
+    /// an owned module, an arrow function used as a value copies what it
+    /// captures when it is made, so it cannot capture what can change after:
+    /// a `let`, or an `inout` parameter (`E0251`).
+    fn capture(&mut self, index: usize, span: Span) {
+        let Some(binding) = self.scopes.bindings.get(index) else {
+            return;
+        };
+        let changing = match binding.kind {
+            Kind::Local { mutable, .. } => mutable.then_some("let"),
+            Kind::Param { convention, .. } => (convention == Convention::Inout).then_some("inout"),
+            Kind::Pattern => None,
+            _ => return,
+        };
+        let (symbol, name) = (binding.symbol, binding.name.clone());
+        let mut refused = false;
+        for &(arrow, start, value) in &self.arrows {
+            if index >= start {
+                continue;
+            }
+            let captured = self.captures.entry(arrow).or_default();
+            if !captured.contains(&(symbol, index)) {
+                captured.push((symbol, index));
+                refused |= value && !self.managed && changing.is_some();
+            }
+        }
+        if refused && let Some(kind) = changing {
+            self.report(errors::closure_capture(span, &name, kind));
         }
     }
 

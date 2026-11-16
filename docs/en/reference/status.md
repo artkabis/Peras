@@ -24,7 +24,8 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | template literals, `` `${x} items` ``                                                                               | <span class="status compiled">compiled</span> |
 | `Map`, `Set` with integer, boolean and string keys ([decision 0005](../decisions/0005-maps-and-sets.md))            | <span class="status compiled">compiled</span> |
 | functions as values, function types ([decision 0025](../decisions/0025-moved-fields-and-function-values.md))        | <span class="status compiled">compiled</span> |
-| closures: arrow functions that capture a variable, as values in owned modules                                       | <span class="status planned">planned</span>   |
+| closures over numbers and booleans, as values in owned modules ([decision 0026](../decisions/0026-closures.md))     | <span class="status compiled">compiled</span> |
+| closures over strings, arrays, maps, sets and function values, in owned modules                                     | <span class="status planned">planned</span>   |
 | `Rc<T>`, `Framebuffer`, pixel types, SIMD                                                                           | <span class="status planned">planned</span>   |
 
 ## Statements and expressions

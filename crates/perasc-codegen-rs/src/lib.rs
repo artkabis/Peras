@@ -10,7 +10,8 @@
 use std::fmt::Write as _;
 
 use perasc_ir::{
-    BinOp, BufOp, Const, Expr, ExprKind, Function, MathOp, Module, RuntimeFn, Stmt, Ty, UnOp,
+    BinOp, BufOp, BufStmt, Const, EnvOp, Expr, ExprKind, Function, MathOp, Module, RuntimeFn, Stmt,
+    Ty, UnOp,
 };
 
 /// The `wasm-bindgen` version the generated crate depends on; the
@@ -77,7 +78,8 @@ const fn rust_type(ty: Ty) -> &'static str {
         Ty::F64 => "f64",
         Ty::Bool => "bool",
         Ty::Void => "()",
-        // A block's address; the driver refuses heap code for now (decision 0001).
+        // A function value's environment, its position in the table: the
+        // driver refuses other heap code for now (decisions 0001, 0026).
         Ty::Owned | Ty::Borrowed => "u32",
     }
 }
@@ -220,6 +222,11 @@ impl<'a> Emitter<'a> {
                     .unwrap_or(0);
                 let _ = writeln!(out, "{pad}break 'b{n};");
             }
+            // A static environment: nothing to release (decision 0026).
+            Stmt::Buf(BufStmt::Release, values) if values.len() == 1 => {
+                let value = values.first().map(|v| self.expr(v)).unwrap_or_default();
+                let _ = writeln!(out, "{pad}let _ = {value};");
+            }
             // Refused by the driver before this point, until the heap is supported.
             Stmt::Release(_) | Stmt::Buf(..) => {
                 let _ = writeln!(out, "{pad}unreachable!();");
@@ -291,11 +298,24 @@ impl<'a> Emitter<'a> {
         format!("({}) = {call};", names.join(", "))
     }
 
-    /// A call through a function value (decision 0025): a `match` on its
-    /// position in the table, over the functions of the same signature.
+    /// A call through a function value (decisions 0025 and 0026): its
+    /// arguments, then its environment, which is its position in the table,
+    /// and a `match` on it over the functions of the same signature, each
+    /// given the environment last.
     fn indirect(&self, callee: &Expr, args: &[Expr], results: &[Ty]) -> String {
-        let params: Vec<Ty> = args.iter().map(|a| a.ty).collect();
-        let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+        let params: Vec<Ty> = args
+            .iter()
+            .map(|a| a.ty)
+            .chain(std::iter::once(Ty::Borrowed))
+            .collect();
+        let mut first = String::new();
+        let mut names: Vec<String> = Vec::with_capacity(args.len() + 1);
+        for (k, arg) in args.iter().enumerate() {
+            let _ = write!(first, "let a{k} = {}; ", self.expr(arg));
+            names.push(format!("a{k}"));
+        }
+        names.push("env".to_owned());
+        let args = names;
         let mut arms = String::new();
         for (position, id) in self.module.fn_table().into_iter().enumerate() {
             let Some(f) = usize::try_from(id.0)
@@ -311,7 +331,7 @@ impl<'a> Emitter<'a> {
             }
         }
         format!(
-            "(match {} {{ {arms}_ => unreachable!() }})",
+            "{{ {first}let env = {}; match env {{ {arms}_ => unreachable!() }} }}",
             self.expr(callee)
         )
     }
@@ -347,7 +367,25 @@ impl<'a> Emitter<'a> {
                 [x, y] => format!("({} % {})", self.expr(x), self.expr(y)),
                 _ => "unreachable!()".to_owned(),
             },
-            ExprKind::Alloc(_) | ExprKind::Move(_) | ExprKind::Borrow(_) | ExprKind::Buf(..) => {
+            // A static environment, its position, copied or lent as it is
+            // (decision 0026): the driver refuses the rest of the heap.
+            ExprKind::Move(local) | ExprKind::Borrow(local) => {
+                self.var(usize::try_from(local.0).unwrap_or(0))
+            }
+            ExprKind::Buf(BufOp::Clone, args) if args.len() == 1 => {
+                args.first().map(|a| self.expr(a)).unwrap_or_default()
+            }
+            ExprKind::Env(EnvOp::Static(id, _), _) => {
+                let position = self
+                    .module
+                    .fn_table()
+                    .iter()
+                    .position(|f| f == id)
+                    .unwrap_or(0);
+                format!("{position}u32")
+            }
+            ExprKind::Env(EnvOp::Zero, _) => "u32::MAX".to_owned(),
+            ExprKind::Alloc(_) | ExprKind::Buf(..) | ExprKind::Env(..) => {
                 "unreachable!()".to_owned()
             }
             ExprKind::Unary(op, operand) => {
@@ -364,6 +402,13 @@ impl<'a> Emitter<'a> {
                             format!("((({x}) as {}) as {to})", unsigned(e.ty))
                         }
                     }
+                    // The same bits as the other type (decision 0026).
+                    UnOp::Bits => match e.ty {
+                        Ty::I64 => format!("(({x}).to_bits() as i64)"),
+                        Ty::F64 => format!("f64::from_bits(({x}) as u64)"),
+                        Ty::I32 => format!("(({x}).to_bits() as i32)"),
+                        _ => format!("f32::from_bits(({x}) as u32)"),
+                    },
                     UnOp::Neg if e.ty.is_int() => format!("({x}).wrapping_neg()"),
                     UnOp::Neg => format!("(-{x})"),
                     UnOp::Not | UnOp::BitNot => format!("(!{x})"),
@@ -372,15 +417,6 @@ impl<'a> Emitter<'a> {
             ExprKind::Binary(op, lhs, rhs) => {
                 let (a, b) = (self.expr(lhs), self.expr(rhs));
                 binary(*op, lhs.ty, &a, &b)
-            }
-            ExprKind::FnRef(id) => {
-                let position = self
-                    .module
-                    .fn_table()
-                    .iter()
-                    .position(|f| f == id)
-                    .unwrap_or(0);
-                format!("{position}i32")
             }
             ExprKind::CallIndirect(callee, args) => {
                 let results = if e.ty == Ty::Void {
@@ -397,6 +433,10 @@ impl<'a> Emitter<'a> {
                     .map_or("missing", |f| f.name.as_str());
                 let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
                 format!("p_{name}({})", args.join(", "))
+            }
+            // A `bool` read back from an environment's slot (decision 0026).
+            ExprKind::Convert(operand) if e.ty == Ty::Bool => {
+                format!("({} != 0)", self.expr(operand))
             }
             ExprKind::Convert(operand) => {
                 format!("({} as {})", self.expr(operand), rust_type(e.ty))

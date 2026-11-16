@@ -747,6 +747,18 @@ check-import-cycle-label = this import closes the cycle
 check-import-cycle-why = Each owned module is checked against what the modules it imports export, so those are checked first: a module cannot depend, even through others, on itself. A cycle of imports is refused rather than resolved, so that the order of checking is the order of the files and a reader always knows which file depends on which (decision 0022).
 check-import-cycle-fix = move what the modules of the cycle share into a new `.peras` file, which each of them imports
 
+# E0251
+check-closure-capture = { $kind ->
+    [inout] the arrow function captures `{ $name }`, an `inout` parameter, which can change after it is made
+   *[let] the arrow function captures `{ $name }`, a `let`, which can change after it is made
+}
+check-closure-capture-label = captured here
+check-closure-capture-why = In an owned module, an arrow function used as a value copies what it captures when it is made, into its environment, which never changes after (decision 0026). JavaScript would read the variable when the function is called, so a variable that can change after would give two results, one per mode. A `const` or a parameter cannot change: copying it is what reading it later would give.
+check-closure-capture-fix = { $kind ->
+    [inout] copy the parameter into a `const` before the arrow function, and capture that
+   *[let] declare it with `const`, or copy its value into a `const` before the arrow function, and capture that
+}
+
 # E0245
 check-resource = { $reason ->
     [dropped] this resource is released as soon as it is made
@@ -837,6 +849,7 @@ gen-unsupported = code generation does not support { $feature ->
     [place] assignments to fields and elements
     [function-value] functions used as values
     [closure] arrow functions that capture a variable, used as values
+    [closure-heap] arrow functions used as values that capture a string, an array, a map, a set, a function value, or a value holding one
     [borrow] the borrow operator `&`
     [float-remainder] `%` on floats
     [string] strings
