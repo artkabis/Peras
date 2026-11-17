@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0037-index-checks-in-managed-modules.md](../../en/decisions/0037-index-checks-in-managed-modules.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `338eceb` ; proposition : o1. Il répond au constat F221, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a expliqué : le module managed du bassin, construit pour la production, prend 2,62 fois le temps du TypeScript dans Node, et 1,09 une fois ses vérifications d’indice écrites comme des accès directs. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `338eceb` ; o1 retenue par le propriétaire le 2026-11-17. Il répond au constat F221, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a expliqué : le module managed du bassin, construit pour la production, prend 2,62 fois le temps du TypeScript dans Node, et 1,09 une fois ses vérifications d’indice écrites comme des accès directs. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -64,3 +64,7 @@ Deux exécutions au commit 338eceb, l’une après l’autre, rien d’autre ne 
 ### Proposition
 
 **o1** : le module managed du bassin divise son temps par deux et garde sa vérification, à 1,14 à 1,19 fois le temps du TypeScript, chaque résultat et chaque erreur identiques à aujourd’hui ; aucun module du dépôt ne grossit, deux maigrissent. Son coût, 475 octets de plus en gzip dans un module qui vérifie 64 accès, est celui du bassin ; la règle du propriétaire, telle que `check-regression.mjs` la tient, est respectée. Le propriétaire décide.
+
+### Décision et installation (2026-11-17)
+
+Le propriétaire a retenu **o1**. Un module managed vérifie chaque indice là où il le lit ou l’écrit, `(i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length))`, le tableau, l’indice et une valeur écrite gardés une fois ; `$at` et `$put` ont disparu, et avec eux o2 et o3, leurs chiffres ci-dessus et leur code dans git au commit 338eceb. `scripts/bench-index.mjs` mesure le build d’aujourd’hui face aux références écrites à la main, dans `bench/index/CURRENT.md` ; [`RESULTS.md`](../../../bench/index/RESULTS.md) garde les quatre options. Le constat F221 est clos.

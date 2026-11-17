@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0037-index-checks-in-managed-modules.md](../../fr/decisions/0037-index-checks-in-managed-modules.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `338eceb`; proposal: o1. It answers finding F221, which [decision 0029](0029-pond-of-lanterns.md)'s profile explained: the pond's managed module, built for production, takes 2.62 times TypeScript's time in Node, and 1.09 once its index checks are written as direct accesses. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `338eceb`; o1 chosen by the owner on 2026-11-17. It answers finding F221, which [decision 0029](0029-pond-of-lanterns.md)'s profile explained: the pond's managed module, built for production, takes 2.62 times TypeScript's time in Node, and 1.09 once its index checks are written as direct accesses. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -64,3 +64,7 @@ Two runs at commit 338eceb, one after the other, nothing else running, every mod
 ### Proposal
 
 **o1**: the pond's managed module halves its time and keeps its check, at 1.14 to 1.19 times TypeScript's, every result and every error the same as today's; no module of the repository grows, two get smaller. Its cost, 475 more gzipped bytes in a module that checks 64 accesses, is the pond's; the owner's rule, as `check-regression.mjs` holds it, is met. The owner decides.
+
+### Decision and landing (2026-11-17)
+
+The owner chose **o1**. A managed module checks each index where it reads or writes it, `(i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length))`, the array, the index and a written value kept once; `$at` and `$put` are gone, and with them o2 and o3, their figures above and their code in git at 338eceb. `scripts/bench-index.mjs` measures the build of today against the references written by hand, into `bench/index/CURRENT.md`; [`RESULTS.md`](../../../bench/index/RESULTS.md) keeps the four options. Finding F221 is closed.

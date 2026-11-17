@@ -13,9 +13,8 @@ use crate::{Module, NameKind};
 pub(crate) enum Place {
     /// A variable, or a field: written as it reads.
     Plain(String),
-    /// An element of an array, its bounds checked; the kind of its elements
-    /// (decision 0037's option o2).
-    Element(String, String, &'static str),
+    /// An element of an array, its bounds checked.
+    Element(String, String),
 }
 
 impl Module<'_> {
@@ -261,13 +260,12 @@ impl Module<'_> {
             ExprKind::Index { base, index } => {
                 let proven = self.proven(*base, *index);
                 let values = self.exprs(&[*base, *index]);
-                let kind = self.element_kind(*base);
                 let base = self.keep(*base, values[0].clone());
                 let index = self.keep(*index, values[1].clone());
                 if proven {
                     Place::Plain(format!("{base}[{index}]"))
                 } else {
-                    Place::Element(base, index, kind)
+                    Place::Element(base, index)
                 }
             }
             ExprKind::Field { base, name } => {
@@ -304,14 +302,14 @@ impl Module<'_> {
     pub(crate) fn read(&mut self, place: &Place) -> String {
         match place {
             Place::Plain(text) => text.clone(),
-            Place::Element(base, index, kind) => self.checked_read(base, index, kind),
+            Place::Element(base, index) => self.checked_read(base, index),
         }
     }
 
     pub(crate) fn write(&mut self, place: &Place, value: &str) -> String {
         match place {
             Place::Plain(text) => format!("{text} = {value}"),
-            Place::Element(base, index, kind) => self.checked_write(base, index, value, kind),
+            Place::Element(base, index) => self.checked_write(base, index, value),
         }
     }
 
