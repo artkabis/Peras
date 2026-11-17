@@ -37,6 +37,6 @@ Machine: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores; Node v24.22.1.
 
 | Build                  | Module, raw (gzip) | Same bytes as a |  Median | / a, median (range)    | CPU / wall |
 | ---------------------- | -----------------: | --------------- | ------: | ---------------------- | ---------: |
-| a, the pond fixed      |       14652 (5591) | yes             | 51.8 ms | 1.000 (1.000 to 1.000) |       1.00 |
-| b, the pond as written |       14647 (5592) | no              | 53.3 ms | 1.033 (0.937 to 1.108) |       1.00 |
-| c, the pond as written |       14647 (5592) | no              | 52.6 ms | 1.009 (0.886 to 1.095) |       1.01 |
+| a, the pond fixed      |       14652 (5591) | yes             | 48.6 ms | 1.000 (1.000 to 1.000) |       1.00 |
+| b, the pond as written |       14647 (5592) | no              | 49.6 ms | 1.039 (0.847 to 1.307) |       1.00 |
+| c, the pond as written |       14647 (5592) | no              | 49.3 ms | 1.062 (0.796 to 1.553) |       1.00 |
