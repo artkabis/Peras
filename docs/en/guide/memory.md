@@ -8,6 +8,7 @@ In owned mode, Peras manages memory without a garbage collector and without you 
 
 - Each value on the heap has a single owner: a variable, a field, or a `sink` parameter.
 - Reading a value borrows it. Assigning it, returning it, or passing it to a `sink` parameter, a structure or `push` **moves** it: the old name holds nothing until it is given a new value ([E0204](../errors/E0204.md)).
+- A move into a call happens at the call, once every argument is evaluated: a later argument may read what an earlier one moves, `m.set(key, m.get(key).unwrapOr(0) + 1)`. Lending it to the same call as well stays refused, since the call would hold it twice ([decision 0028](../decisions/0028-options-and-moves.md)).
 - Only the owner can move a value: a parameter that is not `sink`, an element, or a field of a structure the function does not own is only borrowed ([E0209](../errors/E0209.md)). Move a copy, `xs.copy()`, to keep both.
 - A field moves out of a structure the function owns, a variable or a `sink` parameter: `const country = row.country;`. The structure's other fields stay usable; the structure itself, or the field, cannot be used again until the field is given a new value ([E0204](../errors/E0204.md), [decision 0025](../decisions/0025-moved-fields-and-function-values.md)).
 - No reference is ever stored inside a structure or an array, so there is never a lifetime to write, unlike Rust.

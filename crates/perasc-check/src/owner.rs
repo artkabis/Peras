@@ -770,7 +770,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
-    /// Decision 0028's options 1b and 1c, prototyped: an argument that moves
+    /// Decision 0028's option 1b, and 1c for the measure script: an argument that moves
     /// a variable a later argument of the same call reads. Under 1b it moves
     /// at the call, once the others are evaluated; under 1c the program
     /// moves a copy of it. Lent to the same call as a whole, it stays refused.
@@ -960,11 +960,12 @@ impl<'c, 'a> Owner<'c, 'a> {
                             self.expr(arg, Use::Read, path);
                         }
                     }
-                    // A constructor and `Some` take their arguments.
+                    // A constructor and `Some` take their arguments, at the
+                    // call (decision 0028).
                     _ => {
-                        for &arg in args {
-                            self.expr(arg, Use::Consume, path);
-                        }
+                        let items: Vec<(ExprId, Use)> =
+                            args.iter().map(|&a| (a, Use::Consume)).collect();
+                        self.ordered_arguments(&items, path);
                     }
                 }
             }

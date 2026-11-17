@@ -260,6 +260,8 @@ Keys are integers, booleans or strings ([E0240](../errors/E0240.md)); values of 
 | `isSome()`, `isNone()` | whether a value is present | <span class="status compiled">compiled</span> |
 | `unwrapOr(fallback)`   | the value, or `fallback`   | <span class="status compiled">compiled</span> |
 
+The fallback of `unwrapOr` is evaluated only when there is no value, in both modes, as `??` does ([decision 0028](../decisions/0028-options-and-moves.md)). After `if (x.isNone())` with a block that leaves, a `const` or a parameter `x` is its value: see [the guide](../guide/enums.md#options).
+
 ## `Result<T, E>`
 
 | Method               | Gives                         | Status                                        |

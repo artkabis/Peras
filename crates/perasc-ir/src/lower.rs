@@ -1697,8 +1697,7 @@ impl Lowering<'_> {
     }
 
     /// The local a name reads as one scalar: a scalar variable, or an option
-    /// narrowed to its value of one scalar (decision 0028, option 2e,
-    /// prototype).
+    /// narrowed to its value of one scalar (decision 0028, option 2e).
     fn scalar_local(&self, state: &FnState, id: ExprId, symbol: Symbol) -> Option<LocalId> {
         match state.lookup(symbol) {
             Some(Binding::Scalar(local)) => Some(local),

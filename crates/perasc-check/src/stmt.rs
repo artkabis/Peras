@@ -11,7 +11,7 @@ use crate::{Checker, builtins};
 impl Checker<'_> {
     /// The statements of a block, in a scope of their own.
     pub(crate) fn block(&mut self, stmts: &[Stmt]) {
-        // Decision 0028's option 2e, prototyped: after `if (x.isNone())`
+        // Decision 0028's option 2e: after `if (x.isNone())`
         // with a block that leaves, `x` has the type of its value, until
         // the end of this block.
         let mut narrowed: Vec<(usize, Ty)> = Vec::new();
@@ -21,7 +21,7 @@ impl Checker<'_> {
                 && let Some(binding) = self.scopes.bindings.get_mut(index)
             {
                 let old = std::mem::replace(&mut binding.ty, inner);
-                self.narrowed_now.insert(index);
+                self.narrowed_now.insert(index, old.clone());
                 narrowed.push((index, old));
             }
         }
@@ -35,7 +35,7 @@ impl Checker<'_> {
 
     /// The variable an `if (x.isNone()) { … }` that leaves narrows, and the
     /// type of its value: a `const` or a parameter not `inout` (decision
-    /// 0028, option 2e, prototype).
+    /// 0028, option 2e).
     fn narrowing(&self, stmt: &Stmt) -> Option<(usize, Ty)> {
         if crate::proto("PERAS_PROTO_TAKE") != "e" {
             return None;

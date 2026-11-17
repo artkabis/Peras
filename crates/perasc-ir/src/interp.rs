@@ -454,7 +454,7 @@ impl Machine<'_> {
                 let value = slot(locals, *local).map_or(Value::Void, |v| *v);
                 self.block(value)?
             }
-            // Under decision 0028's option 1b, prototyped, a later argument
+            // Under decision 0028's option 1b, a later argument
             // may read what an earlier one moves: the move is the call's.
             ExprKind::Move(local) if perasc_check::proto("PERAS_PROTO_MOVE") == "b" => {
                 let value = slot(locals, *local).map_or(Value::Void, |v| *v);

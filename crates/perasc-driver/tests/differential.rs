@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 42 } else { 43 };
+    let choices = if depth == 0 { 45 } else { 46 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -154,6 +154,13 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // lends what it captures, one escaping into an array, which copies.
         // Two strings each, so that a wrong slot reads the wrong one.
         41 => "const word = `${k}${i % 7}`; const tail = `${s}|${word}|`; const lent = (x: i32): i32 => x + word.length * 3 + tail.length; let held: Array<(i32) => i32> = []; held.push((x: i32): i32 => x * 2 + tail.length * 5 + word.length); acc += lent(i) % 13 + (held[0])(acc % 50) % 17;".to_owned(),
+        // Decision 0028: an option narrowed by a test that leaves, a string
+        // read then moved and a number; a fallback with an effect, run only
+        // when there is no value; a key moved at the call that a later
+        // argument reads, into a map and into a constructor.
+        42 => "const o = names.get(i % 4); if (o.isNone()) { names.set(i % 4, `n${i}`); acc += 1; continue; } acc += o.length * 3; names.set((i + 1) % 4, o); const q = nums.get(i % 7); if (q.isNone()) { acc += 2; continue; } acc += q % 11;".to_owned(),
+        43 => "acc += nums.get(i % 5).unwrapOr(bumped(i)) % 13 + names.get(i % 6).unwrapOr(`f${tally % 7}`).length;".to_owned(),
+        44 => "const key = `${k}${i % 3}`; m.set(key, m.get(key).unwrapOr(0) + key.length); const nm = `p${i % 4}`; pairs.set(`p${i % 4}`, Pair(nm, nm.length + i % 3));".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

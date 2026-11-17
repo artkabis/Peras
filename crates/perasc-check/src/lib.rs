@@ -115,7 +115,7 @@ pub struct Analysis {
     /// the program moves a copy of (decision 0028, option 1c, prototype).
     pub copies: HashSet<ExprId>,
     /// The names of options read after a test that leaves when they are
-    /// `None`: their value (decision 0028, option 2e, prototype).
+    /// `None`: their value (decision 0028, option 2e).
     pub narrowed: HashSet<ExprId>,
 }
 
@@ -274,17 +274,21 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
-/// The option of decision 0028 a prototype build follows for one of its
-/// questions, from the environment variable `PERAS_PROTO_MOVE` (Q1, `a` to
-/// `c`), `PERAS_PROTO_TAKE` (Q2, `a` to `d`) or `PERAS_PROTO_FALLBACK` (Q3,
-/// `a` to `c`); `today` when unset, the behaviour before the decision. For
-/// the measures only.
+/// The option of decision 0028 a build follows for one of its questions:
+/// the one chosen, 1b for `PERAS_PROTO_MOVE`, 2e for `PERAS_PROTO_TAKE`, 3b
+/// for `PERAS_PROTO_FALLBACK`, unless the variable names another option
+/// measured (`a` to `e`), or `before`, the compiler before the decision, for
+/// the measure script only (`scripts/bench-options.mjs`).
 #[must_use]
 pub fn proto(variable: &str) -> String {
+    let chosen = match variable {
+        "PERAS_PROTO_TAKE" => "e",
+        _ => "b",
+    };
     std::env::var(variable)
         .ok()
-        .filter(|v| matches!(v.as_str(), "a" | "b" | "c" | "d" | "e"))
-        .unwrap_or_else(|| "today".to_owned())
+        .filter(|v| matches!(v.as_str(), "a" | "b" | "c" | "d" | "e" | "before"))
+        .unwrap_or_else(|| chosen.to_owned())
 }
 
 /// The exported functions of an owned module's source, as a managed module
@@ -598,9 +602,9 @@ struct Checker<'a> {
     escaping: HashSet<ExprId>,
     /// See [`Analysis::copies`].
     copies: HashSet<ExprId>,
-    /// The options narrowed to their value now, and every name read so
-    /// (decision 0028, option 2e, prototype).
-    narrowed_now: HashSet<usize>,
+    /// The options narrowed to their value now, with the type of the option,
+    /// and every name read so (decision 0028, option 2e).
+    narrowed_now: HashMap<usize, Ty>,
     narrowed: HashSet<ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
@@ -698,7 +702,7 @@ impl<'a> Checker<'a> {
             captures: HashMap::new(),
             escaping: HashSet::new(),
             copies: HashSet::new(),
-            narrowed_now: HashSet::new(),
+            narrowed_now: HashMap::new(),
             narrowed: HashSet::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
@@ -1756,9 +1760,8 @@ fn returns_value(stmts: &[Stmt]) -> bool {
     })
 }
 
-/// Whether every path through these statements ends with `return` or loops forever.
 /// Whether statements never end normally: they return, or leave a loop by
-/// `break` or `continue`, on every path (decision 0028, prototype).
+/// `break` or `continue`, on every path (decision 0028).
 pub(crate) fn never_ends(ast: &Ast, stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match &s.kind {
         StmtKind::Break | StmtKind::Continue => true,
@@ -1775,6 +1778,7 @@ pub(crate) fn never_ends(ast: &Ast, stmts: &[Stmt]) -> bool {
     })
 }
 
+/// Whether every path through these statements ends with `return` or loops forever.
 pub(crate) fn always_returns(ast: &Ast, stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| stmt_always_returns(ast, s))
 }

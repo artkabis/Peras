@@ -1,0 +1,207 @@
+// Decision 0028: a move at the call, an option narrowed by a test that
+// leaves, and a fallback evaluated only when needed. The same source is built
+// as an owned module and as a managed one, which is JavaScript, and both
+// must give the same; nothing may be left alive.
+
+export fn p1(text: String): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    const key = w.copy();
+    m.set(key, m.get(key).unwrapOr(0) + 1);
+  }
+  return m.get("a").unwrapOr(0) * 10 + m.size;
+}
+
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(line: String): Option<Row> {
+  const parts = line.split(",");
+  if (parts.length < 2) {
+    return None;
+  }
+  return Some(Row(parts[0].copy(), parts[1].length));
+}
+
+export fn p2(text: String): i32 {
+  let total = 0;
+  for (const line of text.split("\n")) {
+    const row = parse(line);
+    if (row.isNone()) {
+      continue;
+    }
+    total += row.qty;
+  }
+  return total;
+}
+
+fn price(prices: Map<String, i32>, item: String): i32 {
+  const p = prices.get(item);
+  if (p.isNone()) {
+    return -1;
+  }
+  return p * 2;
+}
+
+export fn p3(item: String): i32 {
+  let prices: Map<String, i32> = Map.new();
+  prices.set("tea", 3);
+  return price(prices, item);
+}
+
+export fn p4(id: i32): String {
+  let names: Map<i32, String> = Map.new();
+  names.set(1, "one");
+  return names.get(id).unwrapOr(`unknown ${id}`);
+}
+
+fn half(n: i32): Option<i32> {
+  if (n % 2 == 0) {
+    return Some(n / 2);
+  }
+  return None;
+}
+
+export fn p5(n: i32): i32 {
+  const a = half(n);
+  if (a.isNone()) {
+    return -1;
+  }
+  const b = half(a);
+  if (b.isNone()) {
+    return -2;
+  }
+  const c = half(b);
+  if (c.isNone()) {
+    return -3;
+  }
+  return c;
+}
+
+struct Stats {
+  count: i32;
+  sum: i32;
+}
+
+fn add(s: Stats, v: i32): Stats {
+  return Stats(s.count + 1, s.sum + v);
+}
+
+export fn p6(text: String): i32 {
+  let groups: Map<String, Stats> = Map.new();
+  for (const line of text.split("\n")) {
+    const parts = line.split(",");
+    const key = parts[0].copy();
+    groups.set(key, add(groups.get(key).unwrapOr(Stats(0, 0)), parts.length));
+  }
+  return groups.get("a").unwrapOr(Stats(0, 0)).sum * 10 + groups.size;
+}
+
+// A narrowed option holding a string: read, then moved.
+fn name(n: i32): Option<String> {
+  if (n % 3 == 0) {
+    return None;
+  }
+  return Some(`n${n}`);
+}
+
+export fn narrowedString(n: i32): String {
+  const found = name(n);
+  if (found.isNone()) {
+    return "none";
+  }
+  const size = found.length;
+  const kept = found;
+  return `${kept}:${size}`;
+}
+
+export fn narrowedLoop(n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    const found = name(i);
+    if (found.isNone()) {
+      continue;
+    }
+    out += found;
+  }
+  return out;
+}
+
+// Written before narrowing: the methods of `Option` still read the option
+// whole after a test that leaves.
+export fn writtenBefore(n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    const found = name(i);
+    if (found.isNone()) {
+      continue;
+    }
+    out += found.unwrapOr("?");
+    if (found.isSome()) {
+      out += found;
+    }
+  }
+  return out;
+}
+
+// A move at the call, into a map and into a constructor, which takes its
+// arguments.
+struct Joined {
+  whole: String;
+  trimmed: String;
+}
+
+// A later argument read in place, with no temporary: the move must wait for
+// the call.
+struct Sized {
+  text: String;
+  size: i32;
+}
+
+export fn movedAtCall(text: String): String {
+  let m: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    const key = w.copy();
+    m.set(key, m.get(key).unwrapOr(0) + key.length);
+  }
+  const word = text.copy();
+  const j = Joined(word, word.trim());
+  const other = text.copy();
+  const sized = Sized(other, other.length);
+  const last = text.copy();
+  const kept = keep(last, last.length);
+  return `${j.whole}+${j.trimmed}|${sized.text}:${sized.size}|${kept}|${m.size}|${m.get("ab").unwrapOr(-1)}`;
+}
+
+// A function that takes its first argument: the second reads it before it
+// moves.
+fn keep(s: sink String, n: i32): String {
+  return `${s}/${n}`;
+}
+
+// Fallbacks: one with an effect, one that makes a string, one that makes a
+// temporary; each runs only when there is no value.
+let calls = 0;
+
+fn next(): i32 {
+  calls += 1;
+  return calls;
+}
+
+fn len(s: String): i32 {
+  calls += 10;
+  return s.length;
+}
+
+export fn fallbacks(k: i32): String {
+  let m: Map<i32, i32> = Map.new();
+  m.set(1, 5);
+  let names: Map<i32, String> = Map.new();
+  names.set(1, "one");
+  const a = m.get(k).unwrapOr(next());
+  const b = names.get(k).unwrapOr(`unknown ${k}`);
+  const c = m.get(k).unwrapOr(len(`key ${k}`));
+  return `${a}|${b}|${c}|${calls}`;
+}

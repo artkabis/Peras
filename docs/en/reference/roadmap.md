@@ -25,6 +25,7 @@ What lets a program say precisely what its data can be.
 - ~~Module variables compiled~~: done for numbers, booleans, and structures, enumerations and options of them ([decision 0023](../decisions/0023-module-variables.md)); strings and arrays next.
 - ~~Every integer type compiled, `i8` to `u64`~~: done, arrays stored at each element's width ([decision 0024](../decisions/0024-integer-types.md), [types](types.md)).
 - ~~A field moved out of a structure, and functions as values in owned modules~~: done ([decision 0025](../decisions/0025-moved-fields-and-function-values.md), [functions](../guide/functions.md#functions-as-values)); ~~closures over numbers and booleans~~: done ([decision 0026](../decisions/0026-closures.md)); ~~closures over strings, arrays and function values~~: done ([decision 0027](../decisions/0027-closures-over-the-heap.md)).
+- ~~Options and moves as JavaScript writes them~~: done, a move at the call, an option narrowed by a test that leaves, a fallback evaluated only when needed ([decision 0028](../decisions/0028-options-and-moves.md)). Sharing by a count, `Rc<T>`, next (finding F310).
 
 ```peras planned
 fn parse_port(text: String): Result<u16, ParseError> {

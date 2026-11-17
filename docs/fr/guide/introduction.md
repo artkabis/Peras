@@ -11,9 +11,9 @@ Un module Peras est dans l’un de deux modes, fixé par l’extension de son fi
 | **Possédé** (owned) | `.peras`   | WebAssembly | exacte : chaque valeur a un seul propriétaire, libérée à la fin de sa portée, sans ramasse-miettes                  |
 | **Géré** (managed)  | `.apeiron` | JavaScript  | le ramasse-miettes du navigateur, avec la possession appliquée aux ressources comme les écouteurs et les minuteries |
 
-Le mode possédé sert au code où chaque milliseconde et chaque octet comptent. Le mode géré, prévu, sert au reste de l’application : le DOM, les événements, les appels réseau. Les deux partagent la syntaxe, les types et les diagnostics.
+Le mode possédé sert au code où chaque milliseconde et chaque octet comptent. Le mode géré sert au reste de l’application : le DOM, les événements, les appels réseau. Les deux partagent la syntaxe, les types et les diagnostics.
 
-> Aujourd’hui, le mode possédé compile les fonctions sur des nombres, des booléens et des structures. Le mode géré est conçu mais pas encore construit. La [page d’état](../reference/status.md) liste chaque fonctionnalité.
+> Aujourd’hui, le mode possédé compile en WebAssembly nombres, structures, énumérations, options, tableaux, chaînes, tables, ensembles et fermetures ; le mode géré compile en JavaScript, avec une partie typée du navigateur. La [page d’état](../reference/status.md) liste chaque fonctionnalité.
 
 ## Ce qui distingue Peras
 

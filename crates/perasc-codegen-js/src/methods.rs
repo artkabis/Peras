@@ -76,8 +76,9 @@ impl Module<'_> {
             Ty::Option(_) => match name {
                 "isSome" => Some(format!("({me} !== undefined)")),
                 "isNone" => Some(format!("({me} === undefined)")),
-                // Decision 0028's options 3a and 3c, prototyped: the
-                // fallback evaluated first, as an owned module does today.
+                // Decision 0028's options 3a and 3c, kept for the measure
+                // script only: the fallback evaluated first. A build follows
+                // 3b, `??`'s order: the fallback only when there is no value.
                 "unwrapOr"
                     if matches!(
                         perasc_check::proto("PERAS_PROTO_FALLBACK").as_str(),

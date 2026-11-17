@@ -32,6 +32,13 @@ const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "options");
 const work = join(root, "target", "bench-options");
 const perasc = join(root, "target", "release", "perasc");
+// The compiler before the decision, for every question: each option is
+// measured against it, changing only its own question.
+const BEFORE = {
+  PERAS_PROTO_MOVE: "before",
+  PERAS_PROTO_TAKE: "before",
+  PERAS_PROTO_FALLBACK: "before",
+};
 
 rmSync(work, { recursive: true, force: true });
 
@@ -99,48 +106,68 @@ const workloads = [
     "w1",
     [1_000_000],
     [
-      { label: "1a, copied by the program", file: w("w1-copy.peras"), env: {} },
-      { label: "1b, moved at the call", file: w("w1-count.peras"), env: { PERAS_PROTO_MOVE: "b" } },
+      { label: "1a, copied by the program", file: w("w1-copy.peras"), env: BEFORE },
+      {
+        label: "1b, moved at the call",
+        file: w("w1-count.peras"),
+        env: { ...BEFORE, PERAS_PROTO_MOVE: "b" },
+      },
       {
         label: "1c, copied for the program",
         file: w("w1-count.peras"),
-        env: { PERAS_PROTO_MOVE: "c" },
+        env: { ...BEFORE, PERAS_PROTO_MOVE: "c" },
       },
     ],
-    { label: "managed", file: w("w1-copy.peras"), env: {} },
+    { label: "managed", file: w("w1-copy.peras"), env: BEFORE },
   ],
   [
     "W2, P2 over 1,000,000 lines, one in ten bad",
     "w2",
     [1_000_000],
     [
-      { label: "2a, a test and a placeholder", file: w("w2-a.peras"), env: {} },
-      { label: "2b, an arm that leaves", file: w("w2-b.peras"), env: { PERAS_PROTO_TAKE: "b" } },
-      { label: "2c, const … else", file: w("w2-c.peras"), env: { PERAS_PROTO_TAKE: "c" } },
-      { label: "2e, narrowed", file: w("w2-e.peras"), env: { PERAS_PROTO_TAKE: "e" } },
+      { label: "2a, a test and a placeholder", file: w("w2-a.peras"), env: BEFORE },
+      {
+        label: "2b, an arm that leaves",
+        file: w("w2-b.peras"),
+        env: { ...BEFORE, PERAS_PROTO_TAKE: "b" },
+      },
+      {
+        label: "2c, const … else",
+        file: w("w2-c.peras"),
+        env: { ...BEFORE, PERAS_PROTO_TAKE: "c" },
+      },
+      { label: "2e, narrowed", file: w("w2-e.peras"), env: { ...BEFORE, PERAS_PROTO_TAKE: "e" } },
     ],
-    { label: "managed", file: w("w2-a.peras"), env: {} },
+    { label: "managed", file: w("w2-a.peras"), env: BEFORE },
   ],
   [
     "W2, every line good: unwrap()",
     "w2",
     [1_000_000],
     [
-      { label: "2a, a test and a placeholder", file: w("w2-d-ref.peras"), env: {} },
-      { label: "2d, unwrap()", file: w("w2-d.peras"), env: { PERAS_PROTO_TAKE: "d" } },
+      { label: "2a, a test and a placeholder", file: w("w2-d-ref.peras"), env: BEFORE },
+      { label: "2d, unwrap()", file: w("w2-d.peras"), env: { ...BEFORE, PERAS_PROTO_TAKE: "d" } },
     ],
-    { label: "managed", file: w("w2-d-ref.peras"), env: {} },
+    { label: "managed", file: w("w2-d-ref.peras"), env: BEFORE },
   ],
   [
     "W3, P4 over 1,000,000 lookups, nine in ten found",
     "w3",
     [1_000_000],
     [
-      { label: "3a, always", file: w("w3.peras"), env: { PERAS_PROTO_FALLBACK: "a" } },
-      { label: "3b, only when needed", file: w("w3.peras"), env: { PERAS_PROTO_FALLBACK: "b" } },
-      { label: "3c, unwrapOrElse", file: w("w3-c.peras"), env: { PERAS_PROTO_FALLBACK: "c" } },
+      { label: "3a, always", file: w("w3.peras"), env: { ...BEFORE, PERAS_PROTO_FALLBACK: "a" } },
+      {
+        label: "3b, only when needed",
+        file: w("w3.peras"),
+        env: { ...BEFORE, PERAS_PROTO_FALLBACK: "b" },
+      },
+      {
+        label: "3c, unwrapOrElse",
+        file: w("w3-c.peras"),
+        env: { ...BEFORE, PERAS_PROTO_FALLBACK: "c" },
+      },
     ],
-    { label: "managed", file: w("w3.peras"), env: { PERAS_PROTO_FALLBACK: "b" } },
+    { label: "managed", file: w("w3.peras"), env: { ...BEFORE, PERAS_PROTO_FALLBACK: "b" } },
   ],
 ];
 
@@ -236,7 +263,7 @@ for (const [p, input, variable, options] of programs) {
   /** @type {string | undefined} */
   let want;
   for (const o of options) {
-    const env = { [variable]: o };
+    const env = { ...BEFORE, [variable]: o };
     const first = build(natural, env, false);
     const errors = first.ok ? [] : first.errors.map((e) => e.slice(6, 11));
     const fixedFile = join(bench, "ease", "fixed", `${p}-${o}.peras`);
@@ -265,8 +292,8 @@ const effect = join(bench, "workloads", "q3-effect.peras");
 lines.push("### Question 3: a fallback with an effect", "");
 lines.push("| Option | Owned | Managed | Agree |");
 lines.push("| --- | --- | --- | --- |");
-for (const o of ["today", "a", "b", "c"]) {
-  const env = o === "today" ? {} : { PERAS_PROTO_FALLBACK: o };
+for (const o of ["before", "a", "b", "c"]) {
+  const env = { ...BEFORE, PERAS_PROTO_FALLBACK: o };
   const owned = build(effect, env, false);
   const managed = build(effect, env, true);
   if (!owned.ok || !managed.ok) throw new Error(`q3 ${o}: does not build`);

@@ -514,6 +514,11 @@ impl Lowering<'_> {
                     // A constructor: its scalars are its arguments', in order.
                     args
                 };
+                let values = if function.is_none() {
+                    Self::read_before_moves(state, values)
+                } else {
+                    values
+                };
                 Self::fresh(state, values, mode)
             }
             AstExpr::Field { base, .. } if self.method_callee(id).is_some() => {
@@ -540,6 +545,34 @@ impl Lowering<'_> {
                 Vec::new()
             }
         }
+    }
+
+    /// The scalars of a value built from its arguments, `Some`, `Ok`, `Err`
+    /// or a constructor, with each number that follows a move computed now: a
+    /// move happens once every argument is evaluated (decision 0028, option
+    /// 1b), and `Sized(text, text.length)` reads `text` before it moves.
+    fn read_before_moves(state: &mut FnState, values: Vec<Expr>) -> Vec<Expr> {
+        let mut moved = false;
+        values
+            .into_iter()
+            .map(|value| match value.kind {
+                ExprKind::Move(_) => {
+                    moved = true;
+                    value
+                }
+                ExprKind::Const(_) | ExprKind::Local(_) => value,
+                _ if moved && value.ty != Ty::Owned => {
+                    let ty = value.ty;
+                    let temp = state.temp(ty);
+                    state.pre.push(Stmt::Set(temp, value));
+                    Expr {
+                        kind: ExprKind::Local(temp),
+                        ty,
+                    }
+                }
+                _ => value,
+            })
+            .collect()
     }
 
     /// `None`, of the type the checker gave it: `false`, then zeros.
@@ -767,7 +800,7 @@ impl Lowering<'_> {
         let drops = state.drops.len();
         let fallback = self.arguments(state, None, args);
         if Self::lazy_since(state, mark, drops, &fallback) {
-            let making = state.pre.split_off(mark);
+            let making = Self::fallback_making(state, mark, drops);
             return Self::unwrap_or_lazily(state, fields, fallback, making, true, mode);
         }
         Self::unwrap_or_eagerly(state, fields, fallback, mark, mode)
@@ -826,17 +859,13 @@ impl Lowering<'_> {
         let mark = state.pre.len();
         let drops = state.drops.len();
         let fallback = self.value_as(state, body, Mode::Consume);
-        if state.drops.len() != drops {
-            self.unsupported(span, "method");
-            return Vec::new();
-        }
-        let making = state.pre.split_off(mark);
+        let making = Self::fallback_making(state, mark, drops);
         Self::unwrap_or_lazily(state, fields, fallback, making, true, mode)
     }
 
     /// Whether the fallback lowered since `mark` is made only when the option
-    /// is empty: a quiet one always; under decision 0028's option 3b, any
-    /// one that registers no drop, as JavaScript's `??` does (prototype).
+    /// is empty: a quiet one always, and any one under decision 0028's option
+    /// 3b, the default, as JavaScript's `??` does.
     pub(super) fn lazy_since(
         state: &FnState,
         mark: usize,
@@ -844,7 +873,24 @@ impl Lowering<'_> {
         fallback: &[Expr],
     ) -> bool {
         Self::quiet_since(state, mark, drops, fallback)
-            || (perasc_check::proto("PERAS_PROTO_FALLBACK") == "b" && state.drops.len() == drops)
+            || perasc_check::proto("PERAS_PROTO_FALLBACK") == "b"
+    }
+
+    /// What a fallback lowered since `mark` made, to run only in the branch
+    /// where there is no value: its statements, and the temporaries it
+    /// registered since `drops`, released at the end of that branch rather
+    /// than of the statement (decision 0028, option 3b).
+    pub(super) fn fallback_making(
+        state: &mut FnState,
+        mark: usize,
+        drops: usize,
+    ) -> (Vec<Stmt>, Vec<LocalId>) {
+        let making = state.pre.split_off(mark);
+        let late = state.drops.split_off(drops.min(state.drops.len()));
+        for t in &late {
+            state.live.remove(&t.0);
+        }
+        (making, late)
     }
 
     /// Whether the fallback lowered since `mark`, with no drop registered
@@ -929,7 +975,7 @@ impl Lowering<'_> {
         state: &mut FnState,
         fields: Vec<Expr>,
         fallback: Vec<Expr>,
-        making: Vec<Stmt>,
+        (making, late): (Vec<Stmt>, Vec<LocalId>),
         spill: bool,
         mode: Mode,
     ) -> Vec<Expr> {
@@ -977,6 +1023,8 @@ impl Lowering<'_> {
             otherwise.push(Stmt::Set(temp, fallback));
             out.push(super::local_expr(state, temp));
         }
+        // The temporaries the fallback made, once it is stored.
+        otherwise.extend(late.into_iter().map(heap::release_stmt));
         state.pre.push(Stmt::If {
             cond: some.clone(),
             then,
