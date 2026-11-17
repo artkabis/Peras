@@ -2,7 +2,7 @@
 
 _Version anglaise, qui fait foi : [../../en/decisions/0028-options-and-moves.md](../../en/decisions/0028-options-and-moves.md)._
 
-_État : proposée le 2026-11-16, avec ses options et son protocole enregistrés avant qu’aucun prototype ne soit construit ni mesuré, comme la règle du projet le demande ([la décision 0027](0027-closures-over-the-heap.md) a été la première). Elle répond aux constats F101, F103, F104 et F105, et au bogue F012 trouvé en lisant le code pour elle._
+_État : acceptée par le propriétaire le 2026-11-17, options 1b, 2e et 3b, après que ses options ont été mesurées selon un protocole enregistré avant qu’aucun prototype ne soit construit, comme la règle du projet le demande ([la décision 0027](0027-closures-over-the-heap.md) a été la première). Elle répond aux constats F101, F103, F104 et F105, et au bogue F012 trouvé en lisant le code pour elle._
 
 ## Contexte
 
@@ -60,9 +60,23 @@ Quatre grandeurs, comme pour la décision 0027 : la vitesse, la charge du proces
 5. **Les modes s’accordent** : pour Q3, un repli qui a un effet donne le même résultat dans les deux modes pour chaque option gardée ; une option qui ne peut pas les accorder est écartée.
 6. **Une option non construite** est rapportée comme telle, avec la raison, jamais classée sur une supposition (constat M001).
 
-## Critères de l’étape qui suit le choix
+## Décision
 
-Fixés une fois les options choisies, avec le propriétaire, comme pour la décision 0027.
+**Les options 1b, 2e et 3b**, chacune la plus facile à écrire et aussi rapide que la plus rapide de sa question.
+
+1. **Un déplacement a lieu à l’appel** (1b). Un argument qui déplace une variable la déplace une fois chaque argument évalué : un argument suivant peut la lire, tant qu’il ne la prête pas au même appel. `m.set(key, m.get(key).unwrapOr(0) + 1)` se construit ; `f(key, key)`, le second prêté, reste refusé.
+2. **Une option est rétrécie par un test qui part** (2e). Après `if (x.isNone()) { … }` dont le bloc ne finit jamais normalement, un `const` ou un paramètre non `inout` `x` est sa valeur pour le reste du bloc : `x.qty`, `x * 2`, `f(x)`. Le lire lit la valeur que tient l’option, prêtée ou déplacée comme celle de toute variable.
+3. **Un repli n’est évalué que s’il est nécessaire** (3b), dans les deux modes, comme le font `??` et `? :` en JavaScript : `unwrapOr` exécute son repli dans la branche où il n’y a pas de valeur, quoi que le repli fabrique. Cela corrige F012.
+4. Les autres options restent constructibles derrière `PERAS_PROTO_MOVE`, `PERAS_PROTO_TAKE` et `PERAS_PROTO_FALLBACK`, pour le script de mesure seulement ; sans eux, une construction suit cette décision.
+
+## Critères de l’étape, enregistrés avant son code
+
+1. **Tests UI** : les six programmes du protocole, tels qu’écrits, se vérifient sans erreur ; `f(key, key)` avec le second prêté, le rétrécissement d’un `let`, et le rétrécissement après un bloc qui ne part pas restent refusés, avec leurs codes.
+2. **De bout en bout, sur les deux allocateurs**, contre le même source construit comme module managed : les six programmes, une option rétrécie qui tient une chaîne, lue puis déplacée, et rétrécie dans une boucle ; un déplacement à l’appel dans une table et dans une fonction ; un repli qui a un effet, un qui fabrique une chaîne, et un qui fabrique un temporaire. Les mêmes résultats, rien de vivant.
+3. **Le test différentiel** gagne une option rétrécie, un repli paresseux qui a un effet sur une variable de module, et une clé déplacée à l’appel ; il passe 2 000 graines.
+4. **Chaque règle cassée exprès est prise** : des déplacements appliqués à chaque argument évalué, dans le vérificateur de libération, refusent les programmes du critère 2 ; un nom rétréci qui lit l’option entière, dans l’abaissement, fait échouer les tests de bout en bout ; le repli exécuté quand il y a une valeur, dans le générateur, désaccorde les modes et les fait échouer.
+5. **Mesures**, rapportées, pas des conditions : `node scripts/bench-options.mjs` de nouveau au commit de l’étape ; l’A/B du tableau de bord contre le commit d’avant (`ab-data.mjs`).
+6. **Docs**, en anglais et en français : la page du guide sur les options, la référence des méthodes pour `unwrapOr`, l’état, les constats F012, F101, F103, F104 et F105, la feuille de route, le journal des changements, `CLAUDE.md`. Et ce que l’audit du 2026-11-17 a trouvé périmé : le paragraphe d’état du README, l’introduction du guide, deux liens cassés ; et une vérification de chaque lien des pages Markdown dans `pnpm run check`.
 
 ## Registre
 
