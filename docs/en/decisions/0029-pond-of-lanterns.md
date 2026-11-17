@@ -125,3 +125,23 @@ Each with what refutes it. Times are of frame 600 at 1024 × 768 with 1,000 lant
 - **H4 has no measure**: its version cannot be written, as the protocol foresaw; `bench/lanterns/threads.peras` keeps the attempt and its diagnostic.
 - **The CPU time over the wall time** is measured on each version alone in a fresh page, 5 frames after 2, the versions not alternating; the times of H1 to H3 and H7 come from the alternating runs.
 - **The memory outside the heap** was added after run 1, the protocol's measure, the heap alone, leaving out the buffers of the JavaScript versions.
+
+### After the study: where Peras's time goes
+
+Asked by the owner on 2026-11-17, to turn the results into work on Peras. A profile by removing (finding F201): in copies of the three versions, a mask skips one phase of the frame at a time, the versions otherwise the same; a phase's cost is the full frame's time minus the time without it, the median of the differences round by round, in Node, frame 600, 15 rounds. Another machine than the study's (an Intel Xeon at 2.10 GHz): only ratios compare (finding M016).
+
+| Phase                                |  TypeScript |       Peras |        Rust |
+| ------------------------------------ | ----------: | ----------: | ----------: |
+| The sky and the water, each pixel    |      5.8 ms |      7.2 ms |      1.5 ms |
+| The triangles, of which their pixels | 28.8 (26.3) | 31.2 (28.8) | 26.7 (26.4) |
+| The halos                            |        14.4 |        14.3 |        12.8 |
+| The colours packed                   |         6.6 |        13.0 |         6.4 |
+
+Then each suspect removed alone from Peras, the frame's time against the unchanged module in one process:
+
+- **The checks of every index**, all removed by a compiler built for the experiment only: 1.009. They cost nothing measurable.
+- **The calls to small functions**, `byte` and the star's `hash` written in place by hand: 0.966; the colours 10.0 to 8.3 ms.
+- **What depends on the row only**, two divisions and two calls to `tri` computed once a row instead of once a pixel, as LLVM does by inlining `tri` and moving it out of the loop: 0.965; the sky 5.8 to 4.1 ms. Peras's pass that moves invariants out of loops moves neither a call nor what is in a branch.
+- **SIMD does not explain Rust's lead**: Rust built without it draws the sky in 2.2 ms and the colours in 8.6.
+
+What it says: three quarters of the frame, the triangles and the halos, take Peras the time they take TypeScript and Rust, within 10 %; the gap is in the two passes over every pixel that call small functions, where inlining them and moving what does not change out of the loop recovers about 7 % of the frame (finding F222). Neither gets Peras to 1.3 times TypeScript's speed: on this frame, that can only come from what JavaScript cannot do, the threads (finding F301). Nothing here points at a type of pixels or a `Framebuffer`: the colours cost what the calls to `byte` cost.

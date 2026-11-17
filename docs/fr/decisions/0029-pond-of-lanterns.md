@@ -125,3 +125,23 @@ Chacune avec ce qui la réfute. Les temps sont ceux de l’image 600 en 1024 × 
 - **H4 n’a pas de mesure** : sa version ne peut pas s’écrire, comme le protocole le prévoyait ; `bench/lanterns/threads.peras` garde l’essai et son diagnostic.
 - **Le temps CPU sur le temps réel** est mesuré sur chaque version seule dans une page neuve, 5 images après 2, les versions n’alternant pas ; les temps de H1 à H3 et H7 viennent des exécutions alternées.
 - **La mémoire hors du tas** a été ajoutée après l’exécution 1, la mesure du protocole, le tas seul, laissant de côté les tampons des versions JavaScript.
+
+### Après l’étude : où passe le temps de Peras
+
+Demandé par le propriétaire le 2026-11-17, pour faire des résultats du travail sur Peras. Un profil en retirant (constat F201) : dans des copies des trois versions, un masque saute une phase de l’image à la fois, les versions étant par ailleurs les mêmes ; le coût d’une phase est le temps de l’image entière moins le temps sans elle, la médiane des différences tour par tour, dans Node, image 600, 15 tours. Une autre machine que celle de l’étude (un Intel Xeon à 2,10 GHz) : seuls les rapports se comparent (constat M016).
+
+| Phase                            |  TypeScript |       Peras |        Rust |
+| -------------------------------- | ----------: | ----------: | ----------: |
+| Le ciel et l’eau, chaque pixel   |      5,8 ms |      7,2 ms |      1,5 ms |
+| Les triangles, dont leurs pixels | 28,8 (26,3) | 31,2 (28,8) | 26,7 (26,4) |
+| Les halos                        |        14,4 |        14,3 |        12,8 |
+| Les couleurs rangées             |         6,6 |        13,0 |         6,4 |
+
+Puis chaque suspect retiré seul de Peras, le temps de l’image contre le module inchangé dans un même processus :
+
+- **Les vérifications de chaque indice**, toutes retirées par un compilateur construit pour l’expérience seulement : 1,009. Elles ne coûtent rien de mesurable.
+- **Les appels à de petites fonctions**, `byte` et le `hash` des étoiles écrits sur place à la main : 0,966 ; les couleurs de 10,0 à 8,3 ms.
+- **Ce qui ne dépend que de la ligne**, deux divisions et deux appels à `tri` calculés une fois par ligne au lieu d’une fois par pixel, comme le fait LLVM en insérant `tri` et en le sortant de la boucle : 0,965 ; le ciel de 5,8 à 4,1 ms. La passe de Peras qui sort les invariants des boucles ne sort ni un appel ni ce qui est dans une branche.
+- **Le SIMD n’explique pas l’avance de Rust** : Rust construit sans lui dessine le ciel en 2,2 ms et les couleurs en 8,6.
+
+Ce que cela dit : les trois quarts de l’image, les triangles et les halos, prennent à Peras le temps qu’ils prennent à TypeScript et à Rust, à 10 % près ; l’écart est dans les deux passes sur chaque pixel qui appellent de petites fonctions, où les insérer et sortir de la boucle ce qui ne change pas regagne environ 7 % de l’image (constat F222). Ni l’un ni l’autre ne mène Peras à 1,3 fois la vitesse de TypeScript : sur cette image, cela ne peut venir que de ce que JavaScript ne fait pas, les threads (constat F301). Rien ici ne désigne un type de pixels ou un `Framebuffer` : les couleurs coûtent ce que coûtent les appels à `byte`.
