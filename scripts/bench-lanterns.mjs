@@ -73,8 +73,10 @@ sh(perasc, ["build", join(work, "managed-src", "pond.apeiron"), "--out", join(wo
 const withRust = !process.argv.includes("--no-rust") && has("cargo") && has("wasm-bindgen");
 if (withRust) {
   const crate = join(dir, "rust");
+  // With SIMD, as bench/garden/rust is built and as Peras builds by default.
   sh("cargo", ["build", "--release", "--locked", "--target", "wasm32-unknown-unknown", "-q"], {
     cwd: crate,
+    env: { ...process.env, RUSTFLAGS: "-C target-feature=+simd128" },
   });
   sh("wasm-bindgen", [
     join(crate, "target", "wasm32-unknown-unknown", "release", "bench_lanterns_rust.wasm"),
@@ -254,7 +256,7 @@ await new Promise((resolve) => {
 const address = server.address();
 const port = typeof address === "object" && address !== null ? address.port : 0;
 // The versions, made in the page: each gives a function drawing one frame,
-// and the bytes of WebAssembly memory it holds.
+// and the bytes it holds outside the JavaScript heap.
 const setup = (/** @type {string[]} */ names) => `
   const w = ${String(width)}, h = ${String(height)}, n = ${String(count)}, frame = 600;
   const made = {};
@@ -263,7 +265,7 @@ const setup = (/** @type {string[]} */ names) => `
     if (name === "typescript" || name === "peras-managed") {
       const m = await import(name === "typescript" ? "/ts/pond.js" : "/managed/pond.js");
       const px = new Int32Array(w * h), d = new Float64Array(w * h), l = new Float64Array(3 * w * h);
-      made[name] = { draw: () => m.render(px, d, l, w, h, n, frame), wasm: () => 0 };
+      made[name] = { draw: () => m.render(px, d, l, w, h, n, frame), wasm: () => px.byteLength + d.byteLength + l.byteLength };
     } else if (name === "rust") {
       const r = await import("/rust/bench_lanterns_rust.js");
       const wasm = await r.default("/rust/bench_lanterns_rust_bg.wasm");
@@ -300,7 +302,9 @@ const timed = /** @type {Record<string, number[]>} */ (
 await tab.close();
 // Each version alone in a fresh page: its CPU time over its wall time, by
 // Chromium's TaskDuration, over 5 frames after 2; then the memory it holds,
-// the JavaScript heap after a collection and its WebAssembly memory.
+// the JavaScript heap after a collection, and what the heap does not count:
+// a module's WebAssembly memory, or the bytes of the typed arrays a
+// JavaScript version draws into.
 /** @type {Record<string, { load: number, heap: number, wasm: number }>} */
 const alone = {};
 for (const name of versions) {
@@ -429,6 +433,8 @@ const md = [
   "",
   "![Frame 600 of the pond, 1,000 lanterns](frame-600.png)",
   "",
+  "Run 1, kept with its flaws, is in [run-1](run-1/RESULTS.md).",
+  "",
   "## Hypotheses",
   "",
   "| | Verdict | Measured |",
@@ -445,7 +451,7 @@ const md = [
   "",
   `## Time, frame 600, ${String(ROUNDS)} runs after 2 of warm-up, the versions alternating`,
   "",
-  "| Version | Median | CPU / wall, alone | JavaScript heap | WebAssembly memory | Shipped, gzip | Lines |",
+  "| Version | Median | CPU / wall, alone | JavaScript heap | Outside the heap | Shipped, gzip | Lines |",
   "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
   ...versions.map(
     (v) =>
