@@ -2098,11 +2098,6 @@ impl Lowering<'_> {
             _ => None,
         };
         let unsigned = kind.is_some_and(ints::is_unsigned);
-        // `floor` and the like on an integer, which gives it (decision
-        // 0035, b2).
-        if self.analysis.whole_calls.contains(&call) {
-            return receiver;
-        }
         if let Some(chosen) = self.ordering(state, receiver.clone(), method, (args, unsigned)) {
             return chosen;
         }

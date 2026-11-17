@@ -1248,7 +1248,7 @@ fn operand_allowed(op: BinaryOp, ty: &Ty) -> bool {
     }
 }
 
-/// Decision 0035's options, prototyped: `Math` as JavaScript writes it, and
+/// Decision 0035, options a2 and b3: `Math` as JavaScript writes it, and
 /// rounding an integer.
 impl Checker<'_> {
     /// Whether `base` names JavaScript's `Math`, no binding of the program.
@@ -1257,8 +1257,7 @@ impl Checker<'_> {
             if self.name(s) == "Math" && self.scopes.lookup(s).is_none())
     }
 
-    /// `Math.PI`, `Math.E`: under a1, the error offers the number; under
-    /// a2, the number.
+    /// `Math.PI`, `Math.E`: the numbers (decision 0035, a2).
     fn math_constant(
         &mut self,
         base: ExprId,
@@ -1268,23 +1267,13 @@ impl Checker<'_> {
         if !self.is_math(base) {
             return None;
         }
-        let value = match self.name(name.symbol) {
-            "PI" => "3.141592653589793",
-            "E" => "2.718281828459045",
-            _ => return None,
-        };
-        match crate::proto_math().as_str() {
-            "a1" => {
-                self.report(errors::math_constant(span, value));
-                Some(Ty::Float(crate::ty::FloatTy::F64))
-            }
-            "a2" => Some(Ty::Float(crate::ty::FloatTy::F64)),
-            _ => None,
-        }
+        let _ = span;
+        let constant = matches!(self.name(name.symbol), "PI" | "E");
+        (constant && crate::proto_math() == "a2").then_some(Ty::Float(crate::ty::FloatTy::F64))
     }
 
-    /// `Math.f(x, …)`: under a1, the error offers `x.f(…)`; under a2, that
-    /// method of `x`.
+    /// `Math.f(x, …)`, as JavaScript writes it: the method `f` of `x`
+    /// (decision 0035, a2).
     fn math_call(
         &mut self,
         at: &crate::methods::CallSite<'_>,
@@ -1296,31 +1285,6 @@ impl Checker<'_> {
             return None;
         }
         let (&first, rest) = at.args.split_first()?;
-        if option == "a1" {
-            let wrap = |c: &Self, id: ExprId| {
-                let e = c.ast.expr(id);
-                let text = c.slice(e.span);
-                if matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. }) {
-                    format!("({text})")
-                } else {
-                    text.to_owned()
-                }
-            };
-            let rest_text = match (rest.first(), rest.last()) {
-                (Some(&a), Some(&b)) => {
-                    let span = Span::new(self.ast.expr(a).span.start, self.ast.expr(b).span.end);
-                    self.slice(span).to_owned()
-                }
-                _ => String::new(),
-            };
-            let method = self.name(name.symbol).to_owned();
-            let written = format!("{}.{method}({rest_text})", wrap(self, first));
-            for &arg in at.args {
-                self.infer(arg, None);
-            }
-            self.report(errors::math_method(at.span, &method, &written));
-            return Some(Ty::Error);
-        }
         let receiver = self.infer(first, None);
         self.math_calls.insert(at.call);
         if let Some(ty) = self.whole_call(at.call, first, &receiver, name, rest) {
@@ -1330,9 +1294,10 @@ impl Checker<'_> {
     }
 
     /// `floor`, `round`, `ceil` or `trunc` on an integer, `call` the whole
-    /// call: under b1 the error removes it; under b2 it gives the integer;
-    /// under b3, on an integer division, the error shows the division and
-    /// converts its operands, and removes the call on any other integer.
+    /// call (decision 0035, b3): on an integer division, the error shows
+    /// the division and converts its operands, so that the fraction is
+    /// rounded; on any other integer, whole already, its fix removes the
+    /// call.
     fn whole_call(
         &mut self,
         call: ExprId,
@@ -1352,10 +1317,6 @@ impl Checker<'_> {
         let span = self.ast.expr(call).span;
         let option = crate::proto_whole();
         match option.as_str() {
-            "b2" => {
-                self.whole_calls.insert(call);
-                Some(me)
-            }
             "b3" if let Some(division) = self.int_division(base) => {
                 let ExprKind::Binary { lhs, rhs, .. } = self.ast.expr(division).kind else {
                     return Some(me);
@@ -1378,7 +1339,7 @@ impl Checker<'_> {
                 self.report(errors::rounded_division(span, division, &method, &written));
                 Some(Ty::Float(crate::ty::FloatTy::F64))
             }
-            "b1" | "b3" => {
+            "b3" => {
                 let written = self.slice(self.ast.expr(base).span).to_owned();
                 self.report(errors::whole_call(span, &method, &written));
                 Some(me)

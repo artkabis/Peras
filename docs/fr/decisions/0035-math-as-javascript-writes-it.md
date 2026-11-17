@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0035-math-as-javascript-writes-it.md](../../en/decisions/0035-math-as-javascript-writes-it.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond aux constats F116 et F117, que la [décision 0034](0034-integer-division.md) a rencontrés, et à ce que cette décision a laissé de F113 : un pourcentage arrondi, `Math.round(done * 100 / total)`, donne 66 % là où JavaScript donne 67 %. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `6cb3444` ; options a2 et b3 acceptées par le propriétaire le 2026-11-17. Il répond aux constats F116 et F117, que la [décision 0034](0034-integer-division.md) a rencontrés, et à ce que cette décision a laissé de F113 : un pourcentage arrondi, `Math.round(done * 100 / total)`, donne 66 % là où JavaScript donne 67 %. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 

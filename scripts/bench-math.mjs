@@ -1,6 +1,8 @@
 // Decision 0035's protocol: `Math` as JavaScript writes it, and rounding
-// an integer. Each option is a prototype the compiler builds when
-// PERAS_PROTO_MATH (a0, a1, a2) and PERAS_PROTO_WHOLE (b0 to b3) name it.
+// an integer. a2 and b3, chosen, are the build's; a0 and b0, the errors as
+// they were, are built when PERAS_PROTO_MATH and PERAS_PROTO_WHOLE name
+// them. a1, b1 and b2 were measured at commit 6cb3444 and removed once
+// not chosen: their figures are in the decision.
 //
 // 1. Ease of writing: the six programs of bench/math/ease, written as a
 //    user writes them from JavaScript, fixed by applying the edits their
@@ -35,7 +37,7 @@ const bench = join(root, "bench", "math");
 const work = join(root, "target", "bench-math");
 const perasc = join(root, "target", "release", "perasc");
 /** The pairs measured: an option of each question. */
-const OPTIONS = ["a0 b0", "a1 b1", "a1 b2", "a1 b3", "a2 b1", "a2 b2", "a2 b3"];
+const OPTIONS = ["a0 b0", "a2 b3"];
 /** @param {string} pair */
 const envOf = (pair) => {
   const [math, whole] = pair.split(" ");
@@ -186,15 +188,7 @@ if (check) {
   // The counts the prototypes gave when committed, checked from then on.
   // The counts the prototypes gave when committed, checked from then on.
   /** @type {Record<string, number>} */
-  const recorded = {
-    "a0 b0": 6,
-    "a1 b1": 1,
-    "a1 b2": 1,
-    "a1 b3": 0,
-    "a2 b1": 1,
-    "a2 b2": 1,
-    "a2 b3": 0,
-  };
+  const recorded = { "a0 b0": 6, "a2 b3": 0 };
   for (const o of OPTIONS) {
     if (recorded[o] !== undefined && wrong[o] !== recorded[o]) {
       throw new Error(`${o}: ${String(wrong[o])} wrong, recorded ${String(recorded[o])}`);

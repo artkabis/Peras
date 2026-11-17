@@ -154,6 +154,18 @@ export fn steps(count: i32): f64 {
 }
 ```
 
+`Math` is written as in JavaScript, in both modes: `Math.sqrt(x)`, `Math.max(a, b)`, `Math.round(x)`, `Math.PI`, `Math.E`; each is the method of its first argument, `x.sqrt()`, `a.max(b)` ([decision 0035](../decisions/0035-math-as-javascript-writes-it.md)). `Math.round` takes a half up, as JavaScript does. On an integer, already whole, `floor`, `round` and `ceil` are refused with their removal as the fix; on an integer division, the error shows the division and divides as floats, so that the fraction is what gets rounded: `Math.round(200 / 3)` would round 66, not 66.67.
+
+```peras build
+export fn polar(x: f64, y: f64): f64 {
+  return Math.atan2(y, x) * 180 / Math.PI + Math.sqrt(x * x + y * y);
+}
+
+export fn percent(done: i32, total: i32): f64 {
+  return ((done * 100).toF64() / total.toF64()).round();
+}
+```
+
 ## Booleans
 
 `bool` is `true` or `false`, and a condition must be a `bool`: Peras has no truthiness.

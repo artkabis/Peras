@@ -67,7 +67,17 @@ function build(name, text, option) {
   const r = spawnSync(
     perasc,
     ["build", file, "--out", dir, "--allocator", "tlsf", "--json", "--color", "never"],
-    { encoding: "utf8", env: { ...process.env, PERAS_PROTO_DIV: option } },
+    // `Math` and rounding an integer as they were when decision 0034
+    // measured, before decision 0035 (finding M007).
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PERAS_PROTO_DIV: option,
+        PERAS_PROTO_MATH: "a0",
+        PERAS_PROTO_WHOLE: "b0",
+      },
+    },
   );
   if (r.status === 0) {
     return { ok: true, js: join(dir, `${name}.js`), wasm: readFileSync(join(dir, `${name}.wasm`)) };

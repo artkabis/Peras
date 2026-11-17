@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0035-math-as-javascript-writes-it.md](../../fr/decisions/0035-math-as-javascript-writes-it.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It answers findings F116 and F117, which [decision 0034](0034-integer-division.md) met, and what that decision left of F113: a percentage rounded, `Math.round(done * 100 / total)`, gives 66 % where JavaScript gives 67 %. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `6cb3444`; options a2 and b3 accepted by the owner on 2026-11-17. It answers findings F116 and F117, which [decision 0034](0034-integer-division.md) met, and what that decision left of F113: a percentage rounded, `Math.round(done * 100 / total)`, gives 66 % where JavaScript gives 67 %. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 

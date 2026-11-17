@@ -616,20 +616,10 @@ impl Module<'_> {
         if let Some(js) = self.group_new(id, base, name) {
             return js;
         }
-        // `Math.f(x, …)`, the method `f` of `x`; `floor` and the like on
-        // an integer, which gives it (decision 0035, a2 and b2).
-        let math = self.analysis.math_calls.contains(&id);
-        let receiver = if math {
-            args.first().copied()
-        } else {
-            Some(base)
-        };
-        if self.analysis.whole_calls.contains(&id)
-            && let Some(receiver) = receiver
+        // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
+        if self.analysis.math_calls.contains(&id)
+            && let Some((&first, rest)) = args.split_first()
         {
-            return self.expr(receiver);
-        }
-        if math && let Some((&first, rest)) = args.split_first() {
             return self.builtin(id, first, text, rest);
         }
         // `Rc.new(value)` (decision 0033).
