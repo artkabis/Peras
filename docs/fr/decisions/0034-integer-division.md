@@ -43,3 +43,36 @@ Chaque option est prototypée derrière `PERAS_PROTO_DIV` ; le build sans elle g
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### Une précision du protocole (2026-11-17)
+
+Le point 1 corrige un programme par les modifications que ses diagnostics offrent, telles que données. La première version a rencontré deux diagnostics qui n’en offrent aucune, dans chaque option : `Math` n’est pas défini dans un module owned (E0200, constat F116), et un entier n’a pas de `floor` (E0215, constat F117). Avant toute mesure, deux règles qu’un utilisateur suit ont été ajoutées au script, les mêmes pour chaque option : `Math.f(x)` s’écrit `(x).f()`, à la manière du guide ; `.floor()`, `.round()`, `.ceil()` ou `.trunc()` sur un entier s’enlève, l’entier étant déjà entier. Sans elles, Q3 à Q5 restaient bloqués sous d0, d1 et d3, et seule d2 les construisait.
+
+### La mesure (2026-11-17)
+
+Exécution 1, au commit 4dc37e9, rien d’autre en cours ; chaque tableau dans [`bench/division/RESULTS.md`](../../../bench/division/RESULTS.md), avec la machine ; la non-régression par `node scripts/check-regression.mjs 4dc37e9 PERAS_PROTO_DIV=<option>`.
+
+| Quantité                                                                                                 | d0          | d1                    | d2                    | d3                    |
+| -------------------------------------------------------------------------------------------------------- | ----------- | --------------------- | --------------------- | --------------------- |
+| Programmes donnant le résultat de JavaScript une fois corrigés par les corrections du compilateur, sur 5 | 2           | **4**                 | 5                     | 2                     |
+| Q1, le dégradé (JavaScript : 2,5)                                                                        | 1           | 2,5                   | 2,5                   | 1                     |
+| Q2, une moyenne (7 / 3)                                                                                  | 2           | 2,333…                | 2,333…                | 2                     |
+| Q5, un pourcentage arrondi (67 %)                                                                        | 66 %        | 66 %                  | 67 %                  | 66 %                  |
+| Programmes du dépôt qui ne se construisent plus                                                          | -           | **0**                 | 13                    | 17                    |
+| Programmes qui se construisent encore et calculent autre chose                                           | -           | **0**                 | 4                     | 0                     |
+| Temps de compilation, / d0                                                                               | 1           | 1,003                 | 0,970                 | 0,908                 |
+| W1, un entier voulu, / d0                                                                                | 1           | 1,000 (0,944 à 1,032) | 0,858 (0,794 à 3,501) | 1,001 (0,909 à 1,156) |
+| W2, une fraction voulue, / d0                                                                            | 1 (et faux) | 0,668 (0,452 à 0,923) | 0,666 (0,456 à 0,720) | 0,996 (et faux)       |
+| Octets de W1 (gzip)                                                                                      | 135 (123)   | 135 (123)             | 148 (140)             | 135 (123)             |
+
+Ce que cela dit :
+
+- **d0 mène un utilisateur à un nombre faux** : en suivant sa propre correction, `t.toF64()`, le dégradé somme 1 et la moyenne donne 2, en silence.
+- **d1 corrige cela là où cela commence** : la correction est à la division, et les deux programmes donnent le résultat de JavaScript ; rien d’autre ne change, pas un octet d’aucun module du dépôt. Celui qu’elle manque, Q5, arrondit une fraction qu’aucun diagnostic ne rencontre : `done * 100 / total` est un entier dès le départ, utilisé comme tel.
+- **d2 est le sens de JavaScript, au prix de chaque programme qui divise des entiers** : 13 du dépôt ne se construisent plus, et 4 se construisent et calculent autre chose, le pire cas, puisque rien ne le dit. Sous la règle du propriétaire, elle régresse, sauf si la décision migre chacun de ces programmes ; et les programmes d’un utilisateur, hors du dépôt, changeraient sans un mot.
+- **d3 refuse ce que d2 change** : 17 programmes ne se construisent plus, et sa correction, `a.div(b)` d’abord, mène Q1 et Q2 aux mêmes nombres faux que d0.
+- **W2 est plus rapide quand il est juste** : une division flottante coûte moins qu’une division entière dont le diviseur est vérifié ; d1 et d2 calculent la fraction en deux tiers du temps de d0, d0 et d3 la calculant faux.
+
+### Proposition
+
+**d1** : la seule option qui soit une amélioration sans régression, sous la règle du propriétaire du 2026-11-17. Elle change deux des trois résultats faux en justes, ne change aucun module, et ne coûte rien en temps ni en octets. Ce qu’elle laisse, Q5, et les deux frictions rencontrées en route, F116 (`Math`) et F117 (`floor` sur un entier), sont chacun une étape à part, mesurée comme celle-ci. Le propriétaire décide.
