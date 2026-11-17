@@ -73,7 +73,16 @@ const source = join(dir, "pond.peras");
 sh(perasc, ["build", source, "--allocator", "tlsf", "--out", join(work, "peras")]);
 sh(perasc, ["build", source, "--out", join(work, "debug")]);
 copyFileSync(source, join(work, "managed-src", "pond.apeiron"));
-sh(perasc, ["build", join(work, "managed-src", "pond.apeiron"), "--out", join(work, "managed")]);
+// The study measured the managed module's debug build, which its protocol
+// did not name (finding M029); named here, so that the run is the study's.
+sh(perasc, [
+  "build",
+  join(work, "managed-src", "pond.apeiron"),
+  "--allocator",
+  "debug",
+  "--out",
+  join(work, "managed"),
+]);
 const withRust = !process.argv.includes("--no-rust") && has("cargo") && has("wasm-bindgen");
 if (withRust) {
   const crate = join(dir, "rust");

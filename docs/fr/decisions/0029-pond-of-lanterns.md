@@ -157,3 +157,22 @@ Pourquoi le module managed prend 2,41 fois le temps du TypeScript, profilé en r
 - **M4**, M3 avec les six tableaux des points projetés faits comme `pond.ts` les fait, `new Float64Array(vertices)`, non remplis par `push`.
 
 Le module TypeScript et les cinq variantes dans un même processus, dans Node, image 600 en 1024 × 768 avec 1 000 lanternes, 15 tours comme le profil ci-dessus, l’ordre alternant ; le rapport de chacune au TypeScript tour par tour, sa médiane et son étendue. Chaque variante doit donner les pixels du TypeScript, ce que le script vérifie. Ce que chaque retrait récupère est la différence des médianes consécutives. Le 2,41 de l’étude a été mesuré dans Chromium ; Node fait tourner le même moteur, et seuls les rapports se comparent (constat M016).
+
+### Le profil de F221, mesuré (2026-11-17)
+
+Au commit 189fca0, rien d’autre ne tournant ; Intel Xeon à 2,30 GHz, Node 24.22.1, 15 tours, image 600 en 1024 × 768. Chaque variante donne les pixels du TypeScript ; 46 lectures et 18 écritures d’indice, 10 conversions et 6 tableaux remplacés.
+
+| Version    |   Median | / TypeScript, median (range) |
+| ---------- | -------: | ---------------------------- |
+| TypeScript |  49.9 ms | 1.000 (1.000 to 1.000)       |
+| M0         | 194.8 ms | 4.039 (2.767 to 4.803)       |
+| M1         | 128.8 ms | 2.616 (1.936 to 2.991)       |
+| M2         |  51.4 ms | 1.089 (0.986 to 2.201)       |
+| M3         |  46.3 ms | 1.013 (0.852 to 1.552)       |
+| M4         |  47.8 ms | 0.992 (0.618 to 1.194)       |
+
+- **L’étude a mesuré un build de débogage** (constat M029) : M0 à 4,04 fois le temps du TypeScript dans Node, là où le navigateur de l’étude donnait 2,41. Construit pour la production, 2,62 : les vérifications de débordement coûtent le reste.
+- **Les vérifications d’indice sont l’écart** : écrites comme des accès directs, 2,62 devient 1,09. Dans le module owned, les mêmes vérifications ne coûtent rien de mesurable (1,009, ci-dessus) ; en JavaScript, chacune passe par `$at` ou `$put`, une seule fonction pour chaque tableau du module, de flottants, d’entiers, typé ou non. Pourquoi cela coûte autant n’est pas mesuré ici : une fonction partagée par des tableaux de chaque sorte d’élément est une cause possible, non montrée (constat M001).
+- **Le reste est dans le bruit** : les conversions saturantes, de 1,09 à 1,01 ; des tableaux typés pour les points projetés, de 1,01 à 0,99, des étendues de 0,62 à 1,55.
+
+Ce que cela dit : le module managed, construit pour la production, peut dessiner l’image aussi vite que le TypeScript une fois ses indices vérifiés autrement. Comment, sans renoncer à la vérification qui arrête un programme sur un mauvais indice, est une décision, ses options mesurées.

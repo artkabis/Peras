@@ -157,3 +157,22 @@ Why the managed module takes 2.41 times TypeScript's time, profiled by removing 
 - **M4**, M3 with the six arrays of the projected points made as `pond.ts` makes them, `new Float64Array(vertices)`, not filled by `push`.
 
 TypeScript's module and the five variants in one process, in Node, frame 600 at 1024 × 768 with 1,000 lanterns, 15 rounds as the profile above, the order alternating; the ratio of each to TypeScript round by round, its median and range. Every variant must give TypeScript's pixels, which the script checks. What each removal recovers is the difference of consecutive medians. The study's 2.41 was measured in Chromium; Node runs the same engine, and only ratios compare (finding M016).
+
+### F221's profile, measured (2026-11-17)
+
+At commit 189fca0, nothing else running; Intel Xeon at 2.30 GHz, Node 24.22.1, 15 rounds, frame 600 at 1024 × 768. Every variant gives TypeScript's pixels; 46 reads and 18 writes of indices, 10 conversions and 6 arrays replaced.
+
+| Version    |   Median | / TypeScript, median (range) |
+| ---------- | -------: | ---------------------------- |
+| TypeScript |  49.9 ms | 1.000 (1.000 to 1.000)       |
+| M0         | 194.8 ms | 4.039 (2.767 to 4.803)       |
+| M1         | 128.8 ms | 2.616 (1.936 to 2.991)       |
+| M2         |  51.4 ms | 1.089 (0.986 to 2.201)       |
+| M3         |  46.3 ms | 1.013 (0.852 to 1.552)       |
+| M4         |  47.8 ms | 0.992 (0.618 to 1.194)       |
+
+- **The study measured a debug build** (finding M029): M0 at 4.04 times TypeScript's time in Node, where the study's browser gave 2.41. Built for production, 2.62: the overflow checks cost the rest.
+- **The checks of indices are the gap**: written as direct accesses, 2.62 becomes 1.09. In the owned module the same checks cost nothing measurable (1.009, above); in JavaScript, each goes through `$at` or `$put`, one function for every array of the module, of doubles, of integers, typed or not. Why that costs so much is not measured here: one function shared by arrays of every kind of element is a possible cause, not a shown one (finding M001).
+- **The rest is within the noise**: the saturating conversions, 1.09 to 1.01; typed arrays for the projected points, 1.01 to 0.99, ranges of 0.62 to 1.55.
+
+What it says: the managed module, built for production, can draw the frame as fast as TypeScript once its indices are checked another way. How, without giving up the check that stops a program at a wrong index, is a decision, its options measured.

@@ -35,6 +35,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **A value that could not be measured makes a verdict undetermined**, never a hypothesis that holds (M001).
 - **Check every competitor against the rules of the project** before naming it in a protocol (M004).
 - **Count alike**: what is left out of one version's count is left out of every version's (M006).
+- **Name the build of every version a protocol measures**, and pass it explicitly: decision 0029 compared a debug managed module with TypeScript, 4.04 times its time where production gives 2.62 (M029).
 - **Compare runs by their ratios, never by their milliseconds**: a new session may get another processor; read the machine in each `results.json` (M016).
 - **Decide a change by an A/B in one process, not by two profiles**: the machine drifts within a session; `node scripts/ab-data.mjs <ref>` alternates both compilers and takes the ratio round by round (M017).
 - **`pnpm run check` is the last command before a commit**, after every build and test: a build rewrites the files it generates (M012).
