@@ -67,3 +67,37 @@ Fixés une fois les options choisies, avec le propriétaire, comme pour la déci
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+- **2026-11-17, les options mesurées** (`node scripts/bench-options.mjs`, [résultats](../../../bench/options/RESULTS.md) ; prototypes à `8857c01`, derrière `PERAS_PROTO_MOVE`, `PERAS_PROTO_TAKE` et `PERAS_PROTO_FALLBACK`). Un Intel Xeon à 2,30 GHz, 4 cœurs, Node 24, 21 tours, modules owned sur TLSF. Chaque prototype donne les résultats du module managed sur chaque charge et programme qu’il accepte, et ne laisse rien de vivant.
+  - **Vitesse**, la médiane des rapports à l’option qui garde le comportement d’aujourd’hui :
+
+    | Charge                                                | Options                                                                                 |
+    | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
+    | W1, mots comptés                                      | 1a copié par le programme 1 ; **1b à l’appel 0,981** ; 1c copié pour le programme 1,474 |
+    | W2, lignes lues, une sur dix mauvaise                 | 2a 1 ; 2b 1,023 ; 2c 0,601 ; **2e rétréci 0,618**                                       |
+    | W2, toutes les lignes bonnes                          | 2a 1 ; 2d `unwrap()` 0,576                                                              |
+    | W3, une chaîne comme repli, trouvée neuf fois sur dix | 3a toujours 1 ; **3b si nécessaire 0,463** ; 3c `unwrapOrElse` 0,811                    |
+
+    2a et 2b copient la valeur qu’ils prennent, de l’option que garde une variable ou de la branche qui la prête ; 2c, 2d et 2e non. La copie de 1c, insérée par le compilateur, coûte plus que la même copie écrite dans le source (1a) ; pourquoi n’a pas été cherché.
+
+  - **Charge du processeur** : le temps CPU sur le temps écoulé est entre 0,98 et 1,00 partout : aucune option ne la change.
+  - **Mémoire et octets** : la même mémoire pour chaque option d’une charge ; les modules diffèrent de 90 octets au plus (2 932 à 3 029 compressés).
+  - **Facilité d’écriture**, six programmes écrits depuis JavaScript :
+
+    |            | Programmes qui se construisent tels qu’écrits | Erreurs rencontrées | Lignes changées | Notions que JavaScript ne demande pas       |
+    | ---------- | --------------------------------------------: | ------------------: | --------------: | ------------------------------------------- |
+    | 1a         |                                       0 sur 2 |                   2 |               4 | `copy()` là où un argument suivant lit      |
+    | **1b**     |                                       2 sur 2 |                   0 |               0 | aucune                                      |
+    | 1c         |                                       2 sur 2 |                   0 |               0 | aucune, mais une copie invisible            |
+    | 2a         |                                       0 sur 3 |                   5 |              11 | une valeur de remplacement jamais utilisée  |
+    | 2b         |                                       0 sur 3 |                   5 |              49 | `match` avec une branche qui part, `copy()` |
+    | 2c         |                                       0 sur 3 |                   5 |              24 | `const … else`                              |
+    | 2d         |                                       0 sur 3 |                   5 |              11 | `unwrap()`, qui arrête le programme         |
+    | **2e**     |                                       3 sur 3 |                   0 |               0 | aucune                                      |
+    | 3a, 3b, 3c |                                       1 sur 1 |                   0 |               0 | aucune (3c offre `unwrapOrElse`)            |
+
+  - **Les modes s’accordent** : aujourd’hui, un repli qui a un effet donne `501, 202` owned et `500, 101` managed (F012) ; 3a, 3b et 3c les accordent chacune.
+- **Écarts au protocole.**
+  - **Une option a été ajoutée après mesure** : 2e, le rétrécissement, comme TypeScript le fait : après `if (x.isNone())` dont le bloc part, un `const` ou un paramètre `x` est sa valeur pour le reste du bloc. Chaque programme de Q2 s’écrit ainsi en JavaScript, et aucune de 2a à 2d ne les acceptait.
+  - **2c est prototypée pour `Option` et `Result` ; 2e pour `Option` et `isNone()` seulement.** 2d arrête le programme comme le fait un indice hors bornes, un message à écrire si elle est choisie.
+- **Ce que disent les mesures** : 1b, 2e et 3b sont chacune la plus facile à écrire, sans erreur ni changement, et aussi rapide que l’option la plus rapide de sa question (1b et 1a, 2e et 2c, 3b seule). Ce sont les options à proposer au propriétaire, qui choisit.

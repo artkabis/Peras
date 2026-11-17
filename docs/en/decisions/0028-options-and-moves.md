@@ -67,3 +67,37 @@ Set once the options are chosen, with the owner, as for decision 0027.
 ## Record
 
 _Each part is recorded here as it lands._
+
+- **2026-11-17, the options measured** (`node scripts/bench-options.mjs`, [results](../../../bench/options/RESULTS.md); prototypes at `8857c01`, behind `PERAS_PROTO_MOVE`, `PERAS_PROTO_TAKE` and `PERAS_PROTO_FALLBACK`). An Intel Xeon at 2.30 GHz, 4 cores, Node 24, 21 rounds, owned modules on TLSF. Every prototype gives the managed module's results on every workload and program it accepts, and leaves nothing alive.
+  - **Speed**, the median of the ratios to the option that keeps today's behaviour:
+
+    | Workload                                    | Options                                                                               |
+    | ------------------------------------------- | ------------------------------------------------------------------------------------- |
+    | W1, words counted                           | 1a copied by the program 1; **1b at the call 0.981**; 1c copied for the program 1.474 |
+    | W2, lines parsed, one in ten bad            | 2a 1; 2b 1.023; 2c 0.601; **2e narrowed 0.618**                                       |
+    | W2, every line good                         | 2a 1; 2d `unwrap()` 0.576                                                             |
+    | W3, a string as fallback, found nine in ten | 3a always 1; **3b when needed 0.463**; 3c `unwrapOrElse` 0.811                        |
+
+    2a and 2b copy the value they take, from the option a variable keeps or from the arm that lends it; 2c, 2d and 2e do not. 1c's copy, inserted by the compiler, costs more than the same copy written in the source (1a); why was not looked into.
+
+  - **Load on the processor**: the CPU time over the wall time is between 0.98 and 1.00 everywhere: no option changes it.
+  - **Memory and bytes**: the same memory for every option of a workload; the modules differ by 90 bytes at most (2,932 to 3,029 gzipped).
+  - **Ease of writing**, six programs written from JavaScript:
+
+    |            | Programs that build as written | Errors met | Lines changed | Notions JavaScript does not ask for       |
+    | ---------- | -----------------------------: | ---------: | ------------: | ----------------------------------------- |
+    | 1a         |                         0 of 2 |          2 |             4 | `copy()` where a later argument reads     |
+    | **1b**     |                         2 of 2 |          0 |             0 | none                                      |
+    | 1c         |                         2 of 2 |          0 |             0 | none, but a copy unseen                   |
+    | 2a         |                         0 of 3 |          5 |            11 | a placeholder never used                  |
+    | 2b         |                         0 of 3 |          5 |            49 | `match` with an arm that leaves, `copy()` |
+    | 2c         |                         0 of 3 |          5 |            24 | `const … else`                            |
+    | 2d         |                         0 of 3 |          5 |            11 | `unwrap()`, which stops the program       |
+    | **2e**     |                         3 of 3 |          0 |             0 | none                                      |
+    | 3a, 3b, 3c |                         1 of 1 |          0 |             0 | none (3c offers `unwrapOrElse`)           |
+
+  - **The modes agree**: today, a fallback with an effect gives `501, 202` owned and `500, 101` managed (F012); 3a, 3b and 3c each make them agree.
+- **Departures from the protocol.**
+  - **An option was added after measuring**: 2e, narrowing, as TypeScript does: after `if (x.isNone())` whose block leaves, a `const` or a parameter `x` is its value for the rest of the block. Every program of Q2 is written that way in JavaScript, and none of 2a to 2d accepted them.
+  - **2c is prototyped for `Option` and `Result`; 2e for `Option` and `isNone()` only.** 2d stops the program as an index out of bounds does, a message to write if it is chosen.
+- **What the measures say**: 1b, 2e and 3b are each the easiest to write, with no error and no change, and as fast as the fastest option of their question (1b and 1a, 2e and 2c, 3b alone). They are the options to propose to the owner, who chooses.
