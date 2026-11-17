@@ -111,6 +111,12 @@ pub struct Analysis {
     /// moves while they live: they cannot lend what they capture (decision
     /// 0027, prototype `auto`).
     pub escaping: HashSet<ExprId>,
+    /// The arguments that move a variable a later argument reads, which
+    /// the program moves a copy of (decision 0028, option 1c, prototype).
+    pub copies: HashSet<ExprId>,
+    /// The names of options read after a test that leaves when they are
+    /// `None`: their value (decision 0028, option 2e, prototype).
+    pub narrowed: HashSet<ExprId>,
 }
 
 /// A declared name, for code generation.
@@ -268,6 +274,19 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
+/// The option of decision 0028 a prototype build follows for one of its
+/// questions, from the environment variable `PERAS_PROTO_MOVE` (Q1, `a` to
+/// `c`), `PERAS_PROTO_TAKE` (Q2, `a` to `d`) or `PERAS_PROTO_FALLBACK` (Q3,
+/// `a` to `c`); `today` when unset, the behaviour before the decision. For
+/// the measures only.
+#[must_use]
+pub fn proto(variable: &str) -> String {
+    std::env::var(variable)
+        .ok()
+        .filter(|v| matches!(v.as_str(), "a" | "b" | "c" | "d" | "e"))
+        .unwrap_or_else(|| "today".to_owned())
+}
+
 /// The exported functions of an owned module's source, as a managed module
 /// imports them; `None` when it does not parse or check.
 #[must_use]
@@ -354,6 +373,29 @@ fn exported_types(checker: &Checker<'_>, ast: &Ast) -> ExportedTypes {
     }
 }
 
+/// Every name declared, as code generation reads it.
+fn bound(bindings: &[Binding]) -> Vec<Bound> {
+    bindings
+        .iter()
+        .map(|b| Bound {
+            name: b.name.clone(),
+            span: b.span,
+            kind: match b.kind {
+                Kind::Local { .. } | Kind::Param { .. } | Kind::Pattern => NameKind::Local,
+                Kind::Global { .. } => NameKind::Global,
+                Kind::Fn(id) => NameKind::Fn(id),
+                Kind::Struct(id) => NameKind::Struct(id),
+                Kind::Enum(id) => NameKind::Enum(id),
+                Kind::Some => NameKind::Some,
+                Kind::None => NameKind::None,
+                Kind::Ok => NameKind::Ok,
+                Kind::Err => NameKind::Err,
+            },
+            ty: b.ty.clone(),
+        })
+        .collect()
+}
+
 /// Checks a module in its mode, against the modules it imports.
 #[must_use]
 pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
@@ -374,27 +416,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         (Vec::new(), HashMap::new())
     };
     let fn_generics = checker.fns.iter().map(|f| f.generics.len()).collect();
-    let bindings = checker
-        .scopes
-        .bindings
-        .iter()
-        .map(|b| Bound {
-            name: b.name.clone(),
-            span: b.span,
-            kind: match b.kind {
-                Kind::Local { .. } | Kind::Param { .. } | Kind::Pattern => NameKind::Local,
-                Kind::Global { .. } => NameKind::Global,
-                Kind::Fn(id) => NameKind::Fn(id),
-                Kind::Struct(id) => NameKind::Struct(id),
-                Kind::Enum(id) => NameKind::Enum(id),
-                Kind::Some => NameKind::Some,
-                Kind::None => NameKind::None,
-                Kind::Ok => NameKind::Ok,
-                Kind::Err => NameKind::Err,
-            },
-            ty: b.ty.clone(),
-        })
-        .collect();
+    let bindings = bound(&checker.scopes.bindings);
     let exports = checker
         .exported
         .iter()
@@ -453,6 +475,8 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         names: checker.resolved,
         captures: checker.captures,
         escaping: checker.escaping,
+        copies: checker.copies,
+        narrowed: checker.narrowed,
         moves: checker.moves,
         enums: checker
             .enums
@@ -572,6 +596,12 @@ struct Checker<'a> {
     captures: HashMap<ExprId, Vec<(Symbol, usize)>>,
     /// See [`Analysis::escaping`].
     escaping: HashSet<ExprId>,
+    /// See [`Analysis::copies`].
+    copies: HashSet<ExprId>,
+    /// The options narrowed to their value now, and every name read so
+    /// (decision 0028, option 2e, prototype).
+    narrowed_now: HashSet<usize>,
+    narrowed: HashSet<ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -667,6 +697,9 @@ impl<'a> Checker<'a> {
             value_arrows: HashSet::new(),
             captures: HashMap::new(),
             escaping: HashSet::new(),
+            copies: HashSet::new(),
+            narrowed_now: HashSet::new(),
+            narrowed: HashSet::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),
@@ -1724,6 +1757,24 @@ fn returns_value(stmts: &[Stmt]) -> bool {
 }
 
 /// Whether every path through these statements ends with `return` or loops forever.
+/// Whether statements never end normally: they return, or leave a loop by
+/// `break` or `continue`, on every path (decision 0028, prototype).
+pub(crate) fn never_ends(ast: &Ast, stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match &s.kind {
+        StmtKind::Break | StmtKind::Continue => true,
+        StmtKind::Block(block) => never_ends(ast, &block.stmts),
+        StmtKind::If {
+            then,
+            otherwise: Some(otherwise),
+            ..
+        } => {
+            never_ends(ast, std::slice::from_ref(then))
+                && never_ends(ast, std::slice::from_ref(otherwise))
+        }
+        _ => stmt_always_returns(ast, s),
+    })
+}
+
 pub(crate) fn always_returns(ast: &Ast, stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| stmt_always_returns(ast, s))
 }

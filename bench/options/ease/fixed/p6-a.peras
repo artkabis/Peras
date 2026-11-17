@@ -1,0 +1,19 @@
+// P6: rows grouped by a key into a map of structures.
+struct Stats {
+  count: i32;
+  sum: i32;
+}
+
+fn add(s: Stats, v: i32): Stats {
+  return Stats(s.count + 1, s.sum + v);
+}
+
+export fn p6(text: String): i32 {
+  let groups: Map<String, Stats> = Map.new();
+  for (const line of text.split("\n")) {
+    const parts = line.split(",");
+    const key = parts[0].copy();
+    groups.set(key.copy(), add(groups.get(key).unwrapOr(Stats(0, 0)), parts.length));
+  }
+  return groups.get("a").unwrapOr(Stats(0, 0)).sum * 10 + groups.size;
+}

@@ -1,0 +1,19 @@
+// Question 3: a fallback with an effect, run in both modes.
+let calls = 0;
+
+fn next(): i32 {
+  calls += 1;
+  return calls;
+}
+
+fn find(n: i32): Option<i32> {
+  if (n > 0) {
+    return Some(n);
+  }
+  return None;
+}
+
+export fn effects(n: i32): i32 {
+  const a = find(n).unwrapOr(next());
+  return a * 100 + calls;
+}

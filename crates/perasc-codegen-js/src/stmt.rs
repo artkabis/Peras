@@ -18,8 +18,41 @@ enum Place {
 }
 
 impl Module<'_> {
+    /// `const x = e else { … };`, decision 0028's option 2c, prototyped:
+    /// the value of `Some` or `Ok`, or the block, which leaves.
+    fn local_else(&mut self, local: &perasc_syntax::ast::Local) {
+        let value = local.init.map(|init| self.expr(init)).unwrap_or_default();
+        let result = local
+            .init
+            .is_some_and(|i| matches!(self.ty(i), perasc_check::ty::Ty::Result(..)));
+        let name = self.declare(local.name.span, self.ast.name(local.name.symbol));
+        let held = format!("{name}$held");
+        self.line(format!("const {held} = {value};"));
+        let missing = if result {
+            format!("{held}.kind !== \"Ok\"")
+        } else {
+            format!("{held} === undefined")
+        };
+        self.line(format!("if ({missing}) {{"));
+        self.current.depth += 1;
+        if let Some(block) = &local.otherwise {
+            self.block_stmts(block);
+        }
+        self.current.depth -= 1;
+        self.line("}");
+        let taken = if result {
+            format!("{held}.values[0]")
+        } else {
+            held
+        };
+        self.line(format!("const {name} = {taken};"));
+    }
+
     pub(crate) fn stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
+            // Decision 0028's option 2c, prototyped: the value of `Some` or
+            // `Ok`, or the block, which leaves.
+            StmtKind::Local(local) if local.otherwise.is_some() => self.local_else(local),
             StmtKind::Local(local) => {
                 let value = local.init.map(|init| self.expr(init));
                 let name = self.declare(local.name.span, self.ast.name(local.name.symbol));

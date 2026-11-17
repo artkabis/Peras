@@ -330,6 +330,23 @@ impl Module {
         self.uses_heap()
             || self.functions.iter().any(Function::checks_overflow)
             || self.calls_runtime()
+            || self.checks_bounds()
+    }
+
+    /// Whether a function checks an index without any buffer, which reports
+    /// through the runtime's `bounds`: `unwrap()` of decision 0028's option
+    /// 2d, prototyped.
+    #[must_use]
+    pub fn checks_bounds(&self) -> bool {
+        let mut found = false;
+        for f in &self.functions {
+            each_stmt(&f.body, &mut |s| {
+                if matches!(s, Stmt::Buf(BufStmt::CheckIndex, _)) {
+                    found = true;
+                }
+            });
+        }
+        found
     }
 
     /// Whether a function calls the runtime, as `%` on floats does with no

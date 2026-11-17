@@ -226,27 +226,40 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
+    /// A declaration: its value given to the variable, which is new, also
+    /// at each turn of a loop.
+    fn local(&mut self, local: &perasc_syntax::ast::Local, path: &mut Path) {
+        if let Some(init) = local.init {
+            // A lending arrow function may be kept in a variable,
+            // which then only lends it.
+            if self.is_lending(init) {
+                self.expr(init, Use::Read, path);
+                if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
+                    self.lending.insert(binding, init);
+                }
+            } else {
+                self.expr(init, Use::Consume, path);
+            }
+        }
+        // Option 2c: the block run when there is no value, a path
+        // that leaves (decision 0028, prototype).
+        if let Some(block) = &local.otherwise {
+            let mut other = path.clone();
+            for s in &block.stmts {
+                self.stmt(s, &mut other);
+            }
+            merge(path, &other);
+        }
+        // A new variable, also at each turn of a loop.
+        if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
+            give_back(&mut path.moved, binding, &[]);
+            path.given.insert(binding, local.name.span);
+        }
+    }
+
     fn stmt_inner(&mut self, stmt: &Stmt, path: &mut Path) {
         match &stmt.kind {
-            StmtKind::Local(local) => {
-                if let Some(init) = local.init {
-                    // A lending arrow function may be kept in a variable,
-                    // which then only lends it.
-                    if self.is_lending(init) {
-                        self.expr(init, Use::Read, path);
-                        if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
-                            self.lending.insert(binding, init);
-                        }
-                    } else {
-                        self.expr(init, Use::Consume, path);
-                    }
-                }
-                // A new variable, also at each turn of a loop.
-                if let Some(&binding) = self.checker.declared.get(&local.name.span.start) {
-                    give_back(&mut path.moved, binding, &[]);
-                    path.given.insert(binding, local.name.span);
-                }
-            }
+            StmtKind::Local(local) => self.local(local, path),
             StmtKind::Return(value) => {
                 if let Some(value) = value {
                     self.expr(*value, Use::Consume, path);
@@ -757,6 +770,77 @@ impl<'c, 'a> Owner<'c, 'a> {
         }
     }
 
+    /// Decision 0028's options 1b and 1c, prototyped: an argument that moves
+    /// a variable a later argument of the same call reads. Under 1b it moves
+    /// at the call, once the others are evaluated; under 1c the program
+    /// moves a copy of it. Lent to the same call as a whole, it stays refused.
+    fn late_moves(&self, items: &[(ExprId, Use)]) -> Vec<ExprId> {
+        let proto = crate::proto("PERAS_PROTO_MOVE");
+        if !matches!(proto.as_str(), "b" | "c") {
+            return Vec::new();
+        }
+        let mut late = Vec::new();
+        for (k, &(e, mode)) in items.iter().enumerate() {
+            let Some(binding) = self.bare_name(e) else {
+                continue;
+            };
+            if mode != Use::Consume || !self.moves(e) {
+                continue;
+            }
+            let later = &items[k + 1..];
+            let aliased = later
+                .iter()
+                .any(|&(o, _)| self.bare_name(o) == Some(binding));
+            let read = later.iter().any(|&(o, _)| self.reads_binding(o, binding));
+            if read && !aliased {
+                late.push(e);
+            }
+        }
+        late
+    }
+
+    /// The arguments of a call walked in order, those of [`Self::late_moves`]
+    /// last (1b), or read and copied (1c).
+    fn ordered_arguments(&mut self, items: &[(ExprId, Use)], path: &mut Path) {
+        let late = self.late_moves(items);
+        for &(e, mode) in items {
+            if !late.contains(&e) {
+                self.expr(e, mode, path);
+            }
+        }
+        self.finish_late(&late, path);
+    }
+
+    fn finish_late(&mut self, late: &[ExprId], path: &mut Path) {
+        let copy = crate::proto("PERAS_PROTO_MOVE") == "c";
+        for &e in late {
+            if copy {
+                self.checker.copies.insert(e);
+                self.expr(e, Use::Read, path);
+            } else {
+                self.expr(e, Use::Consume, path);
+            }
+        }
+    }
+
+    /// The variable an expression is, written alone.
+    fn bare_name(&self, e: ExprId) -> Option<usize> {
+        match &self.checker.ast.expr(e).kind {
+            ExprKind::Name(_) => self.checker.resolved.get(&e).copied(),
+            ExprKind::Paren(inner) => self.bare_name(*inner),
+            _ => None,
+        }
+    }
+
+    /// Whether an expression reads a variable anywhere inside it.
+    fn reads_binding(&self, e: ExprId, binding: usize) -> bool {
+        let outer = self.checker.ast.expr(e).span;
+        self.checker.resolved.iter().any(|(&id, &b)| {
+            let span = self.checker.ast.expr(id).span;
+            b == binding && span.start >= outer.start && span.end <= outer.end
+        })
+    }
+
     /// Option D, prototyped, or the option found by measuring: an arrow
     /// function used as a value that lends what it captures on the heap.
     fn is_lending(&self, id: ExprId) -> bool {
@@ -916,10 +1000,9 @@ impl<'c, 'a> Owner<'c, 'a> {
                     let span = self.checker.ast.expr(*base).span;
                     self.iterated.push((root, span));
                 }
-                for &arg in args {
-                    let mode = if consume { Use::Consume } else { Use::Read };
-                    self.expr(arg, mode, path);
-                }
+                let mode = if consume { Use::Consume } else { Use::Read };
+                let items: Vec<(ExprId, Use)> = args.iter().map(|&a| (a, mode)).collect();
+                self.ordered_arguments(&items, path);
                 if root.is_some() {
                     self.iterated.pop();
                 }
@@ -945,6 +1028,19 @@ impl<'c, 'a> Owner<'c, 'a> {
     ) {
         // The variable each argument reaches, and whether it is passed `inout`.
         let mut roots: Vec<(usize, Vec<String>, Span, bool)> = Vec::new();
+        let modes: Vec<(ExprId, Use)> = args
+            .iter()
+            .enumerate()
+            .map(|(i, &arg)| {
+                let sink = conventions.get(i).copied() == Some(Convention::Sink);
+                (
+                    self.unmark(arg).0,
+                    if sink { Use::Consume } else { Use::Read },
+                )
+            })
+            .collect();
+        let late = self.late_moves(&modes);
+        let mut deferred = Vec::new();
         for (i, &arg) in args.iter().enumerate() {
             let convention = conventions.get(i).copied().unwrap_or(Convention::Let);
             let (inner, marked) = self.unmark(arg);
@@ -978,6 +1074,10 @@ impl<'c, 'a> Owner<'c, 'a> {
             } else {
                 Use::Read
             };
+            if late.contains(&inner) {
+                deferred.push(inner);
+                continue;
+            }
             self.expr(inner, mode, path);
             // A number or a boolean is copied: it cannot alias.
             let shared = convention == Convention::Inout || self.moves(inner);
@@ -986,6 +1086,7 @@ impl<'c, 'a> Owner<'c, 'a> {
                 roots.push((root, place, span, convention == Convention::Inout));
             }
         }
+        self.finish_late(&deferred, path);
         // Each argument that reaches the place of an earlier one, when either is
         // `inout`, is reported once. Different fields of one structure do not
         // overlap.

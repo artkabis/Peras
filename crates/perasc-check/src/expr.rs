@@ -206,6 +206,9 @@ impl Checker<'_> {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
                     self.capture(index, span);
+                    if self.narrowed_now.contains(&index) {
+                        self.narrowed.insert(id);
+                    }
                 }
                 self.read_name(*symbol, span)
             }
@@ -883,6 +886,18 @@ impl Checker<'_> {
         }
         if let Some(ty) = self.ordering_method(receiver, text, args, span) {
             return ty;
+        }
+        // Decision 0028's option 3c, prototyped: a fallback made by an arrow
+        // function given in place, run only when there is no value.
+        if let Ty::Option(inner) = receiver
+            && text == "unwrapOrElse"
+            && crate::proto("PERAS_PROTO_FALLBACK") == "c"
+        {
+            self.arity(span, text, 1, args.len(), None);
+            if let Some(&f) = args.first() {
+                self.arrow(f, &[], Some(inner));
+            }
+            return (**inner).clone();
         }
         // A `Numeric` parameter converts to any number, as numbers do.
         let as_number = if self.satisfies_param(receiver, Bound::Numeric) {

@@ -146,6 +146,8 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
         },
         Ty::Option(inner) => match name {
             "isSome" | "isNone" => simple(Ty::Bool),
+            // Decision 0028's option 2d, prototyped.
+            "unwrap" if crate::proto("PERAS_PROTO_TAKE") == "d" => simple((**inner).clone()),
             "unwrapOr" => Some(Method {
                 params: vec![(**inner).clone()],
                 ret: (**inner).clone(),
