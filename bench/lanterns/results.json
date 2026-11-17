@@ -1,0 +1,139 @@
+{
+  "machine": "Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores; Node v24.22.1; Chromium",
+  "size": {
+    "width": 1024,
+    "height": 768,
+    "lanterns": 1000,
+    "frame": 600
+  },
+  "identity": [
+    {
+      "frame": 0,
+      "hash": "b7cdb53338072128bf2b5471893abe46c996379e785748f28725a0cf97338eaa"
+    },
+    {
+      "frame": 300,
+      "hash": "cf62cb7b82c1c5c2673d1ec56645383da21924edb9f8f83fe572ebe3168b57c2"
+    },
+    {
+      "frame": 600,
+      "hash": "4c70b637b4f53d016684c7876879b96283d8738677bea0dddb05c7eb4ee3d006"
+    }
+  ],
+  "ms": {
+    "typescript": 46,
+    "peras-managed": 106.20000000018626,
+    "peras": 45,
+    "peras-debug": 49.60000000055879,
+    "rust": 41.10000000055879
+  },
+  "ratios": {
+    "speedTs": {
+      "median": 0.9692307692225818,
+      "min": 0.8812260536367023,
+      "max": 1.1538461538412914
+    },
+    "speedRust": {
+      "median": 0.8893528183742053,
+      "min": 0.7955555555514163,
+      "max": 0.9889135254987997
+    },
+    "managed": {
+      "median": 2.405895691642972,
+      "min": 2.147239263787323,
+      "max": 3.12608695651769
+    },
+    "debug": {
+      "median": 1.080610021811822,
+      "min": 0.9674329501881188,
+      "max": 1.1280898876446352
+    }
+  },
+  "alone": {
+    "typescript": {
+      "load": 1.0036044135668698,
+      "heap": 781012,
+      "wasm": 28311552
+    },
+    "peras-managed": {
+      "load": 1.0016284219005365,
+      "heap": 770724,
+      "wasm": 28311552
+    },
+    "peras": {
+      "load": 1.0046129032258064,
+      "heap": 727920,
+      "wasm": 28377088
+    },
+    "peras-debug": {
+      "load": 1.0035251491917043,
+      "heap": 728256,
+      "wasm": 28377088
+    },
+    "rust": {
+      "load": 1.0039089089098447,
+      "heap": 711716,
+      "wasm": 29622272
+    }
+  },
+  "shipped": {
+    "typescript": 1866,
+    "peras": 8164,
+    "peras-managed": 2492,
+    "rust": 16491
+  },
+  "code": {
+    "typescript": 275,
+    "peras": 302,
+    "rust": 302
+  },
+  "asWritten": {
+    "E0211": 35,
+    "E0210": 10
+  },
+  "threads": {
+    "codes": ["E0241"],
+    "first": "this loop cannot run in parallel: it writes an element at another index than its counter's"
+  },
+  "sharedMesh": {
+    "codes": ["E0204"],
+    "first": "`mesh` is used after it was moved"
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "verdict": "**refuted**",
+      "detail": "Peras at 0.97 (0.88 to 1.15) times TypeScript's speed; threshold 1.3"
+    },
+    {
+      "id": "H2",
+      "verdict": "holds",
+      "detail": "Peras at 0.89 (0.80 to 0.99) times Rust's speed; threshold 0.85"
+    },
+    {
+      "id": "H3",
+      "verdict": "**refuted**",
+      "detail": "the managed module at 2.41 (2.15 to 3.13) times TypeScript's time; threshold 1.15"
+    },
+    {
+      "id": "H4",
+      "verdict": "undetermined",
+      "detail": "`parallel for` cannot express the frame: E0241, \"this loop cannot run in parallel: it writes an element at another index than its counter's\" (finding F301)"
+    },
+    {
+      "id": "H5",
+      "verdict": "holds",
+      "detail": "Peras ships 8164 bytes gzip, Rust 16491"
+    },
+    {
+      "id": "H6",
+      "verdict": "holds",
+      "detail": "Peras 302 lines, 1.10 times TypeScript's 275; threshold 1.25. Met before it built: 45 errors (E0211 × 35, E0210 × 10)"
+    },
+    {
+      "id": "H7",
+      "verdict": "holds",
+      "detail": "debug at 1.08 (0.97 to 1.13) times production's time; threshold 1.5"
+    }
+  ]
+}

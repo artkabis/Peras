@@ -330,7 +330,65 @@ impl Lowering<'_> {
         if mode == Mode::Consume && self.check_type(id).is_some_and(|t| self.holds_fn(&t)) {
             return Self::retained(values);
         }
+        // Decision 0028's option 1c, prototyped: a copy moves, the variable
+        // a later argument reads stays.
+        if mode == Mode::Consume && self.analysis.copies.contains(&id) {
+            return Self::retained(values);
+        }
         values
+    }
+
+    /// A name, as the scalars of its value: a variable's locals, moved or
+    /// lent, a module variable, a constant, `None`, or a function as a value.
+    fn name_values(
+        &mut self,
+        state: &mut FnState,
+        id: ExprId,
+        symbol: perasc_syntax::ast::Symbol,
+        mode: Mode,
+        span: perasc_diag::Span,
+    ) -> Vec<Expr> {
+        let symbol = &symbol;
+        if let Some(super::Binding::Struct(locals)) = state.lookup(*symbol) {
+            // An option narrowed to its value: its value's scalars.
+            let locals = if self.analysis.narrowed.contains(&id) {
+                locals.get(1..).unwrap_or_default().to_vec()
+            } else {
+                locals
+            };
+            let moves = mode == Mode::Consume && self.analysis.moves.contains(&id);
+            locals
+                .iter()
+                .map(|&l| {
+                    if !state.is_owned(l) {
+                        super::local_expr(state, l)
+                    } else if moves {
+                        heap::moved(state, l)
+                    } else {
+                        heap::borrowed(l)
+                    }
+                })
+                .collect()
+        } else if let Some(super::Binding::Lent(values)) = state.lookup(*symbol) {
+            values
+        } else if let Some(globals) = self.globals.get(symbol).cloned() {
+            // A module variable: its scalars, read (decision 0023).
+            globals.into_iter().map(|g| self.global_expr(g)).collect()
+        } else if let Some(&init) = self.constants.get(symbol) {
+            // A constant: its value, made here.
+            self.value_as(state, init, mode)
+        } else if self.ast.name(*symbol) == "None" {
+            self.none(id)
+        } else if let Some(&target) = self.fns.get(symbol) {
+            // A function of the module as a value (decision 0026).
+            self.named_value(state, target, mode)
+        } else if self.generic.contains_key(symbol) {
+            self.unsupported(span, "function-value");
+            Vec::new()
+        } else {
+            self.unsupported(span, "global");
+            Vec::new()
+        }
     }
 
     /// [`Self::value_as`], before a function value is held once more.
@@ -346,42 +404,7 @@ impl Lowering<'_> {
         let span = ast_expr.span;
         match &ast_expr.kind {
             AstExpr::Paren(inner) => self.value_as(state, *inner, mode),
-            AstExpr::Name(symbol) => {
-                if let Some(super::Binding::Struct(locals)) = state.lookup(*symbol) {
-                    let moves = mode == Mode::Consume && self.analysis.moves.contains(&id);
-                    locals
-                        .iter()
-                        .map(|&l| {
-                            if !state.is_owned(l) {
-                                super::local_expr(state, l)
-                            } else if moves {
-                                heap::moved(state, l)
-                            } else {
-                                heap::borrowed(l)
-                            }
-                        })
-                        .collect()
-                } else if let Some(super::Binding::Lent(values)) = state.lookup(*symbol) {
-                    values
-                } else if let Some(globals) = self.globals.get(symbol).cloned() {
-                    // A module variable: its scalars, read (decision 0023).
-                    globals.into_iter().map(|g| self.global_expr(g)).collect()
-                } else if let Some(&init) = self.constants.get(symbol) {
-                    // A constant: its value, made here.
-                    self.value_as(state, init, mode)
-                } else if self.ast.name(*symbol) == "None" {
-                    self.none(id)
-                } else if let Some(&target) = self.fns.get(symbol) {
-                    // A function of the module as a value (decision 0026).
-                    self.named_value(state, target, mode)
-                } else if self.generic.contains_key(symbol) {
-                    self.unsupported(span, "function-value");
-                    Vec::new()
-                } else {
-                    self.unsupported(span, "global");
-                    Vec::new()
-                }
-            }
+            AstExpr::Name(symbol) => self.name_values(state, id, *symbol, mode, span),
             AstExpr::Lambda { .. } => self.arrow_value(state, id, mode),
             AstExpr::Call { callee, args, .. } => self.call_values(state, id, *callee, args, mode),
             AstExpr::Try(inner) => self.try_values(state, *inner, span),
@@ -491,6 +514,11 @@ impl Lowering<'_> {
                     // A constructor: its scalars are its arguments', in order.
                     args
                 };
+                let values = if function.is_none() {
+                    Self::read_before_moves(state, values)
+                } else {
+                    values
+                };
                 Self::fresh(state, values, mode)
             }
             AstExpr::Field { base, .. } if self.method_callee(id).is_some() => {
@@ -517,6 +545,34 @@ impl Lowering<'_> {
                 Vec::new()
             }
         }
+    }
+
+    /// The scalars of a value built from its arguments, `Some`, `Ok`, `Err`
+    /// or a constructor, with each number that follows a move computed now: a
+    /// move happens once every argument is evaluated (decision 0028, option
+    /// 1b), and `Sized(text, text.length)` reads `text` before it moves.
+    fn read_before_moves(state: &mut FnState, values: Vec<Expr>) -> Vec<Expr> {
+        let mut moved = false;
+        values
+            .into_iter()
+            .map(|value| match value.kind {
+                ExprKind::Move(_) => {
+                    moved = true;
+                    value
+                }
+                ExprKind::Const(_) | ExprKind::Local(_) => value,
+                _ if moved && value.ty != Ty::Owned => {
+                    let ty = value.ty;
+                    let temp = state.temp(ty);
+                    state.pre.push(Stmt::Set(temp, value));
+                    Expr {
+                        kind: ExprKind::Local(temp),
+                        ty,
+                    }
+                }
+                _ => value,
+            })
+            .collect()
     }
 
     /// `None`, of the type the checker gave it: `false`, then zeros.
@@ -608,6 +664,9 @@ impl Lowering<'_> {
         if self.is_buffer(base) {
             return self.array_method(state, base, method, args, mode, span);
         }
+        if method == "unwrap" {
+            return self.unwrap_values(state, base, mode);
+        }
         if self.is_map(base) {
             return self.map_method(state, base, method, args, mode, span);
         }
@@ -669,6 +728,20 @@ impl Lowering<'_> {
         {
             return values;
         }
+        self.option_method(state, base, method, args, mode, span)
+    }
+
+    /// A method of an option or a result: `isSome`, `isNone`, `isOk`,
+    /// `isErr`, `unwrapOr` and the prototypes of decision 0028.
+    fn option_method(
+        &mut self,
+        state: &mut FnState,
+        base: ExprId,
+        method: &str,
+        args: &[ExprId],
+        mode: Mode,
+        span: perasc_diag::Span,
+    ) -> Vec<Expr> {
         let fields = self.value_as(state, base, Mode::Borrow);
         // A result is read as an option of its `Ok` data: present when the tag
         // is 0.
@@ -706,6 +779,7 @@ impl Lowering<'_> {
                 }
             }
             "unwrapOr" => self.unwrap_or_values(state, fields, args, mode),
+            "unwrapOrElse" => self.unwrap_or_else_values(state, fields, args, mode, span),
             _ => {
                 self.unsupported(span, "method");
                 Vec::new()
@@ -725,11 +799,98 @@ impl Lowering<'_> {
         let mark = state.pre.len();
         let drops = state.drops.len();
         let fallback = self.arguments(state, None, args);
-        if Self::quiet_since(state, mark, drops, &fallback) {
-            let making = state.pre.split_off(mark);
+        if Self::lazy_since(state, mark, drops, &fallback) {
+            let making = Self::fallback_making(state, mark, drops);
             return Self::unwrap_or_lazily(state, fields, fallback, making, true, mode);
         }
         Self::unwrap_or_eagerly(state, fields, fallback, mark, mode)
+    }
+
+    /// `option.unwrap()`, decision 0028's option 2d, prototyped: the value,
+    /// taken from an option made for it or copied from one a variable keeps;
+    /// with none, the program stops (as an index out of bounds, for now).
+    fn unwrap_values(&mut self, state: &mut FnState, base: ExprId, mode: Mode) -> Vec<Expr> {
+        let fields = self.value_as(state, base, Mode::Consume);
+        let fields: Vec<Expr> = fields.into_iter().map(|e| state.spill(e)).collect();
+        let Some((some, payload)) = fields.split_first() else {
+            return Vec::new();
+        };
+        let zero = Expr {
+            kind: ExprKind::Const(Const::Int(0)),
+            ty: Ty::I32,
+        };
+        state.pre.push(Stmt::If {
+            cond: Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(some.clone())),
+                ty: Ty::Bool,
+            },
+            then: vec![Stmt::Buf(
+                crate::BufStmt::CheckIndex,
+                vec![zero.clone(), zero],
+            )],
+            otherwise: Vec::new(),
+        });
+        let payload = Self::retained(payload.to_vec());
+        Self::fresh(state, payload, mode)
+    }
+
+    /// `option.unwrapOrElse(() => fallback)`, decision 0028's option 3c,
+    /// prototyped: the arrow function's body is lowered in place, in the
+    /// branch where there is no value.
+    fn unwrap_or_else_values(
+        &mut self,
+        state: &mut FnState,
+        fields: Vec<Expr>,
+        args: &[ExprId],
+        mode: Mode,
+        span: perasc_diag::Span,
+    ) -> Vec<Expr> {
+        let body = args.first().and_then(|&f| match &self.ast.expr(f).kind {
+            AstExpr::Lambda {
+                body: perasc_syntax::ast::LambdaBody::Expr(body),
+                ..
+            } => Some(*body),
+            _ => None,
+        });
+        let Some(body) = body else {
+            self.unsupported(span, "method");
+            return Vec::new();
+        };
+        let mark = state.pre.len();
+        let drops = state.drops.len();
+        let fallback = self.value_as(state, body, Mode::Consume);
+        let making = Self::fallback_making(state, mark, drops);
+        Self::unwrap_or_lazily(state, fields, fallback, making, true, mode)
+    }
+
+    /// Whether the fallback lowered since `mark` is made only when the option
+    /// is empty: a quiet one always, and any one under decision 0028's option
+    /// 3b, the default, as JavaScript's `??` does.
+    pub(super) fn lazy_since(
+        state: &FnState,
+        mark: usize,
+        drops: usize,
+        fallback: &[Expr],
+    ) -> bool {
+        Self::quiet_since(state, mark, drops, fallback)
+            || perasc_check::proto("PERAS_PROTO_FALLBACK") == "b"
+    }
+
+    /// What a fallback lowered since `mark` made, to run only in the branch
+    /// where there is no value: its statements, and the temporaries it
+    /// registered since `drops`, released at the end of that branch rather
+    /// than of the statement (decision 0028, option 3b).
+    pub(super) fn fallback_making(
+        state: &mut FnState,
+        mark: usize,
+        drops: usize,
+    ) -> (Vec<Stmt>, Vec<LocalId>) {
+        let making = state.pre.split_off(mark);
+        let late = state.drops.split_off(drops.min(state.drops.len()));
+        for t in &late {
+            state.live.remove(&t.0);
+        }
+        (making, late)
     }
 
     /// Whether the fallback lowered since `mark`, with no drop registered
@@ -814,7 +975,7 @@ impl Lowering<'_> {
         state: &mut FnState,
         fields: Vec<Expr>,
         fallback: Vec<Expr>,
-        making: Vec<Stmt>,
+        (making, late): (Vec<Stmt>, Vec<LocalId>),
         spill: bool,
         mode: Mode,
     ) -> Vec<Expr> {
@@ -862,6 +1023,8 @@ impl Lowering<'_> {
             otherwise.push(Stmt::Set(temp, fallback));
             out.push(super::local_expr(state, temp));
         }
+        // The temporaries the fallback made, once it is stored.
+        otherwise.extend(late.into_iter().map(heap::release_stmt));
         state.pre.push(Stmt::If {
             cond: some.clone(),
             then,

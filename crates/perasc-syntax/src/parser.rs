@@ -1225,6 +1225,15 @@ impl<'src> Parser<'src> {
         let name = self.ident(NameOf::Variable)?;
         let ty = self.eat(TokenKind::Colon).map(|_| self.ty());
         let init = self.eat(TokenKind::Eq).map(|_| self.expr());
+        // Decision 0028's option 2c, prototyped: `const x = e else { … };`.
+        let otherwise = if std::env::var("PERAS_PROTO_TAKE").as_deref() == Ok("c")
+            && init.is_some()
+            && self.eat(TokenKind::Else).is_some()
+        {
+            self.block()
+        } else {
+            None
+        };
         if !mutable && init.is_none() && !self.recovering {
             let text = self.text(keyword).to_owned();
             let name_text = self.ast.name(name.symbol).to_owned();
@@ -1236,6 +1245,7 @@ impl<'src> Parser<'src> {
             name,
             ty,
             init,
+            otherwise,
         })
     }
 

@@ -1,0 +1,46 @@
+// E0221: an option is its value after a test that leaves when it is `None`
+// (decision 0028), only for a `const` or a parameter, and only when the
+// block leaves.
+fn find(n: i32): Option<i32> {
+  if (n > 0) {
+    return Some(n);
+  }
+  return None;
+}
+
+export fn mutable(n: i32): i32 {
+  let x = find(n);
+  if (x.isNone()) {
+    return 0;
+  }
+  return x * 2;
+}
+
+export fn stays(n: i32): i32 {
+  const x = find(n);
+  let tries = 0;
+  if (x.isNone()) {
+    tries += 1;
+  }
+  return x * 2 + tries;
+}
+
+// Accepted: a `const`, a parameter, in a loop.
+export fn fine(n: i32, given: Option<i32>): i32 {
+  const x = find(n);
+  if (x.isNone()) {
+    return -1;
+  }
+  if (given.isNone()) {
+    return x;
+  }
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const y = find(i);
+    if (y.isNone()) {
+      continue;
+    }
+    total += y;
+  }
+  return x + given + total;
+}

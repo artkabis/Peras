@@ -162,7 +162,13 @@ impl Checker<'_> {
                     None => result = Some(self.infer(*value, None).defaulted()),
                 },
                 ArmBody::Block(block) => {
-                    values = false;
+                    // Decision 0028's option 2b, prototyped: an arm that
+                    // never ends normally gives the `match` no type.
+                    let leaves = matches!(crate::proto("PERAS_PROTO_TAKE").as_str(), "b" | "c")
+                        && crate::never_ends(self.ast, &block.stmts);
+                    if !leaves {
+                        values = false;
+                    }
                     self.block(&block.stmts);
                 }
             }

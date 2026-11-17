@@ -1,0 +1,111 @@
+// Decision 0028: the six programs of its protocol, written as a user would
+// from JavaScript, check with no error: a move at the call (P1, P6), an
+// option narrowed by a test that leaves (P2, P3, P5), a fallback (P4).
+export fn p1(text: String): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    const key = w.copy();
+    m.set(key, m.get(key).unwrapOr(0) + 1);
+  }
+  return m.get("a").unwrapOr(0) * 10 + m.size;
+}
+
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(line: String): Option<Row> {
+  const parts = line.split(",");
+  if (parts.length < 2) {
+    return None;
+  }
+  return Some(Row(parts[0].copy(), parts[1].length));
+}
+
+export fn p2(text: String): i32 {
+  let total = 0;
+  for (const line of text.split("\n")) {
+    const row = parse(line);
+    if (row.isNone()) {
+      continue;
+    }
+    total += row.qty;
+  }
+  return total;
+}
+
+fn price(prices: Map<String, i32>, item: String): i32 {
+  const p = prices.get(item);
+  if (p.isNone()) {
+    return -1;
+  }
+  return p * 2;
+}
+
+export fn p3(item: String): i32 {
+  let prices: Map<String, i32> = Map.new();
+  prices.set("tea", 3);
+  return price(prices, item);
+}
+
+export fn p4(id: i32): String {
+  let names: Map<i32, String> = Map.new();
+  names.set(1, "one");
+  return names.get(id).unwrapOr(`unknown ${id}`);
+}
+
+fn half(n: i32): Option<i32> {
+  if (n % 2 == 0) {
+    return Some(n / 2);
+  }
+  return None;
+}
+
+export fn p5(n: i32): i32 {
+  const a = half(n);
+  if (a.isNone()) {
+    return -1;
+  }
+  const b = half(a);
+  if (b.isNone()) {
+    return -2;
+  }
+  const c = half(b);
+  if (c.isNone()) {
+    return -3;
+  }
+  return c;
+}
+
+struct Stats {
+  count: i32;
+  sum: i32;
+}
+
+fn add(s: Stats, v: i32): Stats {
+  return Stats(s.count + 1, s.sum + v);
+}
+
+export fn p6(text: String): i32 {
+  let groups: Map<String, Stats> = Map.new();
+  for (const line of text.split("\n")) {
+    const parts = line.split(",");
+    const key = parts[0].copy();
+    groups.set(key, add(groups.get(key).unwrapOr(Stats(0, 0)), parts.length));
+  }
+  return groups.get("a").unwrapOr(Stats(0, 0)).sum * 10 + groups.size;
+}
+
+// Written before narrowing: the methods of `Option` still read the option
+// whole after a test that leaves.
+export fn writtenBefore(n: i32): i32 {
+  const found = half(n);
+  if (found.isNone()) {
+    return -1;
+  }
+  if (found.isSome()) {
+    return found.unwrapOr(0) + 1;
+  }
+  return found;
+}

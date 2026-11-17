@@ -428,8 +428,8 @@ impl Lowering<'_> {
         let mark = state.pre.len();
         let drops = state.drops.len();
         let fallback = self.arguments(state, None, args);
-        if Self::quiet_since(state, mark, drops, &fallback) {
-            let making = state.pre.split_off(mark);
+        if Self::lazy_since(state, mark, drops, &fallback) {
+            let making = Self::fallback_making(state, mark, drops);
             let mut fields = vec![some];
             fields.extend(
                 table

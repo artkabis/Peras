@@ -15,8 +15,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/fib/tsconfig.json --noEmit && tsc -p examples/garden/tsconfig.json --noEmit && tsc -p examples/stream/tsconfig.json --noEmit && tsc -p website/tsconfig.json --noEmit && tsc -p bench/browser/tsconfig.json",
     "test": "vitest run",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:links": "node scripts/check-links.mjs",
     "audit": "pnpm audit --audit-level low",
-    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:i18n && pnpm run audit",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:i18n && pnpm run check:links && pnpm run audit",
     "e2e": "vitest run --config vitest.e2e.config.ts",
     "docs": "pnpm --filter peras-website build"
   },

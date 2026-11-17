@@ -1,0 +1,6 @@
+// P4: a lookup with a string as its fallback.
+export fn p4(id: i32): String {
+  let names: Map<i32, String> = Map.new();
+  names.set(1, "one");
+  return names.get(id).unwrapOr(`unknown ${id}`);
+}

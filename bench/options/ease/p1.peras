@@ -1,0 +1,9 @@
+// P1: words counted in a map.
+export fn p1(text: String): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    const key = w.copy();
+    m.set(key, m.get(key).unwrapOr(0) + 1);
+  }
+  return m.get("a").unwrapOr(0) * 10 + m.size;
+}

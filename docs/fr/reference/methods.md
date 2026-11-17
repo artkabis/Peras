@@ -260,6 +260,8 @@ Les clés sont des entiers, des booléens ou des chaînes ([E0240](../errors/E02
 | `isSome()`, `isNone()` | si une valeur est présente | <span class="status compiled">compilé</span> |
 | `unwrapOr(secours)`    | la valeur, ou `secours`    | <span class="status compiled">compilé</span> |
 
+Le secours de `unwrapOr` n’est évalué que quand il n’y a pas de valeur, dans les deux modes, comme `??` ([décision 0028](../decisions/0028-options-and-moves.md)). Après `if (x.isNone())` dont le bloc sort, une `const` ou un paramètre `x` est sa valeur : voir [le guide](../guide/enums.md#les-options).
+
 ## `Result<T, E>`
 
 | Méthode             | Donne                             | État                                         |

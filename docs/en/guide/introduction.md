@@ -11,9 +11,9 @@ A Peras module is in one of two modes, set by its file extension:
 | **Owned**   | `.peras`   | WebAssembly | exact: every value has one owner, released at the end of its scope, no garbage collector          |
 | **Managed** | `.apeiron` | JavaScript  | the browser's garbage collector, with ownership applied to resources such as listeners and timers |
 
-Owned mode is for the code where every millisecond and every byte count. Managed mode, planned, is for the rest of the application: the DOM, events, network calls. Both share the syntax, the types and the diagnostics.
+Owned mode is for the code where every millisecond and every byte count. Managed mode is for the rest of the application: the DOM, events, network calls. Both share the syntax, the types and the diagnostics.
 
-> Today, owned mode compiles functions on numbers, booleans and structures. Managed mode is designed but not built yet. The [status page](../reference/status.md) lists every feature.
+> Today, owned mode compiles to WebAssembly numbers, structures, enumerations, options, arrays, strings, maps, sets and closures; managed mode compiles to JavaScript, with a typed part of the browser. The [status page](../reference/status.md) lists every feature.
 
 ## What makes Peras different
 

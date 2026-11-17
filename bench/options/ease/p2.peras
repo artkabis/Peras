@@ -1,0 +1,25 @@
+// P2: lines parsed into rows, a bad line skipped.
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(line: String): Option<Row> {
+  const parts = line.split(",");
+  if (parts.length < 2) {
+    return None;
+  }
+  return Some(Row(parts[0].copy(), parts[1].length));
+}
+
+export fn p2(text: String): i32 {
+  let total = 0;
+  for (const line of text.split("\n")) {
+    const row = parse(line);
+    if (row.isNone()) {
+      continue;
+    }
+    total += row.qty;
+  }
+  return total;
+}

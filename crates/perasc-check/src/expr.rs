@@ -206,6 +206,9 @@ impl Checker<'_> {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
                     self.capture(index, span);
+                    if self.narrowed_now.contains_key(&index) {
+                        self.narrowed.insert(id);
+                    }
                 }
                 self.read_name(*symbol, span)
             }
@@ -583,7 +586,7 @@ impl Checker<'_> {
                 if let Some(ty) = self.enum_variant(*base, name, Some(args), span, expected) {
                     return ty;
                 }
-                let receiver = self.infer(*base, None);
+                let receiver = self.receiver(*base, name.symbol);
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
@@ -852,6 +855,40 @@ impl Checker<'_> {
         }
     }
 
+    /// The type of a method's receiver. A narrowed option keeps the methods
+    /// of `Option`: `x.unwrapOr(…)` after `if (x.isNone())`, written before
+    /// decision 0028, reads the option whole, as TypeScript lets `x ?? y`
+    /// stand after `x` is narrowed.
+    fn receiver(&mut self, base: ExprId, method: Symbol) -> Ty {
+        let index = match self.ast.expr(base).kind {
+            ExprKind::Name(symbol) => self.scopes.lookup(symbol),
+            _ => None,
+        };
+        let whole = index.and_then(|i| self.narrowed_now.get(&i).cloned().map(|t| (i, t)));
+        let Some((index, option)) = whole.filter(|_| {
+            matches!(
+                self.name(method),
+                "isSome" | "isNone" | "unwrapOr" | "unwrapOrElse" | "unwrap"
+            )
+        }) else {
+            return self.infer(base, None);
+        };
+        let narrowed = self.narrowed_now.remove(&index);
+        let value = self
+            .scopes
+            .bindings
+            .get_mut(index)
+            .map(|b| std::mem::replace(&mut b.ty, option));
+        let ty = self.infer(base, None);
+        if let (Some(b), Some(value)) = (self.scopes.bindings.get_mut(index), value) {
+            b.ty = value;
+        }
+        if let Some(narrowed) = narrowed {
+            self.narrowed_now.insert(index, narrowed);
+        }
+        ty
+    }
+
     fn method_call(
         &mut self,
         receiver: &Ty,
@@ -883,6 +920,18 @@ impl Checker<'_> {
         }
         if let Some(ty) = self.ordering_method(receiver, text, args, span) {
             return ty;
+        }
+        // Decision 0028's option 3c, prototyped: a fallback made by an arrow
+        // function given in place, run only when there is no value.
+        if let Ty::Option(inner) = receiver
+            && text == "unwrapOrElse"
+            && crate::proto("PERAS_PROTO_FALLBACK") == "c"
+        {
+            self.arity(span, text, 1, args.len(), None);
+            if let Some(&f) = args.first() {
+                self.arrow(f, &[], Some(inner));
+            }
+            return (**inner).clone();
         }
         // A `Numeric` parameter converts to any number, as numbers do.
         let as_number = if self.satisfies_param(receiver, Bound::Numeric) {

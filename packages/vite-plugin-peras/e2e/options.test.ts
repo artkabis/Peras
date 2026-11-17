@@ -1,62 +1,83 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { compile, moduleCode } from "../src/index.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { compile, compileManaged, moduleCode } from "../src/index.ts";
 
-// Options cross into JavaScript as a value or `undefined`, and back.
+// Decision 0028: a move at the call, narrowing, and a fallback evaluated only
+// when needed. The same source, built as an owned module on each allocator,
+// gives what it gives built as a managed module, which is JavaScript, and
+// leaves nothing alive.
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const perasc = process.env.PERASC ?? join(root, "target", "release", "perasc");
-const maybe = fileURLToPath(new URL("fixtures/options/maybe.peras", import.meta.url));
+const source = fileURLToPath(new URL("fixtures/options/options.peras", import.meta.url));
 
-interface Range {
-  low: number;
-  high: number;
+type Module = Record<string, (...args: unknown[]) => unknown> & {
+  __perasHeap?: { live(): number };
+};
+
+let loads = 0;
+
+/** Imports JavaScript from its text, a new instance each time. */
+async function importCode(code: string): Promise<Module> {
+  loads += 1;
+  const text = `${code}\n// load ${String(loads)}\n`;
+  return (await import(
+    `data:text/javascript;base64,${Buffer.from(text).toString("base64")}`
+  )) as Module;
 }
 
-interface Maybe {
-  half(n: number): number | undefined;
-  quarter(n: number): number | undefined;
-  widen(r: Range | undefined, by: number): Range | undefined;
-  product(a: bigint, b: bigint): bigint | undefined;
-  either(a: number | undefined, fallback: number): number;
+const calls: [string, ...unknown[]][] = [
+  ["p1", "a b a c b a"],
+  ["p2", "a,1\nbad\nb,22"],
+  ["p3", "tea"],
+  ["p3", "coffee"],
+  ["p4", 1],
+  ["p4", 7],
+  ["p5", 24],
+  ["p5", 6],
+  ["p5", 3],
+  ["p6", "a,1\nb,2,3\na,4"],
+  ["narrowedString", 4],
+  ["narrowedString", 6],
+  ["narrowedLoop", 8],
+  ["writtenBefore", 8],
+  ["movedAtCall", "ab c ab  d"],
+  ["fallbacks", 1],
+  ["fallbacks", 2],
+];
+
+function results(m: Module): unknown[] {
+  return calls.map(([name, ...args]) => m[name]?.(...structuredClone(args)));
 }
 
-async function load(): Promise<{ m: Maybe; dts: string }> {
-  const compiled = await compile(maybe, { perasc });
-  const code = moduleCode(compiled);
-  const url = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
-  return { m: (await import(url)) as Maybe, dts: compiled.dts };
-}
+describe("options and moves", () => {
+  let dir = "";
+  let managedCode = "";
 
-describe("options in JavaScript", () => {
-  it("are a value or undefined, and `?` returns early", async () => {
-    const { m } = await load();
-    expect(m.half(10)).toBe(5);
-    expect(m.half(7)).toBeUndefined();
-    expect(m.quarter(12)).toBe(3);
-    expect(m.quarter(6)).toBeUndefined();
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "peras-options-"));
+    const copy = join(dir, "options.apeiron");
+    // A managed module moves nothing, so it takes no `sink` (E0243): the
+    // same source without the convention.
+    await writeFile(copy, (await readFile(source, "utf8")).replaceAll(": sink ", ": "));
+    managedCode = (await compileManaged(copy, { perasc })).js;
   });
 
-  it("hold structures, in and out", async () => {
-    const { m } = await load();
-    expect(m.widen({ low: 1, high: 5 }, 2)).toEqual({ low: -1, high: 7 });
-    expect(m.widen(undefined, 2)).toBeUndefined();
-    expect(m.widen({ low: -2147483647, high: 0 }, 2)).toBeUndefined();
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
   });
 
-  it("report overflow instead of wrapping", async () => {
-    const { m } = await load();
-    expect(m.product(3n, 4n)).toBe(12n);
-    expect(m.product(9223372036854775807n, 2n)).toBeUndefined();
-    expect(m.either(undefined, 1.5)).toBe(1.5);
-    expect(m.either(2.5, 1.5)).toBe(2.5);
-  });
-
-  it("are declared to TypeScript as `T | undefined`", async () => {
-    const { dts } = await load();
-    expect(dts).toContain("export declare function half(n: number): number | undefined;");
-    expect(dts).toContain(
-      "export declare function widen(r: Range | undefined, by: number): Range | undefined;",
-    );
-  });
+  for (const allocator of ["debug", "tlsf"] as const) {
+    it(`compute in an owned module what the managed one does, on ${allocator}`, async () => {
+      const owned = await importCode(moduleCode(await compile(source, { perasc, allocator })));
+      // A fresh instance each run: `calls`, a module variable, starts at 0.
+      const expected = results(await importCode(managedCode));
+      // Every call gives a value: a function missing from both would not.
+      expect(expected.every((v) => v !== undefined)).toBe(true);
+      expect(results(owned)).toEqual(expected);
+      expect(owned.__perasHeap?.live()).toBe(0);
+    });
+  }
 });

@@ -76,6 +76,27 @@ impl Module<'_> {
             Ty::Option(_) => match name {
                 "isSome" => Some(format!("({me} !== undefined)")),
                 "isNone" => Some(format!("({me} === undefined)")),
+                // Decision 0028's options 3a and 3c, kept for the measure
+                // script only: the fallback evaluated first. A build follows
+                // 3b, `??`'s order: the fallback only when there is no value.
+                "unwrapOr"
+                    if matches!(
+                        perasc_check::proto("PERAS_PROTO_FALLBACK").as_str(),
+                        "a" | "c"
+                    ) =>
+                {
+                    Some(format!(
+                        "((v, f) => (v !== undefined ? v : f))({me}, {})",
+                        arg(0)
+                    ))
+                }
+                "unwrap" => Some(format!(
+                    "((v) => {{ if (v === undefined) throw new RangeError(\"unwrap() of None\"); return v; }})({me})"
+                )),
+                "unwrapOrElse" => {
+                    let me = self.spill(me);
+                    Some(format!("({me} !== undefined ? {me} : ({})())", arg(0)))
+                }
                 "unwrapOr" => {
                     let me = self.spill(me);
                     Some(format!("({me} !== undefined ? {me} : {})", arg(0)))

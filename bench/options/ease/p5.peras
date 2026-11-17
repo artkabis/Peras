@@ -1,0 +1,23 @@
+// P5: a chain of three optional steps, each depending on the last.
+fn half(n: i32): Option<i32> {
+  if (n % 2 == 0) {
+    return Some(n / 2);
+  }
+  return None;
+}
+
+export fn p5(n: i32): i32 {
+  const a = half(n);
+  if (a.isNone()) {
+    return -1;
+  }
+  const b = half(a);
+  if (b.isNone()) {
+    return -2;
+  }
+  const c = half(b);
+  if (c.isNone()) {
+    return -3;
+  }
+  return c;
+}

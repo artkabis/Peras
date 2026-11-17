@@ -106,6 +106,43 @@ export fn describe(o: Option<i32>): i32 {
 }
 ```
 
+`unwrapOr(fallback)` gives the value, or the fallback when there is none. The fallback is evaluated only when it is needed, in both modes, as JavaScript's `??` does: `cache.get(id).unwrapOr(load(id))` calls `load` only on a miss ([decision 0028](../decisions/0028-options-and-moves.md)).
+
+A test that leaves narrows an option to its value, as in TypeScript. After `if (x.isNone()) { … }` whose block never ends normally, by `return`, `break` or `continue`, a `const` or a parameter not `inout` `x` is its value for the rest of the block:
+
+```peras build
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(line: String): Option<Row> {
+  const parts = line.split(",");
+  if (parts.length != 2) {
+    return None;
+  }
+  const qty = parts[1].parseI32();
+  if (qty.isNone()) {
+    return None;
+  }
+  return Some(Row(parts[0].copy(), qty));
+}
+
+export fn total(text: String): i32 {
+  let sum = 0;
+  for (const line of text.split("\n")) {
+    const row = parse(line);
+    if (row.isNone()) {
+      continue;
+    }
+    sum += row.qty;
+  }
+  return sum;
+}
+```
+
+The methods of `Option`, `isSome()`, `isNone()` and `unwrapOr`, still read the option whole, so a program written with them keeps building. A `let` is not narrowed: it could be given `None` later. Copy it into a `const` first, `const found = best;`, then test it.
+
 ## Results: errors as values
 
 `Result<T, E>` is the enumeration of what can fail: `Ok(value)` or `Err(error)`. A function that can fail says so in its type, and its caller cannot forget the error: it must `match` it, or pass it on with `?`.

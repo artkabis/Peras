@@ -1,0 +1,21 @@
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(i: i32): Option<Row> {
+  if (i % 10 == -1) {
+    return None;
+  }
+  return Some(Row(`r${i % 100}`, i % 7));
+}
+
+// W2 under option 2d: every line good, the value taken by `unwrap()`.
+export fn w2(n: i32): i32 {
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const r = parse(i).unwrap();
+    total = (total + r.qty + r.name.length) % 1000003;
+  }
+  return total;
+}

@@ -63,11 +63,12 @@ fn an_option_of_a_structure_is_a_bool_and_its_fields() {
 }
 
 #[test]
-fn unwrap_or_evaluates_the_receiver_then_the_fallback() {
+fn unwrap_or_evaluates_the_receiver_then_the_fallback_only_when_needed() {
     // `g(0)` traps on arithmetic, `forever(_)` on depth: whichever comes
-    // first shows the order. The fallback is evaluated even when it is not used.
+    // first shows the order. The fallback runs only when there is no value
+    // (decision 0028, option 3b), as JavaScript's `??` does.
     let source = "export fn f(a: i32, b: i32): i32 {\n  return g(a).unwrapOr(forever(b));\n}\n\
-         fn g(a: i32): Option<i32> {\n  return Some(10 / a);\n}\n\
+         fn g(a: i32): Option<i32> {\n  if (a < 0) {\n    return None;\n  }\n  return Some(10 / a);\n}\n\
          fn forever(b: i32): i32 {\n  return forever(b + 1) + 1;\n}\n";
     // The optimizer turns `forever` into a loop: it then runs out of fuel.
     let module = compile(source);
@@ -77,9 +78,11 @@ fn unwrap_or_evaluates_the_receiver_then_the_fallback() {
         let first = run(m, FnId(0), &[Value::I32(0), Value::I32(1)]);
         assert_eq!(first, Err(Trap::Arithmetic), "{m}");
         let second = run(m, FnId(0), &[Value::I32(1), Value::I32(1)]);
+        assert_eq!(second, Ok(Value::I32(10)), "{m}");
+        let third = run(m, FnId(0), &[Value::I32(-1), Value::I32(1)]);
         assert!(
-            matches!(second, Err(Trap::Depth | Trap::Fuel)),
-            "{second:?}\n{m}"
+            matches!(third, Err(Trap::Depth | Trap::Fuel)),
+            "{third:?}\n{m}"
         );
     }
 }
@@ -215,5 +218,20 @@ fn the_question_mark_releases_what_its_statement_made() {
             unreachable!()
         };
         Ok(Value::I32(if n % 2 == 0 { n / 2 * 100 + n } else { -100 }))
+    });
+}
+
+/// A constructor's later argument reads what its first moves: the move waits
+/// for every argument (decision 0028, option 1b).
+#[test]
+fn a_constructor_reads_its_arguments_before_it_moves_them() {
+    let source = "export fn f(n: i32): i32 {\n  const text = \"ab\".repeat(n);\n  const s = Sized(text, text.length);\n  return s.size * 10 + s.text.length;\n}\n\
+         struct Sized {\n  text: String;\n  size: i32;\n}\n";
+    let inputs: Vec<Vec<Value>> = (0..=3).map(|n| vec![Value::I32(n)]).collect();
+    agrees(source, &inputs, |args| {
+        let Value::I32(n) = args[0] else {
+            unreachable!()
+        };
+        Ok(Value::I32(2 * n * 11))
     });
 }

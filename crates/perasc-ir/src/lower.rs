@@ -1391,6 +1391,10 @@ impl Lowering<'_> {
         local: &perasc_syntax::ast::Local,
         out: &mut Vec<Stmt>,
     ) {
+        if let (Some(block), Some(init)) = (&local.otherwise, local.init) {
+            self.local_else(state, local, init, block, out);
+            return;
+        }
         let name = self.ast.name(local.name.symbol);
         let ty = match (&local.ty, local.init) {
             (Some(t), _) => self.typed(t),
@@ -1450,6 +1454,97 @@ impl Lowering<'_> {
             state.fixed.insert(id);
         }
         out.push(Stmt::Set(id, value));
+        state.end_statement(out);
+    }
+
+    /// `const name = init else { … };`, decision 0028's option 2c,
+    /// prototyped: the option or result is taken whole into temporaries; when
+    /// it has no value, they are released and the block runs, which leaves;
+    /// otherwise the value moves into the variable, and an `Err` side left
+    /// empty is released.
+    fn local_else(
+        &mut self,
+        state: &mut FnState,
+        local: &perasc_syntax::ast::Local,
+        init: ExprId,
+        block: &perasc_syntax::ast::Block,
+        out: &mut Vec<Stmt>,
+    ) {
+        let (inner, err) = match self.check_type(init) {
+            Some(CheckTy::Option(inner)) => (*inner, None),
+            Some(CheckTy::Result(ok, err)) => (*ok, Some(*err)),
+            _ => return,
+        };
+        let values = self.value(state, init);
+        state.flush(out);
+        let mut temps = Vec::with_capacity(values.len());
+        for value in values {
+            let temp = state.temp(value.ty);
+            if value.ty == Ty::Owned {
+                state.live.insert(temp.0);
+            }
+            out.push(Stmt::Set(temp, value));
+            temps.push(temp);
+        }
+        let width = self.leaves(&inner).map_or(0, |l| l.len());
+        let (head, rest) = temps.split_at(1.min(temps.len()));
+        let (payload, err_side) = rest.split_at(width.min(rest.len()));
+        let head = head.first().map(|&t| local_expr(state, t));
+        let missing = match (head, &err) {
+            (Some(tag), Some(_)) => binary(BinOp::Ne, tag, zero(Ty::I32)),
+            (Some(some), None) => Expr {
+                kind: ExprKind::Unary(UnOp::Not, Box::new(some)),
+                ty: Ty::Bool,
+            },
+            (None, _) => return,
+        };
+        // No value: everything taken is released, then the block leaves.
+        let mut leave = Vec::new();
+        let owned: Vec<LocalId> = temps
+            .iter()
+            .copied()
+            .filter(|t| state.is_owned(*t))
+            .collect();
+        for &t in &owned {
+            leave.push(state.release(t));
+        }
+        let gone = state.gone;
+        self.block(state, &block.stmts, &mut leave);
+        state.gone = gone;
+        for &t in &owned {
+            state.live.insert(t.0);
+        }
+        out.push(Stmt::If {
+            cond: missing,
+            then: leave,
+            otherwise: Vec::new(),
+        });
+        // A value: the `Err` side, left empty, is released; the rest moves.
+        for &t in err_side {
+            if state.is_owned(t) {
+                out.push(state.release(t));
+            }
+        }
+        let name = self.ast.name(local.name.symbol);
+        let taken: Vec<Expr> = payload
+            .iter()
+            .map(|&t| {
+                if state.is_owned(t) {
+                    heap::moved(state, t)
+                } else {
+                    local_expr(state, t)
+                }
+            })
+            .collect();
+        let leaves = self.leaves(&inner).unwrap_or_default();
+        let ids = if values::is_aggregate(&inner) {
+            state.add_struct(local.name.symbol, name, &leaves)
+        } else {
+            let ty = leaves.first().map_or(Ty::Void, |(_, t)| *t);
+            vec![state.add(local.name.symbol, name, ty)]
+        };
+        state.fixed.extend(ids.iter().copied());
+        Self::assign(state, &ids, taken, out);
         state.end_statement(out);
     }
 
@@ -1601,6 +1696,20 @@ impl Lowering<'_> {
         }
     }
 
+    /// The local a name reads as one scalar: a scalar variable, or an option
+    /// narrowed to its value of one scalar (decision 0028, option 2e).
+    fn scalar_local(&self, state: &FnState, id: ExprId, symbol: Symbol) -> Option<LocalId> {
+        match state.lookup(symbol) {
+            Some(Binding::Scalar(local)) => Some(local),
+            Some(Binding::Struct(locals))
+                if self.analysis.narrowed.contains(&id) && locals.len() == 2 =>
+            {
+                locals.get(1).copied()
+            }
+            _ => None,
+        }
+    }
+
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
         if self.applied.contains_key(&id) {
             return self.applied_expr(state, id);
@@ -1621,9 +1730,9 @@ impl Lowering<'_> {
             }),
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
-            AstExpr::Name(symbol) => match state.lookup(*symbol) {
-                Some(Binding::Scalar(local)) => ExprKind::Local(local),
-                _ => return self.not_a_local(state, *symbol, span, ty),
+            AstExpr::Name(symbol) => match self.scalar_local(state, id, *symbol) {
+                Some(local) => ExprKind::Local(local),
+                None => return self.not_a_local(state, *symbol, span, ty),
             },
             AstExpr::Paren(inner) => return self.expr(state, *inner),
             AstExpr::Unary { op, operand } => {

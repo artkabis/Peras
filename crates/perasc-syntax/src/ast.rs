@@ -553,6 +553,10 @@ pub struct Local {
     pub ty: Option<Type>,
     /// Its initial value, if written.
     pub init: Option<ExprId>,
+    /// `const row = parse(line) else { continue; };`: the block run when the
+    /// value is `None` or an `Err`, which must leave (decision 0028, option
+    /// 2c, prototyped behind `PERAS_PROTO_TAKE=c`).
+    pub otherwise: Option<Block>,
 }
 
 /// Assignment operators.

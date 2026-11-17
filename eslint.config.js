@@ -20,6 +20,8 @@ export default defineConfig(
       "bench/demo/**",
       // The garden's reference, measured as written (scripts/bench-garden.mjs).
       "bench/garden/**",
+      // The pond's versions, measured as written (scripts/bench-lanterns.mjs).
+      "bench/lanterns/**",
       // The versions of decision 0014, measured as written (scripts/bench-data.mjs).
       "bench/data/**",
       // The candle's TypeScript as often written, measured as written (scripts/candle.mjs).

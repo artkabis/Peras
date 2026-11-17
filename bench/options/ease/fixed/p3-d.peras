@@ -1,0 +1,14 @@
+// P3: a function that returns early when a lookup finds nothing.
+fn price(prices: Map<String, i32>, item: String): i32 {
+  const p = prices.get(item);
+  if (p.isNone()) {
+    return -1;
+  }
+  return p.unwrap() * 2;
+}
+
+export fn p3(item: String): i32 {
+  let prices: Map<String, i32> = Map.new();
+  prices.set("tea", 3);
+  return price(prices, item);
+}

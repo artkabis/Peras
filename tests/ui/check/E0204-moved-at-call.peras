@@ -1,0 +1,22 @@
+// E0204: a move happens at the call (decision 0028), so a later argument may
+// read what an earlier one moves; lending it to the same call as well stays
+// refused, since the call would receive it twice.
+fn both(a: sink String, b: String): i32 {
+  return a.length + b.length;
+}
+
+export fn aliased(s: String): i32 {
+  const key = s.copy();
+  return both(key, key);
+}
+
+// Accepted: a later argument reads what the first moves.
+export fn counted(text: String): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (const w of text.split(" ")) {
+    const key = w.copy();
+    m.set(key, m.get(key).unwrapOr(0) + 1);
+  }
+  const last = text.copy();
+  return both(last, last.trim()) + m.size;
+}

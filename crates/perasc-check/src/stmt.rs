@@ -11,8 +11,65 @@ use crate::{Checker, builtins};
 impl Checker<'_> {
     /// The statements of a block, in a scope of their own.
     pub(crate) fn block(&mut self, stmts: &[Stmt]) {
+        // Decision 0028's option 2e: after `if (x.isNone())`
+        // with a block that leaves, `x` has the type of its value, until
+        // the end of this block.
+        let mut narrowed: Vec<(usize, Ty)> = Vec::new();
         for stmt in stmts {
             self.stmt(stmt);
+            if let Some((index, inner)) = self.narrowing(stmt)
+                && let Some(binding) = self.scopes.bindings.get_mut(index)
+            {
+                let old = std::mem::replace(&mut binding.ty, inner);
+                self.narrowed_now.insert(index, old.clone());
+                narrowed.push((index, old));
+            }
+        }
+        for (index, old) in narrowed.into_iter().rev() {
+            if let Some(binding) = self.scopes.bindings.get_mut(index) {
+                binding.ty = old;
+            }
+            self.narrowed_now.remove(&index);
+        }
+    }
+
+    /// The variable an `if (x.isNone()) { … }` that leaves narrows, and the
+    /// type of its value: a `const` or a parameter not `inout` (decision
+    /// 0028, option 2e).
+    fn narrowing(&self, stmt: &Stmt) -> Option<(usize, Ty)> {
+        if crate::proto("PERAS_PROTO_TAKE") != "e" {
+            return None;
+        }
+        let StmtKind::If {
+            cond,
+            then,
+            otherwise: None,
+        } = &stmt.kind
+        else {
+            return None;
+        };
+        if !crate::never_ends(self.ast, std::slice::from_ref(&**then)) {
+            return None;
+        }
+        let ExprKind::Call { callee, args, .. } = &self.ast.expr(*cond).kind else {
+            return None;
+        };
+        let ExprKind::Field { base, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        if !args.is_empty() || self.name(name.symbol) != "isNone" {
+            return None;
+        }
+        let index = *self.resolved.get(base)?;
+        let binding = self.scopes.bindings.get(index)?;
+        let fixed = match binding.kind {
+            Kind::Local { mutable, .. } => !mutable,
+            Kind::Param { convention, .. } => convention != Convention::Inout,
+            _ => false,
+        };
+        match &binding.ty {
+            Ty::Option(inner) if fixed => Some((index, (**inner).clone())),
+            _ => None,
         }
     }
 
@@ -23,16 +80,49 @@ impl Checker<'_> {
         self.pop_scope();
     }
 
+    /// A declaration, and under decision 0028's option 2c, prototyped, its
+    /// `else` block.
+    fn local(&mut self, local: &perasc_syntax::ast::Local) {
+        let mut ty = self.local_type(local);
+        // Decision 0028's option 2c, prototyped: the value of `Some`
+        // or `Ok`, or a block that leaves.
+        if let Some(block) = &local.otherwise {
+            ty = match ty {
+                Ty::Option(inner) | Ty::Result(inner, _) => *inner,
+                Ty::Error => Ty::Error,
+                other => {
+                    let span = local
+                        .init
+                        .map_or(local.name.span, |i| self.ast.expr(i).span);
+                    let wanted = Ty::Option(Box::new(other.clone()));
+                    self.report(errors::mismatch(span, &wanted, &other, None));
+                    Ty::Error
+                }
+            };
+            self.scopes.push();
+            self.block(&block.stmts);
+            self.pop_scope();
+            if !crate::never_ends(self.ast, &block.stmts) {
+                let end = block.span.end;
+                let closing = perasc_diag::Span::new(end.saturating_sub(1), end);
+                self.report(errors::missing_return(
+                    closing,
+                    "else",
+                    &Ty::Void,
+                    block.span,
+                ));
+            }
+        }
+        let kind = Kind::Local {
+            mutable: local.mutable,
+            keyword: local.keyword,
+        };
+        self.declare(local.name.symbol, Some(local.name.span), kind, ty);
+    }
+
     fn stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::Local(local) => {
-                let ty = self.local_type(local);
-                let kind = Kind::Local {
-                    mutable: local.mutable,
-                    keyword: local.keyword,
-                };
-                self.declare(local.name.symbol, Some(local.name.span), kind, ty);
-            }
+            StmtKind::Local(local) => self.local(local),
             StmtKind::Return(value) => self.return_stmt(stmt.span, *value),
             StmtKind::Expr(e) => {
                 // A promise nobody awaits: the work it stands for runs later, and

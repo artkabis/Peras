@@ -8,25 +8,25 @@ Peras is young. This page says, feature by feature, how far each one goes:
 
 ## Types
 
-| Feature                                                                                                                                        | Status                                        |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `i32`, `i64`, `f32`, `f64`, `bool`                                                                                                             | <span class="status compiled">compiled</span> |
-| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                                                         | <span class="status compiled">compiled</span> |
-| structures, nested, as parameters and results                                                                                                  | <span class="status compiled">compiled</span> |
-| `Option<T>`, `Some`, `None`, `?`                                                                                                               | <span class="status compiled">compiled</span> |
-| `Array<T>` of any type                                                                                                                         | <span class="status compiled">compiled</span> |
-| `String`, in UTF-8; as a parameter, also UTF-8 bytes, checked ([decision 0020](../decisions/0020-text-as-bytes.md))                            | <span class="status compiled">compiled</span> |
-| enumerations with data, `match`, exhaustiveness checked                                                                                        | <span class="status compiled">compiled</span> |
-| `Result<T, E>`, `Ok`, `Err`, `?`                                                                                                               | <span class="status compiled">compiled</span> |
-| generics, constraints `Eq`, `Ord`, `Numeric`, `Copy`…                                                                                          | <span class="status compiled">compiled</span> |
-| methods (`impl`), interfaces as constraints                                                                                                    | <span class="status compiled">compiled</span> |
-| tuples, type aliases                                                                                                                           | <span class="status compiled">compiled</span> |
-| template literals, `` `${x} items` ``                                                                                                          | <span class="status compiled">compiled</span> |
-| `Map`, `Set` with integer, boolean and string keys ([decision 0005](../decisions/0005-maps-and-sets.md))                                       | <span class="status compiled">compiled</span> |
-| functions as values, function types ([decision 0025](../decisions/0025-moved-fields-and-function-values.md))                                   | <span class="status compiled">compiled</span> |
-| closures over numbers and booleans, as values in owned modules ([decision 0026](../decisions/0026-closures.md))                                | <span class="status compiled">compiled</span> |
-| closures over strings, arrays, maps, sets and function values, in owned modules ([decision 0027](../decisions/0027-closures-over-the-heap.md)) | <span class="status compiled">compiled</span> |
-| `Rc<T>`, `Framebuffer`, pixel types, SIMD                                                                                                      | <span class="status planned">planned</span>   |
+| Feature                                                                                                                                                           | Status                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `i32`, `i64`, `f32`, `f64`, `bool`                                                                                                                                | <span class="status compiled">compiled</span> |
+| `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                                                                            | <span class="status compiled">compiled</span> |
+| structures, nested, as parameters and results                                                                                                                     | <span class="status compiled">compiled</span> |
+| `Option<T>`, `Some`, `None`, `?`; narrowed by a test that leaves, a fallback evaluated only when needed ([decision 0028](../decisions/0028-options-and-moves.md)) | <span class="status compiled">compiled</span> |
+| `Array<T>` of any type                                                                                                                                            | <span class="status compiled">compiled</span> |
+| `String`, in UTF-8; as a parameter, also UTF-8 bytes, checked ([decision 0020](../decisions/0020-text-as-bytes.md))                                               | <span class="status compiled">compiled</span> |
+| enumerations with data, `match`, exhaustiveness checked                                                                                                           | <span class="status compiled">compiled</span> |
+| `Result<T, E>`, `Ok`, `Err`, `?`                                                                                                                                  | <span class="status compiled">compiled</span> |
+| generics, constraints `Eq`, `Ord`, `Numeric`, `Copy`…                                                                                                             | <span class="status compiled">compiled</span> |
+| methods (`impl`), interfaces as constraints                                                                                                                       | <span class="status compiled">compiled</span> |
+| tuples, type aliases                                                                                                                                              | <span class="status compiled">compiled</span> |
+| template literals, `` `${x} items` ``                                                                                                                             | <span class="status compiled">compiled</span> |
+| `Map`, `Set` with integer, boolean and string keys ([decision 0005](../decisions/0005-maps-and-sets.md))                                                          | <span class="status compiled">compiled</span> |
+| functions as values, function types ([decision 0025](../decisions/0025-moved-fields-and-function-values.md))                                                      | <span class="status compiled">compiled</span> |
+| closures over numbers and booleans, as values in owned modules ([decision 0026](../decisions/0026-closures.md))                                                   | <span class="status compiled">compiled</span> |
+| closures over strings, arrays, maps, sets and function values, in owned modules ([decision 0027](../decisions/0027-closures-over-the-heap.md))                    | <span class="status compiled">compiled</span> |
+| `Rc<T>`, `Framebuffer`, pixel types, SIMD                                                                                                                         | <span class="status planned">planned</span>   |
 
 ## Statements and expressions
 

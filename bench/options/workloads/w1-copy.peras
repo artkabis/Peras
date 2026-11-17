@@ -1,0 +1,9 @@
+// W1 as option 1a asks: the key copied by the program.
+export fn w1(n: i32): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (let i = 0; i < n; i++) {
+    const key = `w${((i % 1000) * 7919) % 1000}`;
+    m.set(key.copy(), m.get(key).unwrapOr(0) + 1);
+  }
+  return m.size + m.get("w7").unwrapOr(0);
+}

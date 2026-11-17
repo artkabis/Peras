@@ -1,0 +1,13 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0204-moved-at-call.peras
+---
+diagnostics:
+  error[E0204] check-moved { name: "key" }
+    secondary 9:9-9:12: check-moved-given-label { name: "key" }
+    primary 10:20-10:23: check-moved-label
+    secondary 10:15-10:18: check-moved-here-label
+    cause: check-moved-why
+    fix: check-fix-copy
+      10:18-10:18 -> ".copy()"

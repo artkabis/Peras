@@ -1,0 +1,9 @@
+// W1: words counted in a map, the line JavaScript writes (options 1b, 1c).
+export fn w1(n: i32): i32 {
+  let m: Map<String, i32> = Map.new();
+  for (let i = 0; i < n; i++) {
+    const key = `w${((i % 1000) * 7919) % 1000}`;
+    m.set(key, m.get(key).unwrapOr(0) + 1);
+  }
+  return m.size + m.get("w7").unwrapOr(0);
+}

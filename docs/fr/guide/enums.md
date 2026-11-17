@@ -106,6 +106,43 @@ export fn describe(o: Option<i32>): i32 {
 }
 ```
 
+`unwrapOr(secours)` donne la valeur, ou le secours quand il n’y en a pas. Le secours n’est évalué que quand il le faut, dans les deux modes, comme le `??` de JavaScript : `cache.get(id).unwrapOr(load(id))` n’appelle `load` qu’en cas d’absence ([décision 0028](../decisions/0028-options-and-moves.md)).
+
+Un test qui sort rétrécit une option à sa valeur, comme en TypeScript. Après `if (x.isNone()) { … }` dont le bloc ne se termine jamais normalement, par `return`, `break` ou `continue`, une `const` ou un paramètre non `inout` `x` est sa valeur pour le reste du bloc :
+
+```peras build
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(line: String): Option<Row> {
+  const parts = line.split(",");
+  if (parts.length != 2) {
+    return None;
+  }
+  const qty = parts[1].parseI32();
+  if (qty.isNone()) {
+    return None;
+  }
+  return Some(Row(parts[0].copy(), qty));
+}
+
+export fn total(text: String): i32 {
+  let sum = 0;
+  for (const line of text.split("\n")) {
+    const row = parse(line);
+    if (row.isNone()) {
+      continue;
+    }
+    sum += row.qty;
+  }
+  return sum;
+}
+```
+
+Les méthodes d’`Option`, `isSome()`, `isNone()` et `unwrapOr`, lisent toujours l’option entière : un programme écrit avec elles continue de se construire. Un `let` n’est pas rétréci : il pourrait recevoir `None` plus tard. Copiez-le d’abord dans une `const`, `const found = best;`, puis testez-la.
+
 ## Les résultats : des erreurs qui sont des valeurs
 
 `Result<T, E>` est l’énumération de ce qui peut échouer : `Ok(valeur)` ou `Err(erreur)`. Une fonction qui peut échouer le dit dans son type, et son appelant ne peut pas oublier l’erreur : il doit la traiter avec `match`, ou la transmettre avec `?`.

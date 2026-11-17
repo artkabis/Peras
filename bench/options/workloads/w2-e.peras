@@ -1,0 +1,24 @@
+struct Row {
+  name: String;
+  qty: i32;
+}
+
+fn parse(i: i32): Option<Row> {
+  if (i % 10 == 9) {
+    return None;
+  }
+  return Some(Row(`r${i % 100}`, i % 7));
+}
+
+// W2 under option 2e: written as TypeScript narrows, the test then the value.
+export fn w2(n: i32): i32 {
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const r = parse(i);
+    if (r.isNone()) {
+      continue;
+    }
+    total = (total + r.qty + r.name.length) % 1000003;
+  }
+  return total;
+}

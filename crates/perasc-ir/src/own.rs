@@ -335,10 +335,38 @@ fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
             expr(x, state)?;
         }
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
-            for arg in args {
-                expr(arg, state)?;
-            }
+            arguments(args, state)?;
         }
+    }
+    Ok(())
+}
+
+/// The arguments of a call, left to right. Under decision 0028's option 1b,
+/// prototyped, a variable moved by one moves at the call, once every
+/// argument is evaluated: a later one may still read it, but not move it.
+fn arguments(args: &[Expr], state: &mut State) -> Result<(), String> {
+    if perasc_check::proto("PERAS_PROTO_MOVE") != "b" {
+        for arg in args {
+            expr(arg, state)?;
+        }
+        return Ok(());
+    }
+    let mut moved = Vec::new();
+    for arg in args {
+        if let ExprKind::Move(local) = arg.kind {
+            if !holds(state, local) || moved.contains(&local) {
+                return Err(format!(
+                    "%{} is used after its block was released or moved",
+                    local.0
+                ));
+            }
+            moved.push(local);
+        } else {
+            expr(arg, state)?;
+        }
+    }
+    for local in moved {
+        set(state, local, false);
     }
     Ok(())
 }

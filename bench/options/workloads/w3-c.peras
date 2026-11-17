@@ -1,0 +1,15 @@
+// W3: a lookup with a string made at each call as its fallback, found nine
+// times in ten (option 3c, written lazily).
+export fn w3(n: i32): i32 {
+  let names: Map<i32, String> = Map.new();
+  for (let k = 0; k < 900; k++) {
+    names.set(k, `name${k}`);
+  }
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const id = ((i % 1000) * 7919) % 1000;
+    const label = names.get(id).unwrapOrElse(() => `unknown ${id}`);
+    total = (total + label.length) % 1000003;
+  }
+  return total;
+}
