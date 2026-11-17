@@ -49,3 +49,31 @@ Chaque option est prototypée derrière `PERAS_PROTO_MATH` (a0 à a2) et `PERAS_
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### Une précision du protocole (2026-11-17)
+
+Le point 3 mesure R1 sur 10 000 000 de tours. R1 rend une chaîne : ses appels mesureraient le passage vers JavaScript et les chaînes qu’il fait, pas `Math`. Avant toute mesure, R6, un flottant arrondi, a pris sa place, sur 10 000 000 d’appels ; R4 fait sa propre boucle de 10 000 000 de pixels, comme enregistré.
+
+### La mesure (2026-11-17)
+
+Exécution 1, au commit 6cb3444, rien d’autre en cours ; chaque tableau dans [`bench/math/RESULTS.md`](../../../bench/math/RESULTS.md), avec la machine ; la non-régression par `node scripts/check-regression.mjs 6cb3444 PERAS_PROTO_MATH=a1` et ainsi de suite, chaque option seule.
+
+| Paire | Programmes justes, sur 6 | R5, le pourcentage (67 %) | Lignes changées, R1 à R6 | W1, / a1 b1           | Octets de W1 (gzip) |
+| ----- | ------------------------ | ------------------------- | ------------------------ | --------------------- | ------------------- |
+| a0 b0 | 0 : tous bloqués à E0200 | bloqué                    | -                        | -                     | -                   |
+| a1 b1 | 5                        | 66 %                      | 4, 2, 2, 2, 2, 2         | 1                     | 135 (123)           |
+| a1 b2 | 5                        | 66 %, en silence          | 4, 2, 2, 2, 2, 2         | 1,001                 | 135 (123)           |
+| a1 b3 | **6**                    | 67 %                      | 4, 2, 12, 4, 2, 2        | 0,846                 | 148 (140)           |
+| a2 b1 | 5                        | 66 %                      | 0, 0, 2, 2, 2, 0         | 1,000                 | 135 (123)           |
+| a2 b2 | 5                        | 66 %, en silence          | 0, 0, 0, 0, 0, 0         | 1,001                 | 135 (123)           |
+| a2 b3 | **6**                    | 67 %                      | 0, 0, 12, 4, 2, 0        | 0,845 (0,816 à 0,922) | 148 (140)           |
+
+- **Non-régression** : chaque option seule, contre 6cb3444 : 167 modules du dépôt comparés, chacun identique ; aucun ne cesse de se construire ; a2 construit R1, R2 et R6 de cette décision, que rien ne construisait avant. Temps de compilation de 0,973 à 1,010.
+- **W2**, R6 sur 10 000 000 d’appels : chaque paire entre 0,999 et 1,032 de la première, le même code ; c’est le passage vers JavaScript qu’il mesure.
+- **a2 prend les programmes tels que JavaScript les a écrits** : R1, R2 et R6 se construisent sans changement et donnent le résultat de JavaScript, `Math.round(12.5)` 13 compris.
+- **b2 donne un nombre faux en silence** : `Math.round(done * 100 / total)` se construit et donne 66 %, la division entière jamais montrée. b1 ne la montre pas mieux : sa correction enlève l’appel, et le pourcentage reste 66 %.
+- **b3 est la seule qui donne chaque résultat juste**, avec a1 ou a2. Elle coûte des lignes là où un entier était voulu : `Math.floor((lo + hi) / 2)` devient une division flottante arrondie vers le bas, et le milieu un flottant, reconverti à chacun de ses usages comme indice, 12 lignes dans R3 ; en échange, elle arrondit vers le bas comme JavaScript aussi sur les nombres négatifs, où la troncature ne le fait pas (`Math.floor(-7 / 2)` vaut -4 ; `-7 / 2` vaut -3). Sa boucle est la plus rapide sur W1, une division flottante coûtant moins qu’une division entière vérifiée.
+
+### Proposition
+
+**a2 avec b3** : chaque programme donne le résultat de JavaScript, R1, R2 et R6 se construisent tels qu’écrits, et aucun module du dépôt ne change. Son coût, les lignes que R3 demande pour utiliser un milieu arrondi comme indice, est le prix du résultat juste sur les nombres négatifs ; une étape suivante pourrait l’épargner là où les deux opérandes sont connus non négatifs. Le propriétaire décide.

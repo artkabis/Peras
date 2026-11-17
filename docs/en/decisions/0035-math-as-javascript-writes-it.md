@@ -49,3 +49,31 @@ Each option is prototyped behind `PERAS_PROTO_MATH` (a0 to a2) and `PERAS_PROTO_
 ## Record
 
 _Each part is recorded here as it lands._
+
+### A precision of the protocol (2026-11-17)
+
+Point 3 measures R1 over 10,000,000 turns. R1 returns a string: its calls would measure the crossing to JavaScript and the strings it makes, not `Math`. Before any measure, R6, a float rounded, took its place, over 10,000,000 calls; R4 runs its own loop of 10,000,000 pixels, as registered.
+
+### The measure (2026-11-17)
+
+Run 1, at commit 6cb3444, nothing else running; every table in [`bench/math/RESULTS.md`](../../../bench/math/RESULTS.md), with the machine; non-regression by `node scripts/check-regression.mjs 6cb3444 PERAS_PROTO_MATH=a1` and so on, each option alone.
+
+| Pair  | Programs right, of 6  | R5, the percentage (67 %) | Lines changed, R1 to R6 | W1, / a1 b1            | Bytes of W1 (gzip) |
+| ----- | --------------------- | ------------------------- | ----------------------- | ---------------------- | ------------------ |
+| a0 b0 | 0: all stuck at E0200 | stuck                     | -                       | -                      | -                  |
+| a1 b1 | 5                     | 66 %                      | 4, 2, 2, 2, 2, 2        | 1                      | 135 (123)          |
+| a1 b2 | 5                     | 66 %, silently            | 4, 2, 2, 2, 2, 2        | 1.001                  | 135 (123)          |
+| a1 b3 | **6**                 | 67 %                      | 4, 2, 12, 4, 2, 2       | 0.846                  | 148 (140)          |
+| a2 b1 | 5                     | 66 %                      | 0, 0, 2, 2, 2, 0        | 1.000                  | 135 (123)          |
+| a2 b2 | 5                     | 66 %, silently            | 0, 0, 0, 0, 0, 0        | 1.001                  | 135 (123)          |
+| a2 b3 | **6**                 | 67 %                      | 0, 0, 12, 4, 2, 0       | 0.845 (0.816 to 0.922) | 148 (140)          |
+
+- **Non-regression**: each option alone, against 6cb3444: 167 modules of the repository compared, every one identical; none no longer builds; a2 builds R1, R2 and R6 of this decision, which nothing built before. Compile time from 0.973 to 1.010.
+- **W2**, R6 over 10,000,000 calls: every pair within 0.999 to 1.032 of the first, the same code; the crossing to JavaScript is what it measures.
+- **a2 takes the programs as JavaScript wrote them**: R1, R2 and R6 build unchanged and give JavaScript's result, `Math.round(12.5)` 13 included.
+- **b2 gives a wrong number silently**: `Math.round(done * 100 / total)` builds and gives 66 %, the integer division never shown. b1 shows it no better: its fix removes the call, and the percentage stays 66 %.
+- **b3 is the only one that gives every result right**, with a1 or a2. It costs lines where an integer was meant: `Math.floor((lo + hi) / 2)` becomes a float division floored, and the middle a float, converted back at each of its uses as an index, 12 lines in R3; in exchange, it floors as JavaScript does on negative numbers too, where truncation does not (`Math.floor(-7 / 2)` is -4; `-7 / 2` is -3). Its loop is the faster on W1, a float division costing less than a checked integer one.
+
+### Proposal
+
+**a2 with b3**: every program gives JavaScript's result, R1, R2 and R6 build as written, and no module of the repository changes. Its cost, the lines R3 asks to use a floored middle as an index, is the price of the right result on negative numbers; a later step could spare it where both operands are known not to be negative. The owner decides.
