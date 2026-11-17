@@ -34,6 +34,61 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $own = (b) => { if (b.n <= 1) return b; b.n -= 1; return { v: structuredClone(b.v), n: 1 }; };",
     ),
+    // Decision 0037's option o2, prototyped: one pair per kind of element.
+    (
+        "$at_f",
+        &["$bounds"],
+        "const $at_f = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+    ),
+    (
+        "$put_f",
+        &["$bounds"],
+        "const $put_f = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+    ),
+    // Decision 0037's option o2, prototyped: one pair per kind of element.
+    (
+        "$at_i",
+        &["$bounds"],
+        "const $at_i = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+    ),
+    (
+        "$put_i",
+        &["$bounds"],
+        "const $put_i = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+    ),
+    // Decision 0037's option o2, prototyped: one pair per kind of element.
+    (
+        "$at_b",
+        &["$bounds"],
+        "const $at_b = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+    ),
+    (
+        "$put_b",
+        &["$bounds"],
+        "const $put_b = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+    ),
+    // Decision 0037's option o2, prototyped: one pair per kind of element.
+    (
+        "$at_s",
+        &["$bounds"],
+        "const $at_s = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+    ),
+    (
+        "$put_s",
+        &["$bounds"],
+        "const $put_s = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+    ),
+    // Decision 0037's option o2, prototyped: one pair per kind of element.
+    (
+        "$at_o",
+        &["$bounds"],
+        "const $at_o = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+    ),
+    (
+        "$put_o",
+        &["$bounds"],
+        "const $put_o = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+    ),
     (
         "$put",
         &["$bounds"],

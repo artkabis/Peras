@@ -52,7 +52,108 @@ fn settled(js: &str) -> bool {
         || js.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
+/// Decision 0037's option, for `scripts/bench-index.mjs`: o0 (today), o1
+/// (the check at each access), o2 (a pair of functions per kind of
+/// element), o3 (no check in production).
+pub(crate) fn proto_index() -> &'static str {
+    match std::env::var("PERAS_PROTO_INDEX").as_deref() {
+        Ok("o1") => "o1",
+        Ok("o2") => "o2",
+        Ok("o3") => "o3",
+        _ => "o0",
+    }
+}
+
+/// Whether a JavaScript expression can be read twice for the same value and
+/// no effect: a literal, a temporary, a name or a path of fields.
+fn repeatable(js: &str) -> bool {
+    settled(js)
+        || (js
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+            && js
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.'))
+}
+
 impl Module<'_> {
+    /// A part read twice by a check, kept in a temporary unless reading it
+    /// again gives the same value and does nothing.
+    pub(crate) fn repeatable(&mut self, js: String) -> String {
+        if repeatable(&js) {
+            js
+        } else {
+            let t = self.temp();
+            self.line(format!("const {t} = {js};"));
+            t
+        }
+    }
+
+    /// The kind of the elements of an array, for decision 0037's option o2.
+    pub(crate) fn element_kind(&self, base: ExprId) -> &'static str {
+        match self.ty(base) {
+            Ty::Array(elem) => match *elem {
+                Ty::Float(_) | Ty::FloatLit => "f",
+                Ty::Int(_) | Ty::IntLit => "i",
+                Ty::Bool => "b",
+                Ty::String => "s",
+                _ => "o",
+            },
+            _ => "o",
+        }
+    }
+
+    /// An element read, its index checked as the option says.
+    pub(crate) fn checked_read(&mut self, base: &str, index: &str, kind: &str) -> String {
+        match proto_index() {
+            "o1" => {
+                let bounds = self.helper("$bounds");
+                format!(
+                    "({index} >>> 0 < {base}.length ? {base}[{index}] : {bounds}({index}, {base}.length))"
+                )
+            }
+            "o2" => {
+                let at = self.helper(at_of(kind));
+                format!("{at}({base}, {index})")
+            }
+            "o3" if self.options.debug.is_none() => format!("{base}[{index}]"),
+            _ => {
+                let at = self.helper("$at");
+                format!("{at}({base}, {index})")
+            }
+        }
+    }
+
+    /// An element written, its index checked as the option says; the value
+    /// computed before the test, as `$put` computes it.
+    pub(crate) fn checked_write(
+        &mut self,
+        base: &str,
+        index: &str,
+        value: &str,
+        kind: &str,
+    ) -> String {
+        match proto_index() {
+            "o1" => {
+                let value = self.repeatable(value.to_owned());
+                let bounds = self.helper("$bounds");
+                format!(
+                    "({index} >>> 0 < {base}.length ? ({base}[{index}] = {value}) : {bounds}({index}, {base}.length))"
+                )
+            }
+            "o2" => {
+                let put = self.helper(put_of(kind));
+                format!("{put}({base}, {index}, {value})")
+            }
+            "o3" if self.options.debug.is_none() => format!("{base}[{index}] = {value}"),
+            _ => {
+                let put = self.helper("$put");
+                format!("{put}({base}, {index}, {value})")
+            }
+        }
+    }
+
     /// An expression.
     pub(crate) fn expr(&mut self, id: ExprId) -> String {
         // Decision 0030's option c, prototyped: an integer used as a float;
@@ -109,12 +210,17 @@ impl Module<'_> {
             ExprKind::Field { base, name } => self.field(id, *base, name),
             ExprKind::Index { base, index } => {
                 let proven = self.proven(*base, *index);
+                let kind = self.element_kind(*base);
                 let values = self.exprs(&[*base, *index]);
                 if proven {
                     format!("{}[{}]", values[0], values[1])
+                } else if proto_index() == "o1" {
+                    // Read twice by the test: each part evaluated once.
+                    let base = self.repeatable(values[0].clone());
+                    let index = self.repeatable(values[1].clone());
+                    self.checked_read(&base, &index, kind)
                 } else {
-                    let at = self.helper("$at");
-                    format!("{at}({}, {})", values[0], values[1])
+                    self.checked_read(&values[0], &values[1], kind)
                 }
             }
             ExprKind::Try(inner) => self.try_(id, *inner),
@@ -673,5 +779,25 @@ impl Module<'_> {
             return format!("{function}({})", values.join(", "));
         }
         self.builtin(id, base, text, args)
+    }
+}
+
+const fn at_of(kind: &str) -> &'static str {
+    match kind.as_bytes() {
+        b"f" => "$at_f",
+        b"i" => "$at_i",
+        b"b" => "$at_b",
+        b"s" => "$at_s",
+        _ => "$at_o",
+    }
+}
+
+const fn put_of(kind: &str) -> &'static str {
+    match kind.as_bytes() {
+        b"f" => "$put_f",
+        b"i" => "$put_i",
+        b"b" => "$put_b",
+        b"s" => "$put_s",
+        _ => "$put_o",
     }
 }
