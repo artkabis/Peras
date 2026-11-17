@@ -8,37 +8,37 @@ Machine: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores; Node v24.22.1; 21 rounds
 
 | Option                     |  Median | / first, median (range) | CPU / wall |  Memory | Left alive | Bytes (gzip) |
 | -------------------------- | ------: | ----------------------- | ---------: | ------: | ---------: | -----------: |
-| 1a, copied by the program  | 53.3 ms | 1.000 (1.000 to 1.000)  |       0.99 | 128 KiB |          0 |  6241 (2976) |
-| 1b, moved at the call      | 52.9 ms | 0.981 (0.840 to 1.185)  |       0.99 | 128 KiB |          0 |  6230 (2968) |
-| 1c, copied for the program | 79.5 ms | 1.474 (1.287 to 1.794)  |       0.99 | 128 KiB |          0 |  6150 (2932) |
-| managed                    | 53.4 ms | 0.990 (0.819 to 1.141)  |       0.99 |       - |          - |   1012 (536) |
+| 1a, copied by the program  | 50.4 ms | 1.000 (1.000 to 1.000)  |       1.00 | 128 KiB |          0 |  6241 (2976) |
+| 1b, moved at the call      | 49.4 ms | 0.980 (0.910 to 1.328)  |       1.00 | 128 KiB |          0 |  6230 (2968) |
+| 1c, copied for the program | 72.7 ms | 1.444 (1.382 to 2.075)  |       1.00 | 128 KiB |          0 |  6150 (2932) |
+| managed                    | 47.8 ms | 0.948 (0.864 to 0.986)  |       1.00 |       - |          - |   1012 (536) |
 
 ### W2, P2 over 1,000,000 lines, one in ten bad
 
 | Option                       |  Median | / first, median (range) | CPU / wall | Memory | Left alive | Bytes (gzip) |
 | ---------------------------- | ------: | ----------------------- | ---------: | -----: | ---------: | -----------: |
-| 2a, a test and a placeholder | 35.6 ms | 1.000 (1.000 to 1.000)  |       0.98 | 64 KiB |          0 |  3888 (2051) |
-| 2b, an arm that leaves       | 36.6 ms | 1.023 (0.760 to 1.249)  |       0.99 | 64 KiB |          0 |  3832 (2021) |
-| 2c, const … else             | 21.2 ms | 0.601 (0.448 to 0.667)  |       1.00 | 64 KiB |          0 |  3810 (2006) |
-| 2e, narrowed                 | 22.1 ms | 0.618 (0.456 to 0.751)  |       1.00 | 64 KiB |          0 |  3798 (2000) |
-| managed                      | 11.9 ms | 0.316 (0.272 to 0.422)  |       1.00 |      - |          - |   1109 (562) |
+| 2a, a test and a placeholder | 33.6 ms | 1.000 (1.000 to 1.000)  |       1.00 | 64 KiB |          0 |  3894 (2053) |
+| 2b, an arm that leaves       | 34.9 ms | 1.036 (1.006 to 1.235)  |       1.00 | 64 KiB |          0 |  3838 (2024) |
+| 2c, const … else             | 20.6 ms | 0.606 (0.589 to 0.978)  |       1.00 | 64 KiB |          0 |  3816 (2009) |
+| 2e, narrowed                 | 21.1 ms | 0.625 (0.605 to 1.025)  |       1.00 | 64 KiB |          0 |  3804 (2001) |
+| managed                      | 12.1 ms | 0.359 (0.297 to 0.542)  |       1.00 |      - |          - |   1109 (562) |
 
 ### W2, every line good: unwrap()
 
 | Option                       |  Median | / first, median (range) | CPU / wall | Memory | Left alive | Bytes (gzip) |
 | ---------------------------- | ------: | ----------------------- | ---------: | -----: | ---------: | -----------: |
-| 2a, a test and a placeholder | 36.0 ms | 1.000 (1.000 to 1.000)  |       1.00 | 64 KiB |          0 |  3888 (2049) |
-| 2d, unwrap()                 | 20.5 ms | 0.576 (0.557 to 1.230)  |       1.00 | 64 KiB |          0 |  3809 (2004) |
-| managed                      | 13.6 ms | 0.378 (0.330 to 0.832)  |       0.99 |      - |          - |   1110 (563) |
+| 2a, a test and a placeholder | 36.4 ms | 1.000 (1.000 to 1.000)  |       1.00 | 64 KiB |          0 |  3894 (2051) |
+| 2d, unwrap()                 | 20.7 ms | 0.568 (0.537 to 0.585)  |       1.00 | 64 KiB |          0 |  3815 (2006) |
+| managed                      |  4.3 ms | 0.118 (0.111 to 0.120)  |       1.00 |      - |          - |   1110 (563) |
 
 ### W3, P4 over 1,000,000 lookups, nine in ten found
 
 | Option               |  Median | / first, median (range) | CPU / wall |  Memory | Left alive | Bytes (gzip) |
 | -------------------- | ------: | ----------------------- | ---------: | ------: | ---------: | -----------: |
-| 3a, always           | 81.7 ms | 1.000 (1.000 to 1.000)  |       1.00 | 128 KiB |          0 |  6315 (3029) |
-| 3b, only when needed | 37.8 ms | 0.463 (0.437 to 0.581)  |       0.98 | 128 KiB |          0 |  6258 (2997) |
-| 3c, unwrapOrElse     | 66.4 ms | 0.811 (0.759 to 1.349)  |       0.99 | 128 KiB |          0 |  6295 (3017) |
-| managed              |  9.9 ms | 0.119 (0.115 to 0.166)  |       1.00 |       - |          - |   1077 (556) |
+| 3a, always           | 82.1 ms | 1.000 (1.000 to 1.000)  |       1.00 | 128 KiB |          0 |  6315 (3029) |
+| 3b, only when needed | 37.5 ms | 0.456 (0.324 to 0.471)  |       1.00 | 128 KiB |          0 |  6258 (2997) |
+| 3c, unwrapOrElse     | 62.6 ms | 0.764 (0.529 to 0.785)  |       1.00 | 128 KiB |          0 |  6295 (3017) |
+| managed              |  9.8 ms | 0.120 (0.086 to 0.126)  |       1.00 |       - |          - |   1077 (556) |
 
 ### Ease of writing
 
@@ -73,7 +73,7 @@ Machine: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores; Node v24.22.1; 21 rounds
 
 | Option | Owned    | Managed  | Agree |
 | ------ | -------- | -------- | ----- |
-| today  | 501, 202 | 500, 101 | no    |
+| before | 501, 202 | 500, 101 | no    |
 | a      | 501, 202 | 501, 202 | yes   |
 | b      | 500, 101 | 500, 101 | yes   |
 | c      | 501, 202 | 501, 202 | yes   |
