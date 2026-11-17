@@ -284,6 +284,62 @@ pub fn mismatch(
     )
 }
 
+/// `E0210`, the integer met an integer division (decision 0034, option d1,
+/// prototyped): the division shown, its operands converted.
+pub fn truncated(
+    span: Span,
+    expected: &Ty,
+    found: &Ty,
+    division: Span,
+    operands: [(Span, bool); 2],
+    method: &str,
+) -> Diagnostic {
+    let mut edits = Vec::new();
+    for (at, wrap) in operands {
+        if wrap {
+            edits.push(insert(at.start, "("));
+            edits.push(insert(at.end, format!(").{method}()")));
+        } else {
+            edits.push(insert(at.end, format!(".{method}()")));
+        }
+    }
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-mismatch")
+            .text("expected", expected.to_string())
+            .text("found", found.to_string()),
+        vec![
+            primary(
+                span,
+                Message::new("check-mismatch-label").text("found", found.to_string()),
+            ),
+            secondary(division, Message::new("check-truncated-label")),
+        ],
+        Fix {
+            message: Message::new("check-truncated-fix").text("method", method),
+            edits,
+        },
+    )
+}
+
+/// `/` on two integers, under decision 0034's option d3, prototyped.
+pub fn integer_division(span: Span, lhs: Span, rhs: Span) -> Diagnostic {
+    diagnostic(
+        codes::INVALID_OPERATOR,
+        Message::new("check-integer-division"),
+        vec![primary(span, Message::new("check-integer-division-label"))],
+        Fix {
+            message: Message::new("check-integer-division-fix"),
+            // `a / b` becomes `a.div(b)`: the `/` and its spaces go, the
+            // right operand becomes the argument.
+            edits: vec![
+                replace(Span::new(lhs.end, rhs.start), ".div("),
+                insert(rhs.end, ")"),
+            ],
+        },
+    )
+}
+
 /// `E0211`
 pub fn integer_for_float(span: Span, literal: &str, expected: &Ty) -> Diagnostic {
     diagnostic(

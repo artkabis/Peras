@@ -10,8 +10,10 @@
 //    by round (finding M017): the median of the ratios. Above 1.05 fails.
 // 3. The size of the compiler, both: reported.
 //
-// Usage: node scripts/check-regression.mjs <ref>
-// The compiler of <ref> is built once, in its own target directory.
+// Usage: node scripts/check-regression.mjs <ref> [NAME=value…]
+// The compiler of <ref> is built once, in its own target directory. Each
+// NAME=value, a variable of a prototype, is given to today's compiler only:
+// an option measured before it is chosen.
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -61,10 +63,14 @@ const sources = run("git", [
   .split("\n");
 const work = join(root, "target", "regression", "out");
 // Every variable a prototype reads is unset: each compiler builds as it
-// ships.
+// ships, but for the options given to today's.
 const env = Object.fromEntries(
   Object.entries(process.env).filter(([k]) => !k.startsWith("PERAS_PROTO_")),
 );
+const options = Object.fromEntries(
+  process.argv.slice(3).map((a) => /** @type {[string, string]} */ (a.split("=", 2))),
+);
+const envOf = (/** @type {string} */ compiler) => (compiler === now ? { ...env, ...options } : env);
 
 /**
  * The bytes of every file a build writes, by name.
@@ -77,7 +83,7 @@ function built(compiler, source, extra, out) {
   rmSync(out, { recursive: true, force: true });
   const r = spawnSync(compiler, ["build", source, "--out", out, "--color", "never", ...extra], {
     cwd: root,
-    env,
+    env: envOf(compiler),
   });
   if (r.status !== 0) return undefined;
   return Object.fromEntries(readdirSync(out).map((f) => [f, readFileSync(join(out, f))]));
@@ -136,7 +142,7 @@ for (let round = 0; round < rounds; round++) {
     for (const source of sources) {
       spawnSync(compiler, ["build", source, "--out", join(work, "t"), "--color", "never"], {
         cwd: root,
-        env,
+        env: envOf(compiler),
       });
     }
     times[k]?.push(performance.now() - t0);
@@ -149,7 +155,7 @@ const median = [...ratios].sort((a, b) => a - b)[Math.floor(ratios.length / 2)] 
 const [sizeBefore, sizeNow] = [statSync(before).size, statSync(now).size];
 
 const out = [
-  `Against ${ref} (${sha.slice(0, 7)}):`,
+  `Against ${ref} (${sha.slice(0, 7)})${Object.keys(options).length > 0 ? `, today's compiler with ${process.argv.slice(3).join(" ")}` : ""}:`,
   `- modules: ${String(compared)} compared, ${String(larger.length)} larger, ${String(smaller.length)} smaller, ${String(changed.length)} changed at the same size, ${String(status.length)} that build in one compiler only, ${String(refused)} refused by both (programs kept as written, refused on purpose)`,
   ...[...larger, ...smaller, ...changed, ...status].map((l) => `  ${l}`),
   `- compile time, now / before, median of ${String(rounds)} rounds: ${median.toFixed(3)} (${Math.min(...ratios).toFixed(3)} to ${Math.max(...ratios).toFixed(3)})`,

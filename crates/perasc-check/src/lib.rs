@@ -299,6 +299,19 @@ pub fn proto_rc() -> String {
     }
 }
 
+/// The option of decision 0034 a build follows for `/` on two integers:
+/// `d0`, today's, unless `PERAS_PROTO_DIV` names an option measured, `d1`
+/// (the error shows the division), `d2` (`/` gives an `f64`, `a.div(b)`
+/// the integer quotient) or `d3` (`/` on integers refused), for the
+/// measure script only.
+#[must_use]
+pub fn proto_div() -> String {
+    match std::env::var("PERAS_PROTO_DIV").as_deref() {
+        Ok(o @ ("d1" | "d2" | "d3")) => o.to_owned(),
+        _ => "d0".to_owned(),
+    }
+}
+
 /// The option of decision 0031 a build follows for `parallel for`: `p2`,
 /// pure calls and parts in a turn, the one chosen, unless `PERAS_PROTO_PAR`
 /// names another option measured, `p0` (the rules before it, as `before`)
@@ -681,6 +694,9 @@ struct Checker<'a> {
     changed: HashSet<ExprId>,
     /// See [`Analysis::mutations`].
     mutations: Vec<(usize, Span)>,
+    /// The `const`s an integer division initialised, by binding: that
+    /// division (decision 0034, option d1, prototype).
+    int_divisions: HashMap<usize, ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -787,6 +803,7 @@ impl<'a> Checker<'a> {
             widened: HashMap::new(),
             changed: HashSet::new(),
             mutations: Vec::new(),
+            int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),

@@ -1,0 +1,8 @@
+// Q2 of decision 0034: an average, a fraction meant.
+export fn q2(xs: Array<i32>): f64 {
+  let sum = 0;
+  for (const x of xs) {
+    sum += x;
+  }
+  return sum / xs.length;
+}

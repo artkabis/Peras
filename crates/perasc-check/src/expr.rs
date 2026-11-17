@@ -97,11 +97,66 @@ impl Checker<'_> {
                 true
             }
             _ => {
+                // Decision 0034's option d1, prototyped: an integer division
+                // where a float is expected is shown, and fixed there.
+                if crate::proto_div() == "d1"
+                    && matches!(actual, Ty::Int(_))
+                    && matches!(expected, Ty::Float(_))
+                    && let Some(division) = self.division_behind(id)
+                    && let ExprKind::Binary { lhs, rhs, .. } = self.ast.expr(division).kind
+                {
+                    let operand = |c: &Self, side: ExprId| {
+                        let e = c.ast.expr(side);
+                        let wrap =
+                            matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. });
+                        (e.span, wrap)
+                    };
+                    let method = expected.conversion().unwrap_or("toF64");
+                    let (l, r) = (operand(self, lhs), operand(self, rhs));
+                    let division = self.ast.expr(division).span;
+                    self.report(errors::truncated(
+                        span,
+                        expected,
+                        actual,
+                        division,
+                        [l, r],
+                        method,
+                    ));
+                    return false;
+                }
                 let conversion = self.conversion(id, actual, expected);
                 self.report(errors::mismatch(span, expected, actual, conversion));
                 false
             }
         }
+    }
+
+    /// A division of two integers: `id` itself, in parentheses or not.
+    pub(crate) fn int_division(&self, id: ExprId) -> Option<ExprId> {
+        match &self.ast.expr(id).kind {
+            ExprKind::Paren(inner) => self.int_division(*inner),
+            ExprKind::Binary {
+                op: BinaryOp::Div,
+                lhs,
+                rhs,
+            } => {
+                let int = |side: &ExprId| {
+                    matches!(self.expr_types.get(side), Some(Ty::Int(_) | Ty::IntLit))
+                };
+                (int(lhs) && int(rhs)).then_some(id)
+            }
+            _ => None,
+        }
+    }
+
+    /// The integer division behind a value: written there, or the one that
+    /// initialised the `const` it names (decision 0034, d1).
+    fn division_behind(&self, id: ExprId) -> Option<ExprId> {
+        if let Some(division) = self.int_division(id) {
+            return Some(division);
+        }
+        let index = self.resolved.get(&id)?;
+        self.int_divisions.get(index).copied()
     }
 
     /// The explicit conversion turning a number of type `from` into `to`.
@@ -527,6 +582,30 @@ impl Checker<'_> {
         let Some(common) = self.unify(lhs, &lt, rhs, &rt) else {
             return Ty::Error;
         };
+        // Decision 0034's options d2 and d3, prototyped: `/` on two
+        // integers gives an `f64`, or is refused.
+        if op == BinaryOp::Div && matches!(common, Ty::Int(_) | Ty::IntLit) {
+            match crate::proto_div().as_str() {
+                "d2" => {
+                    let f64_ty = Ty::Float(crate::ty::FloatTy::F64);
+                    for side in [lhs, rhs] {
+                        if matches!(self.expr_types.get(&side), Some(Ty::IntLit)) {
+                            self.settle(side, &f64_ty);
+                        } else {
+                            self.widened.insert(side, f64_ty.clone());
+                        }
+                    }
+                    return f64_ty;
+                }
+                "d3" => {
+                    let side = |c: &Self, id: ExprId| c.ast.expr(id).span;
+                    let (l, r) = (side(self, lhs), side(self, rhs));
+                    self.report(errors::integer_division(span, l, r));
+                    return common;
+                }
+                _ => {}
+            }
+        }
         let allowed = self.operand_allowed(op, &common);
         if !allowed && common != Ty::Error {
             self.invalid_operator(span, op.symbol(), &common, needed_bound(op));

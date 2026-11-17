@@ -220,6 +220,13 @@ impl Checker<'_> {
             keyword: local.keyword,
         };
         self.declare(local.name.symbol, Some(local.name.span), kind, ty);
+        // A `const` an integer division initialised (decision 0034, d1).
+        if !local.mutable
+            && let Some(division) = local.init.and_then(|init| self.int_division(init))
+            && let Some(index) = self.scopes.lookup(local.name.symbol)
+        {
+            self.int_divisions.insert(index, division);
+        }
     }
 
     fn stmt(&mut self, stmt: &Stmt) {

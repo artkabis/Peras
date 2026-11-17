@@ -1,0 +1,10 @@
+// Q1 of decision 0034: the gradient's steps summed, `t = i / (count - 1)`
+// as JavaScript writes it, a fraction meant (decision 0030's P5').
+export fn q1(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}

@@ -414,6 +414,11 @@ check-mismatch-label = this is `{ $found }`
 check-mismatch-why = Peras never converts a value implicitly, not even between numbers: `i32 + f64` is an error, because a silent conversion can lose precision or overflow.
 check-mismatch-fix-convert = convert it explicitly with `.{ $method }()`
 check-mismatch-fix = use a value of type `{ $expected }`
+check-truncated-label = this divides two integers: the quotient is truncated, `5 / 2` is `2`
+check-truncated-fix = divide the numbers as floats: convert each with `.{ $method }()` before dividing
+check-integer-division = `/` divides two integers
+check-integer-division-label = an integer quotient, or a fraction?
+check-integer-division-fix = write `a.div(b)` for the integer quotient, or `a.toF64() / b.toF64()` for the fraction
 
 # E0211
 check-integer-for-float = integer literal where `{ $expected }` is expected
