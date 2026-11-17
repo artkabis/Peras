@@ -167,6 +167,8 @@ jobs:
         run: node scripts/bench-shared-managed.mjs --check
       - name: Integer division as a user from JavaScript meets it, every option (decision 0034)
         run: node scripts/bench-division.mjs --check
+      - name: Math as JavaScript writes it, and rounding an integer, every option (decision 0035)
+        run: node scripts/bench-math.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

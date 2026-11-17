@@ -414,6 +414,15 @@ check-mismatch-label = this is `{ $found }`
 check-mismatch-why = Peras never converts a value implicitly, not even between numbers: `i32 + f64` is an error, because a silent conversion can lose precision or overflow.
 check-mismatch-fix-convert = convert it explicitly with `.{ $method }()`
 check-mismatch-fix = use a value of type `{ $expected }`
+check-math = `Math` is JavaScript's: Peras writes `{ $method }` as a method of the number
+check-math-constant = `Math` is JavaScript's: Peras has no `Math` constants
+check-math-label = `Math` is not defined in Peras
+check-math-fix = write `{ $written }`
+check-whole = an integer has no `{ $method }`: it is whole already
+check-whole-label = an integer, whole already
+check-whole-fix = remove `.{ $method }()`
+check-whole-division-label = `{ $method }` of an integer division, truncated already
+check-whole-division-fix = divide the numbers as floats, then `{ $method }` the fraction
 check-truncated-label = this divides two integers: the quotient is truncated, `5 / 2` is `2`
 check-truncated-fix = divide the numbers as floats: convert each with `.{ $method }()` before dividing
 

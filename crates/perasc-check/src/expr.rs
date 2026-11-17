@@ -311,6 +311,9 @@ impl Checker<'_> {
                 Ty::String
             }
             ExprKind::Field { base, name } => {
+                if let Some(ty) = self.math_constant(*base, name, span) {
+                    return ty;
+                }
                 if let Some(ty) = self.enum_variant(*base, name, None, span, expected) {
                     return ty;
                 }
@@ -693,6 +696,9 @@ impl Checker<'_> {
                     span,
                     expected,
                 };
+                if let Some(ty) = self.math_call(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.rc_new(&site, *base, name) {
                     return ty;
                 }
@@ -709,6 +715,9 @@ impl Checker<'_> {
                     return ty;
                 }
                 let receiver = self.receiver(*base, name.symbol);
+                if let Some(ty) = self.whole_call(id, *base, &receiver, name, args) {
+                    return ty;
+                }
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
@@ -1236,5 +1245,145 @@ fn operand_allowed(op: BinaryOp, ty: &Ty) -> bool {
             ty.is_integer()
         }
         BinaryOp::And | BinaryOp::Or => *ty == Ty::Bool,
+    }
+}
+
+/// Decision 0035's options, prototyped: `Math` as JavaScript writes it, and
+/// rounding an integer.
+impl Checker<'_> {
+    /// Whether `base` names JavaScript's `Math`, no binding of the program.
+    fn is_math(&self, base: ExprId) -> bool {
+        matches!(self.ast.expr(base).kind, ExprKind::Name(s)
+            if self.name(s) == "Math" && self.scopes.lookup(s).is_none())
+    }
+
+    /// `Math.PI`, `Math.E`: under a1, the error offers the number; under
+    /// a2, the number.
+    fn math_constant(
+        &mut self,
+        base: ExprId,
+        name: &perasc_syntax::ast::Ident,
+        span: Span,
+    ) -> Option<Ty> {
+        if !self.is_math(base) {
+            return None;
+        }
+        let value = match self.name(name.symbol) {
+            "PI" => "3.141592653589793",
+            "E" => "2.718281828459045",
+            _ => return None,
+        };
+        match crate::proto_math().as_str() {
+            "a1" => {
+                self.report(errors::math_constant(span, value));
+                Some(Ty::Float(crate::ty::FloatTy::F64))
+            }
+            "a2" => Some(Ty::Float(crate::ty::FloatTy::F64)),
+            _ => None,
+        }
+    }
+
+    /// `Math.f(x, …)`: under a1, the error offers `x.f(…)`; under a2, that
+    /// method of `x`.
+    fn math_call(
+        &mut self,
+        at: &crate::methods::CallSite<'_>,
+        base: ExprId,
+        name: &perasc_syntax::ast::Ident,
+    ) -> Option<Ty> {
+        let option = crate::proto_math();
+        if option == "a0" || !self.is_math(base) {
+            return None;
+        }
+        let (&first, rest) = at.args.split_first()?;
+        if option == "a1" {
+            let wrap = |c: &Self, id: ExprId| {
+                let e = c.ast.expr(id);
+                let text = c.slice(e.span);
+                if matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. }) {
+                    format!("({text})")
+                } else {
+                    text.to_owned()
+                }
+            };
+            let rest_text = match (rest.first(), rest.last()) {
+                (Some(&a), Some(&b)) => {
+                    let span = Span::new(self.ast.expr(a).span.start, self.ast.expr(b).span.end);
+                    self.slice(span).to_owned()
+                }
+                _ => String::new(),
+            };
+            let method = self.name(name.symbol).to_owned();
+            let written = format!("{}.{method}({rest_text})", wrap(self, first));
+            for &arg in at.args {
+                self.infer(arg, None);
+            }
+            self.report(errors::math_method(at.span, &method, &written));
+            return Some(Ty::Error);
+        }
+        let receiver = self.infer(first, None);
+        self.math_calls.insert(at.call);
+        if let Some(ty) = self.whole_call(at.call, first, &receiver, name, rest) {
+            return Some(ty);
+        }
+        Some(self.method_call(&receiver, name.symbol, name.span, rest, at.span))
+    }
+
+    /// `floor`, `round`, `ceil` or `trunc` on an integer, `call` the whole
+    /// call: under b1 the error removes it; under b2 it gives the integer;
+    /// under b3, on an integer division, the error shows the division and
+    /// converts its operands, and removes the call on any other integer.
+    fn whole_call(
+        &mut self,
+        call: ExprId,
+        base: ExprId,
+        receiver: &Ty,
+        name: &perasc_syntax::ast::Ident,
+        args: &[ExprId],
+    ) -> Option<Ty> {
+        let method = self.name(name.symbol).to_owned();
+        let me = receiver.clone().defaulted();
+        if !matches!(method.as_str(), "floor" | "round" | "ceil" | "trunc")
+            || !args.is_empty()
+            || !matches!(me, Ty::Int(_))
+        {
+            return None;
+        }
+        let span = self.ast.expr(call).span;
+        let option = crate::proto_whole();
+        match option.as_str() {
+            "b2" => {
+                self.whole_calls.insert(call);
+                Some(me)
+            }
+            "b3" if let Some(division) = self.int_division(base) => {
+                let ExprKind::Binary { lhs, rhs, .. } = self.ast.expr(division).kind else {
+                    return Some(me);
+                };
+                let wrap = |c: &Self, id: ExprId| {
+                    let e = c.ast.expr(id);
+                    let text = c.slice(e.span);
+                    if matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. }) {
+                        format!("({text})")
+                    } else {
+                        text.to_owned()
+                    }
+                };
+                let written = format!(
+                    "({}.toF64() / {}.toF64()).{method}()",
+                    wrap(self, lhs),
+                    wrap(self, rhs)
+                );
+                let division = self.ast.expr(division).span;
+                self.report(errors::rounded_division(span, division, &method, &written));
+                Some(Ty::Float(crate::ty::FloatTy::F64))
+            }
+            "b1" | "b3" => {
+                let written = self.slice(self.ast.expr(base).span).to_owned();
+                self.report(errors::whole_call(span, &method, &written));
+                Some(me)
+            }
+            _ => None,
+        }
     }
 }

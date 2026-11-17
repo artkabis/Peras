@@ -1,0 +1,6 @@
+// R5 of decision 0035 (Q5 of decision 0034): a percentage shown as a whole number, a fraction
+// rounded; JavaScript writes `Math.round(done * 100 / total)`.
+export fn r5(done: i32, total: i32): String {
+  const percent = Math.round(done * 100 / total);
+  return `${percent} %`;
+}

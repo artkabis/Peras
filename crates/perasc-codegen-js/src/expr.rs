@@ -463,6 +463,13 @@ impl Module<'_> {
         if let Some((_, NameKind::Enum(_))) = self.bound(base) {
             return format!("{{ kind: {}, values: [] }}", string_literal(text));
         }
+        // `Math.PI`, `Math.E` (decision 0035, a2).
+        if matches!(self.ast.expr(base).kind, ExprKind::Name(s) if self.ast.name(s) == "Math")
+            && self.bound(base).is_none()
+            && matches!(text, "PI" | "E")
+        {
+            return format!("Math.{text}");
+        }
         let ty = self.ty(base);
         // On the way to a write, the shared value is made its holder's own
         // first (decision 0033).
@@ -608,6 +615,22 @@ impl Module<'_> {
         }
         if let Some(js) = self.group_new(id, base, name) {
             return js;
+        }
+        // `Math.f(x, …)`, the method `f` of `x`; `floor` and the like on
+        // an integer, which gives it (decision 0035, a2 and b2).
+        let math = self.analysis.math_calls.contains(&id);
+        let receiver = if math {
+            args.first().copied()
+        } else {
+            Some(base)
+        };
+        if self.analysis.whole_calls.contains(&id)
+            && let Some(receiver) = receiver
+        {
+            return self.expr(receiver);
+        }
+        if math && let Some((&first, rest)) = args.split_first() {
+            return self.builtin(id, first, text, rest);
         }
         // `Rc.new(value)` (decision 0033).
         if text == "new" && matches!(self.ty(id), Ty::Rc(_)) && self.bound(base).is_none() {

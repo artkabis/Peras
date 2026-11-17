@@ -1778,6 +1778,9 @@ impl Lowering<'_> {
                 ty,
             };
         }
+        if let Some(constant) = self.math_constant(id) {
+            return constant;
+        }
         self.expr_as_written(state, id)
     }
 
@@ -1795,6 +1798,24 @@ impl Lowering<'_> {
         ExprKind::Const(match self.int_kind(id) {
             Some(kind) => ints::literal(value, kind),
             None => int_const(value, false),
+        })
+    }
+
+    /// `Math.PI`, `Math.E` (decision 0035, a2): the number.
+    fn math_constant(&self, id: ExprId) -> Option<Expr> {
+        let AstExpr::Field { base, name } = &self.ast.expr(id).kind else {
+            return None;
+        };
+        let math = matches!(self.ast.expr(*base).kind, AstExpr::Name(s) if self.ast.name(s) == "Math")
+            && !self.analysis.names.contains_key(base);
+        let value = match self.ast.name(name.symbol) {
+            "PI" if math => std::f64::consts::PI,
+            "E" if math => std::f64::consts::E,
+            _ => return None,
+        };
+        Some(Expr {
+            kind: ExprKind::Const(Const::Float(value)),
+            ty: Ty::F64,
         })
     }
 
@@ -2035,6 +2056,16 @@ impl Lowering<'_> {
                     .next()
                     .unwrap_or_else(|| zero(ty))
             }
+            // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
+            AstExpr::Field { name, .. } if self.analysis.math_calls.contains(&call) => {
+                let Some((&first, rest)) = args.split_first() else {
+                    return self.not_yet(span, "method", ty);
+                };
+                let receiver = self.expr(state, first);
+                let method = self.ast.name(name.symbol);
+                let from = self.check_type(first);
+                self.method(state, (receiver, from), method, rest, (ty, call), span)
+            }
             AstExpr::Field { base, name } if self.is_aggregate(*base) => {
                 let method = self.ast.name(name.symbol);
                 self.method_values(state, *base, method, args, heap::Mode::Borrow, span)
@@ -2067,6 +2098,11 @@ impl Lowering<'_> {
             _ => None,
         };
         let unsigned = kind.is_some_and(ints::is_unsigned);
+        // `floor` and the like on an integer, which gives it (decision
+        // 0035, b2).
+        if self.analysis.whole_calls.contains(&call) {
+            return receiver;
+        }
         if let Some(chosen) = self.ordering(state, receiver.clone(), method, (args, unsigned)) {
             return chosen;
         }

@@ -129,6 +129,12 @@ pub struct Analysis {
     /// read from a place none changes while it is used is lent
     /// (decision 0032).
     pub mutations: Vec<(usize, Span)>,
+    /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
+    /// option a2, prototyped).
+    pub math_calls: HashSet<ExprId>,
+    /// `floor`, `round`, `ceil` or `trunc` called on an integer, which gives
+    /// it (decision 0035, option b2, prototyped).
+    pub whole_calls: HashSet<ExprId>,
 }
 
 /// A declared name, for code generation.
@@ -310,6 +316,28 @@ pub fn proto_div() -> String {
     match std::env::var("PERAS_PROTO_DIV").as_deref() {
         Ok("d0") => "d0".to_owned(),
         _ => "d1".to_owned(),
+    }
+}
+
+/// The options of decision 0035 a build follows for `Math` (`a0` today's,
+/// `a1` the error offers the method, `a2` accepted as written) and for
+/// `floor`, `round`, `ceil` or `trunc` on an integer (`b0` today's, `b1`
+/// the call removed, `b2` accepted, `b3` an integer division shown), by
+/// `PERAS_PROTO_MATH` and `PERAS_PROTO_WHOLE`, for the measure script only.
+#[must_use]
+pub fn proto_math() -> String {
+    match std::env::var("PERAS_PROTO_MATH").as_deref() {
+        Ok(o @ ("a1" | "a2")) => o.to_owned(),
+        _ => "a0".to_owned(),
+    }
+}
+
+/// See [`proto_math`].
+#[must_use]
+pub fn proto_whole() -> String {
+    match std::env::var("PERAS_PROTO_WHOLE").as_deref() {
+        Ok(o @ ("b1" | "b2" | "b3")) => o.to_owned(),
+        _ => "b0".to_owned(),
     }
 }
 
@@ -546,6 +574,8 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         widened: checker.widened,
         changed: checker.changed,
         mutations: checker.mutations,
+        math_calls: checker.math_calls,
+        whole_calls: checker.whole_calls,
         moves: checker.moves,
         enums: checker
             .enums
@@ -695,6 +725,10 @@ struct Checker<'a> {
     changed: HashSet<ExprId>,
     /// See [`Analysis::mutations`].
     mutations: Vec<(usize, Span)>,
+    /// See [`Analysis::math_calls`].
+    math_calls: HashSet<ExprId>,
+    /// See [`Analysis::whole_calls`].
+    whole_calls: HashSet<ExprId>,
     /// The `const`s an integer division initialised, by binding: that
     /// division (decision 0034, option d1, prototype).
     int_divisions: HashMap<usize, ExprId>,
@@ -804,6 +838,8 @@ impl<'a> Checker<'a> {
             widened: HashMap::new(),
             changed: HashSet::new(),
             mutations: Vec::new(),
+            math_calls: HashSet::new(),
+            whole_calls: HashSet::new(),
             int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
