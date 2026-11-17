@@ -1,0 +1,18 @@
+// P3 (decision 0030): a step of particles, slowed and bounced off the walls
+// at 0 and 1, as a user writes it from JavaScript.
+export fn step(pos: inout Array<f64>, speed: inout Array<f64>, dt: f64): f64 {
+  let energy = 0.0;
+  for (let i = 0; i < pos.length; i++) {
+    speed[i] *= 0.99;
+    pos[i] += speed[i] * dt;
+    if (pos[i] < 0) {
+      pos[i] = -pos[i];
+      speed[i] = -speed[i];
+    } else if (pos[i] > 1) {
+      pos[i] = 2 - pos[i];
+      speed[i] = -speed[i];
+    }
+    energy += speed[i] * speed[i] / 2;
+  }
+  return energy;
+}

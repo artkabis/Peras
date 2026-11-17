@@ -118,7 +118,7 @@ Chacune avec ce qui la réfute. Les temps sont ceux de l’image 600 en 1024 × 
 - **Peras est à 0,89 de Rust** (H2), en deux fois moins d’octets (H5), et sa sûreté coûte 8 % (H7).
 - **Le module managed est 2,4 fois plus lent que le TypeScript** (H3, constat F221) : la même source compilée en JavaScript ne donne pas le JavaScript qu’une personne écrit. Pas examiné ici.
 - **Peras est aussi long que TypeScript, mais pas aussi facile à écrire** : 1,10 fois ses lignes une fois construit (H6 tient), après 45 erreurs, chacune un littéral entier là où un `f64` est attendu ou un tableau typé par son premier élément (constat F112), le plus qu’un programme ait rencontré.
-- **Ce qui manque à la scène, consigné comme constats** : `parallel for` ne peut pas la dessiner (F301), et un maillage partagé par mille lanternes ne peut pas être tenu par chacune (F310, décision 0030).
+- **Ce qui manque à la scène, consigné comme constats** : `parallel for` ne peut pas la dessiner (F301), et un maillage partagé par mille lanternes ne peut pas être tenu par chacune (F310). Le propriétaire a ensuite ordonné le travail que l’étude demandait : la décision 0030 sur les littéraux numériques (F112), la 0031 sur les threads (F301), et `Rc<T>` après elles, mesuré sur cette scène.
 
 ### Écarts au protocole
 

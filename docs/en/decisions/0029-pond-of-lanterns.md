@@ -118,7 +118,7 @@ Each with what refutes it. Times are of frame 600 at 1024 × 768 with 1,000 lant
 - **Peras is within 0.89 of Rust** (H2), in half its bytes (H5), and its safety costs 8 % (H7).
 - **The managed module is 2.4 times slower than the TypeScript** (H3, finding F221): the same source compiled to JavaScript does not give the JavaScript a person writes. Not looked into here.
 - **Peras is as long as TypeScript, but not as easy to write**: 1.10 times its lines once it builds (H6 holds), after 45 errors, every one an integer literal where an `f64` is expected or an array typed by its first element (finding F112), the most any program has met.
-- **What the scene lacks, entered as findings**: `parallel for` cannot draw it (F301), and a mesh shared by a thousand lanterns cannot be held by each (F310, decision 0030).
+- **What the scene lacks, entered as findings**: `parallel for` cannot draw it (F301), and a mesh shared by a thousand lanterns cannot be held by each (F310). The owner then ordered the work the study asked for: decision 0030 on numeric literals (F112), 0031 on threads (F301), and `Rc<T>` after them, measured on this scene.
 
 ### Departures from the protocol
 
