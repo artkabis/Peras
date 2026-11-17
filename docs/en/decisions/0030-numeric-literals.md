@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0030-numeric-literals.md](../../fr/decisions/0030-numeric-literals.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It answers finding F112, the first of the corrections the owner ordered after [decision 0029](0029-pond-of-lanterns.md)._
+_Status: protocol registered on 2026-11-17 (commit `f73b8f6`), before any prototype and any measure, as the rule of the project asks; options measured at `bb91877`, b to propose to the owner, who chooses. It answers finding F112, the first of the corrections the owner ordered after [decision 0029](0029-pond-of-lanterns.md)._
 
 ## Context
 
@@ -43,3 +43,22 @@ Four quantities, as for decisions 0027 and 0028.
 ## Record
 
 _Each part is recorded here as it lands._
+
+- **2026-11-17, the options measured** (`node scripts/bench-numbers.mjs`, [results](../../../bench/numbers/RESULTS.md); prototypes at `bb91877`, behind `PERAS_PROTO_NUM`). An Intel Xeon at 2.30 GHz, 4 cores, Node 24.
+  - **Ease of writing**, the five programs and P5′:
+
+    |       | Programs that build as written | Errors met | Lines changed | Results that differ from JavaScript as written |
+    | ----- | -----------------------------: | ---------: | ------------: | ---------------------------------------------: |
+    | a     |                         0 of 6 |         68 |           108 |                                              2 |
+    | **b** |                         2 of 6 |          7 |            10 |                                              2 |
+    | c     |                         6 of 6 |          0 |             0 |                                              2 |
+
+    The pond as first written, 45 errors today, builds with b and with c. What b still refuses is an integer _variable_ used as a float: `sum / xs.length` (P2), `cents * 1.2` (P4), `t` of `i / (steps - 1)` (P5, P5′), each with the fix `.toF64()`.
+
+  - **What each option lets through**: the same two results differ from JavaScript in every option, and neither is an option's doing. P4's first price, 9,007,199,254,740,993, is beyond what a JavaScript number holds: JavaScript loses its last digit, Peras's `i64` keeps it. P5′'s `i / (count - 1)` is an integer division in Peras, a fraction in JavaScript: 1 against 2.5, whichever option; a and b refuse `total += t` and their fix, `t.toF64()`, converts the integer already truncated (finding F113). Every program gives the same result owned on both allocators and managed.
+  - **Speed, load and bytes**: the pond as written, built by b and by c, against the pond fixed, built by a, frame 600, 15 rounds: 1.033 (0.937 to 1.108) and 1.009 (0.886 to 1.095), the processor's load 1.00; the modules within 5 bytes of each other (14,647 and 14,652, 5,591 to 5,592 gzipped), the same pixels. No option changes the program it compiles; only what it accepts.
+- **Departures from the protocol.**
+  - **P5′ was added after registering**: P5's total does not depend on `t`, so it could not show an integer division.
+  - **Results are compared with the programs written in JavaScript**, in `scripts/bench-numbers.mjs`, besides the managed module: a managed module follows the same rules as the owned one, so it cannot show what an option changes against JavaScript.
+  - **P4 does not test c's loss of digits**: its tax applies to a price below 2⁵³; c converts an `i64` to a float without a mark in the source, which a measure of results cannot show, JavaScript losing the same digits.
+- **What the measures say**: b removes 61 of the 68 errors (90 %) with no conversion the source does not show, at no cost in speed or bytes; c removes the last 7 by converting integer variables silently, the way JavaScript does and Swift, Go and Rust do not. Neither catches the integer division of P5′, a matter of its own (F113). b is the option to propose to the owner, who chooses.

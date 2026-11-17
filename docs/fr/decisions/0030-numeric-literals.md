@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0030-numeric-literals.md](../../en/decisions/0030-numeric-literals.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F112, la première des corrections que le propriétaire a ordonnées après la [décision 0029](0029-pond-of-lanterns.md)._
+_État : protocole enregistré le 2026-11-17 (commit `f73b8f6`), avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `bb91877`, b à proposer au propriétaire, qui choisit. Il répond au constat F112, la première des corrections que le propriétaire a ordonnées après la [décision 0029](0029-pond-of-lanterns.md)._
 
 ## Contexte
 
@@ -43,3 +43,22 @@ Quatre quantités, comme pour les décisions 0027 et 0028.
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+- **2026-11-17, les options mesurées** (`node scripts/bench-numbers.mjs`, [résultats](../../../bench/numbers/RESULTS.md) ; prototypes à `bb91877`, derrière `PERAS_PROTO_NUM`). Un Intel Xeon à 2,30 GHz, 4 cœurs, Node 24.
+  - **Facilité d’écriture**, les cinq programmes et P5′ :
+
+    |       | Programmes qui se construisent tels qu’écrits | Erreurs rencontrées | Lignes changées | Résultats qui diffèrent du JavaScript tel qu’écrit |
+    | ----- | --------------------------------------------: | ------------------: | --------------: | -------------------------------------------------: |
+    | a     |                                       0 sur 6 |                  68 |             108 |                                                  2 |
+    | **b** |                                       2 sur 6 |                   7 |              10 |                                                  2 |
+    | c     |                                       6 sur 6 |                   0 |               0 |                                                  2 |
+
+    Le bassin tel qu’écrit d’abord, 45 erreurs aujourd’hui, se construit avec b et avec c. Ce que b refuse encore, c’est une _variable_ entière utilisée comme flottant : `sum / xs.length` (P2), `cents * 1.2` (P4), le `t` de `i / (steps - 1)` (P5, P5′), chacune avec la correction `.toF64()`.
+
+  - **Ce que chaque option laisse passer** : les deux mêmes résultats diffèrent de JavaScript dans chaque option, et aucun n’est le fait d’une option. Le premier prix de P4, 9 007 199 254 740 993, dépasse ce que tient un nombre JavaScript : JavaScript perd son dernier chiffre, l’`i64` de Peras le garde. Le `i / (count - 1)` de P5′ est une division entière en Peras, une fraction en JavaScript : 1 contre 2,5, quelle que soit l’option ; a et b refusent `total += t` et leur correction, `t.toF64()`, convertit l’entier déjà tronqué (constat F113). Chaque programme donne le même résultat en owned sur les deux allocateurs et en managed.
+  - **Vitesse, charge et octets** : le bassin tel qu’écrit, construit par b et par c, contre le bassin corrigé, construit par a, image 600, 15 tours : 1,033 (0,937 à 1,108) et 1,009 (0,886 à 1,095), la charge du processeur 1,00 ; les modules à 5 octets l’un de l’autre (14 647 et 14 652, 5 591 à 5 592 en gzip), les mêmes pixels. Aucune option ne change le programme qu’elle compile ; seulement ce qu’elle accepte.
+- **Écarts au protocole.**
+  - **P5′ a été ajouté après l’enregistrement** : le total de P5 ne dépend pas de `t`, il ne pouvait donc pas montrer une division entière.
+  - **Les résultats sont comparés aux programmes écrits en JavaScript**, dans `scripts/bench-numbers.mjs`, en plus du module managed : un module managed suit les mêmes règles que l’owned, il ne peut donc pas montrer ce qu’une option change face à JavaScript.
+  - **P4 ne teste pas la perte de chiffres de c** : sa taxe s’applique à un prix sous 2⁵³ ; c convertit un `i64` en flottant sans marque dans la source, ce qu’une mesure des résultats ne peut pas montrer, JavaScript perdant les mêmes chiffres.
+- **Ce que disent les mesures** : b retire 61 des 68 erreurs (90 %) sans conversion que la source ne montre pas, sans coût en vitesse ni en octets ; c retire les 7 dernières en convertissant en silence les variables entières, comme JavaScript le fait et comme Swift, Go et Rust ne le font pas. Ni l’une ni l’autre n’attrape la division entière de P5′, une question à part (F113). b est l’option à proposer au propriétaire, qui choisit.
