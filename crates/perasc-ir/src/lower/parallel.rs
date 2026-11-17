@@ -36,6 +36,7 @@ enum Refusal {
     Index,
     Reads,
     Calls,
+    Direct,
     Heap,
     Exits,
     Global,
@@ -49,6 +50,7 @@ impl Refusal {
             Self::Index => "index",
             Self::Reads => "reads",
             Self::Calls => "calls",
+            Self::Direct => "direct",
             Self::Heap => "heap",
             Self::Exits => "exits",
             Self::Global => "global",
@@ -343,7 +345,8 @@ fn check(
             Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
             Stmt::Buf(..) | Stmt::Release(_) => return Err(Refusal::Heap),
             Stmt::CallMany { callee, .. } if calls_allowed => called.push(*callee),
-            Stmt::CallMany { .. } | Stmt::CallManyIndirect { .. } => return Err(Refusal::Calls),
+            Stmt::CallMany { .. } => return Err(Refusal::Direct),
+            Stmt::CallManyIndirect { .. } => return Err(Refusal::Calls),
             // Each thread has its own module variables (decision 0023).
             Stmt::SetGlobal(..) => return Err(Refusal::Global),
             Stmt::Return(_) | Stmt::ReturnMany(_) => return Err(Refusal::Exits),
@@ -364,7 +367,8 @@ fn check(
             called.push(*id);
             Ok(())
         }
-        ExprKind::Call(..) | ExprKind::CallIndirect(..) => Err(Refusal::Calls),
+        ExprKind::Call(..) => Err(Refusal::Direct),
+        ExprKind::CallIndirect(..) => Err(Refusal::Calls),
         ExprKind::Global(_) => Err(Refusal::Global),
         ExprKind::Buf(BufOp::Get(_), args) => {
             let buffer = args.first().and_then(handle).map(|l| l.0);

@@ -44,12 +44,12 @@ impl Lowering<'_> {
             return false;
         };
         let (at, size) = (*at, *size);
-        let Some((counter, mark)) = state.turn else {
-            self.unsupported(local.name.span, "part");
-            return true;
-        };
+        let span = self.ast.expr(init).span;
+        // Outside a turn, refused below; still bound, so that its uses are
+        // not refused again.
+        let (counter, mark) = state.turn.map_or((None, 0), |(c, m)| (Some(c), m));
         // Taken at the counter, of a size the turn does not compute.
-        let at_counter = matches!(self.ast.expr(at).kind, AstExpr::Name(s) if s == counter);
+        let at_counter = matches!(self.ast.expr(at).kind, AstExpr::Name(s) if Some(s) == counter);
         let size = self.expr(state, size);
         let fixed = reads_before(&size, mark);
         let len = state.temp(Ty::I32);
@@ -69,8 +69,12 @@ impl Lowering<'_> {
                 len,
             },
         );
-        if at_counter && fixed {
-            state.turn_parts.push((offset, len));
+        // A part refused here stays known, so that its elements are not
+        // refused a second time as written elsewhere than the counter.
+        state.turn_parts.push((offset, len));
+        if !(at_counter && fixed) {
+            self.diagnostics
+                .push(super::parallel::refused(span, "part", ""));
         }
         true
     }

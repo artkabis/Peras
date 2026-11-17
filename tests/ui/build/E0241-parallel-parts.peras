@@ -1,0 +1,55 @@
+// E0241 (decision 0031): a turn calls only functions that change nothing,
+// and writes only at its counter or in parts taken at it, of a size the
+// turn does not compute.
+let count = 0;
+
+fn bump(x: f64): f64 {
+  count += 1;
+  return x;
+}
+
+export fn impure(xs: inout Array<f64>): void {
+  parallel for (let i = 0; i < xs.length; i++) {
+    xs[i] = bump(xs[i]);
+  }
+}
+
+// Writes a module variable without reading it.
+fn mark(x: f64): f64 {
+  count = 1;
+  return x;
+}
+
+export fn marking(xs: inout Array<f64>): void {
+  parallel for (let i = 0; i < xs.length; i++) {
+    xs[i] = mark(xs[i]);
+  }
+}
+
+export fn shifted(xs: inout Array<f64>, n: i32): void {
+  parallel for (let b = 0; b < n; b++) {
+    let p = xs.part(b + 1, 2);
+    p[0] = 1.0;
+  }
+}
+
+export fn growing(xs: inout Array<f64>, n: i32): void {
+  parallel for (let b = 0; b < n; b++) {
+    let p = xs.part(b, b);
+    p[0] = 1.0;
+  }
+}
+
+export fn mixed(xs: inout Array<f64>, n: i32): void {
+  parallel for (let b = 0; b < n; b++) {
+    let p = xs.part(b, 2);
+    p[0] = 1.0;
+    xs[b] = 0.0;
+  }
+}
+
+export fn outside(xs: inout Array<f64>): f64 {
+  let p = xs.part(0, 2);
+  p[0] = 1.0;
+  return xs[0];
+}

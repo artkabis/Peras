@@ -655,17 +655,20 @@ check-map-key-fix = utilisez un entier, un booléen ou une chaîne comme clé : 
 check-parallel = cette boucle ne peut pas tourner en parallèle : { $reason ->
     [shape] une boucle parallèle s’écrit `parallel for (let i = début; i < fin; i++)`
     [outer] elle affecte `{ $name }`, déclarée hors de la boucle
-    [index] elle écrit un élément à un autre indice que celui de son compteur
+    [index] elle écrit un élément à un autre indice que celui de son compteur, hors des parts qu’elle prend
     [reads] elle lit, à un autre indice que celui de son compteur, un tableau qu’elle écrit
-    [calls] elle appelle une fonction
+    [calls] elle appelle une valeur fonction
+    [direct] elle appelle une fonction
+    [impure] elle appelle `{ $name }`, qui crée ou libère de la mémoire, écrit un élément ou une variable de module, ou appelle une valeur fonction
+    [part] `part` se prend dans un tour de `parallel for`, à son compteur, d’une taille que le tour ne calcule pas
     [heap] elle crée, agrandit, déplace ou libère une chaîne, un tableau ou une table
     [exits] elle sort de la boucle par `break` ou `return`
     [global] elle lit ou écrit une variable de module, dont chaque thread a sa propre copie
    *[other] ses tours pourraient se voir
 }
 check-parallel-label = des tours qui peuvent tourner en même temps
-check-parallel-why = Les tours d’une boucle parallèle tournent sur plusieurs fils à la fois, dans n’importe quel ordre. Chaque tour peut lire tout ce que la boucle ne change pas, et n’écrire que les éléments à son propre indice, pour qu’aucun tour n’en voie un autre : les résultats sont alors ceux de la boucle exécutée dans l’ordre, bit pour bit.
-check-parallel-fix = ne gardez dans chaque tour que ce qui lit les entrées et écrit `xs[i]` ; calculez une somme ou ce qui demande de la mémoire dans une boucle ordinaire après
+check-parallel-why = Les tours d’une boucle parallèle tournent sur plusieurs fils à la fois, dans n’importe quel ordre. Chaque tour peut lire tout ce que la boucle ne change pas, appeler une fonction qui ne change rien, et n’écrire que les éléments à son propre indice ou dans sa propre part, `xs.part(i, k)`, pour qu’aucun tour n’en voie un autre : les résultats sont alors ceux de la boucle exécutée dans l’ordre, bit pour bit.
+check-parallel-fix = ne gardez dans chaque tour que ce qui lit les entrées, appelle des fonctions qui ne changent rien, et écrit `xs[i]` ou sa part, `let band = xs.part(i, k)` ; calculez une somme ou ce qui demande de la mémoire dans une boucle ordinaire après
 
 # E0242
 check-managed-only = { $what ->

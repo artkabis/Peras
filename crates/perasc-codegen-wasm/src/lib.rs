@@ -1662,7 +1662,7 @@ pub fn js_loader(module: &Module, wasm_file: &str, runtime: Option<&Runtime<'_>>
             runtime,
             &module.runtime_fns(),
             crosses_map(module),
-            &job_kinds(module),
+            &job_dispatch(module),
         )),
         None if heap => js.push_str(
             "throw new Error(\"perasc: this module uses the heap but was built without its runtime\");\n",
@@ -1905,6 +1905,45 @@ fn start_threads(module: &Module) -> String {
 
 /// The kind of each argument of each job after `start` and `end`, as the
 /// threads read them: an `i64` as a `BigInt`, any other as a number.
+/// Each job's kinds, and the fewest turns its loop is split from: two when a
+/// turn holds a loop or a call, a heavy turn, a band of rows; 256 otherwise,
+/// waking the threads costing more than such turns (decision 0031).
+fn job_dispatch(module: &Module) -> Vec<(Vec<&'static str>, u32)> {
+    let heavy = module.functions.iter().filter(|f| f.job).map(|f| {
+        // The job is the loop over its turns: what a turn holds is its body.
+        f.body.iter().any(|s| match s {
+            Stmt::Loop { body, .. } => holds_loop_or_call(body),
+            _ => false,
+        })
+    });
+    job_kinds(module)
+        .into_iter()
+        .zip(heavy)
+        .map(|(kinds, heavy)| (kinds, if heavy { 2 } else { 256 }))
+        .collect()
+}
+
+/// Whether statements hold a loop or a call.
+fn holds_loop_or_call(stmts: &[Stmt]) -> bool {
+    let mut found = stmts.iter().any(|s| match s {
+        Stmt::Loop { .. } | Stmt::CallMany { .. } | Stmt::CallManyIndirect { .. } => true,
+        Stmt::If {
+            then, otherwise, ..
+        } => holds_loop_or_call(then) || holds_loop_or_call(otherwise),
+        Stmt::Block(body) => holds_loop_or_call(body),
+        _ => false,
+    });
+    perasc_ir::each_expr(stmts, &mut |e| {
+        if matches!(
+            e.kind,
+            perasc_ir::ExprKind::Call(..) | perasc_ir::ExprKind::CallIndirect(..)
+        ) {
+            found = true;
+        }
+    });
+    found
+}
+
 fn job_kinds(module: &Module) -> Vec<Vec<&'static str>> {
     module
         .functions
@@ -2448,7 +2487,7 @@ fn runtime_imports(
     runtime: &Runtime<'_>,
     used: &[RuntimeFn],
     maps: bool,
-    jobs: &[Vec<&'static str>],
+    jobs: &[(Vec<&'static str>, u32)],
 ) -> String {
     let faults: Vec<String> = runtime.faults.iter().map(|m| js_string(m)).collect();
     let sites: Vec<String> = std::iter::once("?".to_owned())
@@ -2573,7 +2612,7 @@ fn separate_runtime(
     runtime: &Runtime<'_>,
     used: &[RuntimeFn],
     maps: bool,
-    jobs: &[Vec<&'static str>],
+    jobs: &[(Vec<&'static str>, u32)],
 ) -> String {
     format!(
         "const $allocator = Uint8Array.from(atob(\"{allocator}\"), (c) => c.charCodeAt(0));\n\
@@ -2626,17 +2665,17 @@ fn thread_memory(runtime_flag: usize) -> String {
 
 /// The `par0`, `par1`… the module imports: each runs the turns of its job,
 /// whose arguments after `start` and `end` have these kinds.
-fn dispatchers(jobs: &[Vec<&'static str>]) -> String {
+fn dispatchers(jobs: &[(Vec<&'static str>, u32)]) -> String {
     if jobs.is_empty() {
         return String::new();
     }
     let entries: Vec<String> = jobs
         .iter()
         .enumerate()
-        .map(|(k, kinds)| {
+        .map(|(k, (kinds, shortest))| {
             let kinds: Vec<String> = kinds.iter().map(|k| format!("\"{k}\"")).collect();
             format!(
-                "par{k}: (start, end, ...args) => $par({k}, [{}], start, end, args)",
+                "par{k}: (start, end, ...args) => $par({k}, [{}], start, end, args, {shortest})",
                 kinds.join(", ")
             )
         })
@@ -2647,14 +2686,6 @@ fn dispatchers(jobs: &[Vec<&'static str>]) -> String {
 /// The pool of threads and `$par`, which runs a job's turns on them; and
 /// `$patch`, which marks the module's memory import shared to match.
 fn thread_pool(module_flag: usize) -> String {
-    // Decision 0031's options p1 and p2, prototyped: a turn may be a band of
-    // rows, heavy, so a loop of two turns is split already; today, 256.
-    let prototype = std::env::var("PERAS_PROTO_PAR");
-    let shortest = if matches!(prototype.as_deref(), Ok("p1" | "p2")) {
-        2
-    } else {
-        256
-    };
     format!(
         "let $moduleBytes;\n\
          const $patch = (bytes) => {{\n  \
@@ -2716,10 +2747,10 @@ fn thread_pool(module_flag: usize) -> String {
          // A job's turns from `start` to `end`: a part for each thread and one for\n\
          // the page, which then waits for every thread. The page may not block:\n\
          // it spins. A short loop runs on the page alone.\n\
-         const $par = (k, kinds, start, end, args) => {{\n  \
+         const $par = (k, kinds, start, end, args, shortest) => {{\n  \
          const job = $wasm[\"__job\" + k];\n  \
          const n = end - start;\n  \
-         if ($threads.length === 0 || n < {shortest}) return job(start, end, ...args);\n  \
+         if ($threads.length === 0 || n < shortest) return job(start, end, ...args);\n  \
          const size = Math.ceil(n / ($threads.length + 1));\n  \
          kinds.forEach((kind, j) => {{\n    \
          if (kind === \"i64\") $argsI[j] = args[j];\n    \

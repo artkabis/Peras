@@ -365,15 +365,18 @@ impl<'a> Lowering<'a> {
             }
         }
         functions.append(&mut jobs);
-        // The turns that call: refused where a function they call is not pure.
+        // The turns that call: refused where a function they call is not
+        // pure, which is named (decision 0031).
         if !self.pure_pending.is_empty() {
             let pure = parallel::pure_functions(&functions);
             for (span, u, called) in std::mem::take(&mut self.pure_pending) {
-                let all = called
+                let impure = called
                     .iter()
-                    .all(|f| pure.get(f.0 as usize).copied().unwrap_or(false));
-                if !all && let Some(e) = errors.get_mut(u) {
-                    e.push(parallel::refused(span, "calls", ""));
+                    .find(|f| !pure.get(f.0 as usize).copied().unwrap_or(false))
+                    .and_then(|f| functions.get(f.0 as usize));
+                if let (Some(f), Some(e)) = (impure, errors.get_mut(u)) {
+                    let name = f.name.split("__").next().unwrap_or(&f.name).to_owned();
+                    e.push(parallel::refused(span, "impure", &name));
                 }
             }
         }

@@ -277,16 +277,18 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
-/// The option of decision 0031 a build follows for `parallel for`: `p0`,
-/// today's rules, unless `PERAS_PROTO_PAR` names another option measured,
-/// `p1` (pure calls in a turn) or `p2` (and parts), for the measure script
-/// only (`scripts/bench-parallel.mjs`).
+/// The option of decision 0031 a build follows for `parallel for`: `p2`,
+/// pure calls and parts in a turn, the one chosen, unless `PERAS_PROTO_PAR`
+/// names another option measured, `p0` (the rules before it, as `before`)
+/// or `p1` (pure calls only), for the measure script only
+/// (`scripts/bench-parallel.mjs`).
 #[must_use]
 pub fn proto_par() -> String {
-    std::env::var("PERAS_PROTO_PAR")
-        .ok()
-        .filter(|m| matches!(m.as_str(), "p1" | "p2"))
-        .unwrap_or_else(|| "p0".to_owned())
+    match std::env::var("PERAS_PROTO_PAR").as_deref() {
+        Ok("p0" | "before") => "p0".to_owned(),
+        Ok("p1") => "p1".to_owned(),
+        _ => "p2".to_owned(),
+    }
 }
 
 /// The option of decisions 0028 and 0030 a build follows for one of their

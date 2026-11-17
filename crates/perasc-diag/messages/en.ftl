@@ -655,17 +655,20 @@ check-map-key-fix = use an integer, a boolean or a string as the key: an identif
 check-parallel = this loop cannot run in parallel: { $reason ->
     [shape] a parallel loop is written `parallel for (let i = start; i < end; i++)`
     [outer] it assigns `{ $name }`, declared outside the loop
-    [index] it writes an element at another index than its counter's
+    [index] it writes an element at another index than its counter's, out of the parts it takes
     [reads] it reads, at another index than its counter's, an array it writes
-    [calls] it calls a function
+    [calls] it calls a function value
+    [direct] it calls a function
+    [impure] it calls `{ $name }`, which makes or releases memory, writes an element or a module variable, or calls a function value
+    [part] `part` is taken in a turn of a `parallel for`, at its counter, of a size the turn does not compute
     [heap] it makes, grows, moves or releases a string, an array or a map
     [exits] it leaves the loop with `break` or `return`
     [global] it reads or writes a module variable, of which each thread has its own copy
    *[other] its turns could see each other
 }
 check-parallel-label = turns that may run at the same time
-check-parallel-why = The turns of a parallel loop run on several threads at once, in any order. Each turn may read anything the loop does not change, and write only the elements at its own index, so that no turn sees another: the results are then those of the loop run in order, bit for bit.
-check-parallel-fix = keep in each turn only what reads the inputs and writes `xs[i]`; compute a sum or what needs memory in an ordinary loop after it
+check-parallel-why = The turns of a parallel loop run on several threads at once, in any order. Each turn may read anything the loop does not change, call a function that changes nothing, and write only the elements at its own index or in its own part, `xs.part(i, k)`, so that no turn sees another: the results are then those of the loop run in order, bit for bit.
+check-parallel-fix = keep in each turn only what reads the inputs, calls functions that change nothing, and writes `xs[i]` or its part, `let band = xs.part(i, k)`; compute a sum or what needs memory in an ordinary loop after it
 
 # E0242
 check-managed-only = { $what ->

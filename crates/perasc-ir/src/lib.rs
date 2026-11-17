@@ -1668,7 +1668,7 @@ impl Module {
 }
 
 /// Calls `visit` on every expression of `stmts`, nested ones included.
-fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
+pub fn each_expr(stmts: &[Stmt], visit: &mut impl FnMut(&Expr)) {
     for stmt in stmts {
         match stmt {
             Stmt::Set(_, e) | Stmt::SetGlobal(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => {

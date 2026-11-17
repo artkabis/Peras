@@ -269,6 +269,10 @@ pub fn members(receiver: &Ty) -> Vec<&'static str> {
             if searchable(element) {
                 names.extend(["includes", "indexOf"]);
             }
+            // A turn's part of `parallel for` (decision 0031).
+            if crate::proto_par() == "p2" {
+                names.push("part");
+            }
             names.extend(crate::stdlib::FUNCTION_METHODS);
         }
         Ty::String => {
