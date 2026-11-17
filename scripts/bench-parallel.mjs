@@ -224,18 +224,18 @@ const setup = (workload, names) => `
   for (const name of names) {
     if ("${workload}" === "pond") {
       const [w, h, n] = sizes.pond;
-      if (name === "TypeScript") { const m = await import("/ts/pond.js"); const b = [new Int32Array(w * h), new Float64Array(w * h), new Float64Array(3 * w * h)]; made[name] = { draw: () => m.render(...b, w, h, n, 600), out: () => b[0], mem: () => 0 }; }
+      if (name === "TypeScript") { const m = await import("/ts/pond.js"); const b = [new Int32Array(w * h), new Float64Array(w * h), new Float64Array(3 * w * h)]; made[name] = { draw: () => m.render(...b, w, h, n, 600), out: () => b[0], mem: () => b.reduce((s, x) => s + x.byteLength, 0) }; }
       else if (name === "TypeScript, workers") { const b = [shared("Int32Array", w * h), shared("Float64Array", w * h), shared("Float64Array", 3 * w * h)]; const run = await pool("/ts/pond-rows.js", "render", b, [w, h, n, 600], h); made[name] = { draw: run, out: () => b[0], mem: () => b.reduce((s, x) => s + x.byteLength, 0) }; }
       else { const m = await import(name === "Peras" ? "/seq/pond/pond.js" : "/" + name + ".js"); const b = [m.__perasHeap.array("i32", w * h), m.__perasHeap.array("f64", w * h), m.__perasHeap.array("f64", 3 * w * h)]; made[name] = { draw: name === "Peras" ? () => m.render(...b, w, h, n, 600) : () => m.render(...b, w, h, n, 600, W), out: () => b[0].view(), mem: () => b[0].view().buffer.byteLength }; }
     } else if ("${workload}" === "garden") {
       const [w, h] = sizes.garden;
-      if (name === "TypeScript") { const m = await import("/ts/garden.js"); const px = new Uint32Array(w * h); made[name] = { draw: () => m.render(px, w, h, 1, 0.5, 0.5), out: () => px, mem: () => 0 }; }
+      if (name === "TypeScript") { const m = await import("/ts/garden.js"); const px = new Uint32Array(w * h); made[name] = { draw: () => m.render(px, w, h, 1, 0.5, 0.5), out: () => px, mem: () => px.byteLength }; }
       else if (name === "TypeScript, workers") { const px = shared("Uint32Array", w * h); const run = await pool("/ts/garden-rows.js", "render", [px], [w, h, 1, 0.5, 0.5], h); made[name] = { draw: run, out: () => px, mem: () => px.byteLength }; }
       else { const m = await import(name === "Peras" ? "/seq/garden/garden.js" : "/" + name + ".js"); const px = m.__perasHeap.array("i32", w * h); made[name] = { draw: () => m.render(px, w, h, 1, 0.5, 0.5), out: () => px.view(), mem: () => px.view().buffer.byteLength }; }
     } else {
       const [w, h] = sizes.blur;
       const src = input(w * h);
-      if (name === "TypeScript") { const m = await import("/ts/blur.js"); const o = new Float64Array(w * h); made[name] = { draw: () => m.blur(src, o, w, h), out: () => o, mem: () => 0 }; }
+      if (name === "TypeScript") { const m = await import("/ts/blur.js"); const o = new Float64Array(w * h); made[name] = { draw: () => m.blur(src, o, w, h), out: () => o, mem: () => src.byteLength + o.byteLength }; }
       else if (name === "TypeScript, workers") { const i = shared("Float64Array", w * h); i.set(src); const o = shared("Float64Array", w * h); const run = await pool("/ts/blur.js", "blur", [i, o], [w, h], h); made[name] = { draw: run, out: () => o, mem: () => i.byteLength + o.byteLength }; }
       else { const m = await import(name === "Peras" ? "/seq/blur/blur.js" : "/" + name + ".js"); const i = m.__perasHeap.array("f64", src); const o = m.__perasHeap.array("f64", w * h); made[name] = { draw: () => m.blur(i, o, w, h), out: () => o.view(), mem: () => o.view().buffer.byteLength }; }
     }
@@ -327,12 +327,17 @@ const gz = (/** @type {string | Uint8Array} */ x) => gzipSync(x, { level: 9 }).l
 const minified = async (/** @type {string} */ file) =>
   gz((await minify(file, readFileSync(file, "utf8"))).code);
 /** @param {string} name */
-async function shipped(name) {
-  if (name === "TypeScript") return undefined;
-  if (name === "TypeScript, workers") return minified(join(work, "ts", "worker.js"));
-  const folder = name === "Peras" ? undefined : name.split("/").slice(0, 2).join("/");
-  const js = folder === undefined ? undefined : join(work, `${name}.js`);
-  if (js === undefined || !existsSync(js)) return undefined;
+/** What a version ships, counted alike for every version (finding M006). */
+async function shipped(/** @type {string} */ name, /** @type {string} */ workload) {
+  if (name === "TypeScript") return minified(join(work, "ts", `${workload}.js`));
+  if (name === "TypeScript, workers")
+    return (
+      (await minified(join(work, "ts", workload === "blur" ? "blur.js" : `${workload}-rows.js`))) +
+      (await minified(join(work, "ts", "worker.js")))
+    );
+  const js =
+    name === "Peras" ? join(work, "seq", workload, `${workload}.js`) : join(work, `${name}.js`);
+  if (!existsSync(js)) return undefined;
   return (await minified(js)) + gz(readFileSync(js.replace(/\.js$/, ".wasm")));
 }
 /** @param {number[]} xs */
@@ -354,7 +359,7 @@ for (const [workload, r] of Object.entries(results)) {
     const t = r.times[name] ?? [];
     const toSeq = t.map((x, i) => x / (seq[i] ?? Number.NaN));
     const toTs = t.map((x, i) => x / (tsOne[i] ?? Number.NaN));
-    const bytes = await shipped(name);
+    const bytes = await shipped(name, workload);
     const a = r.alone[name];
     lines.push(
       `| ${name.includes("/") ? `Peras ${name.split("/")[0] ?? ""}, \`${name.split("/")[1] ?? ""}\`` : name} | ${median(t).toFixed(1)} ms | ${median(toSeq).toFixed(3)} (${Math.min(...toSeq).toFixed(3)} to ${Math.max(...toSeq).toFixed(3)}) | ${median(toTs).toFixed(3)} | ${(a?.load ?? 0).toFixed(2)} | ${kb(a?.mem ?? 0)} | ${bytes === undefined ? "-" : String(bytes)} |`,
@@ -365,5 +370,5 @@ for (const [workload, r] of Object.entries(results)) {
 console.log(lines.join("\n"));
 writeFileSync(
   join(dir, "RESULTS.md"),
-  `# Parallel loops that can draw a frame: the options measured\n\nGenerated by \`node scripts/bench-parallel.mjs\`, for [decision 0031](../../docs/en/decisions/0031-useful-parallel-loops.md).\n\n${lines.join("\n")}`,
+  `# Parallel loops that can draw a frame: the options measured\n\nRun 1, kept with its flaws, is in [run-1](run-1/RESULTS.md).\n\nGenerated by \`node scripts/bench-parallel.mjs\`, for [decision 0031](../../docs/en/decisions/0031-useful-parallel-loops.md).\n\n${lines.join("\n")}`,
 );
