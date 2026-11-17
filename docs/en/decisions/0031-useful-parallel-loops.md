@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0031-useful-parallel-loops.md](../../fr/decisions/0031-useful-parallel-loops.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks (commit `3a1ba4a`); options measured at `29b742f`, p2 to propose to the owner, who chooses. It answers finding F301, which [decision 0029](0029-pond-of-lanterns.md) met again: the pond cannot be drawn by a `parallel for`, and on that frame only threads can take Peras past JavaScript (its profile, finding F222)._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks (commit `3a1ba4a`); options measured at `29b742f`; option p2 accepted by the owner on 2026-11-17. It answers finding F301, which [decision 0029](0029-pond-of-lanterns.md) met again: the pond cannot be drawn by a `parallel for`, and on that frame only threads can take Peras past JavaScript (its profile, finding F222)._
 
 ## Context
 
@@ -39,6 +39,23 @@ Four quantities, as for decisions 0027, 0028 and 0030. Each option is prototyped
 6. **An option not built** is reported as such, with why, never ranked by a guess (finding M001).
 
 `node scripts/bench-parallel.mjs` runs them; `--check` checks that every program built gives its bytes on one thread, and is run with every check of the project.
+
+## Decision
+
+**Option p2: pure calls, and parts.**
+
+1. A turn of `parallel for` may call a function that, with every function it calls, makes, moves and releases no buffer, writes no element, reads and writes no module variable, and calls no function value; the checker proves it from the call graph, and names the reason of a call it refuses.
+2. In a turn counted by `b`, `let band = xs.part(b, k)` is the elements `b * k` to `(b + 1) * k` of `xs`, which the turn may read and write through `band`; `k` must not depend on the turn. Parts of two turns never overlap. A part is a view: nothing is copied, and it cannot leave the turn. An array written through parts is written and read only through them in the turn.
+3. The loader splits a loop of two turns already when its turn holds a loop or a call, a heavy turn; a loop whose turn does neither keeps waiting for 256 turns, waking the workers costing more than such turns.
+4. Options p0 and p1 stay buildable behind `PERAS_PROTO_PAR`, for the measure script only.
+
+## Criteria of the step, registered before its code
+
+1. **Build tests**: a page of loops that build, a pure call, a call returning a structure, parts in two arrays, a part read where it is written; and refused with `E0241` and their reason: a part not taken at the counter, a part whose size the turn computes, an array written through a part and at the counter, a call to a function that writes a module variable, a call to one that allocates, a call through a function value, a part used outside a turn.
+2. **The same results**: the interpreter's tests of `parallel for` gain a pure call and parts, unoptimized and optimized, against the loop on one thread; `node scripts/bench-parallel.mjs --check` gives the TypeScript's bytes on four threads for the pond, the garden and the blur.
+3. **Each rule broken on purpose is caught**: a part accepted at another index than the counter, and a call accepted to a function that writes a module variable, each fail a build test.
+4. **Measures**, reported, not conditions: `node scripts/bench-parallel.mjs` at the commit of the step; `node scripts/bench-workers.mjs`, whose loops of one element a turn keep the threshold of 256.
+5. **Docs**, in English and in French: the guide's page on threads, the methods reference for `part`, `E0241`'s page, the status, findings F301 and F015, the roadmap, the changelog, `CLAUDE.md`.
 
 ## Record
 

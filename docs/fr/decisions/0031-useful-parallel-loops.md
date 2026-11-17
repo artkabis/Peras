@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0031-useful-parallel-loops.md](../../en/decisions/0031-useful-parallel-loops.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet (commit `3a1ba4a`) ; options mesurées à `29b742f`, p2 à proposer au propriétaire, qui choisit. Il répond au constat F301, que la [décision 0029](0029-pond-of-lanterns.md) a rencontré de nouveau : le bassin ne peut pas être dessiné par un `parallel for`, et sur cette image seuls les threads peuvent faire passer Peras devant JavaScript (son profil, constat F222)._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet (commit `3a1ba4a`) ; options mesurées à `29b742f` ; option p2 acceptée par le propriétaire le 2026-11-17. Il répond au constat F301, que la [décision 0029](0029-pond-of-lanterns.md) a rencontré de nouveau : le bassin ne peut pas être dessiné par un `parallel for`, et sur cette image seuls les threads peuvent faire passer Peras devant JavaScript (son profil, constat F222)._
 
 ## Contexte
 
@@ -39,6 +39,23 @@ Quatre quantités, comme pour les décisions 0027, 0028 et 0030. Chaque option e
 6. **Une option non construite** est dite telle, avec pourquoi, jamais classée sur une supposition (constat M001).
 
 `node scripts/bench-parallel.mjs` les lance ; `--check` vérifie que chaque programme construit donne ses octets sur un thread, et tourne avec chaque vérification du projet.
+
+## Décision
+
+**Option p2 : des appels purs, et des parts.**
+
+1. Un tour de `parallel for` peut appeler une fonction qui, avec chaque fonction qu’elle appelle, ne crée, ne déplace ni ne libère aucun tampon, n’écrit aucun élément, ne lit ni n’écrit aucune variable de module, et n’appelle aucune valeur fonction ; le vérificateur le prouve à partir du graphe d’appels, et nomme la raison d’un appel qu’il refuse.
+2. Dans un tour compté par `b`, `let band = xs.part(b, k)` est les éléments `b * k` à `(b + 1) * k` de `xs`, que le tour peut lire et écrire par `band` ; `k` ne doit pas dépendre du tour. Les parts de deux tours ne se chevauchent jamais. Une part est une vue : rien n’est copié, et elle ne peut pas quitter le tour. Un tableau écrit par des parts n’est écrit et lu que par elles dans le tour.
+3. Le chargeur découpe une boucle dès deux tours quand son tour contient une boucle ou un appel, un tour lourd ; une boucle dont le tour ne fait ni l’un ni l’autre attend toujours 256 tours, réveiller les workers coûtant plus que de tels tours.
+4. Les options p0 et p1 restent constructibles derrière `PERAS_PROTO_PAR`, pour le script de mesure seulement.
+
+## Critères de l’étape, enregistrés avant son code
+
+1. **Tests de construction** : une page de boucles qui se construisent, un appel pur, un appel rendant une structure, des parts dans deux tableaux, une part lue là où elle est écrite ; et refusées par `E0241` avec leur raison : une part qui n’est pas prise au compteur, une part dont le tour calcule la taille, un tableau écrit par une part et au compteur, un appel à une fonction qui écrit une variable de module, un appel à une qui alloue, un appel par une valeur fonction, une part utilisée hors d’un tour.
+2. **Les mêmes résultats** : les tests de l’interpréteur sur `parallel for` gagnent un appel pur et des parts, non optimisés et optimisés, contre la boucle sur un thread ; `node scripts/bench-parallel.mjs --check` donne les octets du TypeScript sur quatre threads pour le bassin, le jardin et le flou.
+3. **Chaque règle cassée exprès est attrapée** : une part acceptée à un autre indice que le compteur, et un appel accepté à une fonction qui écrit une variable de module, font chacun échouer un test de construction.
+4. **Mesures**, rapportées, pas des conditions : `node scripts/bench-parallel.mjs` au commit de l’étape ; `node scripts/bench-workers.mjs`, dont les boucles d’un élément par tour gardent le seuil de 256.
+5. **Docs**, en anglais et en français : la page du guide sur les threads, la référence des méthodes pour `part`, la page d’`E0241`, l’état, les constats F301 et F015, la feuille de route, le journal des modifications, `CLAUDE.md`.
 
 ## Registre
 
