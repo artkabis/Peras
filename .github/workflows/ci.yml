@@ -155,6 +155,8 @@ jobs:
         run: node scripts/demo.mjs --check
       - name: The garden of Apeiron gives the same pixels in every version
         run: node scripts/bench-garden.mjs --check
+      - name: The pond of lanterns gives the same pixels in every version (decision 0029)
+        run: node scripts/bench-lanterns.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

@@ -1,0 +1,23 @@
+// The pond on threads (decision 0029, hypothesis H4), as first written: the
+// rows of the frame split between the cores. A lantern fills pixels across
+// the screen, so a turn writes rows other than its own, and its pixels need
+// the scene's functions; `parallel for` allows neither (finding F301). Kept
+// as written; scripts/bench-lanterns.mjs records what perasc says.
+
+fn tri(x: f64): f64 {
+  return (2.0 * (x - x.floor()) - 1.0).abs();
+}
+
+export fn sky(light: inout Array<f64>, width: i32, height: i32, frame: i32): i32 {
+  const t = frame.toF64();
+  parallel for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      const p = py * width + px;
+      const v = py.toF64() / height.toF64();
+      light[3 * p] = 0.02 + 0.06 * v;
+      light[3 * p + 1] = 0.03 + 0.08 * v * tri(t * 0.02);
+      light[3 * p + 2] = 0.1 + 0.14 * v;
+    }
+  }
+  return 0;
+}

@@ -1,0 +1,31 @@
+// The shared mesh (decision 0029): each lantern holds the mesh it is drawn
+// with, as a user from JavaScript writes it, where `lanterns.push({ mesh,
+// x, z })` keeps one object shared by all. Peras has no sharing yet: the
+// first lantern takes the mesh, and the second cannot (finding F310). Kept
+// as written, refused, the starting point of decision 0030, `Rc<T>`.
+
+struct Mesh {
+  x: Array<f64>;
+  y: Array<f64>;
+  z: Array<f64>;
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Mesh;
+  x: f64;
+  z: f64;
+}
+
+export fn scene(count: i32): i32 {
+  const mesh = Mesh([0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0, 1, 2]);
+  let lanterns: Array<Lantern> = [];
+  for (let i = 0; i < count; i++) {
+    lanterns.push(Lantern(mesh, i.toF64(), 6.0));
+  }
+  let triangles = 0;
+  for (const lantern of lanterns) {
+    triangles += lantern.mesh.tris.length / 3;
+  }
+  return triangles;
+}
