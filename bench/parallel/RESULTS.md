@@ -8,20 +8,20 @@ Machine: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 cores; Node v24.22.1; Chromium.
 
 ### Ease of writing
 
-| Program           | Option | As written                                                                                              | The version that builds | Lines changed |
-| ----------------- | ------ | ------------------------------------------------------------------------------------------------------- | ----------------------- | ------------: |
-| P1, the pond      | p0     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's       | none                    |             - |
-| P1, the pond      | p1     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's       | none                    |             - |
-| P1, the pond      | p2     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's       | `pond-bands.peras`      |           102 |
-| P2, the garden    | p0     | E0241: this loop cannot run in parallel: it calls a function                                            | none                    |             - |
-| P2, the garden    | p1     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's       | `garden-pixels.peras`   |            11 |
-| P2, the garden    | p2     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's       | `garden-rows.peras`     |             3 |
-| P3, the blur      | p0     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | `blur-pixels.peras`     |            29 |
-| P3, the blur      | p1     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | `blur-pixels.peras`     |            29 |
-| P3, the blur      | p2     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | `blur-rows.peras`       |             8 |
-| P4, the dashboard | p0     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | none                    |             - |
-| P4, the dashboard | p1     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | none                    |             - |
-| P4, the dashboard | p2     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map | none                    |             - |
+| Program           | Option | As written                                                                                                                   | The version that builds | Lines changed |
+| ----------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------: |
+| P1, the pond      | p0     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's, out of the parts it takes | none                    |             - |
+| P1, the pond      | p1     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's, out of the parts it takes | none                    |             - |
+| P1, the pond      | p2     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's, out of the parts it takes | `pond-bands.peras`      |           102 |
+| P2, the garden    | p0     | E0241: this loop cannot run in parallel: it calls a function                                                                 | none                    |             - |
+| P2, the garden    | p1     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's, out of the parts it takes | `garden-pixels.peras`   |            11 |
+| P2, the garden    | p2     | E0241: this loop cannot run in parallel: it writes an element at another index than its counter's, out of the parts it takes | `garden-rows.peras`     |             3 |
+| P3, the blur      | p0     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | `blur-pixels.peras`     |            29 |
+| P3, the blur      | p1     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | `blur-pixels.peras`     |            29 |
+| P3, the blur      | p2     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | `blur-rows.peras`       |             8 |
+| P4, the dashboard | p0     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | none                    |             - |
+| P4, the dashboard | p1     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | none                    |             - |
+| P4, the dashboard | p2     | E0241: this loop cannot run in parallel: it makes, grows, moves or releases a string, an array or a map                      | none                    |             - |
 
 ### W1, the pond, frame 600 at 1024 × 768 with 1000 lanterns
 
@@ -29,10 +29,10 @@ SHA-256 of every version's output: `4c70b637b4f53d01`. 4 threads.
 
 | Version                |  Median | / Peras on one thread, median (range) | / TypeScript on one thread | CPU / wall, alone | Memory outside the heap | Shipped, gzip |
 | ---------------------- | ------: | ------------------------------------- | -------------------------: | ----------------: | ----------------------: | ------------: |
-| TypeScript             | 54.3 ms | 1.071 (0.714 to 1.323)                |                      1.000 |              1.09 |                27.0 MiB |          1866 |
-| TypeScript, workers    | 27.0 ms | 0.526 (0.318 to 0.860)                |                      0.497 |              3.40 |                27.0 MiB |          2053 |
-| Peras                  | 52.5 ms | 1.000 (1.000 to 1.000)                |                      0.934 |              1.04 |                27.1 MiB |          8164 |
-| Peras p2, `pond-bands` | 25.5 ms | 0.455 (0.270 to 0.591)                |                      0.424 |              3.33 |                27.1 MiB |         10857 |
+| TypeScript             | 52.6 ms | 1.070 (0.585 to 1.174)                |                      1.000 |              1.15 |                27.0 MiB |          1866 |
+| TypeScript, workers    | 22.9 ms | 0.461 (0.215 to 0.751)                |                      0.441 |              2.84 |                27.0 MiB |          2053 |
+| Peras                  | 48.3 ms | 1.000 (1.000 to 1.000)                |                      0.934 |              1.04 |                27.1 MiB |          8164 |
+| Peras p2, `pond-bands` | 21.6 ms | 0.443 (0.223 to 0.580)                |                      0.417 |              3.23 |                27.1 MiB |         10855 |
 
 ### W2, the garden at 1024 × 1024
 
@@ -40,11 +40,11 @@ SHA-256 of every version's output: `12eb50578f196192`. 4 threads.
 
 | Version                   |   Median | / Peras on one thread, median (range) | / TypeScript on one thread | CPU / wall, alone | Memory outside the heap | Shipped, gzip |
 | ------------------------- | -------: | ------------------------------------- | -------------------------: | ----------------: | ----------------------: | ------------: |
-| TypeScript                | 766.6 ms | 0.887 (0.857 to 1.009)                |                      1.000 |              1.00 |                 4.0 MiB |          1119 |
-| TypeScript, workers       | 313.2 ms | 0.368 (0.321 to 0.476)                |                      0.406 |              2.60 |                 4.0 MiB |          1287 |
-| Peras                     | 862.4 ms | 1.000 (1.000 to 1.000)                |                      1.128 |              1.01 |                 4.1 MiB |          5351 |
-| Peras p1, `garden-pixels` | 251.5 ms | 0.295 (0.282 to 0.385)                |                      0.325 |              2.67 |                 4.1 MiB |          7581 |
-| Peras p2, `garden-rows`   | 259.0 ms | 0.299 (0.287 to 0.342)                |                      0.337 |              2.56 |                 4.1 MiB |          7602 |
+| TypeScript                | 769.9 ms | 0.904 (0.834 to 0.990)                |                      1.000 |              1.00 |                 4.0 MiB |          1119 |
+| TypeScript, workers       | 294.4 ms | 0.344 (0.322 to 0.404)                |                      0.381 |              2.56 |                 4.0 MiB |          1287 |
+| Peras                     | 839.8 ms | 1.000 (1.000 to 1.000)                |                      1.107 |              1.01 |                 4.1 MiB |          5351 |
+| Peras p1, `garden-pixels` | 247.2 ms | 0.296 (0.275 to 0.347)                |                      0.320 |              2.65 |                 4.1 MiB |          7578 |
+| Peras p2, `garden-rows`   | 247.3 ms | 0.293 (0.271 to 0.348)                |                      0.323 |              2.54 |                 4.1 MiB |          7599 |
 
 ### W3, the blur of 2048 × 2048
 
@@ -52,9 +52,9 @@ SHA-256 of every version's output: `158407ec59c56163`. 4 threads.
 
 | Version                 |  Median | / Peras on one thread, median (range) | / TypeScript on one thread | CPU / wall, alone | Memory outside the heap | Shipped, gzip |
 | ----------------------- | ------: | ------------------------------------- | -------------------------: | ----------------: | ----------------------: | ------------: |
-| TypeScript              | 48.3 ms | 0.514 (0.471 to 0.525)                |                      1.000 |              1.02 |                64.0 MiB |           176 |
-| TypeScript, workers     | 13.8 ms | 0.147 (0.142 to 0.196)                |                      0.290 |              3.64 |                64.0 MiB |           337 |
-| Peras                   | 93.8 ms | 1.000 (1.000 to 1.000)                |                      1.946 |              1.05 |                64.1 MiB |          4258 |
-| Peras p0, `blur-pixels` |  7.4 ms | 0.078 (0.072 to 0.147)                |                      0.153 |              3.56 |                64.1 MiB |          6473 |
-| Peras p1, `blur-pixels` |  7.3 ms | 0.077 (0.071 to 0.124)                |                      0.151 |              3.19 |                64.1 MiB |          6471 |
-| Peras p2, `blur-rows`   |  4.3 ms | 0.046 (0.044 to 0.138)                |                      0.090 |              3.82 |                64.1 MiB |          6473 |
+| TypeScript              | 49.8 ms | 0.533 (0.424 to 0.611)                |                      1.000 |              1.08 |                64.0 MiB |           176 |
+| TypeScript, workers     | 15.2 ms | 0.159 (0.116 to 0.335)                |                      0.306 |              3.06 |                64.0 MiB |           337 |
+| Peras                   | 93.9 ms | 1.000 (1.000 to 1.000)                |                      1.876 |              1.01 |                64.1 MiB |          4258 |
+| Peras p0, `blur-pixels` |  7.5 ms | 0.077 (0.071 to 0.174)                |                      0.149 |              4.07 |                64.1 MiB |          6473 |
+| Peras p1, `blur-pixels` |  7.3 ms | 0.077 (0.070 to 0.338)                |                      0.143 |              3.58 |                64.1 MiB |          6473 |
+| Peras p2, `blur-rows`   |  4.8 ms | 0.049 (0.042 to 0.178)                |                      0.098 |              3.45 |                64.1 MiB |          6475 |
