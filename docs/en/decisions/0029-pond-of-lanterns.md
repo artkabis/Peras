@@ -145,3 +145,15 @@ Then each suspect removed alone from Peras, the frame's time against the unchang
 - **SIMD does not explain Rust's lead**: Rust built without it draws the sky in 2.2 ms and the colours in 8.6.
 
 What it says: three quarters of the frame, the triangles and the halos, take Peras the time they take TypeScript and Rust, within 10 %; the gap is in the two passes over every pixel that call small functions, where inlining them and moving what does not change out of the loop recovers about 7 % of the frame (finding F222). Neither gets Peras to 1.3 times TypeScript's speed: on this frame, that can only come from what JavaScript cannot do, the threads (finding F301). Nothing here points at a type of pixels or a `Framebuffer`: the colours cost what the calls to `byte` cost.
+
+### F221's profile, registered before any measure (2026-11-17)
+
+Why the managed module takes 2.41 times TypeScript's time, profiled by removing (finding F201), each variant removing one more difference from the module the study measured (`scripts/profile-managed.mjs`):
+
+- **M0**, the managed module as the study built it, `perasc build` with no build option: a debug build, every integer operation checked for overflow. The protocol above said "compiled to JavaScript" and did not say which build: the study compared this debug module with TypeScript, while the owned module was measured in its production build.
+- **M1**, built for production (`--allocator tlsf`): no overflow check; every index still checked.
+- **M2**, M1 with each index read and write, `$at` and `$put`, written as a direct access.
+- **M3**, M2 with each `$saturate(Math.floor(e), …)` written `Math.floor(e)`, as `pond.ts` writes it.
+- **M4**, M3 with the six arrays of the projected points made as `pond.ts` makes them, `new Float64Array(vertices)`, not filled by `push`.
+
+TypeScript's module and the five variants in one process, in Node, frame 600 at 1024 × 768 with 1,000 lanterns, 15 rounds as the profile above, the order alternating; the ratio of each to TypeScript round by round, its median and range. Every variant must give TypeScript's pixels, which the script checks. What each removal recovers is the difference of consecutive medians. The study's 2.41 was measured in Chromium; Node runs the same engine, and only ratios compare (finding M016).

@@ -145,3 +145,15 @@ Puis chaque suspect retiré seul de Peras, le temps de l’image contre le modul
 - **Le SIMD n’explique pas l’avance de Rust** : Rust construit sans lui dessine le ciel en 2,2 ms et les couleurs en 8,6.
 
 Ce que cela dit : les trois quarts de l’image, les triangles et les halos, prennent à Peras le temps qu’ils prennent à TypeScript et à Rust, à 10 % près ; l’écart est dans les deux passes sur chaque pixel qui appellent de petites fonctions, où les insérer et sortir de la boucle ce qui ne change pas regagne environ 7 % de l’image (constat F222). Ni l’un ni l’autre ne mène Peras à 1,3 fois la vitesse de TypeScript : sur cette image, cela ne peut venir que de ce que JavaScript ne fait pas, les threads (constat F301). Rien ici ne désigne un type de pixels ou un `Framebuffer` : les couleurs coûtent ce que coûtent les appels à `byte`.
+
+### Le profil de F221, enregistré avant toute mesure (2026-11-17)
+
+Pourquoi le module managed prend 2,41 fois le temps du TypeScript, profilé en retirant (constat F201), chaque variante retirant une différence de plus au module que l’étude a mesuré (`scripts/profile-managed.mjs`) :
+
+- **M0**, le module managed tel que l’étude l’a construit, `perasc build` sans option de build : un build de débogage, chaque opération entière vérifiée contre le débordement. Le protocole ci-dessus disait « compilé en JavaScript » sans dire quel build : l’étude a comparé ce module de débogage au TypeScript, alors que le module owned était mesuré dans son build de production.
+- **M1**, construit pour la production (`--allocator tlsf`) : aucune vérification de débordement ; chaque indice encore vérifié.
+- **M2**, M1 avec chaque lecture et écriture d’indice, `$at` et `$put`, écrite comme un accès direct.
+- **M3**, M2 avec chaque `$saturate(Math.floor(e), …)` écrit `Math.floor(e)`, comme `pond.ts` l’écrit.
+- **M4**, M3 avec les six tableaux des points projetés faits comme `pond.ts` les fait, `new Float64Array(vertices)`, non remplis par `push`.
+
+Le module TypeScript et les cinq variantes dans un même processus, dans Node, image 600 en 1024 × 768 avec 1 000 lanternes, 15 tours comme le profil ci-dessus, l’ordre alternant ; le rapport de chacune au TypeScript tour par tour, sa médiane et son étendue. Chaque variante doit donner les pixels du TypeScript, ce que le script vérifie. Ce que chaque retrait récupère est la différence des médianes consécutives. Le 2,41 de l’étude a été mesuré dans Chromium ; Node fait tourner le même moteur, et seuls les rapports se comparent (constat M016).
