@@ -38,3 +38,9 @@ Each option is prototyped behind `PERAS_PROTO_INLINE`; the build without it keep
 ## Record
 
 _Each part is recorded here as it lands._
+
+### A precision of the protocol (2026-11-17), before any prototype
+
+Read before the first prototype (finding M020): `optimize` (`crates/perasc-ir/src/opt.rs`) runs none of its passes, the motion of invariants included, on a function that uses the heap (`Function::uses_heap`), since no pass is proven to keep releases exact. The pond's `render` takes its arrays as parameters: today nothing moves out of its loops at all, not even a simple invariant. Every heavy function of W1 to W3 that takes an array is in that case.
+
+So i2, and i3 with it, also runs the motion of invariants on a function that uses the heap, moving only an assignment to a local that is not a handle, of a simple expression, which reads no block (`is_simple` refuses `Buf`, `Move`, `Borrow` and `Alloc`): what it moves cannot allocate, release or read memory. i1 inlines into a function that uses the heap too, a small function taking and giving numbers or booleans only. The other passes of `optimize` stay as they are; the motion over a function that uses the heap is measured within i2, not as a fifth option, since without it i2 would not reach the pond.

@@ -38,3 +38,9 @@ Chaque option est prototypée derrière `PERAS_PROTO_INLINE` ; le build sans ell
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### Une précision du protocole (2026-11-17), avant tout prototype
+
+Lu avant le premier prototype (constat M020) : `optimize` (`crates/perasc-ir/src/opt.rs`) ne lance aucune de ses passes, le déplacement des invariants compris, sur une fonction qui utilise le tas (`Function::uses_heap`), aucune passe n’étant prouvée garder les libérations exactes. `render` du bassin prend ses tableaux en paramètres : aujourd’hui rien ne sort de ses boucles, pas même un invariant simple. Chaque fonction lourde de W1 à W3 qui prend un tableau est dans ce cas.
+
+Donc i2, et i3 avec elle, lance aussi le déplacement des invariants sur une fonction qui utilise le tas, en ne déplaçant qu’une affectation à une variable locale qui n’est pas une poignée, d’une expression simple, qui ne lit aucun bloc (`is_simple` refuse `Buf`, `Move`, `Borrow` et `Alloc`) : ce qu’elle déplace ne peut ni allouer, ni libérer, ni lire la mémoire. i1 insère aussi dans une fonction qui utilise le tas, une petite fonction qui ne prend et ne donne que des nombres ou des booléens. Les autres passes d’`optimize` restent telles quelles ; le déplacement sur une fonction qui utilise le tas est mesuré au sein de i2, pas comme une cinquième option, puisque sans lui i2 n’atteindrait pas le bassin.
