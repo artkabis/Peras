@@ -643,12 +643,19 @@ impl Lowering<'_> {
         let Some(columns) = self.columns_of(base, span) else {
             return Vec::new();
         };
+        // A part stands for its source (decision 0031, option p2).
+        let part = Self::part_of(state, base, self.ast);
+        let base = part.map_or(base, |p| p.source);
         let buffers = self.value_as(state, base, Mode::Borrow);
         let Some(first) = buffers.first().cloned() else {
             return Vec::new();
         };
         let index = self.expr(state, index);
         let index = state.spill(index);
+        let index = match part {
+            Some(p) => Self::part_index(state, p, index),
+            None => index,
+        };
         state.pre.push(Stmt::Buf(
             BufStmt::CheckIndex,
             vec![index.clone(), len(&first)],
@@ -726,9 +733,15 @@ impl Lowering<'_> {
             offset += at;
             count = len;
         }
+        let part = Self::part_of(state, base, self.ast);
+        let base = part.map_or(base, |p| p.source);
         let buffers = self.value_as(state, base, Mode::Borrow);
         let index = self.expr(state, index);
         let index = state.spill(index);
+        let index = match part {
+            Some(p) => Self::part_index(state, p, index),
+            None => index,
+        };
         // `names[i] += s`: the string element grows in place.
         if let (Some(BinOp::Add), Some(&Elem::Handle), Some(value)) =
             (op, columns.get(offset), value)

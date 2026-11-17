@@ -159,6 +159,8 @@ jobs:
         run: node scripts/bench-lanterns.mjs --check
       - name: Numbers written as JavaScript writes them, every option agreeing in both modes (decision 0030)
         run: node scripts/bench-numbers.mjs --check
+      - name: Parallel loops give the bytes of one thread, every option (decision 0031)
+        run: node scripts/bench-parallel.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

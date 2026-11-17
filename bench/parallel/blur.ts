@@ -1,13 +1,16 @@
-// A blur of an image (decision 0031, program P3), on one thread: each pixel
-// of the output is the mean of the 3 × 3 pixels around it in the input,
-// the edges repeated. The reference the other versions are checked against.
+// A blur of an image (decision 0031, program P3): each pixel of the output
+// is the mean of the 3 × 3 pixels around it in the input, the edges
+// repeated. The reference the other versions are checked against; with the
+// rows it blurs, `top` to `bottom`, the TypeScript workers each run a band.
 export function blur(
   input: Float64Array,
   output: Float64Array,
   width: number,
   height: number,
+  top = 0,
+  bottom = height - 1,
 ): number {
-  for (let y = 0; y < height; y++) {
+  for (let y = top; y <= bottom; y++) {
     const up = y === 0 ? 0 : y - 1;
     const down = y === height - 1 ? height - 1 : y + 1;
     for (let x = 0; x < width; x++) {

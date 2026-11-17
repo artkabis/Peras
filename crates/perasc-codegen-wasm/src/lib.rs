@@ -2647,6 +2647,14 @@ fn dispatchers(jobs: &[Vec<&'static str>]) -> String {
 /// The pool of threads and `$par`, which runs a job's turns on them; and
 /// `$patch`, which marks the module's memory import shared to match.
 fn thread_pool(module_flag: usize) -> String {
+    // Decision 0031's options p1 and p2, prototyped: a turn may be a band of
+    // rows, heavy, so a loop of two turns is split already; today, 256.
+    let prototype = std::env::var("PERAS_PROTO_PAR");
+    let shortest = if matches!(prototype.as_deref(), Ok("p1" | "p2")) {
+        2
+    } else {
+        256
+    };
     format!(
         "let $moduleBytes;\n\
          const $patch = (bytes) => {{\n  \
@@ -2711,7 +2719,7 @@ fn thread_pool(module_flag: usize) -> String {
          const $par = (k, kinds, start, end, args) => {{\n  \
          const job = $wasm[\"__job\" + k];\n  \
          const n = end - start;\n  \
-         if ($threads.length === 0 || n < 256) return job(start, end, ...args);\n  \
+         if ($threads.length === 0 || n < {shortest}) return job(start, end, ...args);\n  \
          const size = Math.ceil(n / ($threads.length + 1));\n  \
          kinds.forEach((kind, j) => {{\n    \
          if (kind === \"i64\") $argsI[j] = args[j];\n    \

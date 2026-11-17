@@ -14,6 +14,7 @@ mod ints;
 mod maps;
 mod matching;
 mod parallel;
+mod parts;
 mod values;
 
 use std::collections::{BTreeSet, HashMap};
@@ -138,6 +139,7 @@ pub fn lower_units(
         current: String::new(),
         body_span: Span::new(0, 0),
         jobs: Vec::new(),
+        pure_pending: Vec::new(),
         job_base: 0,
         applied: HashMap::new(),
         arrows: Vec::new(),
@@ -363,6 +365,18 @@ impl<'a> Lowering<'a> {
             }
         }
         functions.append(&mut jobs);
+        // The turns that call: refused where a function they call is not pure.
+        if !self.pure_pending.is_empty() {
+            let pure = parallel::pure_functions(&functions);
+            for (span, u, called) in std::mem::take(&mut self.pure_pending) {
+                let all = called
+                    .iter()
+                    .all(|f| pure.get(f.0 as usize).copied().unwrap_or(false));
+                if !all && let Some(e) = errors.get_mut(u) {
+                    e.push(parallel::refused(span, "calls", ""));
+                }
+            }
+        }
         functions
     }
 
@@ -566,6 +580,10 @@ struct Lowering<'a> {
     jobs: Vec<Function>,
     /// The id of the first job: the number of other functions.
     job_base: u32,
+    /// The turns of `parallel for` that call functions, by their span and
+    /// unit, and the functions they call: judged once the module is lowered
+    /// (decision 0031, option p1, prototype).
+    pure_pending: Vec<(Span, usize, Vec<FnId>)>,
     /// A function given to `map` and the others by its value, not written
     /// as an arrow function (decision 0025): the scalars of this turn's
     /// element, its arguments, and the type of its result.
@@ -665,6 +683,14 @@ struct FnState {
     ///
     /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
     counted: Option<ExprId>,
+    /// The turn of `parallel for` being lowered: its counter, and the first
+    /// of its own locals (decision 0031, option p2, prototype).
+    turn: Option<(Symbol, usize)>,
+    /// The parts bound in it, by name.
+    parts: HashMap<Symbol, parts::Part>,
+    /// The parts taken at the turn's counter with a size it does not
+    /// compute: their offset and length locals.
+    turn_parts: Vec<(LocalId, LocalId)>,
 }
 
 impl FnState {
@@ -685,6 +711,9 @@ impl FnState {
             views_owned: false,
             fixed: std::collections::HashSet::new(),
             counted: None,
+            turn: None,
+            parts: HashMap::new(),
+            turn_parts: Vec::new(),
         }
     }
 
@@ -1393,6 +1422,9 @@ impl Lowering<'_> {
     ) {
         if let (Some(block), Some(init)) = (&local.otherwise, local.init) {
             self.local_else(state, local, init, block, out);
+            return;
+        }
+        if self.part_local(state, local, out) {
             return;
         }
         let name = self.ast.name(local.name.symbol);

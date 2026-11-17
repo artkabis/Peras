@@ -113,7 +113,9 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                 params: vec![Ty::String],
                 ret: Ty::String,
             }),
-            "slice" => Some(Method {
+            // `part`, decision 0031's option p2, prototyped: the part of a
+            // turn of `parallel for`, a view the code generation checks.
+            "slice" | "part" if name == "slice" || crate::proto_par() == "p2" => Some(Method {
                 params: vec![Ty::Int(IntTy::I32), Ty::Int(IntTy::I32)],
                 ret: me.clone(),
             }),

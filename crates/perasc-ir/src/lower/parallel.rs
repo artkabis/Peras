@@ -82,23 +82,8 @@ impl Lowering<'_> {
                 .map_or_else(String::new, |l| l.name.clone()),
             _ => String::new(),
         };
-        let message = Message::new("check-parallel")
-            .text("reason", refusal.reason())
-            .text("name", name);
-        self.diagnostics.push(Diagnostic {
-            code: codes::PARALLEL,
-            message,
-            labels: vec![Label {
-                span,
-                message: Message::new("check-parallel-label"),
-                primary: true,
-            }],
-            cause: Message::new("check-parallel-why"),
-            fix: Fix {
-                message: Message::new("check-parallel-fix"),
-                edits: Vec::new(),
-            },
-        });
+        self.diagnostics
+            .push(refused(span, refusal.reason(), &name));
     }
 
     /// `E0241` for a loop that is not counted: `parallel for…of`.
@@ -192,6 +177,9 @@ impl Lowering<'_> {
         };
         let step = vec![Stmt::Set(i, super::binary(BinOp::Add, read(i), one))];
         let mut job_body = vec![Stmt::Set(i, read(start_local))];
+        // The turn's parts (decision 0031, option p2, prototype).
+        let outer_turn = state.turn.replace((counted.counter, mark));
+        let outer_parts = std::mem::take(&mut state.turn_parts);
         job_body.extend(self.loop_body(
             state,
             Some(cond),
@@ -202,9 +190,17 @@ impl Lowering<'_> {
         ));
         // What the loop leaves to close belongs to the outer function.
         state.close(out);
-        if let Err(refusal) = check(&job_body, i, mark) {
-            self.refuse(span, &refusal, state);
-            return;
+        state.turn = outer_turn;
+        let parts = std::mem::replace(&mut state.turn_parts, outer_parts);
+        match check(&job_body, i, mark, &parts) {
+            Err(refusal) => {
+                self.refuse(span, &refusal, state);
+                return;
+            }
+            Ok(called) if !called.is_empty() => {
+                self.pure_pending.push((span, self.unit, called));
+            }
+            Ok(_) => {}
         }
         let (job, args) = outline(
             &state.locals,
@@ -224,9 +220,106 @@ impl Lowering<'_> {
     }
 }
 
+/// `E0241` at `span`, for `reason`.
+pub(super) fn refused(span: Span, reason: &str, name: &str) -> Diagnostic {
+    let message = Message::new("check-parallel")
+        .text("reason", reason)
+        .text("name", name);
+    Diagnostic {
+        code: codes::PARALLEL,
+        message,
+        labels: vec![Label {
+            span,
+            message: Message::new("check-parallel-label"),
+            primary: true,
+        }],
+        cause: Message::new("check-parallel-why"),
+        fix: Fix {
+            message: Message::new("check-parallel-fix"),
+            edits: Vec::new(),
+        },
+    }
+}
+
+/// The functions of a module that a turn of `parallel for` may call
+/// (decision 0031, option p1, prototype): with every function they call,
+/// they make, move and release no buffer, write no element, read and write
+/// no module variable, and call no function value. Found by a fixed point
+/// over the call graph, every function pure until shown otherwise.
+pub(super) fn pure_functions(functions: &[Function]) -> Vec<bool> {
+    let mut callees: Vec<BTreeSet<usize>> = Vec::with_capacity(functions.len());
+    let mut pure: Vec<bool> = Vec::with_capacity(functions.len());
+    for f in functions {
+        let mut calls = BTreeSet::new();
+        let mut alone = true;
+        let _ = walk(&f.body, 0, 0, &mut |stmt, _, _| {
+            match stmt {
+                Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
+                Stmt::Buf(..)
+                | Stmt::Release(_)
+                | Stmt::SetGlobal(..)
+                | Stmt::CallManyIndirect { .. } => alone = false,
+                Stmt::CallMany { callee, .. } => {
+                    calls.insert(callee.0 as usize);
+                }
+                _ => {}
+            }
+            Ok(())
+        });
+        crate::each_expr(&f.body, &mut |e| match &e.kind {
+            ExprKind::Call(id, _) => {
+                calls.insert(id.0 as usize);
+            }
+            ExprKind::Buf(BufOp::Get(_) | BufOp::Len, _) | ExprKind::Borrow(_) => {}
+            ExprKind::CallIndirect(..)
+            | ExprKind::Global(_)
+            | ExprKind::Buf(..)
+            | ExprKind::Move(_)
+            | ExprKind::Alloc(_)
+            | ExprKind::Env(..) => alone = false,
+            _ => {}
+        });
+        callees.push(calls);
+        pure.push(alone);
+    }
+    loop {
+        let mut changed = false;
+        for (i, calls) in callees.iter().enumerate() {
+            if pure[i]
+                && calls
+                    .iter()
+                    .any(|&c| !pure.get(c).copied().unwrap_or(false))
+            {
+                pure[i] = false;
+                changed = true;
+            }
+        }
+        if !changed {
+            return pure;
+        }
+    }
+}
+
 /// Whether the turns of a loop, counted by `counter`, are independent: the
-/// locals before `mark` are the outer function's.
-fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
+/// locals before `mark` are the outer function's. The functions a turn
+/// calls, when calls are allowed (decision 0031, option p1), are given back,
+/// for [`pure_functions`] to judge once the module is lowered.
+fn check(
+    body: &[Stmt],
+    counter: LocalId,
+    mark: usize,
+    parts: &[(LocalId, LocalId)],
+) -> Result<Vec<FnId>, Refusal> {
+    let calls_allowed = perasc_check::proto_par() != "p0";
+    let mut called = Vec::new();
+    // `b * k + j` of a part taken at the counter: its own elements.
+    let in_part = |index: &Expr| match &index.kind {
+        ExprKind::Binary(BinOp::Add, offset, _) => {
+            matches!(offset.kind, ExprKind::Local(l) if parts.iter().any(|(o, _)| *o == l))
+        }
+        _ => false,
+    };
+    let mut by_parts = BTreeSet::new();
     let mut written = BTreeSet::new();
     walk(body, 0, 0, &mut |stmt, loops, blocks| {
         match stmt {
@@ -235,16 +328,21 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
                 let [buffer, index, _] = args.as_slice() else {
                     return Err(Refusal::Heap);
                 };
-                if !is_local(index, counter) {
+                let set = if in_part(index) {
+                    &mut by_parts
+                } else if is_local(index, counter) {
+                    &mut written
+                } else {
                     return Err(Refusal::Index);
-                }
+                };
                 if let Some(local) = handle(buffer) {
-                    written.insert(local.0);
+                    set.insert(local.0);
                 }
             }
             // A bounds check reads the length only.
             Stmt::Buf(BufStmt::CheckIndex | BufStmt::CheckOverflow, _) => {}
             Stmt::Buf(..) | Stmt::Release(_) => return Err(Refusal::Heap),
+            Stmt::CallMany { callee, .. } if calls_allowed => called.push(*callee),
             Stmt::CallMany { .. } | Stmt::CallManyIndirect { .. } => return Err(Refusal::Calls),
             // Each thread has its own module variables (decision 0023).
             Stmt::SetGlobal(..) => return Err(Refusal::Global),
@@ -256,15 +354,26 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
         }
         Ok(())
     })?;
+    // A buffer written both at the counter and through parts: their elements
+    // could meet.
+    if written.iter().any(|b| by_parts.contains(b)) {
+        return Err(Refusal::Index);
+    }
     walk_exprs(body, &mut |e| match &e.kind {
+        ExprKind::Call(id, _) if calls_allowed => {
+            called.push(*id);
+            Ok(())
+        }
         ExprKind::Call(..) | ExprKind::CallIndirect(..) => Err(Refusal::Calls),
         ExprKind::Global(_) => Err(Refusal::Global),
         ExprKind::Buf(BufOp::Get(_), args) => {
-            let reads_written = args
-                .first()
-                .and_then(handle)
-                .is_some_and(|l| written.contains(&l.0));
-            if reads_written && !args.get(1).is_some_and(|i| is_local(i, counter)) {
+            let buffer = args.first().and_then(handle).map(|l| l.0);
+            let index = args.get(1);
+            let at_counter = index.is_some_and(|i| is_local(i, counter));
+            let at_part = index.is_some_and(in_part);
+            if buffer.is_some_and(|b| written.contains(&b)) && !at_counter
+                || buffer.is_some_and(|b| by_parts.contains(&b)) && !at_part
+            {
                 Err(Refusal::Reads)
             } else {
                 Ok(())
@@ -273,7 +382,8 @@ fn check(body: &[Stmt], counter: LocalId, mark: usize) -> Result<(), Refusal> {
         ExprKind::Buf(BufOp::Len, _) => Ok(()),
         ExprKind::Buf(..) | ExprKind::Move(_) | ExprKind::Alloc(_) => Err(Refusal::Heap),
         _ => Ok(()),
-    })
+    })?;
+    Ok(called)
 }
 
 fn inner(local: LocalId, mark: usize) -> bool {
@@ -458,6 +568,9 @@ fn collect_set_targets(stmts: &[Stmt], used: &mut BTreeSet<u32>) {
                 collect_set_targets(step, used);
             }
             Stmt::Block(body) => collect_set_targets(body, used),
+            Stmt::CallMany { targets, .. } => {
+                used.extend(targets.iter().map(|l| l.0));
+            }
             _ => {}
         }
     }
@@ -497,6 +610,16 @@ impl Rename {
                 },
                 Stmt::Block(body) => Stmt::Block(self.stmts(body)),
                 Stmt::Buf(op, args) => Stmt::Buf(*op, args.iter().map(|a| self.expr(a)).collect()),
+                // A pure call (decision 0031, option p1, prototype).
+                Stmt::CallMany {
+                    targets,
+                    callee,
+                    args,
+                } => Stmt::CallMany {
+                    targets: targets.iter().map(|l| self.local(*l)).collect(),
+                    callee: *callee,
+                    args: args.iter().map(|a| self.expr(a)).collect(),
+                },
                 // `check` refused the others.
                 other => other.clone(),
             })
