@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0031-useful-parallel-loops.md](../../en/decisions/0031-useful-parallel-loops.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F301, que la [décision 0029](0029-pond-of-lanterns.md) a rencontré de nouveau : le bassin ne peut pas être dessiné par un `parallel for`, et sur cette image seuls les threads peuvent faire passer Peras devant JavaScript (son profil, constat F222)._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet (commit `3a1ba4a`) ; options mesurées à `29b742f`, p2 à proposer au propriétaire, qui choisit. Il répond au constat F301, que la [décision 0029](0029-pond-of-lanterns.md) a rencontré de nouveau : le bassin ne peut pas être dessiné par un `parallel for`, et sur cette image seuls les threads peuvent faire passer Peras devant JavaScript (son profil, constat F222)._
 
 ## Contexte
 
@@ -43,3 +43,33 @@ Quatre quantités, comme pour les décisions 0027, 0028 et 0030. Chaque option e
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+- **2026-11-17, les options mesurées** (`node scripts/bench-parallel.mjs`, [résultats](../../../bench/parallel/RESULTS.md) ; prototypes à `10f7efe`, derrière `PERAS_PROTO_PAR` ; exécution 2 à `29b742f`). Un Intel Xeon à 2,30 GHz, 4 cœurs, Chromium sans écran, la page isolée de toute autre origine, 4 threads. Chaque version, sur threads ou non, donne les octets du TypeScript, vérifiés par SHA-256.
+  - **Facilité d’écriture** : chaque programme tel qu’écrit d’abord sur threads est refusé par chaque option (`E0241`) ; la version qui se construit :
+
+    | Programme           | p0, aujourd’hui              | p1, appels purs              | p2, et des parts            |
+    | ------------------- | ---------------------------- | ---------------------------- | --------------------------- |
+    | P1, le bassin       | aucune                       | aucune                       | en bandes, 102 lignes       |
+    | P2, le jardin       | aucune : il appelle          | un tour par pixel, 11 lignes | un tour par ligne, 3 lignes |
+    | P3, le flou         | un tour par pixel, 29 lignes | la même                      | un tour par ligne, 8 lignes |
+    | P4, tableau de bord | aucune : il alloue et somme  | aucune                       | aucune                      |
+
+    p1 ne peut pas dessiner le bassin : sans parts, un tour n’écrit que son propre indice, et un pixel devrait regarder les 88 000 triangles. Le flou se construit avec p0 une fois que son tour ne crée plus de tableau, `for (const row of [up, y, down])` écrit en trois lignes.
+
+  - **Vitesse**, la médiane des rapports tour par tour, 15 exécutions :
+
+    | Charge                                     | TypeScript, 1 thread | TypeScript, 4 workers |  Peras, 1 thread | Peras sur threads                             |
+    | ------------------------------------------ | -------------------: | --------------------: | ---------------: | --------------------------------------------- |
+    | W1, le bassin, 1024 × 768, 1 000 lanternes |              54,3 ms |    27,0 ms (0,497 TS) |  52,5 ms (0,934) | p2 : 25,5 ms, **0,424 du TypeScript**         |
+    | W2, le jardin, 1024 × 1024                 |             766,6 ms |   313,2 ms (0,406 TS) | 862,4 ms (1,128) | p1 : 251,5 ms, 0,325 ; p2 : 259,0 ms, 0,337   |
+    | W3, le flou, 2048 × 2048                   |              48,3 ms |    13,8 ms (0,290 TS) |  93,8 ms (1,946) | p0 et p1 : 7,3 ms, 0,151 ; p2 : 4,3 ms, 0,090 |
+
+  - **Charge du processeur**, le temps CPU de chaque thread sur le temps réel : 1,0 sur un thread, 2,6 à 3,8 sur quatre, les workers de TypeScript et Peras de même : les threads finissent plus tôt en occupant plus de cœurs.
+  - **Mémoire et octets** : les mêmes tampons pour chaque version (27, 4 et 64 Mio) ; Peras sur threads livre 6,5 à 10,9 Ko en gzip, son chargeur portant la réserve de workers, contre 4,3 à 8,2 Ko sur un thread ; TypeScript 0,2 à 2,1 Ko.
+- **Écarts au protocole.**
+  - **Le chargeur découpe une boucle dès deux tours** en p1 et p2, là où il attendait 256 : un tour peut être une bande de lignes. Sans cela, les 4 bandes du bassin tournaient sur la page seule (77 ms, vu avant l’exécution).
+  - **Le nombre de bandes**, que le protocole laissait ouvert, est 4, les cœurs, choisi après des essais informels de 4 à 48 bandes ; le bassin à une ligne par tour n’a pas été essayé.
+  - **Le flou sur threads ne crée pas de tableau par pixel**, là où le TypeScript et Peras sur un thread le font : Peras sur un thread paie une allocation par pixel (constat F223), si bien que son rapport à Peras sur threads exagère ce que donnent les threads ; face au TypeScript, que V8 garde d’allouer, la comparaison tient.
+  - **L’exécution 1 est gardée avec deux défauts** dans [run-1](../../../bench/parallel/run-1/RESULTS.md) : les octets des versions TypeScript laissaient de côté leur module, et la mémoire du TypeScript sur un thread ses tableaux typés (constat M006) ; corrigés pour l’exécution 2, les temps semblables.
+  - **Un bogue trouvé et corrigé dans le prototype** (constat F015) : un appel rendant plusieurs résultats dans un tour gardait ses variables de résultat hors de la tâche.
+- **Ce que disent les mesures** : seule p2 dessine le bassin, et Peras sur threads y prend 0,424 du temps du TypeScript, 2,4 fois plus vite, et un peu moins que le TypeScript sur quatre workers (0,497). Sur le jardin, p1 et p2 se valent, 3 fois la vitesse du TypeScript et 1,2 fois celle de ses workers. Sur le flou, p2 est la plus rapide, 11 fois la vitesse du TypeScript. p2 est aussi la plus facile là où une image se découpe en lignes : 3 et 8 lignes changées. p2, qui contient les appels purs de p1, est l’option à proposer au propriétaire, qui choisit.

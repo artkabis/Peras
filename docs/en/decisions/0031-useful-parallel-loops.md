@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0031-useful-parallel-loops.md](../../fr/decisions/0031-useful-parallel-loops.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It answers finding F301, which [decision 0029](0029-pond-of-lanterns.md) met again: the pond cannot be drawn by a `parallel for`, and on that frame only threads can take Peras past JavaScript (its profile, finding F222)._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks (commit `3a1ba4a`); options measured at `29b742f`, p2 to propose to the owner, who chooses. It answers finding F301, which [decision 0029](0029-pond-of-lanterns.md) met again: the pond cannot be drawn by a `parallel for`, and on that frame only threads can take Peras past JavaScript (its profile, finding F222)._
 
 ## Context
 
@@ -43,3 +43,33 @@ Four quantities, as for decisions 0027, 0028 and 0030. Each option is prototyped
 ## Record
 
 _Each part is recorded here as it lands._
+
+- **2026-11-17, the options measured** (`node scripts/bench-parallel.mjs`, [results](../../../bench/parallel/RESULTS.md); prototypes at `10f7efe`, behind `PERAS_PROTO_PAR`; run 2 at `29b742f`). An Intel Xeon at 2.30 GHz, 4 cores, Chromium headless, the page cross-origin isolated, 4 threads. Every version, on threads or not, gives the TypeScript's bytes, checked by SHA-256.
+  - **Ease of writing**: each program as first written on threads is refused by every option (`E0241`); the version that builds:
+
+    | Program        | p0, today                   | p1, pure calls             | p2, and parts           |
+    | -------------- | --------------------------- | -------------------------- | ----------------------- |
+    | P1, the pond   | none                        | none                       | in bands, 102 lines     |
+    | P2, the garden | none: it calls              | one turn a pixel, 11 lines | one turn a row, 3 lines |
+    | P3, the blur   | one turn a pixel, 29 lines  | the same                   | one turn a row, 8 lines |
+    | P4, dashboard  | none: it allocates and sums | none                       | none                    |
+
+    p1 cannot draw the pond: without parts, a turn writes only its own index, and a pixel would have to look at all 88,000 triangles. The blur builds with p0 once its turn makes no array, `for (const row of [up, y, down])` written as three lines.
+
+  - **Speed**, the median of the ratios round by round, 15 runs:
+
+    | Workload                                 | TypeScript, 1 thread | TypeScript, 4 workers |  Peras, 1 thread | Peras on threads                            |
+    | ---------------------------------------- | -------------------: | --------------------: | ---------------: | ------------------------------------------- |
+    | W1, the pond, 1024 × 768, 1,000 lanterns |              54.3 ms |    27.0 ms (0.497 TS) |  52.5 ms (0.934) | p2: 25.5 ms, **0.424 of TypeScript's**      |
+    | W2, the garden, 1024 × 1024              |             766.6 ms |   313.2 ms (0.406 TS) | 862.4 ms (1.128) | p1: 251.5 ms, 0.325; p2: 259.0 ms, 0.337    |
+    | W3, the blur, 2048 × 2048                |              48.3 ms |    13.8 ms (0.290 TS) |  93.8 ms (1.946) | p0 and p1: 7.3 ms, 0.151; p2: 4.3 ms, 0.090 |
+
+  - **Load on the processor**, every thread's CPU time over the wall time: 1.0 on one thread, 2.6 to 3.8 on four, TypeScript's workers and Peras's alike: threads finish sooner by keeping more cores busy.
+  - **Memory and bytes**: the same buffers for every version (27, 4 and 64 MiB); Peras on threads ships 6.5 to 10.9 KB gzipped, its loader carrying the pool of workers, against 4.3 to 8.2 KB on one thread; TypeScript 0.2 to 2.1 KB.
+- **Departures from the protocol.**
+  - **The loader splits a loop of two turns already** in p1 and p2, where it waited for 256: a turn may be a band of rows. Without it, the pond's 4 bands ran on the page alone (77 ms, seen before the run).
+  - **The number of bands**, which the protocol left open, is 4, the cores, chosen after informal runs of 4 to 48 bands; the pond's rows of 1 per turn were not tried.
+  - **The blur on threads makes no array per pixel**, where the TypeScript and Peras on one thread do: Peras on one thread pays an allocation a pixel (finding F223), so its ratio to Peras on threads overstates what threads give; against the TypeScript, which V8 keeps from allocating, the comparison holds.
+  - **Run 1 is kept with two flaws** in [run-1](../../../bench/parallel/run-1/RESULTS.md): the bytes of the TypeScript versions left out their module, and the memory of the TypeScript on one thread its typed arrays (finding M006); corrected for run 2, the times alike.
+  - **A bug found and fixed in the prototype** (finding F015): a call returning several results in a turn kept its result locals out of the job.
+- **What the measures say**: only p2 draws the pond, and on it Peras on threads takes 0.424 of the TypeScript's time, 2.4 times as fast, and a little less than the TypeScript on four workers (0.497). On the garden, p1 and p2 are alike, 3 times the TypeScript's speed and 1.2 times its workers'. On the blur, p2 is the fastest, 11 times the TypeScript's speed. p2 is also the easiest where a frame splits into rows: 3 and 8 lines changed. p2, with p1's pure calls in it, is the option to propose to the owner, who chooses.
