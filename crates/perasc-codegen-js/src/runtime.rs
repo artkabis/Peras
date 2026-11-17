@@ -22,6 +22,19 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &["$bounds"],
         "const $at = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
     ),
+    // A shared value's box, decision 0033's option m3, prototyped: one
+    // more holds it; a write through a holder of a box others hold gives
+    // that holder its own.
+    (
+        "$hold",
+        &[],
+        "const $hold = (b) => { if (b != null) b.n += 1; return b; };",
+    ),
+    (
+        "$own",
+        &[],
+        "const $own = (b) => { if (b.n <= 1) return b; b.n -= 1; return { v: structuredClone(b.v), n: 1 }; };",
+    ),
     (
         "$put",
         &["$bounds"],

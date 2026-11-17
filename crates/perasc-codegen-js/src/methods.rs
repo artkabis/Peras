@@ -27,7 +27,12 @@ impl Module<'_> {
         all.push(base);
         all.extend_from_slice(args);
         let values = self.exprs(&all);
-        let me = values[0].clone();
+        // A shared value as a receiver is lent, not held (decision 0033).
+        let me = if self.is_rc_place(base) {
+            self.lent(base)
+        } else {
+            values[0].clone()
+        };
         let rest = &values[1..];
         let arg = |i: usize| {
             rest.get(i)

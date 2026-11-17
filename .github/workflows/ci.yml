@@ -163,6 +163,8 @@ jobs:
         run: node scripts/bench-parallel.mjs --check
       - name: Shared values give JavaScript's results, and leak only where their option says (decision 0032)
         run: node scripts/bench-shared.mjs --check
+      - name: Shared values in a managed module agree with the owned module, every option (decision 0033)
+        run: node scripts/bench-shared-managed.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

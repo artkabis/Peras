@@ -10,7 +10,7 @@ use crate::expr::string_literal;
 use crate::{Module, NameKind};
 
 /// A place a value is written to.
-enum Place {
+pub(crate) enum Place {
     /// A variable, or a field: written as it reads.
     Plain(String),
     /// An element of an array, its bounds checked.
@@ -255,7 +255,7 @@ impl Module<'_> {
     // --- Assignments ----------------------------------------------------------
 
     /// Where `target` is, each part of it computed once.
-    fn place(&mut self, target: ExprId) -> Place {
+    pub(crate) fn place(&mut self, target: ExprId) -> Place {
         match &self.ast.expr(target).kind {
             ExprKind::Index { base, index } => {
                 let proven = self.proven(*base, *index);
@@ -270,8 +270,15 @@ impl Module<'_> {
             }
             ExprKind::Field { base, name } => {
                 let ty = self.ty(*base);
-                let value = self.expr(*base);
+                // A field written through a shared value: the value made
+                // its holder's own first (decision 0033).
+                let shared = matches!(ty, Ty::Rc(_));
+                if shared {
+                    self.own(*base);
+                }
+                let value = self.lent(*base);
                 let value = self.keep(*base, value);
+                let value = if shared { Self::through(&value) } else { value };
                 let text = self.ast.name(name.symbol);
                 if self.is_tuple(&ty) {
                     Place::Plain(format!("{value}[{text}]"))
@@ -280,7 +287,7 @@ impl Module<'_> {
                 }
             }
             ExprKind::Paren(inner) => self.place(*inner),
-            _ => Place::Plain(self.expr(target)),
+            _ => Place::Plain(self.lent(target)),
         }
     }
 
@@ -292,7 +299,7 @@ impl Module<'_> {
         if local { js } else { self.spill(js) }
     }
 
-    fn read(&mut self, place: &Place) -> String {
+    pub(crate) fn read(&mut self, place: &Place) -> String {
         match place {
             Place::Plain(text) => text.clone(),
             Place::Element(base, index) => {
@@ -302,7 +309,7 @@ impl Module<'_> {
         }
     }
 
-    fn write(&mut self, place: &Place, value: &str) -> String {
+    pub(crate) fn write(&mut self, place: &Place, value: &str) -> String {
         match place {
             Place::Plain(text) => format!("{text} = {value}"),
             Place::Element(base, index) => {

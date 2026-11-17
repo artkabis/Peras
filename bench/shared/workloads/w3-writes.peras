@@ -1,0 +1,17 @@
+// W3 of decision 0033: writes through one holder of a value two hold. In
+// an owned module, the first write gives `a` its own value and the others
+// write it in place; a managed module must agree, at its own cost.
+
+struct Cell {
+  value: f64;
+  items: Array<i32>;
+}
+
+export fn writes(n: i32): f64 {
+  let a = Rc.new(Cell(0.0, [1, 2, 3]));
+  const b = a;
+  for (let i = 0; i < n; i++) {
+    a.value += i.toF64();
+  }
+  return a.value + b.value + b.items.length.toF64();
+}

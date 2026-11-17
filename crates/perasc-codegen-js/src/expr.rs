@@ -64,10 +64,15 @@ impl Module<'_> {
                 _ => inner,
             };
         }
+        // A shared value read to be held once more (decision 0033).
+        if self.is_rc_place(id) {
+            let js = self.expr_as_written(id);
+            return self.held(js);
+        }
         self.expr_as_written(id)
     }
 
-    fn expr_as_written(&mut self, id: ExprId) -> String {
+    pub(crate) fn expr_as_written(&mut self, id: ExprId) -> String {
         let expr = self.ast.expr(id);
         let span = expr.span;
         match &expr.kind {
@@ -459,7 +464,15 @@ impl Module<'_> {
             return format!("{{ kind: {}, values: [] }}", string_literal(text));
         }
         let ty = self.ty(base);
-        let value = self.expr(base);
+        // On the way to a write, the shared value is made its holder's own
+        // first (decision 0033).
+        if matches!(ty, Ty::Rc(_)) && self.analysis.changed.contains(&id) {
+            self.own(base);
+        }
+        let value = self.lent(base);
+        if matches!(ty, Ty::Rc(_)) {
+            return format!("{}.{text}", Self::through(&value));
+        }
         match (&ty, text) {
             (Ty::Array(_) | Ty::String, "length") => format!("{value}.length"),
             (Ty::Map(..) | Ty::Set(_), "size") => format!("{value}.size"),
@@ -595,6 +608,10 @@ impl Module<'_> {
         }
         if let Some(js) = self.group_new(id, base, name) {
             return js;
+        }
+        // `Rc.new(value)` (decision 0033).
+        if text == "new" && matches!(self.ty(id), Ty::Rc(_)) && self.bound(base).is_none() {
+            return self.shared_new(args.first().copied());
         }
         // A method of the browser.
         if let Ty::Host(h) = self.ty(base) {

@@ -300,6 +300,17 @@ pub fn proto_rc() -> String {
     }
 }
 
+/// The option of decision 0033 a managed module follows for `Rc<T>`: `m0`,
+/// refused (E0243), unless `PERAS_PROTO_RCM` names an option measured,
+/// `m1`, `m2` or `m3`, for the measure script only.
+#[must_use]
+pub fn proto_rcm() -> String {
+    match std::env::var("PERAS_PROTO_RCM").as_deref() {
+        Ok(o @ ("m1" | "m2" | "m3")) => o.to_owned(),
+        _ => "m0".to_owned(),
+    }
+}
+
 /// The option of decision 0031 a build follows for `parallel for`: `p2`,
 /// pure calls and parts in a turn, the one chosen, unless `PERAS_PROTO_PAR`
 /// names another option measured, `p0` (the rules before it, as `before`)
@@ -1765,7 +1776,7 @@ impl<'a> Checker<'a> {
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
             TypeDef::Rc => {
                 // Not compiled to JavaScript yet (decision 0032).
-                if self.managed {
+                if self.managed && proto_rcm() == "m0" {
                     self.report(errors::owned_only(ty.span, "rc"));
                 }
                 Ty::Rc(Box::new(self.type_arg(args)))

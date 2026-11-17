@@ -28,6 +28,7 @@ mod expr;
 mod foreign;
 mod methods;
 mod runtime;
+mod shared;
 mod stmt;
 
 pub use dts::declarations;

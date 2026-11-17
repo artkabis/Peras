@@ -565,7 +565,7 @@ impl<'a> Checker<'a> {
         {
             return None;
         }
-        if self.managed {
+        if self.managed && crate::proto_rcm() == "m0" {
             self.report(errors::owned_only(at.span, "rc"));
         }
         let [value] = at.args else {
