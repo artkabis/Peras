@@ -675,6 +675,10 @@ struct Checker<'a> {
     /// and every name read so (decision 0028, option 2e).
     narrowed_now: HashMap<usize, Ty>,
     narrowed: HashSet<ExprId>,
+    /// The fields narrowed now, `child.parent` in the block of
+    /// `if (child.parent.isSome())`: a binding, the fields' names from it,
+    /// and the type of the option's value (finding F115).
+    narrowed_fields: Vec<(usize, Vec<Symbol>, Ty)>,
     widened: HashMap<ExprId, Ty>,
     /// See [`Analysis::changed`].
     changed: HashSet<ExprId>,
@@ -785,6 +789,7 @@ impl<'a> Checker<'a> {
             copies: HashSet::new(),
             narrowed_now: HashMap::new(),
             narrowed: HashSet::new(),
+            narrowed_fields: Vec::new(),
             widened: HashMap::new(),
             changed: HashSet::new(),
             mutations: Vec::new(),

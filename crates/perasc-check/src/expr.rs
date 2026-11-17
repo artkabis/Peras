@@ -217,6 +217,14 @@ impl Checker<'_> {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
                     self.capture(index, span);
+                    // Where its option is expected, a narrowed name is the
+                    // option whole, `return node;` (finding F114).
+                    if let Some(option) = self.narrowed_now.get(&index).cloned()
+                        && expected == Some(&option)
+                    {
+                        self.read_name(*symbol, span);
+                        return option;
+                    }
                     if self.narrowed_now.contains_key(&index) {
                         self.narrowed.insert(id);
                     }
@@ -252,7 +260,16 @@ impl Checker<'_> {
                     return ty;
                 }
                 let base_ty = self.infer(*base, None);
-                self.field(&base_ty, name.symbol, name.span)
+                let ty = self.field(&base_ty, name.symbol, name.span);
+                // A field narrowed by a test is its value, but where its
+                // option is expected (findings F114, F115).
+                match self.narrowed_field(id) {
+                    Some(inner) if expected != Some(&ty) => {
+                        self.narrowed.insert(id);
+                        inner
+                    }
+                    _ => ty,
+                }
             }
             ExprKind::Match { scrutinee, arms } => {
                 self.match_expr(*scrutinee, arms, span, expected)
@@ -922,6 +939,17 @@ impl Checker<'_> {
             ExprKind::Name(symbol) => self.scopes.lookup(symbol),
             _ => None,
         };
+        // A field narrowed, read whole by the methods of `Option`.
+        let reads_whole = matches!(
+            self.name(method),
+            "isSome" | "isNone" | "unwrapOr" | "unwrapOrElse" | "unwrap"
+        );
+        if reads_whole && self.narrowed_field(base).is_some() {
+            let fields = std::mem::take(&mut self.narrowed_fields);
+            let ty = self.infer(base, None);
+            self.narrowed_fields = fields;
+            return ty;
+        }
         let whole = index.and_then(|i| self.narrowed_now.get(&i).cloned().map(|t| (i, t)));
         let Some((index, option)) = whole.filter(|_| {
             matches!(

@@ -1,7 +1,7 @@
 //! Statements: declarations, assignments, control flow and returns.
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{AssignOp, Convention, ExprId, ExprKind, Stmt, StmtKind};
+use perasc_syntax::ast::{AssignOp, Convention, ExprId, ExprKind, Stmt, StmtKind, Symbol};
 
 use crate::errors::{self, ConditionFix, Immutable};
 use crate::scope::Kind;
@@ -14,29 +14,55 @@ impl Checker<'_> {
         // Decision 0028's option 2e: after `if (x.isNone())`
         // with a block that leaves, `x` has the type of its value, until
         // the end of this block.
-        let mut narrowed: Vec<(usize, Ty)> = Vec::new();
+        let mut narrowed: Vec<Undo> = Vec::new();
         for stmt in stmts {
             self.stmt(stmt);
-            if let Some((index, inner)) = self.narrowing(stmt)
-                && let Some(binding) = self.scopes.bindings.get_mut(index)
+            if let Some(narrow) = self.narrowing(stmt)
+                && let Some(undo) = self.narrow(narrow)
             {
-                let old = std::mem::replace(&mut binding.ty, inner);
-                self.narrowed_now.insert(index, old.clone());
-                narrowed.push((index, old));
+                narrowed.push(undo);
             }
         }
-        for (index, old) in narrowed.into_iter().rev() {
-            if let Some(binding) = self.scopes.bindings.get_mut(index) {
-                binding.ty = old;
+        for undo in narrowed.into_iter().rev() {
+            self.undo(undo);
+        }
+    }
+
+    /// Gives a name or a field the type of its option's value.
+    fn narrow(&mut self, narrow: Narrow) -> Option<Undo> {
+        match narrow {
+            Narrow::Name(index, inner) => {
+                let old = std::mem::replace(&mut self.scopes.bindings.get_mut(index)?.ty, inner);
+                let before = self.narrowed_now.insert(index, old.clone());
+                Some(Undo::Name(index, old, before))
             }
-            self.narrowed_now.remove(&index);
+            Narrow::Field(index, path, inner) => {
+                self.narrowed_fields.push((index, path, inner));
+                Some(Undo::Field(self.narrowed_fields.len() - 1))
+            }
+        }
+    }
+
+    /// Gives back what [`Self::narrow`] changed.
+    fn undo(&mut self, undo: Undo) {
+        match undo {
+            Undo::Name(index, old, before) => {
+                if let Some(binding) = self.scopes.bindings.get_mut(index) {
+                    binding.ty = old;
+                }
+                match before {
+                    Some(ty) => self.narrowed_now.insert(index, ty),
+                    None => self.narrowed_now.remove(&index),
+                };
+            }
+            Undo::Field(at) => self.narrowed_fields.truncate(at),
         }
     }
 
     /// The variable an `if (x.isNone()) { … }` that leaves narrows, and the
     /// type of its value: a `const` or a parameter not `inout` (decision
     /// 0028, option 2e).
-    fn narrowing(&self, stmt: &Stmt) -> Option<(usize, Ty)> {
+    fn narrowing(&self, stmt: &Stmt) -> Option<Narrow> {
         if crate::proto("PERAS_PROTO_TAKE") != "e" {
             return None;
         }
@@ -60,17 +86,93 @@ impl Checker<'_> {
         if !args.is_empty() || self.name(name.symbol) != "isNone" {
             return None;
         }
-        let index = *self.resolved.get(base)?;
-        let binding = self.scopes.bindings.get(index)?;
-        let fixed = match binding.kind {
-            Kind::Local { mutable, .. } => !mutable,
-            Kind::Param { convention, .. } => convention != Convention::Inout,
-            _ => false,
+        self.fixed_option(*base)
+    }
+
+    /// `x.isSome()`, `x` an option that cannot change: its binding and the
+    /// type of its value, which `x` has in the block the test guards
+    /// (finding F115).
+    fn some_test(&self, cond: ExprId) -> Option<Narrow> {
+        if crate::proto("PERAS_PROTO_TAKE") != "e" {
+            return None;
+        }
+        let ExprKind::Call { callee, args, .. } = &self.ast.expr(cond).kind else {
+            return None;
         };
+        let ExprKind::Field { base, name } = &self.ast.expr(*callee).kind else {
+            return None;
+        };
+        if !args.is_empty() || self.name(name.symbol) != "isSome" {
+            return None;
+        }
+        self.fixed_option(*base)
+    }
+
+    /// An option no one can change: a `const` or a parameter not `inout`,
+    /// or a field of one, `child.parent` (finding F115); what it narrows to.
+    fn fixed_option(&self, base: ExprId) -> Option<Narrow> {
+        if let Some((index, path)) = self.field_path(base) {
+            return match self.expr_types.get(&base) {
+                Some(Ty::Option(inner)) => Some(Narrow::Field(index, path, (**inner).clone())),
+                _ => None,
+            };
+        }
+        let index = *self.resolved.get(&base)?;
+        let binding = self.scopes.bindings.get(index)?;
         match &binding.ty {
-            Ty::Option(inner) if fixed => Some((index, (**inner).clone())),
+            Ty::Option(inner) if self.is_fixed(index) => {
+                Some(Narrow::Name(index, (**inner).clone()))
+            }
             _ => None,
         }
+    }
+
+    /// Whether a binding cannot change: a `const`, or a parameter not
+    /// `inout`.
+    fn is_fixed(&self, index: usize) -> bool {
+        self.scopes
+            .bindings
+            .get(index)
+            .is_some_and(|binding| match binding.kind {
+                Kind::Local { mutable, .. } => !mutable,
+                Kind::Param { convention, .. } => convention != Convention::Inout,
+                _ => false,
+            })
+    }
+
+    /// `a.b.c`, fields down to a binding that cannot change: the binding
+    /// and the fields' names, from it.
+    pub(crate) fn field_path(&self, id: ExprId) -> Option<(usize, Vec<Symbol>)> {
+        let mut path = Vec::new();
+        let mut at = id;
+        loop {
+            match &self.ast.expr(at).kind {
+                ExprKind::Field { base, name } => {
+                    path.push(name.symbol);
+                    at = *base;
+                }
+                ExprKind::Paren(inner) => at = *inner,
+                ExprKind::Name(_) => break,
+                _ => return None,
+            }
+        }
+        let index = *self.resolved.get(&at)?;
+        if path.is_empty() || !self.is_fixed(index) {
+            return None;
+        }
+        path.reverse();
+        Some((index, path))
+    }
+
+    /// The type of the value of a field narrowed here, `child.parent` after
+    /// `if (child.parent.isSome())`.
+    pub(crate) fn narrowed_field(&self, id: ExprId) -> Option<Ty> {
+        let (index, path) = self.field_path(id)?;
+        self.narrowed_fields
+            .iter()
+            .rev()
+            .find(|(i, p, _)| *i == index && *p == path)
+            .map(|(_, _, inner)| inner.clone())
     }
 
     /// A statement used as a body: in a scope of its own, even without braces.
@@ -152,7 +254,12 @@ impl Checker<'_> {
                 otherwise,
             } => {
                 self.condition(*cond);
+                // `if (x.isSome()) { … }`: `x` is its value in the block.
+                let narrowed = self.some_test(*cond).and_then(|n| self.narrow(n));
                 self.scoped(then);
+                if let Some(undo) = narrowed {
+                    self.undo(undo);
+                }
                 if let Some(otherwise) = otherwise {
                     self.scoped(otherwise);
                 }
@@ -455,4 +562,17 @@ impl Checker<'_> {
                 .collect(),
         }
     }
+}
+
+/// What a test narrows (decision 0028, finding F115): a binding, or a field
+/// path from one, to the type of its option's value.
+pub(crate) enum Narrow {
+    Name(usize, Ty),
+    Field(usize, Vec<Symbol>, Ty),
+}
+
+/// How to give back what a narrowing changed.
+enum Undo {
+    Name(usize, Ty, Option<Ty>),
+    Field(usize),
 }

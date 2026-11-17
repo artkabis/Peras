@@ -44,24 +44,24 @@ Under r1, each child holds the parent as it was when the child was made, before 
 
 | Option |  Median | / r0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
 | ------ | ------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
-| r0     | 50.3 ms | 1.000 (1.000 to 1.000) |       0.99 | 27712 KiB |          0 | 14652 (5591) |
-| r1     | 51.5 ms | 1.012 (0.779 to 1.150) |       1.00 | 27712 KiB |          0 | 14783 (5623) |
-| r2     | 51.4 ms | 0.967 (0.770 to 1.140) |       1.00 | 27712 KiB |          0 | 14930 (5674) |
+| r0     | 52.0 ms | 1.000 (1.000 to 1.000) |       1.00 | 27712 KiB |          0 | 14652 (5591) |
+| r1     | 52.0 ms | 1.033 (0.719 to 1.570) |       1.00 | 27712 KiB |          0 | 14989 (5615) |
+| r2     | 51.1 ms | 1.003 (0.685 to 1.629) |       0.99 | 27712 KiB |          0 | 15136 (5666) |
 
 ### W2, a tree of 1,000,000 nodes built, summed, then released
 
 | Option |  Median | / r0, median (range)    | CPU / wall |    Memory | Left alive | Bytes (gzip) |
 | ------ | ------: | ----------------------- | ---------: | --------: | ---------: | -----------: |
-| r0     | 12.2 ms | 1.000 (1.000 to 1.000)  |       0.99 | 16448 KiB |          0 |  3910 (1972) |
-| r1     | 80.8 ms | 6.812 (4.555 to 7.482)  |       1.00 | 78144 KiB |          0 |  3582 (1877) |
-| r2     | 81.2 ms | 6.797 (5.083 to 10.698) |       1.00 | 78144 KiB |          0 |  3729 (1928) |
+| r0     | 11.7 ms | 1.000 (1.000 to 1.000)  |       1.00 | 16448 KiB |          0 |  3910 (1972) |
+| r1     | 70.5 ms | 6.131 (5.343 to 9.549)  |       0.99 | 78144 KiB |          0 |  3582 (1877) |
+| r2     | 73.8 ms | 6.312 (4.493 to 10.535) |       1.00 | 78144 KiB |          0 |  3729 (1928) |
 
 ### Count operations in a frame of W1
 
 | Option | Holders taken | Holders let go | When the lanterns are made | In the loop that draws |
 | ------ | ------------: | -------------: | -------------------------: | ---------------------: |
-| r1     |          2000 |           1001 |                       1000 |                   2000 |
-| r2     |          2000 |           1001 |                       1000 |                   2000 |
+| r1     |          1000 |              1 |                       1000 |                      0 |
+| r2     |          1000 |              1 |                       1000 |                      0 |
 
 Counted by the module's calls to its runtime: the 1,000 holders the array of lanterns lets go when it is released, inside the runtime, are not seen here; the one `shared`, the mesh's first holder, lets go at the end is counted, and set apart from the loop's.
 

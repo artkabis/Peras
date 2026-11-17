@@ -111,3 +111,9 @@ Accepted by the owner. `Rc<T>` is in every build; `PERAS_PROTO_RC=r0` and `r2` b
 - **A managed module refuses `Rc`** with E0243, as it refuses `sink` and `parallel for`, rather than reach code generation: the tests of the docs build every example in both modes, and the guide's met E0900 there.
 
 Still to do, in this order: F114 and F115; a write through a shared value held by another shared value or an element; `Rc` in a managed module.
+
+### Run 2, and findings F114 and F115 (2026-11-17)
+
+Run 2, at commit 7155f9d, after lending: W1 under r1 at 1.033 of r0 (0.719 to 1.570), within the range of its own rounds as in run 1; its count operations in the loop that draws at 0; its module 206 bytes larger (14,989), the place a lent value is read from being written at each use. W2 at 6.131 (5.343 to 9.549). `bench/shared/RESULTS.md` holds the run.
+
+F114 and F115, met by P2 and P3, are closed: a narrowed name or field is its option whole where the option is expected; `if (x.isSome())` narrows `x` in its block; a field of a `const` or a parameter is narrowed as a variable is. P3 as written now builds: under r1 it gives 45, as written, and is fixed as before; P2 as written meets only E0205, its parameter written.

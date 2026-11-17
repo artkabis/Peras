@@ -281,6 +281,7 @@ impl Lowering<'_> {
         let (Some(handle), Some((offset, len, _))) = (handle, picked) else {
             return Vec::new();
         };
+        let (offset, len) = self.narrowed_leaves(id, offset, len);
         let values = self.shared_fields(&handle, &inner, offset, len);
         if mode == Mode::Consume {
             let values = Self::retained(values);

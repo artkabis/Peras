@@ -111,3 +111,9 @@ Acceptée par le propriétaire. `Rc<T>` est dans chaque build ; `PERAS_PROTO_RC=
 - **Un module managed refuse `Rc`** avec E0243, comme il refuse `sink` et `parallel for`, plutôt que d’atteindre la génération de code : les tests de la documentation construisent chaque exemple dans les deux modes, et celui du guide y rencontrait E0900.
 
 Reste à faire, dans cet ordre : F114 et F115 ; une écriture à travers une valeur partagée tenue par une autre ou par un élément ; `Rc` dans un module managed.
+
+### Exécution 2, et constats F114 et F115 (2026-11-17)
+
+Exécution 2, au commit 7155f9d, après le prêt : W1 sous r1 à 1,033 de r0 (0,719 à 1,570), dans l’étendue de ses propres tours comme à l’exécution 1 ; ses opérations de compte dans la boucle qui dessine à 0 ; son module plus gros de 206 octets (14 989), la place d’où une valeur prêtée est lue étant écrite à chaque usage. W2 à 6,131 (5,343 à 9,549). `bench/shared/RESULTS.md` tient l’exécution.
+
+F114 et F115, rencontrés par P2 et P3, sont fermés : un nom ou un champ rétréci est son option entière là où l’option est attendue ; `if (x.isSome())` rétrécit `x` dans son bloc ; un champ d’un `const` ou d’un paramètre est rétréci comme une variable. P3 tel qu’écrit se construit maintenant : sous r1 il donne 45, tel qu’écrit, et se corrige comme avant ; P2 tel qu’écrit ne rencontre plus que E0205, son paramètre écrit.

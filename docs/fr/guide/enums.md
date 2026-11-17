@@ -141,7 +141,9 @@ export fn total(text: String): i32 {
 }
 ```
 
-Les méthodes d’`Option`, `isSome()`, `isNone()` et `unwrapOr`, lisent toujours l’option entière : un programme écrit avec elles continue de se construire. Un `let` n’est pas rétréci : il pourrait recevoir `None` plus tard. Copiez-le d’abord dans une `const`, `const found = best;`, puis testez-la.
+Dans le bloc de `if (x.isSome()) { … }`, `x` est aussi sa valeur. Un champ d’un `const` ou d’un paramètre est rétréci comme une variable, par l’un ou l’autre test : `if (child.parent.isSome()) { … child.parent.name … }`.
+
+Les méthodes d’`Option`, `isSome()`, `isNone()` et `unwrapOr`, lisent toujours l’option entière : un programme écrit avec elles continue de se construire ; de même un nom rétréci là où son option est attendue, `return node;` dans une fonction qui rend `Option<Node>`. Un `let` n’est pas rétréci : il pourrait recevoir `None` plus tard. Copiez-le d’abord dans une `const`, `const found = best;`, puis testez-la.
 
 ## Les résultats : des erreurs qui sont des valeurs
 

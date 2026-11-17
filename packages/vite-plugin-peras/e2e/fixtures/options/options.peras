@@ -205,3 +205,69 @@ export fn fallbacks(k: i32): String {
   const c = m.get(k).unwrapOr(len(`key ${k}`));
   return `${a}|${b}|${c}|${calls}`;
 }
+
+// Where its option is expected, a narrowed name is the option whole:
+// `return x;` (finding F114).
+fn keepSmall(x: Option<i32>): Option<i32> {
+  if (x.isNone()) {
+    return Some(0);
+  }
+  if (x * 2 > 10) {
+    return Some(x * 2);
+  }
+  return x;
+}
+
+export fn narrowedReturned(n: i32): i32 {
+  return keepSmall(Some(n)).unwrapOr(-1) + keepSmall(None).unwrapOr(-1) * 100;
+}
+
+// In the block of `if (x.isSome())`, `x` is its value (finding F115).
+fn label(found: Option<String>): String {
+  if (found.isSome()) {
+    return `${found}:${found.length}`;
+  }
+  return "-";
+}
+
+export fn someBlocks(n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    const found = name(i);
+    if (found.isSome()) {
+      out += found;
+      out += label(found);
+    } else {
+      out += found.unwrapOr("none");
+    }
+  }
+  return out;
+}
+
+struct Item {
+  title: String;
+  note: Option<String>;
+  qty: Option<i32>;
+}
+
+// A field of a `const` narrowed by a test, as a variable is (finding F115).
+export fn fieldNarrowed(n: i32): String {
+  let out = "";
+  for (let i = 0; i < n; i++) {
+    let qty: Option<i32> = None;
+    if (i % 2 == 0) {
+      qty = Some(i);
+    }
+    const item = Item(`i${i}`, name(i), qty);
+    if (item.note.isSome()) {
+      out += item.note;
+      out += `${item.note.length}`;
+    }
+    if (item.qty.isNone()) {
+      continue;
+    }
+    out += `[${item.qty * 2}]`;
+    out += item.note.unwrapOr("~");
+  }
+  return out;
+}

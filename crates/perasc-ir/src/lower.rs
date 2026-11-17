@@ -1865,6 +1865,7 @@ impl Lowering<'_> {
                 let Some((offset, len, _)) = picked else {
                     return zero(ty);
                 };
+                let (offset, len) = self.narrowed_leaves(id, offset, len);
                 return Self::pick(state, fields, offset, len)
                     .into_iter()
                     .next()

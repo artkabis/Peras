@@ -453,6 +453,7 @@ impl Lowering<'_> {
                 let Some((offset, len, _)) = picked else {
                     return Vec::new();
                 };
+                let (offset, len) = self.narrowed_leaves(id, offset, len);
                 let picked = Self::pick(state, fields, offset, len);
                 if mode == Mode::Consume && self.analysis.moves.contains(&id) {
                     picked
@@ -1373,6 +1374,18 @@ impl Lowering<'_> {
             if state.is_owned(*target) {
                 state.live.insert(target.0);
             }
+        }
+    }
+}
+
+impl Lowering<'_> {
+    /// The leaves of a field read: its option's value alone when a test
+    /// narrowed it, its tag left out (finding F115).
+    pub(super) fn narrowed_leaves(&self, id: ExprId, offset: usize, len: usize) -> (usize, usize) {
+        if self.analysis.narrowed.contains(&id) && len > 0 {
+            (offset + 1, len - 1)
+        } else {
+            (offset, len)
         }
     }
 }
