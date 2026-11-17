@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0036-inlining-and-invariants.md](../../fr/decisions/0036-inlining-and-invariants.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `1f4b070`; proposal: none, i0 kept. It answers finding F222, which [decision 0029](0029-pond-of-lanterns.md)'s profile found: in the pond, the work that depends on the row only is done at every pixel, and small functions are called where LLVM inlines them; done by hand, each gains about 3.5 % of the frame. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `1f4b070`; none chosen, i0 kept, by the owner on 2026-11-17. It answers finding F222, which [decision 0029](0029-pond-of-lanterns.md)'s profile found: in the pond, the work that depends on the row only is done at every pixel, and small functions are called where LLVM inlines them; done by hand, each gains about 3.5 % of the frame. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -73,3 +73,7 @@ Two runs at commit 1f4b070, one after the other, nothing else running; every tab
 ### Proposal
 
 **None of the options, i0 kept.** i1 and i3 make modules larger and the garden slower: a regression, under the owner's rule. i2 is no regression, but brings no gain the method can tell from its noise: an option that costs code and brings nothing measured is not an improvement. Once the owner decides, the prototypes leave the compiler, their figures kept here and their code in git at 1f4b070; the differential test keeps its wider generator. F222 stays open, with what this decision learned: an inlining for the pond would have to leave the engine's own inlining as it is, and its gain be shown above the noise, by more rounds or a workload where it is larger. The owner decides.
+
+### Decision (2026-11-17)
+
+The owner chose the proposal: **none of the options, i0 kept**. The prototypes left the compiler (`small.rs`, the wider motion of `licm.rs`, `PERAS_PROTO_INLINE`), and `scripts/bench-inline.mjs` with them, since it had nothing left to compare; their code is in git at 1f4b070, their figures above and in [`bench/inline/RESULTS.md`](../../../bench/inline/RESULTS.md). The differential test keeps its wider generator: it holds today's passes on small functions, divisions and branches too. F222 stays open.

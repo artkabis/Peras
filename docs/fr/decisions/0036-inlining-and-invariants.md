@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0036-inlining-and-invariants.md](../../en/decisions/0036-inlining-and-invariants.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `1f4b070` ; proposition : aucune, i0 gardée. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les insère ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `1f4b070` ; aucune retenue, i0 gardée, par le propriétaire le 2026-11-17. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les insère ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -73,3 +73,7 @@ Deux exécutions au commit 1f4b070, l’une après l’autre, rien d’autre ne 
 ### Proposition
 
 **Aucune des options, i0 gardée.** i1 et i3 agrandissent des modules et ralentissent le jardin : une régression, sous la règle du propriétaire. i2 n’est pas une régression, mais n’apporte aucun gain que la méthode puisse distinguer de son bruit : une option qui coûte du code et n’apporte rien de mesuré n’est pas une amélioration. Une fois que le propriétaire aura décidé, les prototypes quittent le compilateur, leurs chiffres gardés ici et leur code dans git au commit 1f4b070 ; le test différentiel garde son générateur élargi. F222 reste ouvert, avec ce que cette décision a appris : une insertion pour le bassin devrait laisser telle quelle l’insertion propre au moteur, et son gain être montré au-dessus du bruit, par plus de tours ou sur une charge où il est plus grand. Le propriétaire décide.
+
+### Décision (2026-11-17)
+
+Le propriétaire a retenu la proposition : **aucune des options, i0 gardée**. Les prototypes ont quitté le compilateur (`small.rs`, le déplacement élargi de `licm.rs`, `PERAS_PROTO_INLINE`), et `scripts/bench-inline.mjs` avec eux, puisqu’il n’avait plus rien à comparer ; leur code est dans git au commit 1f4b070, leurs chiffres ci-dessus et dans [`bench/inline/RESULTS.md`](../../../bench/inline/RESULTS.md). Le test différentiel garde son générateur élargi : il tient aussi les passes d’aujourd’hui sur les petites fonctions, les divisions et les branches. F222 reste ouvert.

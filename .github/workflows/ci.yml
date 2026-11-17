@@ -169,8 +169,6 @@ jobs:
         run: node scripts/bench-division.mjs --check
       - name: Math as JavaScript writes it, and rounding an integer, every option (decision 0035)
         run: node scripts/bench-math.mjs --check
-      - name: Small functions inlined and invariants moved give what today's build gives, every option (decision 0036)
-        run: node scripts/bench-inline.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)
