@@ -122,7 +122,7 @@ impl Lowering<'_> {
             }
             // A shared value is one handle, its block (decision 0032): a type
             // that holds itself through one has an end.
-            CheckTy::Rc(_) | CheckTy::Weak(_) => Ok(vec![(String::new(), Ty::Owned)]),
+            CheckTy::Rc(_) => Ok(vec![(String::new(), Ty::Owned)]),
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -549,13 +549,6 @@ impl Lowering<'_> {
                 };
                 self.shared_new(state, id, value, mode)
             }
-            AstExpr::Field { base, name }
-                if matches!(self.ast.name(name.symbol), "weak" | "get")
-                    && (matches!(self.check_type(id), Some(CheckTy::Weak(_)))
-                        || matches!(self.check_type(base), Some(CheckTy::Weak(_)))) =>
-            {
-                self.weak_call(state, (base, args.first().copied()), mode)
-            }
             AstExpr::Field { base, name } => {
                 let method = self.ast.name(name.symbol);
                 if let Some(values) = self.map_new(state, id, base, method, mode) {
@@ -631,7 +624,7 @@ impl Lowering<'_> {
             CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
             // The environment of no function, static (decision 0026); a
             // shared value none holds (decision 0032).
-            CheckTy::Callback(..) | CheckTy::Rc(_) | CheckTy::Weak(_) => vec![Expr {
+            CheckTy::Callback(..) | CheckTy::Rc(_) => vec![Expr {
                 kind: ExprKind::Env(crate::EnvOp::Zero, Vec::new()),
                 ty: Ty::Owned,
             }],
@@ -1476,7 +1469,6 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Set(_)
             | CheckTy::Callback(..)
             | CheckTy::Rc(_)
-            | CheckTy::Weak(_)
     )
 }
 
@@ -1589,10 +1581,7 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Map(..)
         | CheckTy::Set(_) => Ok(()),
         CheckTy::Callback(params, ret) => params.iter().try_for_each(compiled).and(compiled(ret)),
-        CheckTy::Array(inner)
-        | CheckTy::Option(inner)
-        | CheckTy::Rc(inner)
-        | CheckTy::Weak(inner) => compiled(inner),
+        CheckTy::Array(inner) | CheckTy::Option(inner) | CheckTy::Rc(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         _ => Err("struct"),
     }

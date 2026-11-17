@@ -13,3 +13,14 @@ minimumReleaseAge: 1440
 overrides:
   # GHSA-g3hv-75wg-m249 (ReDoS via globparts amplification), pulled in by eslint.
   minimatch@<11.0.1: ">=11.0.1"
+
+# Advisories ignored by `pnpm audit`, each with the owner's decision and the
+# condition to remove it. Everything else in the audit stays strict.
+auditConfig:
+  ignoreGhsas:
+    # picomatch <=4.0.7, ReDoS through single-branch repeated extglobs, no
+    # patched version on 2026-11-17. Pulled in by Vite and its tools, for
+    # development only; Peras ships none of it, and every glob it reads is
+    # written in this repository. Ignored by the owner's decision of
+    # 2026-11-17: remove this entry once a patched picomatch is 24 hours old.
+    - GHSA-fc5q-39xc-vjpf

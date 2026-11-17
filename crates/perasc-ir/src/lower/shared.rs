@@ -163,8 +163,7 @@ impl Lowering<'_> {
     }
 
     /// `rc.field = value`, `op=`, or `rc.field++` (no value): the value made
-    /// the holder's own first, under r1, then its slots written; under r2,
-    /// written in place, where every holder sees it.
+    /// the holder's own first, then its slots written.
     pub(super) fn shared_assign(
         &mut self,
         state: &mut FnState,
@@ -227,18 +226,15 @@ impl Lowering<'_> {
         }
     }
 
-    /// The shared value `rc` names made its holder's own, under r1, where it
-    /// is held: a variable, a slot of another shared value, made its
-    /// holder's own first, or an element of an array; its handle, lent, to
-    /// read and write it. Under r2, the value as it is.
+    /// The shared value `rc` names made its holder's own where it is held: a
+    /// variable, a slot of another shared value, made its holder's own
+    /// first, or an element of an array; its handle, lent, to read and write
+    /// it.
     pub(super) fn unique_handle(&mut self, state: &mut FnState, rc: ExprId) -> Option<Expr> {
         let slots = match self.check_type(rc) {
             Some(CheckTy::Rc(inner)) => self.shared_slots(&inner)?.0.len(),
             _ => return None,
         };
-        if perasc_check::proto_rc() == "r2" {
-            return self.value_as(state, rc, Mode::Borrow).into_iter().next();
-        }
         let bytes = Expr {
             kind: ExprKind::Const(Const::Int(16 + 8 * i64::try_from(slots).ok()?)),
             ty: Ty::I32,
@@ -374,38 +370,6 @@ impl Lowering<'_> {
         } else {
             values
         }
-    }
-
-    /// `Rc.weak(rc)`, a holder that does not keep the value alive, or
-    /// `weak.get()`, the value while it lives, as an option (r2).
-    pub(super) fn weak_call(
-        &mut self,
-        state: &mut FnState,
-        (base, arg): (ExprId, Option<ExprId>),
-        mode: Mode,
-    ) -> Vec<Expr> {
-        let runtime = |f: RuntimeFn, of: Expr| Expr {
-            kind: ExprKind::Buf(BufOp::Runtime(f), vec![of]),
-            ty: f.result(),
-        };
-        let values = if matches!(self.check_type(base), Some(CheckTy::Weak(_))) {
-            let Some(weak) = self.value_as(state, base, Mode::Borrow).into_iter().next() else {
-                return Vec::new();
-            };
-            vec![
-                runtime(RuntimeFn::WeakAlive, weak.clone()),
-                runtime(RuntimeFn::WeakGet, weak),
-            ]
-        } else {
-            let Some(arg) = arg else {
-                return Vec::new();
-            };
-            let Some(rc) = self.value_as(state, arg, Mode::Borrow).into_iter().next() else {
-                return Vec::new();
-            };
-            vec![runtime(RuntimeFn::WeakNew, rc)]
-        };
-        Self::fresh(state, values, mode)
     }
 
     /// The leaves `offset` to `offset + len` of the value an `Rc` holds,

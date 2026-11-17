@@ -108,7 +108,11 @@ Accepted by the owner. `Rc<T>` is in every build; `PERAS_PROTO_RC=r0` and `r2` b
 - **A shared value read in a loop is lent.** `const mesh = fleet[i].mesh` holds nothing when nothing from there to the end of the function changes or moves `fleet` or `i`: the checker records every place changed with the variable it starts from (`Analysis::mutations`), and the lowering reads the value from its place at each use (`lent_shared`). W1's count operations in the loop that draws fall from 2,000 a frame to 0, the protocol's target. A `let` still holds the value once more, which is what a turn of `parallel for` is refused (`bench/shared/parallel/holds.peras`).
 - **Tested** by `packages/vite-plugin-peras/e2e/shared.test.ts` on both allocators: every case where lending would be wrong, a variable replaced, an index changed, an element replaced, the array grown or moved, gives a number of its own, and nothing is left alive. With the rule broken on purpose, mutations and moves ignored, both tests fail (finding M024).
 - **Documented** in [the guide](../guide/memory.md#sharing-a-value), whose example is compiled by the tests of the docs.
-- **A managed module refuses `Rc`** with E0243, as it refuses `sink` and `parallel for`, rather than reach code generation: the tests of the docs build every example in both modes, and the guide's met E0900 there.
+- **A managed module refuses `Rc`** with E0243, as it refuses `sink` and `parallel for`, rather than reach code generation: the tests of the docs build every example in both modes, and the guide's met E0900 there. Since [decision 0033](0033-shared-values-in-managed-modules.md), a managed module compiles `Rc` too.
+
+### Option r2 removed (2026-11-17)
+
+Under the owner's rule that every decision is an improvement, never a regression, r2 is removed from the compiler: not chosen, its runtime variants cost every build of the compiler 90 KB. Its figures stay in this record, its code at b30819e; `scripts/bench-shared.mjs` measures r0 and r1.
 
 Still to do, in this order: F114 and F115; a write through a shared value held by another shared value or an element; `Rc` in a managed module.
 

@@ -108,7 +108,11 @@ Acceptée par le propriétaire. `Rc<T>` est dans chaque build ; `PERAS_PROTO_RC=
 - **Une valeur partagée lue dans une boucle est prêtée.** `const mesh = fleet[i].mesh` ne tient rien quand rien, de là à la fin de la fonction, ne change ni ne déplace `fleet` ou `i` : le vérificateur note chaque place changée avec la variable dont elle part (`Analysis::mutations`), et la descente lit la valeur à sa place à chaque usage (`lent_shared`). Les opérations de compte de W1 dans la boucle qui dessine tombent de 2 000 par image à 0, la cible du protocole. Un `let` tient encore la valeur une fois de plus, ce qui est refusé à un tour de `parallel for` (`bench/shared/parallel/holds.peras`).
 - **Testé** par `packages/vite-plugin-peras/e2e/shared.test.ts` sur les deux allocateurs : chaque cas où prêter serait faux, une variable remplacée, un indice changé, un élément remplacé, le tableau agrandi ou déplacé, donne un nombre à lui, et rien ne reste vivant. Avec la règle cassée exprès, mutations et déplacements ignorés, les deux tests échouent (constat M024).
 - **Documenté** dans [le guide](../guide/memory.md#partager-une-valeur), dont l’exemple est compilé par les tests de la documentation.
-- **Un module managed refuse `Rc`** avec E0243, comme il refuse `sink` et `parallel for`, plutôt que d’atteindre la génération de code : les tests de la documentation construisent chaque exemple dans les deux modes, et celui du guide y rencontrait E0900.
+- **Un module managed refuse `Rc`** avec E0243, comme il refuse `sink` et `parallel for`, plutôt que d’atteindre la génération de code : les tests de la documentation construisent chaque exemple dans les deux modes, et celui du guide y rencontrait E0900. Depuis la [décision 0033](0033-shared-values-in-managed-modules.md), un module managed compile `Rc` aussi.
+
+### Option r2 retirée (2026-11-17)
+
+Sous la règle du propriétaire qu’aucune décision n’est une régression, r2 est retirée du compilateur : non retenue, ses variantes du runtime coûtaient 90 Ko à chaque build du compilateur. Ses chiffres restent dans ce registre, son code à b30819e ; `scripts/bench-shared.mjs` mesure r0 et r1.
 
 Reste à faire, dans cet ordre : F114 et F115 ; une écriture à travers une valeur partagée tenue par une autre ou par un élément ; `Rc` dans un module managed.
 

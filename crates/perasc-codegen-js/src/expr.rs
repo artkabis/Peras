@@ -67,7 +67,7 @@ impl Module<'_> {
         // A shared value read to be held once more (decision 0033).
         if self.is_rc_place(id) {
             let js = self.expr_as_written(id);
-            return self.held(js);
+            return self.held(&js);
         }
         self.expr_as_written(id)
     }

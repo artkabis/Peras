@@ -97,6 +97,7 @@ export fn small(): i32 {
 - **Une valeur partagée reste une valeur.** Écrire par un détenteur, `b.tris.push(3)` ou `b.x = 1`, rend d’abord la valeur propre à ce détenteur : sur place quand personne d’autre ne la tient, sur une copie sinon. Les autres détenteurs gardent ce qu’ils avaient.
 - **Aucun cycle ne peut se construire**, donc rien ne reste jamais vivant : une valeur ne peut tenir que des valeurs faites avant elle. Un enfant ne peut pas tenir le parent auquel il est ajouté ; un graphe qui pointe en arrière s’écrit depuis le parent, ou par des numéros dans un tableau.
 - **Lire ne coûte rien de plus.** `const mesh = lanterns[i].mesh` est prêté, pas tenu une fois de plus, tant que rien ne change `lanterns` ni `i`. Un tour de `parallel for` peut lire une valeur partagée, ni la tenir une fois de plus ni l’écrire ([E0241](../errors/E0241.md)).
+- **Un module managed partage les valeurs comme un module owned** : son `Rc` est une boîte qui compte ses détenteurs, copiée à la première écriture par l’un de plusieurs ([décision 0033](../decisions/0033-shared-values-in-managed-modules.md)) ; le même programme donne les mêmes valeurs dans les deux modes.
 - **Pour la vitesse, les numéros gagnent encore.** Un arbre d’un million de nœuds partagés prend 6,8 fois le temps du même arbre gardé dans des tableaux, chaque enfant son indice, et 4,75 fois la mémoire.
 
 ## Quand la mémoire est libérée

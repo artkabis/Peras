@@ -1,7 +1,9 @@
-// Decision 0032's protocol: shared values, `Rc<T>`. Each option is a
-// prototype the compiler builds when PERAS_PROTO_RC names it: r0, no `Rc`,
-// the build without the variable; r1, read only and copied on write; r2,
-// changed in place, with `Weak<T>`. r3, a detector of cycles, is not built.
+// Decision 0032's protocol: shared values, `Rc<T>`. r1, read only and
+// copied on write, chosen, is the build's; r0, no `Rc`, is built when
+// PERAS_PROTO_RC names it. r2, changed in place with `Weak<T>`, was measured
+// at commit b30819e and removed once not chosen (its runtime cost every
+// build of the compiler 90 KB): its figures are in the decision. r3, a
+// detector of cycles, was not built.
 //
 // 1. Ease of writing: the four programs of bench/shared/ease, written as a
 //    user writes them from JavaScript, built by each option: the errors met,
@@ -36,7 +38,7 @@ const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "shared");
 const work = join(root, "target", "bench-shared");
 const perasc = join(root, "target", "release", "perasc");
-const OPTIONS = ["r0", "r1", "r2"];
+const OPTIONS = ["r0", "r1"];
 
 rmSync(work, { recursive: true, force: true });
 
@@ -138,13 +140,6 @@ const programs = [
   ["p3", [10], "100"],
   ["p4", [], "34"],
 ];
-// The rows of one program and option: the fixed version, or another one
-// written for that option, `p3-r2-weak` with a weak parent.
-/** @type {Record<string, string[]>} */
-const variants = { "p3 r2": ["p3-r2", "p3-r2-weak"] };
-// The only program that may leave blocks alive: P3 holding its parent
-// strongly, under r2, its cycle not broken.
-const leaking = new Set(["p3-r2 r2"]);
 lines.push("### Ease of writing", "");
 lines.push(
   "Each program as a user writes it from JavaScript, built by each option; then its version fixed until it builds and gives JavaScript's result, run on the debug allocator.",
@@ -159,7 +154,7 @@ for (const [p, input, want] of programs) {
   for (const o of OPTIONS) {
     const first = build(natural, o, ["--allocator", "debug"]);
     const errors = first.ok ? "builds" : first.errors.join(", ");
-    const names = variants[`${p} ${o}`] ?? [`${p}-${o}`];
+    const names = [`${p}-${o}`];
     for (const name of names) {
       const fixed = join(bench, "ease", "fixed", `${name}.peras`);
       const file = existsSync(fixed) ? fixed : natural;
@@ -168,7 +163,7 @@ for (const [p, input, want] of programs) {
       const live = m.__perasHeap.live();
       const label = file === natural ? "as written" : `${name}.peras`;
       if (got !== want) throw new Error(`${p} ${o}, ${label}: ${got}, not ${want}`);
-      if (live !== 0 && !leaking.has(`${name} ${o}`)) {
+      if (live !== 0) {
         throw new Error(`${p} ${o}, ${label}: ${String(live)} blocks alive`);
       }
       lines.push(
@@ -183,16 +178,13 @@ lines.push("- r0: a number for each shared value, kept in an array (P1, P2, P3);
 lines.push(
   "- r1: `Rc<T>` and `Rc.new`; a value written through one holder is that holder's own (P4); no cycle can be built, so a child cannot hold the parent it is added to (P3).",
 );
-lines.push(
-  "- r2: `Rc<T>` and `Rc.new`; a write is seen by every holder, so a holder that must not see it takes a copy (P4); `Weak<T>`, `Rc.weak` and `get()` to break a cycle (P3).",
-);
 lines.push("");
 
-// 2. Leaks: P3 as written, its narrowing fixed, its parent held strongly.
+// 2. Leaks: P3 as written, its parent held strongly.
 lines.push("### Leaks: P3 as written, on the debug allocator", "");
 lines.push("| Option | Builds | Result (JavaScript: 100) | Blocks left alive |");
 lines.push("| --- | --- | --- | ---: |");
-const p3 = join(bench, "ease", "fixed", "p3-r2.peras");
+const p3 = join(bench, "ease", "p3.peras");
 for (const o of OPTIONS) {
   const built = build(p3, o, ["--allocator", "debug"]);
   if (!built.ok) {
@@ -202,7 +194,7 @@ for (const o of OPTIONS) {
   const m = await load(built.js);
   const got = String(m.p3?.(10));
   const live = m.__perasHeap.live();
-  if ((o === "r1" && (got !== "45" || live !== 0)) || (o === "r2" && live === 0)) {
+  if (o === "r1" && (got !== "45" || live !== 0)) {
     throw new Error(`P3 as written, ${o}: ${got}, ${String(live)} blocks alive`);
   }
   lines.push(`| ${o} | yes | ${got} | ${String(live)} |`);
@@ -244,12 +236,12 @@ const pondR0 = join(root, "bench", "lanterns", "pond.peras");
 const workloads = [
   [
     `W1, the pond, frame ${String(FRAME)} at ${String(WIDTH)} × ${String(HEIGHT)} with ${String(LANTERNS)} lanterns`,
-    { r0: pondR0, r1: wl("w1-rc.peras"), r2: wl("w1-rc.peras") },
+    { r0: pondR0, r1: wl("w1-rc.peras") },
     pond,
   ],
   [
     "W2, a tree of 1,000,000 nodes built, summed, then released",
-    { r0: wl("w2-index.peras"), r1: wl("w2-rc.peras"), r2: wl("w2-rc.peras") },
+    { r0: wl("w2-index.peras"), r1: wl("w2-rc.peras") },
     (m) => {
       const draw = () => m.tree?.(1_000_000);
       return { draw, digest: String(draw()), release: () => undefined };
@@ -312,7 +304,7 @@ lines.push(
   "| Option | Holders taken | Holders let go | When the lanterns are made | In the loop that draws |",
 );
 lines.push("| --- | ---: | ---: | ---: | ---: |");
-for (const option of ["r1", "r2"]) {
+for (const option of ["r1"]) {
   const built = build(wl("w1-rc.peras"), option, ["--allocator", "debug", "--link", "off"]);
   if (!built.ok) throw new Error(`W1 unlinked, ${option}: ${built.errors.join(", ")}`);
   const text = readFileSync(built.js, "utf8");
@@ -363,14 +355,14 @@ lines.push(
 
 // 5. Parallel loops.
 lines.push("### Shared values in a turn of `parallel for`", "");
-lines.push("| Turn | r1 | r2 |");
-lines.push("| --- | --- | --- |");
+lines.push("| Turn | r1 |");
+lines.push("| --- | --- |");
 for (const [label, file, refused] of /** @type {[string, string, boolean[]][]} */ ([
-  ["reads a shared value", "reads.peras", [false, false]],
-  ["holds it once more", "holds.peras", [true, true]],
-  ["writes a field of it", "writes.peras", [true, false]],
+  ["reads a shared value", "reads.peras", [false]],
+  ["holds it once more", "holds.peras", [true]],
+  ["writes a field of it", "writes.peras", [true]],
 ])) {
-  const cells = ["r1", "r2"].map((option, i) => {
+  const cells = ["r1"].map((option, i) => {
     const built = build(join(bench, "parallel", file), option, ["--threads", "on"]);
     if (built.ok === refused[i]) {
       throw new Error(`parallel ${file}, ${option}: ${built.ok ? "accepted" : "refused"}`);
@@ -386,10 +378,7 @@ lines.push("");
 lines.push("### A loop over a field another holder replaces", "");
 lines.push("| Option | Result (JavaScript: 6) | Left alive |");
 lines.push("| --- | ---: | ---: |");
-for (const [option, want] of [
-  ["r1", "6"],
-  ["r2", "91"],
-]) {
+for (const [option, want] of [["r1", "6"]]) {
   const { m } = await made(join(bench, "aliasing", "loop.peras"), option ?? "", [
     "--allocator",
     "debug",

@@ -1,8 +1,9 @@
-//! Shared values in a managed module (decision 0033, prototypes): `Rc<T>`
-//! read only and copied on write, as an owned module's are (decision 0032),
-//! by one of three options `PERAS_PROTO_RCM` names: m1, the object shared
-//! and copied at every write; m2, copied at every holder; m3, a box
-//! `{ v, n }` counted, never released.
+//! Shared values in a managed module (decision 0033, option m3): `Rc<T>`
+//! read only and copied on write, as an owned module's are (decision 0032).
+//! An `Rc` is a box `{ v, n }`: a copy holds the same box and counts one
+//! more; a write through a holder of a box others hold gives that holder its
+//! own. Nothing is ever taken off a count, so a count can only be too high:
+//! a copy may be made that was not needed, never one that was missed.
 
 use perasc_check::ty::Ty;
 use perasc_syntax::ast::{ExprId, ExprKind};
@@ -10,11 +11,6 @@ use perasc_syntax::ast::{ExprId, ExprKind};
 use crate::Module;
 
 impl Module<'_> {
-    /// The option of decision 0033 this build follows.
-    pub(crate) fn rcm() -> String {
-        perasc_check::proto_rcm()
-    }
-
     /// Whether `id` reads a shared value, or an option of one, from a place:
     /// a variable, a field or an element.
     pub(crate) fn is_rc_place(&self, id: ExprId) -> bool {
@@ -31,14 +27,9 @@ impl Module<'_> {
             }
     }
 
-    /// A shared value read to be held once more: under m2 a copy of it,
-    /// under m3 its box counted once more.
-    pub(crate) fn held(&mut self, js: String) -> String {
-        match Self::rcm().as_str() {
-            "m2" => format!("structuredClone({js})"),
-            "m3" => format!("{}({js})", self.helper("$hold")),
-            _ => js,
-        }
+    /// A shared value read to be held once more: its box counted once more.
+    pub(crate) fn held(&mut self, js: &str) -> String {
+        format!("{}({js})", self.helper("$hold"))
     }
 
     /// An expression read where it is only lent: the base of a field, the
@@ -51,36 +42,24 @@ impl Module<'_> {
         }
     }
 
-    /// `rc.field`: under m3, through its box.
+    /// `rc.field`: through its box.
     pub(crate) fn through(value: &str) -> String {
-        if Self::rcm() == "m3" {
-            format!("{value}.v")
-        } else {
-            value.to_owned()
-        }
+        format!("{value}.v")
     }
 
-    /// Before a write through the shared value `id` names: under m1 a copy
-    /// of it, under m3 its own box, put back where it is held.
+    /// Before a write through the shared value `id` names: its own box, put
+    /// back where it is held.
     pub(crate) fn own(&mut self, id: ExprId) {
-        let copy = match Self::rcm().as_str() {
-            "m1" => "structuredClone",
-            "m3" => self.helper("$own"),
-            _ => return,
-        };
+        let own = self.helper("$own");
         let place = self.place(id);
         let current = self.read(&place);
-        let write = self.write(&place, &format!("{copy}({current})"));
+        let write = self.write(&place, &format!("{own}({current})"));
         self.line(format!("{write};"));
     }
 
-    /// `Rc.new(value)`: the value, or under m3 its box.
+    /// `Rc.new(value)`: its box.
     pub(crate) fn shared_new(&mut self, value: Option<ExprId>) -> String {
         let value = value.map_or_else(|| "undefined".to_owned(), |v| self.expr(v));
-        if Self::rcm() == "m3" {
-            format!("{{ v: {value}, n: 1 }}")
-        } else {
-            value
-        }
+        format!("{{ v: {value}, n: 1 }}")
     }
 }

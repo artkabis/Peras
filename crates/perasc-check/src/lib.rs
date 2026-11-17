@@ -286,28 +286,16 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
-/// The option of decision 0032 a build follows for shared values: `r0`, no
-/// `r1`, chosen: `Rc<T>` read only, copied on write; unless `PERAS_PROTO_RC`
-/// names another option measured, `r0` (no `Rc`, sharing by indices) or
-/// `r2` (changeable, with `Weak`), for the measure script only
-/// (`scripts/bench-shared.mjs`).
+/// The option of decision 0032 a build follows for shared values: `r1`,
+/// chosen, `Rc<T>` read only and copied on write; unless `PERAS_PROTO_RC`
+/// names `r0`, no `Rc`, the reference of the measure script
+/// (`scripts/bench-shared.mjs`). Option r2 was removed once measured: it
+/// was not chosen, and its runtime cost every build of the compiler 90 KB.
 #[must_use]
 pub fn proto_rc() -> String {
     match std::env::var("PERAS_PROTO_RC").as_deref() {
         Ok("r0") => "r0".to_owned(),
-        Ok("r2") => "r2".to_owned(),
         _ => "r1".to_owned(),
-    }
-}
-
-/// The option of decision 0033 a managed module follows for `Rc<T>`: `m0`,
-/// refused (E0243), unless `PERAS_PROTO_RCM` names an option measured,
-/// `m1`, `m2` or `m3`, for the measure script only.
-#[must_use]
-pub fn proto_rcm() -> String {
-    match std::env::var("PERAS_PROTO_RCM").as_deref() {
-        Ok(o @ ("m1" | "m2" | "m3")) => o.to_owned(),
-        _ => "m0".to_owned(),
     }
 }
 
@@ -604,8 +592,6 @@ pub(crate) enum TypeDef {
     Result,
     /// `Rc<T>` (decision 0032, prototype).
     Rc,
-    /// `Weak<T>` (decision 0032, prototype r2).
-    Weak,
     Generic(Template, usize),
     /// `type Name = …`, by its index in [`Checker::aliases`].
     Alias(usize),
@@ -619,7 +605,7 @@ impl TypeDef {
     /// aside.
     const fn arity(&self) -> usize {
         match self {
-            Self::Array | Self::Set | Self::Option | Self::Promise | Self::Rc | Self::Weak => 1,
+            Self::Array | Self::Set | Self::Option | Self::Promise | Self::Rc => 1,
             Self::Result | Self::Map => 2,
             Self::Generic(_, count) => *count,
             _ => 0,
@@ -758,9 +744,6 @@ impl<'a> Checker<'a> {
         // Decision 0032's options, prototyped: `Rc<T>`.
         if proto_rc() != "r0" {
             types.insert("Rc".to_owned(), TypeDef::Rc);
-        }
-        if proto_rc() == "r2" {
-            types.insert("Weak".to_owned(), TypeDef::Weak);
         }
         // Managed only, each refused in an owned module.
         types.insert("number".to_owned(), TypeDef::Number);
@@ -1774,14 +1757,7 @@ impl<'a> Checker<'a> {
                 Ty::Set(Box::new(key))
             }
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
-            TypeDef::Rc => {
-                // Not compiled to JavaScript yet (decision 0032).
-                if self.managed && proto_rcm() == "m0" {
-                    self.report(errors::owned_only(ty.span, "rc"));
-                }
-                Ty::Rc(Box::new(self.type_arg(args)))
-            }
-            TypeDef::Weak => Ty::Weak(Box::new(self.type_arg(args))),
+            TypeDef::Rc => Ty::Rc(Box::new(self.type_arg(args))),
             TypeDef::Result => {
                 let ok = self.type_arg(args);
                 let err = args.get(1).map_or(Ty::Error, |a| self.resolve_type(a));

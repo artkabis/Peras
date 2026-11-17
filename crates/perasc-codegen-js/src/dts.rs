@@ -83,7 +83,7 @@ impl Types<'_> {
             Ty::Promise(t) => format!("Promise<{}>", self.ts(t)),
             Ty::Option(t) => format!("{} | undefined", self.wrapped(t)),
             // In JavaScript, a shared value is the value (decision 0032).
-            Ty::Rc(t) | Ty::Weak(t) => self.ts(t),
+            Ty::Rc(t) => self.ts(t),
             Ty::Result(ok, err) => format!(
                 "{{ kind: \"Ok\"; values: [{}] }} | {{ kind: \"Err\"; values: [{}] }}",
                 self.ts(ok),

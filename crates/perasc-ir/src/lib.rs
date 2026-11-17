@@ -962,14 +962,6 @@ pub enum RuntimeFn {
     /// shared values it holds held once more, and one fewer holding the
     /// original (decision 0032, prototype r1).
     SharedUnique,
-    /// `(shared) -> owned`: a holder of the shared value that does not keep
-    /// it alive, `Weak<T>` (decision 0032, prototype r2).
-    WeakNew,
-    /// `(weak) -> bool`: whether the value a weak holder names still lives.
-    WeakAlive,
-    /// `(weak) -> owned`: the value a weak holder names, held once more, or
-    /// the static environment of no function when it no longer lives.
-    WeakGet,
     /// `(bytes, shared, slot)`: the shared value held at this slot of
     /// another, [`Self::SharedUnique`] where it is held (decision 0032).
     SharedUniqueSlot,
@@ -980,7 +972,7 @@ pub enum RuntimeFn {
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 64] = [
+    pub const ALL: [Self; 61] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -1040,9 +1032,6 @@ impl RuntimeFn {
         Self::FmtUintLen,
         Self::FmtUintAppend,
         Self::SharedUnique,
-        Self::WeakNew,
-        Self::WeakAlive,
-        Self::WeakGet,
         Self::SharedUniqueSlot,
         Self::SharedUniqueElem,
     ];
@@ -1110,9 +1099,6 @@ impl RuntimeFn {
             Self::MapKeyI => "map_key_i",
             Self::MapKeyS => "map_key_s",
             Self::SharedUnique => "shared_unique",
-            Self::WeakNew => "weak_new",
-            Self::WeakAlive => "weak_alive",
-            Self::WeakGet => "weak_get",
             Self::SharedUniqueSlot => "shared_unique_slot",
             Self::SharedUniqueElem => "shared_unique_elem",
         }
@@ -1171,10 +1157,7 @@ impl RuntimeFn {
             | Self::FmtInt
             | Self::FmtBool
             | Self::ParseInt
-            | Self::MapClear
-            | Self::WeakNew
-            | Self::WeakAlive
-            | Self::WeakGet => &[],
+            | Self::MapClear => &[],
             Self::Repeat
             | Self::ArrSort
             | Self::IsInt
@@ -1224,8 +1207,7 @@ impl RuntimeFn {
             | Self::IsInt
             | Self::MapDeleteI
             | Self::MapDeleteS
-            | Self::BufEqual
-            | Self::WeakAlive => Ty::Bool,
+            | Self::BufEqual => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
             Self::MapValueF | Self::ParseFloat | Self::FloatRem => Ty::F64,
@@ -1245,18 +1227,12 @@ impl RuntimeFn {
         }
     }
 
-    /// Whether it works on shared values or their weak holders (decision
-    /// 0032).
+    /// Whether it makes a shared value its holder's own (decision 0032).
     #[must_use]
     pub const fn on_shared(self) -> bool {
         matches!(
             self,
-            Self::SharedUnique
-                | Self::SharedUniqueSlot
-                | Self::SharedUniqueElem
-                | Self::WeakNew
-                | Self::WeakAlive
-                | Self::WeakGet
+            Self::SharedUnique | Self::SharedUniqueSlot | Self::SharedUniqueElem
         )
     }
 

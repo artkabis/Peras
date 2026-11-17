@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0033-shared-values-in-managed-modules.md](../../fr/decisions/0033-shared-values-in-managed-modules.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It follows [decision 0032](0032-shared-values.md), whose option r1, `Rc<T>` read only and copied on write, owned modules compile; a managed module refuses `Rc` (E0243). The owner asked for this step on 2026-11-17._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `86de5c1`; option m3 accepted by the owner on 2026-11-17, under the rule that every decision is an improvement, never a regression. It follows [decision 0032](0032-shared-values.md), whose option r1, `Rc<T>` read only and copied on write, owned modules compile; a managed module refuses `Rc` (E0243). The owner asked for this step on 2026-11-17._
 
 ## Context
 
@@ -65,3 +65,7 @@ Run 1, at commit 86de5c1, nothing else running; every table in [`bench/shared/MA
 ### Proposal
 
 **m3**, a box counted and never released: it agrees with the owned module, never copies more than once a holder that writes, and stays within twice the owned module's time where m1 and m2 each fall by two orders of magnitude on one workload. Its cost: 194 more bytes than m1 on W3 (two helpers), and counts that only grow, so that a value once shared is copied at its first write even after its other holders ended. The owner decides.
+
+### Option m3 lands (2026-11-17)
+
+A managed module compiles `Rc<T>` as a box, every time; m1 and m2 are removed from the compiler, their figures kept above and their code at 86de5c1. `packages/vite-plugin-peras/e2e/shared.test.ts` now builds the fixture as a managed module too and checks every value against the owned module's; with `$own` never copying, that test fails. Against the compiler before decision 0032 (`node scripts/check-regression.mjs 42c7442`): every module of the benchmarks and examples identical, none larger; the compiler's time at 1.040 of its own; the compiler 52,024 bytes larger, the code of `Rc` in both modes.

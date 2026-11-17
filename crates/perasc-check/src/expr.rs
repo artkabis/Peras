@@ -654,13 +654,6 @@ impl Checker<'_> {
                     return ty;
                 }
                 let receiver = self.receiver(*base, name.symbol);
-                // `weak.get()`: the shared value while it lives (r2).
-                if let Ty::Weak(inner) = &receiver
-                    && self.name(name.symbol) == "get"
-                {
-                    self.arity(span, "get", 0, args.len(), None);
-                    return Ty::Option(Box::new(Ty::Rc(inner.clone())));
-                }
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }

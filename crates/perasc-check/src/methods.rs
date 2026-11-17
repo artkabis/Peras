@@ -557,16 +557,12 @@ impl<'a> Checker<'a> {
             return None;
         };
         let method = self.name(name.symbol).to_owned();
-        let weak = method == "weak" && crate::proto_rc() == "r2";
         if self.name(symbol) != "Rc"
-            || (method != "new" && !weak)
+            || method != "new"
             || crate::proto_rc() == "r0"
             || self.scopes.lookup(symbol).is_some()
         {
             return None;
-        }
-        if self.managed && crate::proto_rcm() == "m0" {
-            self.report(errors::owned_only(at.span, "rc"));
         }
         let [value] = at.args else {
             self.report(errors::argument_count(
@@ -579,22 +575,6 @@ impl<'a> Checker<'a> {
             self.check_args(at.args, &[]);
             return Some(Ty::Error);
         };
-        // `Rc.weak(rc)`: a holder that does not keep it alive (r2).
-        if weak {
-            let expected = match at.expected {
-                Some(Ty::Weak(inner)) => Some(Ty::Rc(inner.clone())),
-                _ => None,
-            };
-            return Some(match self.infer(*value, expected.as_ref()) {
-                Ty::Rc(inner) => Ty::Weak(inner),
-                Ty::Error => Ty::Error,
-                other => {
-                    let wanted = expected.unwrap_or_else(|| Ty::Rc(Box::new(Ty::Error)));
-                    self.coerce(*value, &other, &wanted);
-                    Ty::Error
-                }
-            });
-        }
         let inner = match at.expected {
             Some(Ty::Rc(inner)) => Some((**inner).clone()),
             _ => None,

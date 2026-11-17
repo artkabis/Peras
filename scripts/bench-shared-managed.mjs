@@ -1,19 +1,15 @@
-// Decision 0033's protocol: shared values in a managed module. Each option
-// is a prototype the compiler builds when PERAS_PROTO_RCM names it: m0, `Rc`
-// refused (E0243), the build without the variable; m1, the object shared
-// and copied at every write; m2, copied at every holder; m3, a box counted,
-// never released.
+// Decision 0033's protocol: shared values in a managed module. Option m3,
+// chosen, a box counted and never released, is the build's; m1 (copied at
+// every write) and m2 (copied at every holder) were measured at commit
+// 86de5c1 and removed once not chosen: their figures are in the decision.
 //
 // 1. Agreement: every function of the end-to-end fixture of `Rc`, and P1 to
-//    P4 of decision 0032 as fixed for r1, built as a managed module by each
-//    option, give what the owned module gives.
-// 2. Ease of writing: the same programs, as written for the owned module:
-//    the errors each option meets.
-// 3. The workloads W1, W2 and W3: each option's managed module and the owned
-//    module of r1 on TLSF in one process, the order alternating round by
-//    round: the median time, its ratio to the owned module round by round,
-//    the CPU time over the wall time, the JavaScript heap after a
-//    collection, the bytes.
+//    P4 of decision 0032 as fixed for r1, built as a managed module, give
+//    what the owned module gives.
+// 2. The workloads W1, W2 and W3: the managed module and the owned module
+//    of r1 on TLSF in one process, the order alternating round by round:
+//    the median time, its ratio to the owned module round by round, the CPU
+//    time over the wall time, the bytes.
 //
 // Usage: node scripts/bench-shared-managed.mjs [--check] [--rounds N]
 //        --check: one round, the agreement checked, nothing written.
@@ -41,7 +37,7 @@ const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "shared");
 const work = join(root, "target", "bench-shared-managed");
 const perasc = join(root, "target", "release", "perasc");
-const OPTIONS = ["m1", "m2", "m3"];
+const OPTIONS = ["m3"];
 
 rmSync(work, { recursive: true, force: true });
 
@@ -71,7 +67,7 @@ function build(source, option) {
   if (!managed) args.push("--allocator", "tlsf");
   const r = spawnSync(perasc, args, {
     encoding: "utf8",
-    env: { ...process.env, PERAS_PROTO_RCM: managed ? option : "m0" },
+    env: process.env,
   });
   if (r.status !== 0) {
     return {
@@ -147,16 +143,14 @@ const programs = [
   ["P4", join(ease, "p4.peras"), [["p4"]]],
 ];
 lines.push("### Agreement with the owned module, and ease of writing", "");
-lines.push("| Program | m0 | m1 | m2 | m3 |");
-lines.push("| --- | --- | --- | --- | --- |");
+lines.push("| Program | Managed module |");
+lines.push("| --- | --- |");
 for (const [label, source, calls] of programs) {
   const { m: owned } = await made(source, "owned");
   const want = calls.map(([f, ...a]) =>
     String(owned[String(f)]?.(...globalThis.structuredClone(a))),
   );
   const cells = [];
-  const refused = build(source, "m0");
-  cells.push(refused.ok ? "builds" : `refused, ${[...new Set(refused.errors)].join(", ")}`);
   for (const option of OPTIONS) {
     const { m } = await made(source, option);
     const got = calls.map(([f, ...a]) => String(m[String(f)]?.(...globalThis.structuredClone(a))));
@@ -166,11 +160,7 @@ for (const [label, source, calls] of programs) {
   }
   lines.push(`| ${label} | ${cells.join(" | ")} |`);
 }
-lines.push(
-  "",
-  "Every program is the one written for the owned module: no line changes for m1, m2 or m3.",
-  "",
-);
+lines.push("", "Every program is the one written for the owned module: no line changes.", "");
 
 // 3. The workloads.
 const WIDTH = 1024;

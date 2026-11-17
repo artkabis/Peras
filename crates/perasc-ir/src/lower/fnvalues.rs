@@ -610,7 +610,7 @@ impl Lowering<'_> {
         let deeper = depth + 1;
         match ty {
             // A shared value copies as a function value does (decision 0032).
-            CheckTy::Callback(..) | CheckTy::Rc(_) | CheckTy::Weak(_) => 1,
+            CheckTy::Callback(..) | CheckTy::Rc(_) => 1,
             CheckTy::Struct(id, _) => self.analysis.structs.get(id.0).map_or(0, |(_, fields)| {
                 fields.iter().map(|(_, f)| self.fn_leaves(f, deeper)).sum()
             }),

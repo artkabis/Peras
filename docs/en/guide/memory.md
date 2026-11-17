@@ -97,6 +97,7 @@ export fn small(): i32 {
 - **A shared value stays a value.** Writing through one holder, `b.tris.push(3)` or `b.x = 1`, first makes the value that holder's own: in place when no one else holds it, on a copy otherwise. The other holders keep what they had.
 - **No cycle can be built**, so nothing is ever left alive: a value can only hold values made before it. A child cannot hold the parent it is added to; a graph that points back is written from the parent, or by numbers in an array.
 - **Reading costs nothing more.** `const mesh = lanterns[i].mesh` is lent, not held once more, while nothing changes `lanterns` or `i`. A turn of `parallel for` may read a shared value, not hold it once more nor write it ([E0241](../errors/E0241.md)).
+- **A managed module shares values as an owned one does**: its `Rc` is a box that counts its holders, copied at the first write through one of several ([decision 0033](../decisions/0033-shared-values-in-managed-modules.md)); the same program gives the same values in both modes.
 - **For speed, numbers still win.** A tree of a million shared nodes takes 6.8 times as long as the same tree kept in arrays, each child its index, and 4.75 times the memory.
 
 ## When memory is released

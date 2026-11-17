@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0033-shared-values-in-managed-modules.md](../../en/decisions/0033-shared-values-in-managed-modules.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il suit la [décision 0032](0032-shared-values.md), dont l’option r1, `Rc<T>` en lecture seule et copié à l’écriture, est compilée par les modules owned ; un module managed refuse `Rc` (E0243). Le propriétaire a demandé cette étape le 2026-11-17._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `86de5c1` ; option m3 acceptée par le propriétaire le 2026-11-17, sous la règle qu’aucune décision n’est une régression. Il suit la [décision 0032](0032-shared-values.md), dont l’option r1, `Rc<T>` en lecture seule et copié à l’écriture, est compilée par les modules owned ; un module managed refuse `Rc` (E0243). Le propriétaire a demandé cette étape le 2026-11-17._
 
 ## Contexte
 
@@ -65,3 +65,7 @@ Exécution 1, au commit 86de5c1, rien d’autre en cours ; chaque tableau dans [
 ### Proposition
 
 **m3**, une boîte comptée et jamais libérée : elle s’accorde avec le module owned, ne copie jamais plus d’une fois un détenteur qui écrit, et reste sous deux fois le temps du module owned là où m1 et m2 tombent chacune de deux ordres de grandeur sur une charge. Son coût : 194 octets de plus que m1 sur W3 (deux fonctions d’aide), et des comptes qui ne font que croître, si bien qu’une valeur une fois partagée est copiée à sa première écriture même après la fin de ses autres détenteurs. Le propriétaire décide.
+
+### L’option m3 arrive (2026-11-17)
+
+Un module managed compile `Rc<T>` en boîte, à chaque fois ; m1 et m2 sont retirées du compilateur, leurs chiffres gardés plus haut et leur code à 86de5c1. `packages/vite-plugin-peras/e2e/shared.test.ts` construit maintenant aussi le programme en module managed et vérifie chaque valeur contre celles du module owned ; avec un `$own` qui ne copie jamais, ce test échoue. Contre le compilateur d’avant la décision 0032 (`node scripts/check-regression.mjs 42c7442`) : chaque module des bancs et des exemples identique, aucun plus gros ; le temps du compilateur à 1,040 du sien ; le compilateur plus gros de 52 024 octets, le code de `Rc` dans les deux modes.
