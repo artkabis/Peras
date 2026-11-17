@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0029-pond-of-lanterns.md](../../fr/decisions/0029-pond-of-lanterns.md)._
 
-_Status: protocol registered on 2026-11-17, before any version but the reference and before any measure; chosen by the owner, before `Rc<T>` (finding F310), so that its options are measured on this scene. The results will be added below it, whether they confirm the hypotheses or not; the protocol will not change after the first measure, and any departure from it will be listed as such._
+_Status: protocol registered on 2026-11-17 (commit `724bd40`), before any version but the reference and before any measure; study completed with its second run, at commit `43ad222`. Four hypotheses hold (H2, H5, H6, H7), two are refuted (H1, the speed against TypeScript, and H3, the managed module), one is undetermined (H4, the threads). Results and record below. The protocol was chosen by the owner, before `Rc<T>` (finding F310), so that its options are measured on this scene._
 
 ## Context
 
@@ -76,6 +76,52 @@ Each with what refutes it. Times are of frame 600 at 1024 × 768 with 1,000 lant
 
 ## Record of the study
 
-| When (2026-11-17)       | Commit | Step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ----------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| before the registration | —      | The reference written in TypeScript, then drawn at frames 0, 300 and 600 in Node to see that the specification draws and is deterministic. Seen on the first renders, before any other version: the lanterns made a wall at the horizon, so they are spread wider and deeper and the eye raised from 1.2 to 3; their halo was faint, so it reaches farther; the moon, its path on the water and the sky lanterns were added. The script printed the reference's time in Node, 45 to 48 ms a frame after one of warm-up: an informal measure of the reference alone, which bears on no ratio of the hypotheses, whose thresholds are decision 0013's. |
+| When (2026-11-17)       | Commit    | Step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| before the registration | —         | The reference written in TypeScript, then drawn at frames 0, 300 and 600 in Node to see that the specification draws and is deterministic. Seen on the first renders, before any other version: the lanterns made a wall at the horizon, so they are spread wider and deeper and the eye raised from 1.2 to 3; their halo was faint, so it reaches farther; the moon, its path on the water and the sky lanterns were added. The script printed the reference's time in Node, 45 to 48 ms a frame after one of warm-up: an informal measure of the reference alone, which bears on no ratio of the hypotheses, whose thresholds are decision 0013's. |
+| after the registration  | `afca8f0` | Peras owned and managed, and Rust, translated from the reference; each gives its pixels bit for bit at frames 0, 300 and 600, at 256 × 192 and 1024 × 768, nothing left alive. The first Peras version is kept as written, refused with 45 errors; the threads and the shared mesh are kept as written, refused. The script printed the time of these checks in Node: informal, after every threshold was registered.                                                                                                                                                                                                                                |
+|                         | `afca8f0` | Run 1, kept with its flaws in [run-1](../../../bench/lanterns/run-1/RESULTS.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|                         | `43ad222` | The corrections of run 1; run 2, below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+### Run 1, at commit `afca8f0`: kept, with two flaws
+
+- **Rust was built without WebAssembly SIMD**, where the protocol builds it as `bench/garden/rust` is built, with `+simd128`, and as Peras builds by default. H2 was measured against a weaker Rust: 0.82, refuted.
+- **The JavaScript heap leaves out the bytes of typed arrays**: the 27 MiB of buffers TypeScript and the managed module draw into were counted nowhere, so their memory looked 36 times smaller than the WebAssembly modules'.
+
+**The corrections**, at commit `43ad222`, on the method only: Rust built with `+simd128`; each version's bytes outside the heap counted, its WebAssembly memory or the typed arrays it draws into.
+
+### Run 2, at commit `43ad222`: the results
+
+[Results of run 2](../../../bench/lanterns/RESULTS.md). An Intel Xeon at 2.30 GHz, 4 cores, Node 24, Chromium headless; frame 600 at 1024 × 768 with 1,000 lanterns, 15 runs after 2 of warm-up, the versions alternating.
+
+| Hypothesis                 | Verdict      | Measured                                                              |
+| -------------------------- | ------------ | --------------------------------------------------------------------- |
+| H1, faster than TypeScript | **refuted**  | 0.97 times TypeScript's speed (0.88 to 1.15); threshold 1.3           |
+| H2, close to Rust          | holds        | 0.89 times Rust's speed (0.80 to 0.99); threshold 0.85                |
+| H3, managed costs nothing  | **refuted**  | 2.41 times TypeScript's time (2.15 to 3.13); threshold 1.15           |
+| H4, the threads pay        | undetermined | `parallel for` cannot express the frame (E0241)                       |
+| H5, a small module         | holds        | 8,164 bytes gzip against Rust's 16,491                                |
+| H6, as easy to write       | holds        | 302 lines, 1.10 times TypeScript's 275; 45 errors met before it built |
+| H7, no cost of safety      | holds        | debug at 1.08 times production's time (0.97 to 1.13)                  |
+
+| Version             |    Frame | CPU / wall | Memory, heap and outside it | Shipped, gzip |
+| ------------------- | -------: | ---------: | --------------------------: | ------------: |
+| TypeScript          |  46.0 ms |       1.00 |        763 KiB and 27.0 MiB |         1,866 |
+| Peras, managed      | 106.2 ms |       1.00 |        753 KiB and 27.0 MiB |         2,492 |
+| Peras, owned        |  45.0 ms |       1.00 |        711 KiB and 27.1 MiB |         8,164 |
+| Peras, owned, debug |  49.6 ms |       1.00 |        711 KiB and 27.1 MiB |             - |
+| Rust                |  41.1 ms |       1.00 |        695 KiB and 28.3 MiB |        16,491 |
+
+### What the study says
+
+- **On a 3D frame computed by the processor, Peras is as fast as TypeScript, not faster** (H1). V8 compiles this loop of floating arithmetic over typed arrays about as well as WebAssembly runs it; the garden of decision 0013, whose pixels each call the noise functions many times, gave Peras 1.19. A gain over JavaScript has to come from what JavaScript cannot do: SIMD on the pixels, or threads, which H4 could not reach.
+- **Peras is within 0.89 of Rust** (H2), in half its bytes (H5), and its safety costs 8 % (H7).
+- **The managed module is 2.4 times slower than the TypeScript** (H3, finding F221): the same source compiled to JavaScript does not give the JavaScript a person writes. Not looked into here.
+- **Peras is as long as TypeScript, but not as easy to write**: 1.10 times its lines once it builds (H6 holds), after 45 errors, every one an integer literal where an `f64` is expected or an array typed by its first element (finding F112), the most any program has met.
+- **What the scene lacks, entered as findings**: `parallel for` cannot draw it (F301), and a mesh shared by a thousand lanterns cannot be held by each (F310, decision 0030).
+
+### Departures from the protocol
+
+- **H4 has no measure**: its version cannot be written, as the protocol foresaw; `bench/lanterns/threads.peras` keeps the attempt and its diagnostic.
+- **The CPU time over the wall time** is measured on each version alone in a fresh page, 5 frames after 2, the versions not alternating; the times of H1 to H3 and H7 come from the alternating runs.
+- **The memory outside the heap** was added after run 1, the protocol's measure, the heap alone, leaving out the buffers of the JavaScript versions.

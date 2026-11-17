@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0029-pond-of-lanterns.md](../../en/decisions/0029-pond-of-lanterns.md)._
 
-_État : protocole enregistré le 2026-11-17, avant toute version autre que la référence et avant toute mesure ; choisi par le propriétaire, avant `Rc<T>` (constat F310), pour que ses options soient mesurées sur cette scène. Les résultats seront ajoutés sous lui, qu’ils confirment les hypothèses ou non ; le protocole ne changera pas après la première mesure, et tout écart sera listé comme tel._
+_État : protocole enregistré le 2026-11-17 (commit `724bd40`), avant toute version autre que la référence et avant toute mesure ; étude terminée avec sa seconde exécution, au commit `43ad222`. Quatre hypothèses tiennent (H2, H5, H6, H7), deux sont réfutées (H1, la vitesse face à TypeScript, et H3, le module managed), une est indéterminée (H4, les threads). Résultats et registre ci-dessous. Le protocole a été choisi par le propriétaire, avant `Rc<T>` (constat F310), pour que ses options soient mesurées sur cette scène._
 
 ## Contexte
 
@@ -76,6 +76,52 @@ Chacune avec ce qui la réfute. Les temps sont ceux de l’image 600 en 1024 × 
 
 ## Registre de l’étude
 
-| Quand (2026-11-17)     | Commit | Étape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| avant l’enregistrement | —      | La référence écrite en TypeScript, puis dessinée aux images 0, 300 et 600 dans Node pour voir que la spécification dessine et qu’elle est déterministe. Vu sur les premiers rendus, avant toute autre version : les lanternes faisaient un mur à l’horizon, elles sont donc réparties plus large et plus loin et l’œil est monté de 1,2 à 3 ; leur halo était faible, il porte donc plus loin ; la lune, son chemin sur l’eau et les lanternes célestes ont été ajoutés. Le script a affiché le temps de la référence dans Node, 45 à 48 ms par image après une d’échauffement : une mesure informelle de la référence seule, qui ne porte sur aucun rapport des hypothèses, dont les seuils sont ceux de la décision 0013. |
+| Quand (2026-11-17)     | Commit    | Étape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| avant l’enregistrement | —         | La référence écrite en TypeScript, puis dessinée aux images 0, 300 et 600 dans Node pour voir que la spécification dessine et qu’elle est déterministe. Vu sur les premiers rendus, avant toute autre version : les lanternes faisaient un mur à l’horizon, elles sont donc réparties plus large et plus loin et l’œil est monté de 1,2 à 3 ; leur halo était faible, il porte donc plus loin ; la lune, son chemin sur l’eau et les lanternes célestes ont été ajoutés. Le script a affiché le temps de la référence dans Node, 45 à 48 ms par image après une d’échauffement : une mesure informelle de la référence seule, qui ne porte sur aucun rapport des hypothèses, dont les seuils sont ceux de la décision 0013. |
+| après l’enregistrement | `afca8f0` | Peras owned et managed, et Rust, traduits de la référence ; chacun donne ses pixels au bit près aux images 0, 300 et 600, en 256 × 192 et en 1024 × 768, rien de vivant. La première version Peras est gardée telle qu’écrite, refusée avec 45 erreurs ; les threads et le maillage partagé sont gardés tels qu’écrits, refusés. Le script a affiché le temps de ces vérifications dans Node : informel, après l’enregistrement de chaque seuil.                                                                                                                                                                                                                                                                            |
+|                        | `afca8f0` | L’exécution 1, gardée avec ses défauts dans [run-1](../../../bench/lanterns/run-1/RESULTS.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|                        | `43ad222` | Les corrections de l’exécution 1 ; l’exécution 2, ci-dessous.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+### Exécution 1, au commit `afca8f0` : gardée, avec deux défauts
+
+- **Rust a été construit sans le SIMD de WebAssembly**, là où le protocole le construit comme `bench/garden/rust`, avec `+simd128`, et comme Peras le fait par défaut. H2 a été mesurée contre un Rust affaibli : 0,82, réfutée.
+- **Le tas JavaScript laisse de côté les octets des tableaux typés** : les 27 Mio de tampons dans lesquels dessinent TypeScript et le module managed n’étaient comptés nulle part, si bien que leur mémoire paraissait 36 fois plus petite que celle des modules WebAssembly.
+
+**Les corrections**, au commit `43ad222`, sur la méthode seulement : Rust construit avec `+simd128` ; les octets de chaque version hors du tas comptés, sa mémoire WebAssembly ou les tableaux typés dans lesquels elle dessine.
+
+### Exécution 2, au commit `43ad222` : les résultats
+
+[Résultats de l’exécution 2](../../../bench/lanterns/RESULTS.md). Un Intel Xeon à 2,30 GHz, 4 cœurs, Node 24, Chromium sans écran ; image 600 en 1024 × 768 avec 1 000 lanternes, 15 exécutions après 2 d’échauffement, les versions alternant.
+
+| Hypothèse                      | Verdict      | Mesuré                                                                                         |
+| ------------------------------ | ------------ | ---------------------------------------------------------------------------------------------- |
+| H1, plus rapide que TypeScript | **réfutée**  | 0,97 fois la vitesse de TypeScript (0,88 à 1,15) ; seuil 1,3                                   |
+| H2, proche de Rust             | tient        | 0,89 fois la vitesse de Rust (0,80 à 0,99) ; seuil 0,85                                        |
+| H3, le managed ne coûte rien   | **réfutée**  | 2,41 fois le temps de TypeScript (2,15 à 3,13) ; seuil 1,15                                    |
+| H4, les threads paient         | indéterminée | `parallel for` ne peut pas exprimer l’image (E0241)                                            |
+| H5, un petit module            | tient        | 8 164 octets gzip contre 16 491 pour Rust                                                      |
+| H6, aussi facile à écrire      | tient        | 302 lignes, 1,10 fois les 275 de TypeScript ; 45 erreurs rencontrées avant qu’il se construise |
+| H7, pas de coût de la sûreté   | tient        | le débogage à 1,08 fois le temps de la production (0,97 à 1,13)                                |
+
+| Version                |    Image | CPU / réel | Mémoire, tas et hors du tas | Livré, gzip |
+| ---------------------- | -------: | ---------: | --------------------------: | ----------: |
+| TypeScript             |  46,0 ms |       1,00 |         763 Kio et 27,0 Mio |       1 866 |
+| Peras, managed         | 106,2 ms |       1,00 |         753 Kio et 27,0 Mio |       2 492 |
+| Peras, owned           |  45,0 ms |       1,00 |         711 Kio et 27,1 Mio |       8 164 |
+| Peras, owned, débogage |  49,6 ms |       1,00 |         711 Kio et 27,1 Mio |           - |
+| Rust                   |  41,1 ms |       1,00 |         695 Kio et 28,3 Mio |      16 491 |
+
+### Ce que dit l’étude
+
+- **Sur une image 3D calculée par le processeur, Peras est aussi rapide que TypeScript, pas plus** (H1). V8 compile cette boucle d’arithmétique flottante sur des tableaux typés à peu près aussi bien que WebAssembly l’exécute ; le jardin de la décision 0013, dont chaque pixel appelle bien des fois les fonctions de bruit, donnait 1,19 à Peras. Un gain sur JavaScript doit venir de ce que JavaScript ne fait pas : le SIMD sur les pixels, ou les threads, que H4 n’a pas pu atteindre.
+- **Peras est à 0,89 de Rust** (H2), en deux fois moins d’octets (H5), et sa sûreté coûte 8 % (H7).
+- **Le module managed est 2,4 fois plus lent que le TypeScript** (H3, constat F221) : la même source compilée en JavaScript ne donne pas le JavaScript qu’une personne écrit. Pas examiné ici.
+- **Peras est aussi long que TypeScript, mais pas aussi facile à écrire** : 1,10 fois ses lignes une fois construit (H6 tient), après 45 erreurs, chacune un littéral entier là où un `f64` est attendu ou un tableau typé par son premier élément (constat F112), le plus qu’un programme ait rencontré.
+- **Ce qui manque à la scène, consigné comme constats** : `parallel for` ne peut pas la dessiner (F301), et un maillage partagé par mille lanternes ne peut pas être tenu par chacune (F310, décision 0030).
+
+### Écarts au protocole
+
+- **H4 n’a pas de mesure** : sa version ne peut pas s’écrire, comme le protocole le prévoyait ; `bench/lanterns/threads.peras` garde l’essai et son diagnostic.
+- **Le temps CPU sur le temps réel** est mesuré sur chaque version seule dans une page neuve, 5 images après 2, les versions n’alternant pas ; les temps de H1 à H3 et H7 viennent des exécutions alternées.
+- **La mémoire hors du tas** a été ajoutée après l’exécution 1, la mesure du protocole, le tas seul, laissant de côté les tampons des versions JavaScript.
