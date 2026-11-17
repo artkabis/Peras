@@ -52,7 +52,7 @@ impl Checker<'_> {
             }
             // Decision 0030's options b and c, prototyped: a literal takes
             // the float type it is used as, as in Swift and Go.
-            (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if crate::proto("PERAS_PROTO_NUM") != "a" => {
+            (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if crate::literals_take_their_type() => {
                 self.settle(id, expected);
                 true
             }
@@ -368,7 +368,7 @@ impl Checker<'_> {
             match element.clone() {
                 // Decision 0030's options b and c, prototyped: integer
                 // literals before a float take its type, `[1, s, 0]`.
-                Some(Ty::IntLit) if crate::proto("PERAS_PROTO_NUM") != "a" => {
+                Some(Ty::IntLit) if crate::literals_take_their_type() => {
                     let actual = self.infer(item, None);
                     if actual.is_float() {
                         let float = if actual == Ty::FloatLit {

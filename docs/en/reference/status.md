@@ -10,7 +10,7 @@ Peras is young. This page says, feature by feature, how far each one goes:
 
 | Feature                                                                                                                                                           | Status                                        |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `i32`, `i64`, `f32`, `f64`, `bool`                                                                                                                                | <span class="status compiled">compiled</span> |
+| `i32`, `i64`, `f32`, `f64`, `bool`; a literal takes the type it is used as ([decision 0030](../decisions/0030-numeric-literals.md))                               | <span class="status compiled">compiled</span> |
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                                                                            | <span class="status compiled">compiled</span> |
 | structures, nested, as parameters and results                                                                                                                     | <span class="status compiled">compiled</span> |
 | `Option<T>`, `Some`, `None`, `?`; narrowed by a test that leaves, a fallback evaluated only when needed ([decision 0028](../decisions/0028-options-and-moves.md)) | <span class="status compiled">compiled</span> |

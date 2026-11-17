@@ -277,23 +277,30 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
-/// The option of decision 0028 a build follows for one of its questions:
-/// the one chosen, 1b for `PERAS_PROTO_MOVE`, 2e for `PERAS_PROTO_TAKE`, 3b
-/// for `PERAS_PROTO_FALLBACK`, unless the variable names another option
-/// measured (`a` to `e`), or `before`, the compiler before the decision, for
-/// the measure script only (`scripts/bench-options.mjs`).
+/// The option of decisions 0028 and 0030 a build follows for one of their
+/// questions: the one chosen, 1b for `PERAS_PROTO_MOVE`, 2e for
+/// `PERAS_PROTO_TAKE`, 3b for `PERAS_PROTO_FALLBACK`, b for
+/// `PERAS_PROTO_NUM`, unless the variable names another option measured (`a`
+/// to `e`), or `before`, the compiler before the decision, for the measure
+/// scripts only (`scripts/bench-options.mjs`, `scripts/bench-numbers.mjs`).
 #[must_use]
 pub fn proto(variable: &str) -> String {
     let chosen = match variable {
         "PERAS_PROTO_TAKE" => "e",
-        // Decision 0030, measured before it is chosen: today's literals.
-        "PERAS_PROTO_NUM" => "a",
+        // Decision 0030's option b for `PERAS_PROTO_NUM`; 0028's 1b and 3b.
         _ => "b",
     };
     std::env::var(variable)
         .ok()
         .filter(|v| matches!(v.as_str(), "a" | "b" | "c" | "d" | "e" | "before"))
         .unwrap_or_else(|| chosen.to_owned())
+}
+
+/// Whether an integer literal takes the float type it is used as (decision
+/// 0030, option b, the default; c too); option a and `before`, today's
+/// refusal, for `scripts/bench-numbers.mjs` only.
+pub(crate) fn literals_take_their_type() -> bool {
+    matches!(proto("PERAS_PROTO_NUM").as_str(), "b" | "c")
 }
 
 /// The exported functions of an owned module's source, as a managed module

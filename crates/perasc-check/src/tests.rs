@@ -89,7 +89,6 @@ fn every_check_error_has_its_case() {
         ),
         ("a = 2;", codes::ASSIGN_TO_IMMUTABLE),
         ("let _m = a + y;", codes::MISMATCHED_TYPES),
-        ("let _w: f32 = 1;", codes::INTEGER_FOR_FLOAT),
         ("let _v: u8 = 256;", codes::LITERAL_OUT_OF_RANGE),
         ("let _q: i32 = -2147483649;", codes::LITERAL_OUT_OF_RANGE),
         ("let _k: float = 0.5;", codes::UNKNOWN_TYPE),

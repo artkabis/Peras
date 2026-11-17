@@ -1,0 +1,49 @@
+// Decision 0030: an integer literal takes the float type it is used as. The
+// same source, built as an owned module on each allocator and as a managed
+// module, must give the same results.
+
+fn mix(a: f64, b: f64, t: f64): f64 {
+  return a * (1 - t) + b * t;
+}
+
+// In an operation, a comparison, an assignment, a return, an argument and
+// an array literal; negative too.
+export fn shade(c: f64, s: f64): f64 {
+  let v = c;
+  if (c < 0) {
+    v = 0;
+  } else if (c > 1) {
+    v = -1;
+  }
+  const stops = [1, s, 0, -s];
+  if (v > 0) {
+    return mix(stops[0], 2, v) * 255 + 0.5;
+  }
+  return stops[1] * 3 - stops[3];
+}
+
+// A composite of literals is computed in the float it is used as.
+export fn half(): f64 {
+  const h: f64 = 1 / 2;
+  return h + 7 / 4;
+}
+
+// An `f32` literal, and its arithmetic, rounded as an `f32`.
+export fn third(n: i32): f64 {
+  let total: f32 = 0;
+  for (let i = 0; i < n; i++) {
+    total += 1 / 3;
+  }
+  return total.toF64();
+}
+
+// A step of particles, bounced off the walls at 0 and 1.
+export fn bounce(p: f64, v: f64, dt: f64): f64 {
+  let x = p + v * dt;
+  if (x < 0) {
+    x = -x;
+  } else if (x > 1) {
+    x = 2 - x;
+  }
+  return x * 100;
+}

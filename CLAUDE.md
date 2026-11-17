@@ -69,7 +69,7 @@ What a program can rely on, and what it cannot yet; the details and their eviden
 - Modules: a `.peras` file imports functions, structures and enumerations of other `.peras` files, compiled into one module; not generics, not the methods of an imported structure, no `as`, no cycle (decision 0022).
 - Module variables (`let` at the top of a `.peras`): numbers, booleans, and structures, enumerations and options of them, a constant initial value; not strings or arrays, not `inout`, not in a `parallel for` (decision 0023).
 - `parallel for`: no call, no allocation, no reduction in a turn (F301).
-- Numbers: an integer literal is not an `f64`, `2 * x` on a float is refused (E0211), and an array literal takes the type of its first element: write `2.0` (F112).
+- Numbers: a literal takes the type it is used as, `2 * x` on a float, `[1, s, 0]` (decision 0030; E0211 retired); a variable is never converted, `n * x` with `n` an `i32` needs `n.toF64()` (E0210). `i / n` on integers is an integer division (F113). `PERAS_PROTO_NUM` builds the other options measured, for `scripts/bench-numbers.mjs` only.
 - Integers: all eight compiled (decision 0024). JavaScript's values are wrapped to their type, `u32` and `u64` come back non-negative, `u64` as a `BigInt`. An `Array<u8>` is a byte an element; in an array of structures, such a field takes four bytes.
 - A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).
 - Slow: adding to a large `Set` (F215), a key built per row only to be looked up (F202). Fast: `split`, sorts by a key, `get` then `set` of one key (F216).

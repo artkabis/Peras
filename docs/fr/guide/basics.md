@@ -95,9 +95,26 @@ export fn tiny(): f64 {
 
 > Aujourd’hui, `i32`, `i64`, `f32` et `f64` sont compilés en WebAssembly ; les types sur 8 et 16 bits et les non signés sont vérifiés, pas encore compilés.
 
+## Les littéraux prennent le type auquel ils servent
+
+Un littéral entier utilisé là où un flottant est attendu est ce flottant, comme en Swift et en Go ([décision 0030](../decisions/0030-numeric-literals.md)) : `2 * x`, `if (c < 0)`, `v = 1;`, `return 0;`, un argument. Un tableau littéral de nombres prend le type de ses éléments ensemble, un flottant si l’un en est un.
+
+```peras build
+export fn bounce(p: f64, v: f64): f64 {
+  let x = p + v;
+  if (x < 0) {
+    x = -x;
+  } else if (x > 1) {
+    x = 2 - x;
+  }
+  const weights = [1, 0.5, 0];
+  return x * 100 + weights[1];
+}
+```
+
 ## Aucune conversion implicite
 
-Mélanger deux types de nombres est une erreur : on convertit explicitement, si bien qu’une perte de précision est toujours visible.
+Une variable ne change jamais de type en silence. Mélanger deux types de nombres est une erreur : on convertit explicitement, si bien qu’une perte de précision est toujours visible.
 
 ```peras error E0210
 export fn mean(total: i32, count: i64): i64 {

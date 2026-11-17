@@ -60,7 +60,7 @@ Typing is static, strong and without escape hatches. Local inference avoids anno
 - **Discriminated unions and narrowing** as in TS, with a `match` that must be exhaustive.
 - **Monomorphized generics**: each instantiation produces specialized code, with no runtime cost.
 - **Traits** instead of inheritance: `impl Display for User`.
-- **No implicit conversion**: `i32 + f64` is an error; write `x.toF64() + y`.
+- **No implicit conversion** of a value: `i32 + f64` is an error; write `x.toF64() + y`. A literal takes the type it is used as: `2 * x` on a float ([decision 0030](decisions/0030-numeric-literals.md)).
 - **Checked overflow** in debug, with explicit `wrappingAdd` and `checkedAdd` operations.
 
 ## Memory model

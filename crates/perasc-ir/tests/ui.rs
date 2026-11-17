@@ -256,7 +256,11 @@ fn every_documented_example_and_fix_is_true() {
             // E0111 needs more nesting than a page can show: its example is a sketch.
             // E0250 needs several files, which a page shows one by one: its
             // example is checked by `perasc-driver/tests/modules.rs`.
-            if entry.code.to_string() == "E0111" || entry.code == codes::IMPORT_CYCLE {
+            // A retired code's page shows lines that build now.
+            if entry.code.to_string() == "E0111"
+                || entry.code == codes::IMPORT_CYCLE
+                || entry.retired
+            {
                 continue;
             }
             if let Some(code) = block_after(page, example).as_ref() {
@@ -273,10 +277,11 @@ fn every_documented_example_and_fix_is_true() {
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-    // E0008 has no example (it needs a 4 GiB file), E0111 is a sketch, and
-    // E0250 needs several files.
+    // E0008 has no example (it needs a 4 GiB file), E0111 is a sketch,
+    // E0250 needs several files, and a retired code is issued no more.
+    let retired = codes::REGISTRY.iter().filter(|e| e.retired).count();
     assert!(
-        checked >= 2 * (codes::REGISTRY.len() - 3),
+        checked >= 2 * (codes::REGISTRY.len() - 3 - retired),
         "only {checked} examples checked"
     );
 }

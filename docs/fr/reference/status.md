@@ -10,7 +10,7 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 
 | Fonctionnalité                                                                                                                                                                      | État                                         |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `i32`, `i64`, `f32`, `f64`, `bool`                                                                                                                                                  | <span class="status compiled">compilé</span> |
+| `i32`, `i64`, `f32`, `f64`, `bool` ; un littéral prend le type auquel il sert ([décision 0030](../decisions/0030-numeric-literals.md))                                              | <span class="status compiled">compilé</span> |
 | `i8`, `i16`, `u8`, `u16`, `u32`, `u64`                                                                                                                                              | <span class="status compiled">compilé</span> |
 | structures, imbriquées, en paramètres et en résultats                                                                                                                               | <span class="status compiled">compilé</span> |
 | `Option<T>`, `Some`, `None`, `?` ; rétrécie par un test qui sort, un repli évalué seulement au besoin ([décision 0028](../decisions/0028-options-and-moves.md))                     | <span class="status compiled">compilé</span> |

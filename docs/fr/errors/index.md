@@ -44,7 +44,7 @@ Les codes `E0001` à `E0099` sont réservés au lexer, `E0100` à `E0199` au par
 | [E0207](E0207.md) | Alias avec un argument `inout`                                                    | possession         |
 | [E0209](E0209.md) | Déplacer ce qui n’est qu’emprunté                                                 | possession         |
 | [E0210](E0210.md) | Types incompatibles                                                               | noms et types      |
-| [E0211](E0211.md) | Entier littéral à la place d’un flottant                                          | noms et types      |
+| [E0211](E0211.md) | Entier littéral à la place d’un flottant (retiré, décision 0030)                  | noms et types      |
 | [E0212](E0212.md) | Littéral hors bornes                                                              | noms et types      |
 | [E0213](E0213.md) | Type inconnu                                                                      | noms et types      |
 | [E0214](E0214.md) | Mauvais nombre d’arguments                                                        | noms et types      |
