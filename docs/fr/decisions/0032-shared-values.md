@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0032-shared-values.md](../../en/decisions/0032-shared-values.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F310, et au maillage partagé que la [décision 0029](0029-pond-of-lanterns.md) a trouvé refusé. Il vient après les décisions [0030](0030-numeric-literals.md), sur les littéraux numériques, et 0031, sur les threads, dans l’ordre fixé par le propriétaire._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `b30819e` ; option r1 acceptée par le propriétaire le 2026-11-17, et défaut du build depuis. Il répond au constat F310, et au maillage partagé que la [décision 0029](0029-pond-of-lanterns.md) a trouvé refusé. Il vient après les décisions [0030](0030-numeric-literals.md), sur les littéraux numériques, et 0031, sur les threads, dans l’ordre fixé par le propriétaire._
 
 ## Contexte
 
@@ -100,3 +100,14 @@ Ce que cela dit :
 ### Proposition
 
 **r1**, en lecture seule et copiée à l’écriture : aussi rapide que r2, sans fuite possible, sans écriture vue par un autre détenteur, et sans rien sur quoi une boucle parallèle pourrait faire la course ; les valeurs de Peras restent des valeurs (P4 tel qu’écrit). Son coût est P3 : un graphe qui pointe vers ses parents s’écrit depuis le parent, ou par des numéros, comme r0 l’écrit aujourd’hui. Si le propriétaire la choisit, les étapes suivantes sont : prêter une valeur partagée lue dans une boucle plutôt que la tenir une fois de plus (les 2 000 opérations de compte par image de W1, la cible du protocole étant 0) ; F114 et F115 ; une écriture à travers une valeur partagée tenue par une autre ; et `Rc` dans un module managed.
+
+### L’option r1 arrive (2026-11-17)
+
+Acceptée par le propriétaire. `Rc<T>` est dans chaque build ; `PERAS_PROTO_RC=r0` et `r2` construisent les autres options mesurées, gardées pour que la mesure puisse être refaite, pour `scripts/bench-shared.mjs` seulement. Un programme sans `Rc` se construit comme avant, octet pour octet : les 214 constructions des bancs et des exemples comparées au compilateur d’avant cette décision.
+
+- **Une valeur partagée lue dans une boucle est prêtée.** `const mesh = fleet[i].mesh` ne tient rien quand rien, de là à la fin de la fonction, ne change ni ne déplace `fleet` ou `i` : le vérificateur note chaque place changée avec la variable dont elle part (`Analysis::mutations`), et la descente lit la valeur à sa place à chaque usage (`lent_shared`). Les opérations de compte de W1 dans la boucle qui dessine tombent de 2 000 par image à 0, la cible du protocole. Un `let` tient encore la valeur une fois de plus, ce qui est refusé à un tour de `parallel for` (`bench/shared/parallel/holds.peras`).
+- **Testé** par `packages/vite-plugin-peras/e2e/shared.test.ts` sur les deux allocateurs : chaque cas où prêter serait faux, une variable remplacée, un indice changé, un élément remplacé, le tableau agrandi ou déplacé, donne un nombre à lui, et rien ne reste vivant. Avec la règle cassée exprès, mutations et déplacements ignorés, les deux tests échouent (constat M024).
+- **Documenté** dans [le guide](../guide/memory.md#partager-une-valeur), dont l’exemple est compilé par les tests de la documentation.
+- **Un module managed refuse `Rc`** avec E0243, comme il refuse `sink` et `parallel for`, plutôt que d’atteindre la génération de code : les tests de la documentation construisent chaque exemple dans les deux modes, et celui du guide y rencontrait E0900.
+
+Reste à faire, dans cet ordre : F114 et F115 ; une écriture à travers une valeur partagée tenue par une autre ou par un élément ; `Rc` dans un module managed.

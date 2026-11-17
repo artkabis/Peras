@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0032-shared-values.md](../../fr/decisions/0032-shared-values.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It answers finding F310, and the shared mesh that [decision 0029](0029-pond-of-lanterns.md) found refused. It comes after decisions [0030](0030-numeric-literals.md), on numeric literals, and 0031, on threads, in the order the owner set._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `b30819e`; option r1 accepted by the owner on 2026-11-17, and the build's default since. It answers finding F310, and the shared mesh that [decision 0029](0029-pond-of-lanterns.md) found refused. It comes after decisions [0030](0030-numeric-literals.md), on numeric literals, and 0031, on threads, in the order the owner set._
 
 ## Context
 
@@ -100,3 +100,14 @@ What it says:
 ### Proposal
 
 **r1**, read only and copied on write: as fast as r2, no leak possible, no write seen through another holder, and nothing a parallel loop could race on; the values of Peras stay values (P4 as written). Its cost is P3: a graph that points back to its parents is written from the parent, or by numbers, as r0 writes it today. If the owner chooses it, the next steps are: to lend a shared value read in a loop rather than hold it once more (W1's 2,000 count operations a frame, the protocol's target being 0); F114 and F115; a write through a shared value held by another; and `Rc` in a managed module.
+
+### Option r1 lands (2026-11-17)
+
+Accepted by the owner. `Rc<T>` is in every build; `PERAS_PROTO_RC=r0` and `r2` build the other options measured, kept so that the measure can be run again, for `scripts/bench-shared.mjs` only. A program without `Rc` builds as before, byte for byte: the 214 builds of the benchmarks and examples compared with the compiler before this decision.
+
+- **A shared value read in a loop is lent.** `const mesh = fleet[i].mesh` holds nothing when nothing from there to the end of the function changes or moves `fleet` or `i`: the checker records every place changed with the variable it starts from (`Analysis::mutations`), and the lowering reads the value from its place at each use (`lent_shared`). W1's count operations in the loop that draws fall from 2,000 a frame to 0, the protocol's target. A `let` still holds the value once more, which is what a turn of `parallel for` is refused (`bench/shared/parallel/holds.peras`).
+- **Tested** by `packages/vite-plugin-peras/e2e/shared.test.ts` on both allocators: every case where lending would be wrong, a variable replaced, an index changed, an element replaced, the array grown or moved, gives a number of its own, and nothing is left alive. With the rule broken on purpose, mutations and moves ignored, both tests fail (finding M024).
+- **Documented** in [the guide](../guide/memory.md#sharing-a-value), whose example is compiled by the tests of the docs.
+- **A managed module refuses `Rc`** with E0243, as it refuses `sink` and `parallel for`, rather than reach code generation: the tests of the docs build every example in both modes, and the guide's met E0900 there.
+
+Still to do, in this order: F114 and F115; a write through a shared value held by another shared value or an element; `Rc` in a managed module.

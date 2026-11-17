@@ -704,12 +704,14 @@ check-owned-only = { $what ->
     [inout-assign] replacing an `inout` parameter
     [sink] `sink`
     [parallel] `parallel for`
+    [rc] `Rc<T>`, a shared value,
    *[other] this
 } belongs to owned modules (`.peras`)
 check-owned-only-label = only in a `.peras` module
 check-owned-only-why = A managed module's values belong to the JavaScript garbage collector: nothing moves and nothing is lent. An array, a map, a set or a structure is shared with the caller, so an `inout` one can be changed, and the caller sees it; a number, a boolean, a string or an option is copied, and an `inout` one could not reach its caller, nor could a parameter replaced by another value. Giving a value with `sink`, and loops that split work between threads over shared memory, are those of owned modules, compiled to WebAssembly.
 check-owned-only-fix = { $what ->
     [parallel] write the loop in a `.peras` module and import its function
+    [rc] share the value in a `.peras` module and import its functions
     [inout-assign] change its elements or fields, or return the new value
    *[other] remove the convention: return the new value instead of changing the argument
 }

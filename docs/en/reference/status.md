@@ -26,7 +26,8 @@ Peras is young. This page says, feature by feature, how far each one goes:
 | functions as values, function types ([decision 0025](../decisions/0025-moved-fields-and-function-values.md))                                                      | <span class="status compiled">compiled</span> |
 | closures over numbers and booleans, as values in owned modules ([decision 0026](../decisions/0026-closures.md))                                                   | <span class="status compiled">compiled</span> |
 | closures over strings, arrays, maps, sets and function values, in owned modules ([decision 0027](../decisions/0027-closures-over-the-heap.md))                    | <span class="status compiled">compiled</span> |
-| `Rc<T>`, `Framebuffer`, pixel types, SIMD                                                                                                                         | <span class="status planned">planned</span>   |
+| `Rc<T>`, shared values read only and copied on write; types that hold themselves through one ([decision 0032](../decisions/0032-shared-values.md))                | <span class="status compiled">compiled</span> |
+| `Framebuffer`, pixel types, SIMD                                                                                                                                  | <span class="status planned">planned</span>   |
 
 ## Statements and expressions
 

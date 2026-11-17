@@ -412,6 +412,7 @@ impl Checker<'_> {
 
     /// `E0205` when the binding cannot be modified.
     pub(crate) fn check_mutable(&mut self, index: usize, span: Span) {
+        self.mutations.push((index, span));
         let Some(binding) = self.scopes.bindings.get(index) else {
             return;
         };

@@ -1431,6 +1431,13 @@ impl Lowering<'_> {
         if self.part_local(state, local, out) {
             return;
         }
+        if let Some(values) = self.lent_shared(state, local) {
+            state.flush(out);
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.insert(local.name.symbol, Binding::Lent(values));
+            }
+            return;
+        }
         let name = self.ast.name(local.name.symbol);
         let ty = match (&local.ty, local.init) {
             (Some(t), _) => self.typed(t),

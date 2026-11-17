@@ -1,5 +1,7 @@
-// Question 7 of decision 0032: a turn holds a shared value once more, which
-// changes its count from several threads at once.
+// Question 7 of decision 0032: a turn holds a shared value once more, in a
+// variable it could change, which changes its count from several threads
+// at once. A `const` read from a place no turn changes is lent, and holds
+// nothing.
 
 struct Mesh {
   x: Array<f64>;
@@ -8,7 +10,7 @@ struct Mesh {
 export fn holds(out: inout Array<f64>): void {
   const mesh = Rc.new(Mesh([1.0, 2.0, 3.0]));
   parallel for (let i = 0; i < out.length; i++) {
-    const held = mesh;
+    let held = mesh;
     out[i] = held.x[i % 3];
   }
 }

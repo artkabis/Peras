@@ -1,0 +1,109 @@
+// Decision 0032, option r1: shared values, read only, copied on write. A
+// `const` read from a place is lent, unless something may change or move
+// that place while it is used: then it holds the value once more.
+
+struct Mesh {
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Rc<Mesh>;
+}
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+fn three(): Lantern {
+  return Lantern(Rc.new(Mesh([1, 2, 3])));
+}
+
+fn one(): Lantern {
+  return Lantern(Rc.new(Mesh([9])));
+}
+
+fn take(lanterns: sink Array<Lantern>): i32 {
+  return lanterns.length;
+}
+
+// Lent: nothing changes `fleet` or `i` while `mesh` is used.
+export fn lent(): i32 {
+  const mesh = Rc.new(Mesh([1, 2, 3]));
+  let fleet: Array<Lantern> = [];
+  for (let i = 0; i < 4; i++) {
+    fleet.push(Lantern(mesh));
+  }
+  let total = 0;
+  for (let i = 0; i < fleet.length; i++) {
+    const m = fleet[i].mesh;
+    total += m.tris.length;
+  }
+  return total;
+}
+
+// The array is replaced while the mesh read from it is used.
+export fn reassigned(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  fleet = [one()];
+  return m.tris.length * 10 + fleet[0].mesh.tris.length;
+}
+
+// The index changes while the mesh read at it is used.
+export fn index(): i32 {
+  let fleet = [three(), one()];
+  let i = 0;
+  const m = fleet[i].mesh;
+  i = 1;
+  return m.tris.length * 10 + fleet[i].mesh.tris.length;
+}
+
+// The element is replaced, then the array grows.
+export fn replaced(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  fleet[0] = one();
+  for (let k = 0; k < 100; k++) {
+    fleet.push(one());
+  }
+  return m.tris.length * 1000 + fleet.length;
+}
+
+// The array moves away while the mesh read from it is used.
+export fn moved(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  const n = take(fleet);
+  return m.tris.length * 10 + n;
+}
+
+// Two holders: a write through one is its own.
+export fn holders(): i32 {
+  let a = Rc.new(Mesh([1, 2, 3]));
+  let b = a;
+  b.tris.push(4);
+  b.tris[0] = 7;
+  return a.tris.length * 1000 + b.tris.length * 100 + a.tris[0] * 10 + b.tris[0];
+}
+
+fn build(lo: i32, hi: i32): Option<Rc<Node>> {
+  if (lo > hi) {
+    return None;
+  }
+  const mid = lo + (hi - lo) / 2;
+  return Some(Rc.new(Node(mid, build(lo, mid - 1), build(mid + 1, hi))));
+}
+
+fn sum(node: Option<Rc<Node>>): i32 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value + sum(node.left) + sum(node.right);
+}
+
+// A type that holds itself, through `Rc` (finding F310).
+export fn tree(n: i32): i32 {
+  return sum(build(1, n));
+}

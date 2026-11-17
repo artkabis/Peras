@@ -13,6 +13,67 @@ use super::{FnState, Lowering};
 use crate::{BinOp, BufOp, Const, EnvOp, Expr, ExprKind, RuntimeFn, Stmt, Ty};
 
 impl Lowering<'_> {
+    /// `const x = place`, `x` a shared value: lent rather than held once
+    /// more, read from the place at each use, when nothing from there to the
+    /// end of the function changes or moves the variable the place starts
+    /// from or a name its indices read: `const mesh = fleet[i].mesh` in a
+    /// loop that draws makes no count operation (decision 0032).
+    pub(super) fn lent_shared(
+        &mut self,
+        state: &mut FnState,
+        local: &perasc_syntax::ast::Local,
+    ) -> Option<Vec<Expr>> {
+        use perasc_syntax::ast::ExprKind as Ast;
+        let init = local.init?;
+        if local.mutable || local.ty.is_some() || !self.is_shared(init) {
+            return None;
+        }
+        let mut at = init;
+        loop {
+            match &self.ast.expr(at).kind {
+                Ast::Field { base, .. } | Ast::Index { base, .. } => at = *base,
+                Ast::Paren(inner) => at = *inner,
+                Ast::Name(_) => break,
+                _ => return None,
+            }
+        }
+        let place = self.ast.expr(init).span;
+        let within = |s: perasc_diag::Span, from: u32, to: u32| from <= s.start && s.end <= to;
+        // Every variable the place reads: the one it starts from, and those
+        // of its indices; each must be a variable of the function.
+        let read: std::collections::HashSet<usize> = self
+            .analysis
+            .names
+            .iter()
+            .filter(|(id, _)| {
+                within(self.ast.expr(**id).span, place.start, place.end)
+                    && matches!(self.ast.expr(**id).kind, Ast::Name(_))
+            })
+            .map(|(_, &binding)| binding)
+            .collect();
+        if !self.analysis.names.contains_key(&at) {
+            return None;
+        }
+        let (from, to) = (local.name.span.end, self.body_span.end);
+        let changed = self
+            .analysis
+            .mutations
+            .iter()
+            .any(|(binding, span)| read.contains(binding) && within(*span, from, to));
+        let moved = self.analysis.moves.iter().any(|id| {
+            within(self.ast.expr(*id).span, from, to)
+                && self
+                    .analysis
+                    .names
+                    .get(id)
+                    .is_some_and(|b| read.contains(b))
+        });
+        if changed || moved {
+            return None;
+        }
+        Some(self.value_as(state, init, Mode::Borrow))
+    }
+
     /// Whether an expression is a shared value, `Rc<T>`.
     pub(super) fn is_shared(&self, id: ExprId) -> bool {
         matches!(self.check_type(id), Some(CheckTy::Rc(_)))

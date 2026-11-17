@@ -12,7 +12,7 @@ In owned mode, Peras manages memory without a garbage collector and without you 
 - Only the owner can move a value: a parameter that is not `sink`, an element, or a field of a structure the function does not own is only borrowed ([E0209](../errors/E0209.md)). Move a copy, `xs.copy()`, to keep both.
 - A field moves out of a structure the function owns, a variable or a `sink` parameter: `const country = row.country;`. The structure's other fields stay usable; the structure itself, or the field, cannot be used again until the field is given a new value ([E0204](../errors/E0204.md), [decision 0025](../decisions/0025-moved-fields-and-function-values.md)).
 - No reference is ever stored inside a structure or an array, so there is never a lifetime to write, unlike Rust.
-- Sharing will be explicit, through `Rc<T>`, visible in the type.
+- Sharing is explicit, through `Rc<T>`, visible in the type: see [Sharing a value](#sharing-a-value).
 
 The checks follow every path: a value moved on one side of an `if` counts as moved after it; in a loop, a value moved in one turn is moved in the next one, unless the turn gives it a new value or leaves with `break`.
 
@@ -47,6 +47,57 @@ export fn process(data: sink Array<f32>): i32 {
   return consume(buf);
 }
 ```
+
+## Sharing a value
+
+`Rc.new(value)` makes a value many holders can hold: copying an `Rc<T>` holds the same value once more, without copying it, and the last holder to end releases it. A type can hold itself through one, a tree or a list ([decision 0032](../decisions/0032-shared-values.md)).
+
+```peras build
+struct Mesh {
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Rc<Mesh>;
+  x: f64;
+}
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+export fn triangles(count: i32): i32 {
+  const mesh = Rc.new(Mesh([0, 1, 2]));
+  let lanterns: Array<Lantern> = [];
+  for (let i = 0; i < count; i++) {
+    lanterns.push(Lantern(mesh, i.toF64()));
+  }
+  let total = 0;
+  for (const lantern of lanterns) {
+    total += lantern.mesh.tris.length / 3;
+  }
+  return total;
+}
+
+fn sum(node: Option<Rc<Node>>): i32 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value + sum(node.left) + sum(node.right);
+}
+
+export fn small(): i32 {
+  const leaf = Some(Rc.new(Node(1, None, None)));
+  return sum(Some(Rc.new(Node(2, leaf, None))));
+}
+```
+
+- **A shared value stays a value.** Writing through one holder, `b.tris.push(3)` or `b.x = 1`, first makes the value that holder's own: in place when no one else holds it, on a copy otherwise. The other holders keep what they had.
+- **No cycle can be built**, so nothing is ever left alive: a value can only hold values made before it. A child cannot hold the parent it is added to; a graph that points back is written from the parent, or by numbers in an array.
+- **Reading costs nothing more.** `const mesh = lanterns[i].mesh` is lent, not held once more, while nothing changes `lanterns` or `i`. A turn of `parallel for` may read a shared value, not hold it once more nor write it ([E0241](../errors/E0241.md)).
+- **For speed, numbers still win.** A tree of a million shared nodes takes 6.8 times as long as the same tree kept in arrays, each child its index, and 4.75 times the memory.
 
 ## When memory is released
 

@@ -26,7 +26,8 @@ Peras est jeune. Cette page dit, fonctionnalité par fonctionnalité, jusqu’o�
 | fonctions comme valeurs, types fonctions ([décision 0025](../decisions/0025-moved-fields-and-function-values.md))                                                                   | <span class="status compiled">compilé</span> |
 | fermetures sur des nombres et des booléens, comme valeurs dans les modules owned ([décision 0026](../decisions/0026-closures.md))                                                   | <span class="status compiled">compilé</span> |
 | fermetures sur des chaînes, des tableaux, des tables, des ensembles et des valeurs fonctions, dans les modules owned ([décision 0027](../decisions/0027-closures-over-the-heap.md)) | <span class="status compiled">compilé</span> |
-| `Rc<T>`, `Framebuffer`, types de pixels, SIMD                                                                                                                                       | <span class="status planned">prévu</span>    |
+| `Rc<T>`, valeurs partagées en lecture seule et copiées à l’écriture ; types qui se contiennent à travers lui ([décision 0032](../decisions/0032-shared-values.md))                  | <span class="status compiled">compilé</span> |
+| `Framebuffer`, types de pixels, SIMD                                                                                                                                                | <span class="status planned">prévu</span>    |
 
 ## Instructions et expressions
 

@@ -124,6 +124,11 @@ pub struct Analysis {
     /// `b.items` in `b.items.push(4)`. A shared value read on such a way is
     /// made the holder's own first (decision 0032, prototype r1).
     pub changed: HashSet<ExprId>,
+    /// Every place the program changes or may change: the binding it starts
+    /// from, an index in [`Analysis::bindings`], and where. A shared value
+    /// read from a place none changes while it is used is lent
+    /// (decision 0032).
+    pub mutations: Vec<(usize, Span)>,
 }
 
 /// A declared name, for code generation.
@@ -282,15 +287,16 @@ pub fn proto_closure() -> String {
 }
 
 /// The option of decision 0032 a build follows for shared values: `r0`, no
-/// `Rc` (sharing by indices), unless `PERAS_PROTO_RC` names another option
-/// measured, `r1` (read only, copied on write) or `r2` (changeable, with
-/// `Weak`), for the measure script only (`scripts/bench-shared.mjs`).
+/// `r1`, chosen: `Rc<T>` read only, copied on write; unless `PERAS_PROTO_RC`
+/// names another option measured, `r0` (no `Rc`, sharing by indices) or
+/// `r2` (changeable, with `Weak`), for the measure script only
+/// (`scripts/bench-shared.mjs`).
 #[must_use]
 pub fn proto_rc() -> String {
     match std::env::var("PERAS_PROTO_RC").as_deref() {
-        Ok("r1") => "r1".to_owned(),
+        Ok("r0") => "r0".to_owned(),
         Ok("r2") => "r2".to_owned(),
-        _ => "r0".to_owned(),
+        _ => "r1".to_owned(),
     }
 }
 
@@ -526,6 +532,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         narrowed: checker.narrowed,
         widened: checker.widened,
         changed: checker.changed,
+        mutations: checker.mutations,
         moves: checker.moves,
         enums: checker
             .enums
@@ -671,6 +678,8 @@ struct Checker<'a> {
     widened: HashMap<ExprId, Ty>,
     /// See [`Analysis::changed`].
     changed: HashSet<ExprId>,
+    /// See [`Analysis::mutations`].
+    mutations: Vec<(usize, Span)>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -778,6 +787,7 @@ impl<'a> Checker<'a> {
             narrowed: HashSet::new(),
             widened: HashMap::new(),
             changed: HashSet::new(),
+            mutations: Vec::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),
@@ -1748,7 +1758,13 @@ impl<'a> Checker<'a> {
                 Ty::Set(Box::new(key))
             }
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
-            TypeDef::Rc => Ty::Rc(Box::new(self.type_arg(args))),
+            TypeDef::Rc => {
+                // Not compiled to JavaScript yet (decision 0032).
+                if self.managed {
+                    self.report(errors::owned_only(ty.span, "rc"));
+                }
+                Ty::Rc(Box::new(self.type_arg(args)))
+            }
             TypeDef::Weak => Ty::Weak(Box::new(self.type_arg(args))),
             TypeDef::Result => {
                 let ok = self.type_arg(args);

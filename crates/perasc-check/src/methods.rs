@@ -565,6 +565,9 @@ impl<'a> Checker<'a> {
         {
             return None;
         }
+        if self.managed {
+            self.report(errors::owned_only(at.span, "rc"));
+        }
         let [value] = at.args else {
             self.report(errors::argument_count(
                 at.span,
