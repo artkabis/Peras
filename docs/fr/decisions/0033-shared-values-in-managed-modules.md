@@ -39,3 +39,29 @@ Chaque option est prototypée derrière `PERAS_PROTO_RCM` ; le build sans elle g
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### Les prototypes (2026-11-17)
+
+Construits derrière `PERAS_PROTO_RCM` dans le générateur JavaScript (`crates/perasc-codegen-js/src/shared.rs`) : une valeur partagée lue pour être tenue une fois de plus est enveloppée, sous m2 dans `structuredClone`, sous m3 dans `$hold` ; lue comme base d’un champ ou receveur d’une méthode, elle est prêtée ; un champ écrit, ou une place sur le chemin d’une écriture (`Analysis::changed`), rend d’abord la valeur propre à son détenteur, sous m1 par `structuredClone`, sous m3 par `$own`, chaque valeur partagée du chemin, la plus extérieure d’abord. Chaque option s’accorde avec le module owned sur le programme de bout en bout de `Rc` et sur P1 à P4, tels qu’écrits pour le module owned : aucune ligne ne change. m0 refuse chacun avec E0243.
+
+### La mesure (2026-11-17)
+
+Exécution 1, au commit 86de5c1, rien d’autre en cours ; chaque tableau dans [`bench/shared/MANAGED.md`](../../../bench/shared/MANAGED.md), avec la machine. Rapports au module owned de r1, médiane (étendue) :
+
+| Charge                                                | m1                          | m2                          | m3                     |
+| ----------------------------------------------------- | --------------------------- | --------------------------- | ---------------------- |
+| W1, le bassin                                         | 9,538 (7,916 à 10,613)      | 9,870 (8,601 à 11,657)      | 9,613 (7,882 à 12,101) |
+| W2, un arbre de 1 000 000                             | 0,690 (0,375 à 0,981)       | 136,451 (111,594 à 151,500) | 1,568 (1,226 à 1,977)  |
+| W3, 1 000 000 d’écritures par l’un de deux détenteurs | 387,544 (364,229 à 458,179) | 1,816 (1,641 à 4,125)       | 1,490 (1,230 à 2,634)  |
+| CPU / temps réel, W2                                  | 1,86                        | 1,07                        | 2,61                   |
+| Octets de W3 (gzip)                                   | 610 (395)                   | 597 (393)                   | 791 (466)              |
+
+- **W1 ne les sépare pas** : le bassin est dessiné par de l’arithmétique dans chaque option, son maillage seulement lu ; un module managed prend environ 9,6 fois le temps du module owned sur cette image quelle que soit l’option, le coût d’un module managed que la décision 0029 a mesuré (F221), pas celui du partage.
+- **m2 copie un arbre à chaque appel** : `sum(node.left)` tient `node.left` une fois de plus, donc son sous-arbre est copié, à chaque niveau : 136 fois le module owned.
+- **m1 copie à chaque écriture** : un million d’écritures font un million de copies, 388 fois le module owned.
+- **m3 n’est jamais loin** : 1,57 sur l’arbre, 1,49 sur les écritures, où la boîte est traversée et comptée ; le ramasse-miettes travaillant à côté, 2,61 cœurs occupés pour un sur W2.
+- **Le tas JavaScript après un ramassage**, comme enregistré, est le même pour chaque option sur chaque charge (5 865 à 6 816 Kio) : ce qu’un tour alloue est parti une fois ramassé. Il ne sépare rien ; le temps, si.
+
+### Proposition
+
+**m3**, une boîte comptée et jamais libérée : elle s’accorde avec le module owned, ne copie jamais plus d’une fois un détenteur qui écrit, et reste sous deux fois le temps du module owned là où m1 et m2 tombent chacune de deux ordres de grandeur sur une charge. Son coût : 194 octets de plus que m1 sur W3 (deux fonctions d’aide), et des comptes qui ne font que croître, si bien qu’une valeur une fois partagée est copiée à sa première écriture même après la fin de ses autres détenteurs. Le propriétaire décide.

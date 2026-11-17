@@ -39,3 +39,29 @@ Each option is prototyped behind `PERAS_PROTO_RCM`; the build without it keeps t
 ## Record
 
 _Each part is recorded here as it lands._
+
+### The prototypes (2026-11-17)
+
+Built behind `PERAS_PROTO_RCM` in the JavaScript generator (`crates/perasc-codegen-js/src/shared.rs`): a shared value read to be held once more is wrapped, under m2 in `structuredClone`, under m3 in `$hold`; read as the base of a field or the receiver of a method, it is lent; a field written, or a place on the way to a write (`Analysis::changed`), makes the value its holder's own first, under m1 by `structuredClone`, under m3 by `$own`, each shared value on the way, outermost first. Every option agrees with the owned module on the end-to-end fixture of `Rc` and on P1 to P4, as written for the owned module: no line changes. m0 refuses each with E0243.
+
+### The measure (2026-11-17)
+
+Run 1, at commit 86de5c1, nothing else running; every table in [`bench/shared/MANAGED.md`](../../../bench/shared/MANAGED.md), with the machine. Ratios to the owned module of r1, median (range):
+
+| Workload                                        | m1                           | m2                           | m3                      |
+| ----------------------------------------------- | ---------------------------- | ---------------------------- | ----------------------- |
+| W1, the pond                                    | 9.538 (7.916 to 10.613)      | 9.870 (8.601 to 11.657)      | 9.613 (7.882 to 12.101) |
+| W2, a tree of 1,000,000                         | 0.690 (0.375 to 0.981)       | 136.451 (111.594 to 151.500) | 1.568 (1.226 to 1.977)  |
+| W3, 1,000,000 writes through one of two holders | 387.544 (364.229 to 458.179) | 1.816 (1.641 to 4.125)       | 1.490 (1.230 to 2.634)  |
+| CPU / wall, W2                                  | 1.86                         | 1.07                         | 2.61                    |
+| Bytes of W3 (gzip)                              | 610 (395)                    | 597 (393)                    | 791 (466)               |
+
+- **W1 does not separate them**: the pond is drawn by arithmetic in every option, its mesh only read; a managed module takes about 9.6 times the owned module's time on this frame whatever the option, the cost of a managed module that decision 0029 measured (F221), not of sharing.
+- **m2 copies a tree at every call**: `sum(node.left)` holds `node.left` once more, so its subtree is copied, at every level: 136 times the owned module.
+- **m1 copies at every write**: a million writes are a million copies, 388 times the owned module.
+- **m3 is never far**: 1.57 on the tree, 1.49 on the writes, where the box is read through and counted; the garbage collector working beside it, 2.61 cores busy for one on W2.
+- **The JavaScript heap after a collection**, as registered, is the same for every option on every workload (5,865 to 6,816 KiB): what a round allocates is gone once collected. It separates nothing; the time does.
+
+### Proposal
+
+**m3**, a box counted and never released: it agrees with the owned module, never copies more than once a holder that writes, and stays within twice the owned module's time where m1 and m2 each fall by two orders of magnitude on one workload. Its cost: 194 more bytes than m1 on W3 (two helpers), and counts that only grow, so that a value once shared is copied at its first write even after its other holders ended. The owner decides.
