@@ -1,0 +1,13 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0210-integer-division.peras
+---
+diagnostics:
+  error[E0210] check-mismatch { expected: "f64", found: "i32" }
+    primary 7:14-7:15: check-mismatch-label { found: "i32" }
+    secondary 6:15-6:30: check-truncated-label
+    cause: check-mismatch-why
+    fix: check-truncated-fix { method: "toF64" }
+      6:16-6:16 -> ".toF64()"
+      6:30-6:30 -> ".toF64()"

@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0034-integer-division.md](../../en/decisions/0034-integer-division.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F113, que la [décision 0030](0030-numeric-literals.md) a trouvé : `const t = i / (count - 1); total += t;` somme 1 là où JavaScript somme 2,5. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `4dc37e9` ; option d1 acceptée par le propriétaire le 2026-11-17. Il répond au constat F113, que la [décision 0030](0030-numeric-literals.md) a trouvé : `const t = i / (count - 1); total += t;` somme 1 là où JavaScript somme 2,5. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 

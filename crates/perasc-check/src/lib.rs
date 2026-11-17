@@ -299,16 +299,17 @@ pub fn proto_rc() -> String {
     }
 }
 
-/// The option of decision 0034 a build follows for `/` on two integers:
-/// `d0`, today's, unless `PERAS_PROTO_DIV` names an option measured, `d1`
-/// (the error shows the division), `d2` (`/` gives an `f64`, `a.div(b)`
-/// the integer quotient) or `d3` (`/` on integers refused), for the
-/// measure script only.
+/// The option of decision 0034 a build follows for an integer division
+/// met where a float is expected: `d1`, chosen, the error shows the
+/// division and fixes it there; unless `PERAS_PROTO_DIV` names `d0`, the
+/// error as it was, the reference of the measure script
+/// (`scripts/bench-division.mjs`). Options d2 and d3 were removed once
+/// measured: each made programs of the repository no longer build.
 #[must_use]
 pub fn proto_div() -> String {
     match std::env::var("PERAS_PROTO_DIV").as_deref() {
-        Ok(o @ ("d1" | "d2" | "d3")) => o.to_owned(),
-        _ => "d0".to_owned(),
+        Ok("d0") => "d0".to_owned(),
+        _ => "d1".to_owned(),
     }
 }
 

@@ -97,8 +97,8 @@ impl Checker<'_> {
                 true
             }
             _ => {
-                // Decision 0034's option d1, prototyped: an integer division
-                // where a float is expected is shown, and fixed there.
+                // Decision 0034, option d1: an integer division where a
+                // float is expected is shown, and fixed there.
                 if crate::proto_div() == "d1"
                     && matches!(actual, Ty::Int(_))
                     && matches!(expected, Ty::Float(_))
@@ -582,30 +582,6 @@ impl Checker<'_> {
         let Some(common) = self.unify(lhs, &lt, rhs, &rt) else {
             return Ty::Error;
         };
-        // Decision 0034's options d2 and d3, prototyped: `/` on two
-        // integers gives an `f64`, or is refused.
-        if op == BinaryOp::Div && matches!(common, Ty::Int(_) | Ty::IntLit) {
-            match crate::proto_div().as_str() {
-                "d2" => {
-                    let f64_ty = Ty::Float(crate::ty::FloatTy::F64);
-                    for side in [lhs, rhs] {
-                        if matches!(self.expr_types.get(&side), Some(Ty::IntLit)) {
-                            self.settle(side, &f64_ty);
-                        } else {
-                            self.widened.insert(side, f64_ty.clone());
-                        }
-                    }
-                    return f64_ty;
-                }
-                "d3" => {
-                    let side = |c: &Self, id: ExprId| c.ast.expr(id).span;
-                    let (l, r) = (side(self, lhs), side(self, rhs));
-                    self.report(errors::integer_division(span, l, r));
-                    return common;
-                }
-                _ => {}
-            }
-        }
         let allowed = self.operand_allowed(op, &common);
         if !allowed && common != Ty::Error {
             self.invalid_operator(span, op.symbol(), &common, needed_bound(op));

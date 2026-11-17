@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0034-integer-division.md](../../fr/decisions/0034-integer-division.md)._
 
-_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks. It answers finding F113, which [decision 0030](0030-numeric-literals.md) found: `const t = i / (count - 1); total += t;` sums 1 where JavaScript sums 2.5. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-17, before any prototype and any measure, as the rule of the project asks; options measured at `4dc37e9`; option d1 accepted by the owner on 2026-11-17. It answers finding F113, which [decision 0030](0030-numeric-literals.md) found: `const t = i / (count - 1); total += t;` sums 1 where JavaScript sums 2.5. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 

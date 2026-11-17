@@ -130,6 +130,30 @@ export fn mean(total: i32, count: i64): i64 {
 
 Converting a float to an integer rounds toward zero and saturates: `(1e20).toI32()` is the largest `i32`, never an undefined value.
 
+`/` on two integers is an integer division, truncated toward zero, as in Rust, Go and Swift: `5 / 2` is `2`, where JavaScript gives `2.5`. When its quotient is used where a float is expected, the error shows the division, even behind a `const`, and converts its operands there, before dividing ([decision 0034](../decisions/0034-integer-division.md)): converting the quotient afterwards would keep it truncated.
+
+```peras error E0210
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}
+```
+
+```peras build
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i.toF64() / (count - 1).toF64();
+    total += t;
+  }
+  return total;
+}
+```
+
 ## Booleans
 
 `bool` is `true` or `false`, and a condition must be a `bool`: Peras has no truthiness.

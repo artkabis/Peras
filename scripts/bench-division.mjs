@@ -1,8 +1,9 @@
 // Decision 0034's protocol: integer division, as a user from JavaScript
-// meets it. Each option is a prototype the compiler builds when
-// PERAS_PROTO_DIV names it: d0, today's; d1, the error shows the division;
-// d2, `/` gives an `f64`, `a.div(b)` the integer quotient; d3, `/` on
-// integers refused.
+// meets it. d1, chosen, the error showing the division, is the build's;
+// d0, the error as it was, is built when PERAS_PROTO_DIV names it. d2 (`/`
+// giving an `f64`) and d3 (`/` on integers refused) were measured at
+// commit 4dc37e9 and removed once not chosen: their figures are in the
+// decision.
 //
 // 1. Ease of writing: the five programs of bench/division/ease, written as
 //    a user writes them from JavaScript, fixed by applying the fix each
@@ -40,7 +41,7 @@ const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "division");
 const work = join(root, "target", "bench-division");
 const perasc = join(root, "target", "release", "perasc");
-const OPTIONS = ["d0", "d1", "d2", "d3"];
+const OPTIONS = ["d0", "d1"];
 
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
@@ -233,7 +234,7 @@ lines.push(
 );
 if (check) {
   // The counts the prototypes gave when committed, checked from then on.
-  const recorded = { d0: 3, d1: 1, d2: 0, d3: 3 };
+  const recorded = { d0: 3, d1: 1 };
   for (const o of OPTIONS) {
     if (wrong[o] !== recorded[/** @type {"d0"} */ (o)]) {
       throw new Error(

@@ -284,8 +284,8 @@ pub fn mismatch(
     )
 }
 
-/// `E0210`, the integer met an integer division (decision 0034, option d1,
-/// prototyped): the division shown, its operands converted.
+/// `E0210`, the integer met an integer division (decision 0034, option
+/// d1): the division shown, its operands converted.
 pub fn truncated(
     span: Span,
     expected: &Ty,
@@ -318,24 +318,6 @@ pub fn truncated(
         Fix {
             message: Message::new("check-truncated-fix").text("method", method),
             edits,
-        },
-    )
-}
-
-/// `/` on two integers, under decision 0034's option d3, prototyped.
-pub fn integer_division(span: Span, lhs: Span, rhs: Span) -> Diagnostic {
-    diagnostic(
-        codes::INVALID_OPERATOR,
-        Message::new("check-integer-division"),
-        vec![primary(span, Message::new("check-integer-division-label"))],
-        Fix {
-            message: Message::new("check-integer-division-fix"),
-            // `a / b` becomes `a.div(b)`: the `/` and its spaces go, the
-            // right operand becomes the argument.
-            edits: vec![
-                replace(Span::new(lhs.end, rhs.start), ".div("),
-                insert(rhs.end, ")"),
-            ],
         },
     )
 }

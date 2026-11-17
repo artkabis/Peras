@@ -76,10 +76,7 @@ pub fn method(receiver: &Ty, name: &str) -> Option<Method> {
                     ret: me,
                 });
             }
-            // `a.div(b)`, the integer quotient, under decision 0034's
-            // options d2 and d3, prototyped: as the wrapping operations.
-            let div = name == "div" && matches!(crate::proto_div().as_str(), "d2" | "d3");
-            if me.is_integer() && (WRAPPING.contains(&name) || div) {
+            if me.is_integer() && WRAPPING.contains(&name) {
                 return Some(Method {
                     params: vec![me.clone()],
                     ret: me,

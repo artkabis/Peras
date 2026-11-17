@@ -130,6 +130,30 @@ export fn mean(total: i32, count: i64): i64 {
 
 Convertir un flottant en entier arrondit vers zéro et sature : `(1e20).toI32()` vaut le plus grand `i32`, jamais une valeur indéfinie.
 
+`/` sur deux entiers est une division entière, tronquée vers zéro, comme en Rust, Go et Swift : `5 / 2` vaut `2`, là où JavaScript donne `2.5`. Quand son quotient est utilisé là où un flottant est attendu, l’erreur montre la division, même derrière un `const`, et convertit ses opérandes à cet endroit, avant de diviser ([décision 0034](../decisions/0034-integer-division.md)) : convertir le quotient après le laisserait tronqué.
+
+```peras error E0210
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}
+```
+
+```peras build
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i.toF64() / (count - 1).toF64();
+    total += t;
+  }
+  return total;
+}
+```
+
 ## Booléens
 
 `bool` vaut `true` ou `false`, et une condition doit être un `bool` : Peras n’a pas de valeurs « truthy ».

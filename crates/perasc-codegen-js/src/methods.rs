@@ -160,8 +160,6 @@ impl Module<'_> {
                 format!("{min}({max}({me}, {}), {})", arg(0), arg(1))
             }
             "clamp" => format!("Math.min(Math.max({me}, {}), {})", arg(0), arg(1)),
-            // `a.div(b)`, the integer quotient (decision 0034, prototypes).
-            "div" => self.operation(BinaryOp::Div, &ty, me, &arg(0)),
             "wrappingAdd" | "wrappingSub" | "wrappingMul" => {
                 let op = match name {
                     "wrappingAdd" => BinaryOp::Add,

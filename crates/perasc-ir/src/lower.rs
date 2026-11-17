@@ -2133,15 +2133,6 @@ impl Lowering<'_> {
                 ty,
             };
         }
-        // `a.div(b)`, the integer quotient (decision 0034, prototypes).
-        if let ("div", Some(&arg)) = (method, args.first()) {
-            let mark = state.pre.len();
-            let arg = self.expr(state, arg);
-            let mut operands = [receiver];
-            state.keep_before(mark, &mut operands);
-            let [receiver] = operands;
-            return self.arith(state, BinOp::Div, receiver, arg, kind);
-        }
         let wrapping = match method {
             "wrappingAdd" => Some(BinOp::Add),
             "wrappingSub" => Some(BinOp::Sub),
