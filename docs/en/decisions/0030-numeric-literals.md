@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0030-numeric-literals.md](../../fr/decisions/0030-numeric-literals.md)._
 
-_Status: protocol registered on 2026-11-17 (commit `f73b8f6`), before any prototype and any measure, as the rule of the project asks; options measured at `bb91877`, b to propose to the owner, who chooses. It answers finding F112, the first of the corrections the owner ordered after [decision 0029](0029-pond-of-lanterns.md)._
+_Status: protocol registered on 2026-11-17 (commit `f73b8f6`), before any prototype and any measure, as the rule of the project asks; options measured at `bb91877`; option b accepted by the owner on 2026-11-17. It answers finding F112, the first of the corrections the owner ordered after [decision 0029](0029-pond-of-lanterns.md)._
 
 ## Context
 
@@ -39,6 +39,24 @@ Four quantities, as for decisions 0027 and 0028.
 5. **An option not built** is reported as such, with why, never ranked by a guess (finding M001).
 
 `node scripts/bench-numbers.mjs` runs them; `--check` checks that every program builds and agrees, and is run with every check of the project.
+
+## Decision
+
+**Option b: a literal takes the type it is used as**, as in Swift and Go.
+
+1. An integer literal where a float is expected is that float: `2 * x`, `c < 0`, `v = 1;`, `return 0;`, an argument, `-1`. A composite of literals is computed in that float, `1 / 2` where an `f64` is expected being 0.5, as in Swift and in JavaScript.
+2. An array literal of numbers takes the type of its elements together: a float if one of them is, `[1, s, 0]`.
+3. A variable is never converted: `n * x`, `n` an `i32`, stays refused (`E0210`), with the fix `n.toF64()`. Where a value changes type, the source says so.
+4. `E0211` is retired: its page stays, marked as such. Options a and c stay buildable behind `PERAS_PROTO_NUM`, for the measure script only.
+
+## Criteria of the step, registered before its code
+
+1. **UI tests**: a page of literals used as floats checks with no error, `f64` and `f32`, negative, in an operation, a comparison, an assignment, a return, an argument and an array literal; `n * x` with `n` an `i32` stays refused, with the fix `n.toF64()`; `E0211`'s test shows it builds.
+2. **End to end, on both allocators**, against the same source built as a managed module: the same page computed, `1 / 2` where an `f64` is expected giving 0.5 in both modes, an `f32` literal rounded as an `f32`. The same results, nothing left alive.
+3. **The pond as first written builds** and draws the pond's pixels: `node scripts/bench-numbers.mjs --check`; the scripts that rely on today's refusals, `bench-lanterns.mjs` for its kept version, ask for option a explicitly (finding M007).
+4. **The rule broken on purpose is caught**: a literal typed as a float lowered as an integer constant, in the lowering, is refused by the release verifier or fails the end-to-end tests.
+5. **Measures**, reported, not conditions: `node scripts/bench-numbers.mjs` at the commit of the step; the dashboard's A/B against the commit before (`ab-data.mjs`).
+6. **Docs**, in English and in French: the guide's page on numbers, the types reference, `E0211`'s page, the status, finding F112, the changelog, `CLAUDE.md`.
 
 ## Record
 

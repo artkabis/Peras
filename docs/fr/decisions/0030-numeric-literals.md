@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0030-numeric-literals.md](../../en/decisions/0030-numeric-literals.md)._
 
-_État : protocole enregistré le 2026-11-17 (commit `f73b8f6`), avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `bb91877`, b à proposer au propriétaire, qui choisit. Il répond au constat F112, la première des corrections que le propriétaire a ordonnées après la [décision 0029](0029-pond-of-lanterns.md)._
+_État : protocole enregistré le 2026-11-17 (commit `f73b8f6`), avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `bb91877` ; option b acceptée par le propriétaire le 2026-11-17. Il répond au constat F112, la première des corrections que le propriétaire a ordonnées après la [décision 0029](0029-pond-of-lanterns.md)._
 
 ## Contexte
 
@@ -39,6 +39,24 @@ Quatre quantités, comme pour les décisions 0027 et 0028.
 5. **Une option non construite** est dite telle, avec pourquoi, jamais classée sur une supposition (constat M001).
 
 `node scripts/bench-numbers.mjs` les lance ; `--check` vérifie que chaque programme se construit et s’accorde, et tourne avec chaque vérification du projet.
+
+## Décision
+
+**Option b : un littéral prend le type auquel il sert**, comme en Swift et en Go.
+
+1. Un littéral entier là où un flottant est attendu est ce flottant : `2 * x`, `c < 0`, `v = 1;`, `return 0;`, un argument, `-1`. Un composé de littéraux est calculé dans ce flottant, `1 / 2` là où un `f64` est attendu valant 0,5, comme en Swift et en JavaScript.
+2. Un tableau littéral de nombres prend le type de ses éléments ensemble : un flottant si l’un d’eux en est un, `[1, s, 0]`.
+3. Une variable n’est jamais convertie : `n * x`, `n` un `i32`, reste refusé (`E0210`), avec la correction `n.toF64()`. Là où une valeur change de type, la source le dit.
+4. `E0211` est retiré : sa page reste, marquée comme telle. Les options a et c restent constructibles derrière `PERAS_PROTO_NUM`, pour le script de mesure seulement.
+
+## Critères de l’étape, enregistrés avant son code
+
+1. **Tests UI** : une page de littéraux utilisés comme flottants se vérifie sans erreur, `f64` et `f32`, négatifs, dans une opération, une comparaison, une affectation, un retour, un argument et un tableau littéral ; `n * x` avec `n` un `i32` reste refusé, avec la correction `n.toF64()` ; le test d’`E0211` montre qu’il se construit.
+2. **De bout en bout, sur les deux allocateurs**, contre la même source construite en module managed : la même page calculée, `1 / 2` là où un `f64` est attendu donnant 0,5 dans les deux modes, un littéral `f32` arrondi en `f32`. Les mêmes résultats, rien de vivant.
+3. **Le bassin tel qu’écrit d’abord se construit** et dessine les pixels du bassin : `node scripts/bench-numbers.mjs --check` ; les scripts qui comptent sur les refus d’aujourd’hui, `bench-lanterns.mjs` pour sa version gardée, demandent l’option a explicitement (constat M007).
+4. **La règle cassée exprès est attrapée** : un littéral typé flottant abaissé en constante entière, dans l’abaissement, est refusé par le vérificateur de libération ou fait échouer les tests de bout en bout.
+5. **Mesures**, rapportées, pas des conditions : `node scripts/bench-numbers.mjs` au commit de l’étape ; l’A/B du tableau de bord contre le commit d’avant (`ab-data.mjs`).
+6. **Docs**, en anglais et en français : la page du guide sur les nombres, la référence des types, la page d’`E0211`, l’état, le constat F112, le journal des modifications, `CLAUDE.md`.
 
 ## Registre
 
