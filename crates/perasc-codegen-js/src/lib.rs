@@ -554,6 +554,11 @@ impl<'a> Module<'a> {
 
     /// The type of an expression, in the instance being generated.
     fn ty(&self, id: perasc_syntax::ast::ExprId) -> Ty {
+        // Decision 0030's option c, prototyped: an integer used as a float
+        // is that float to what surrounds it.
+        if let Some(target) = self.analysis.widened.get(&id) {
+            return target.clone();
+        }
         self.analysis.types.get(&id).map_or(Ty::Error, |t| {
             self.analysis.subst(t, &self.current.args).defaulted()
         })

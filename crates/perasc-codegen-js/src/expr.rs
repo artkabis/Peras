@@ -55,6 +55,19 @@ fn settled(js: &str) -> bool {
 impl Module<'_> {
     /// An expression.
     pub(crate) fn expr(&mut self, id: ExprId) -> String {
+        // Decision 0030's option c, prototyped: an integer used as a float;
+        // a `BigInt` becomes a number.
+        if self.analysis.widened.contains_key(&id) {
+            let inner = self.expr_as_written(id);
+            return match self.analysis.types.get(&id) {
+                Some(Ty::Int(int)) if crate::is_big(*int) => format!("Number({inner})"),
+                _ => inner,
+            };
+        }
+        self.expr_as_written(id)
+    }
+
+    fn expr_as_written(&mut self, id: ExprId) -> String {
         let expr = self.ast.expr(id);
         let span = expr.span;
         match &expr.kind {

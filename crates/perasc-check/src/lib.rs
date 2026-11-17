@@ -117,6 +117,9 @@ pub struct Analysis {
     /// The names of options read after a test that leaves when they are
     /// `None`: their value (decision 0028, option 2e).
     pub narrowed: HashSet<ExprId>,
+    /// Integer values converted to the float type they are used as
+    /// (decision 0030, option c, prototype).
+    pub widened: HashMap<ExprId, Ty>,
 }
 
 /// A declared name, for code generation.
@@ -283,6 +286,8 @@ pub fn proto_closure() -> String {
 pub fn proto(variable: &str) -> String {
     let chosen = match variable {
         "PERAS_PROTO_TAKE" => "e",
+        // Decision 0030, measured before it is chosen: today's literals.
+        "PERAS_PROTO_NUM" => "a",
         _ => "b",
     };
     std::env::var(variable)
@@ -481,6 +486,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         escaping: checker.escaping,
         copies: checker.copies,
         narrowed: checker.narrowed,
+        widened: checker.widened,
         moves: checker.moves,
         enums: checker
             .enums
@@ -606,6 +612,7 @@ struct Checker<'a> {
     /// and every name read so (decision 0028, option 2e).
     narrowed_now: HashMap<usize, Ty>,
     narrowed: HashSet<ExprId>,
+    widened: HashMap<ExprId, Ty>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -704,6 +711,7 @@ impl<'a> Checker<'a> {
             copies: HashSet::new(),
             narrowed_now: HashMap::new(),
             narrowed: HashSet::new(),
+            widened: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),

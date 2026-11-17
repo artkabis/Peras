@@ -1711,6 +1711,36 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
+        // Decision 0030's option c, prototyped: an integer used as a float.
+        if let Some(target) = self.analysis.widened.get(&id).cloned() {
+            let inner = self.expr_as_written(state, id);
+            let ty = Self::ir_type(&target).unwrap_or(Ty::F64);
+            return Expr {
+                kind: ExprKind::Convert(Box::new(inner)),
+                ty,
+            };
+        }
+        self.expr_as_written(state, id)
+    }
+
+    /// An integer literal: a constant of its integer type, or, typed as a
+    /// float (decision 0030's options b and c, prototyped), that float.
+    fn int_literal(&self, id: ExprId, value: u64, negative: bool, ty: Ty) -> ExprKind {
+        if ty.is_float() {
+            #[allow(clippy::cast_precision_loss)]
+            let v = value as f64;
+            return ExprKind::Const(Const::Float(if negative { -v } else { v }));
+        }
+        if negative {
+            return ExprKind::Const(int_const(value, true));
+        }
+        ExprKind::Const(match self.int_kind(id) {
+            Some(kind) => ints::literal(value, kind),
+            None => int_const(value, false),
+        })
+    }
+
+    fn expr_as_written(&mut self, state: &mut FnState, id: ExprId) -> Expr {
         if self.applied.contains_key(&id) {
             return self.applied_expr(state, id);
         }
@@ -1724,10 +1754,7 @@ impl Lowering<'_> {
         let ast_expr = self.ast.expr(id);
         let span = ast_expr.span;
         let kind = match &ast_expr.kind {
-            AstExpr::Int(value) => ExprKind::Const(match self.int_kind(id) {
-                Some(kind) => ints::literal(*value, kind),
-                None => int_const(*value, false),
-            }),
+            AstExpr::Int(value) => self.int_literal(id, *value, false, ty),
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => match self.scalar_local(state, id, *symbol) {
@@ -1737,7 +1764,7 @@ impl Lowering<'_> {
             AstExpr::Paren(inner) => return self.expr(state, *inner),
             AstExpr::Unary { op, operand } => {
                 if let (UnaryOp::Neg, AstExpr::Int(value)) = (op, &self.ast.expr(*operand).kind) {
-                    ExprKind::Const(int_const(*value, true))
+                    self.int_literal(id, *value, true, ty)
                 } else {
                     return self.unary(state, *op, *operand, ty, span);
                 }

@@ -50,6 +50,17 @@ impl Checker<'_> {
                 self.settle(id, expected);
                 true
             }
+            // Decision 0030's options b and c, prototyped: a literal takes
+            // the float type it is used as, as in Swift and Go.
+            (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if crate::proto("PERAS_PROTO_NUM") != "a" => {
+                self.settle(id, expected);
+                true
+            }
+            // Option c: an integer variable becomes the float too.
+            (Ty::Int(_), Ty::Float(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(id, expected.clone());
+                true
+            }
             (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if self.literal(id).is_some() => {
                 let literal = self.slice(span).to_owned();
                 self.report(errors::integer_for_float(span, &literal, expected));
@@ -353,8 +364,28 @@ impl Checker<'_> {
             _ => None,
         };
         let mut element: Option<Ty> = expected_element.clone();
-        for &item in items {
+        for (k, &item) in items.iter().enumerate() {
             match element.clone() {
+                // Decision 0030's options b and c, prototyped: integer
+                // literals before a float take its type, `[1, s, 0]`.
+                Some(Ty::IntLit) if crate::proto("PERAS_PROTO_NUM") != "a" => {
+                    let actual = self.infer(item, None);
+                    if actual.is_float() {
+                        let float = if actual == Ty::FloatLit {
+                            Ty::Float(crate::ty::FloatTy::F64)
+                        } else {
+                            actual.clone()
+                        };
+                        for &before in &items[..k] {
+                            self.settle(before, &float);
+                        }
+                        self.coerce(item, &actual, &float);
+                        element = Some(float);
+                    } else {
+                        let merged = self.merge(item, &actual, &Ty::IntLit);
+                        element = Some(merged);
+                    }
+                }
                 Some(e) => {
                     let actual = self.infer(item, Some(&e));
                     let merged = self.merge(item, &actual, &e);
@@ -499,7 +530,20 @@ impl Checker<'_> {
         if lt == rt {
             return Some(lt.clone());
         }
+        let f64_ty = Ty::Float(crate::ty::FloatTy::F64);
         match (lt, rt) {
+            // Decision 0030's option c, prototyped: an integer against a float
+            // literal becomes an `f64`, `cents * 1.2`.
+            (Ty::Int(_), Ty::FloatLit) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(lhs, f64_ty.clone());
+                self.settle(rhs, &f64_ty);
+                Some(f64_ty)
+            }
+            (Ty::FloatLit, Ty::Int(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(rhs, f64_ty.clone());
+                self.settle(lhs, &f64_ty);
+                Some(f64_ty)
+            }
             (Ty::IntLit | Ty::FloatLit, Ty::Int(_) | Ty::Float(_) | Ty::FloatLit) => {
                 self.coerce(lhs, lt, rt).then(|| rt.clone())
             }
@@ -517,9 +561,12 @@ impl Checker<'_> {
                 self.coerce(narrow, narrow_ty, wide);
                 None
             }
-            (Ty::Int(_), Ty::Float(_)) => {
-                self.coerce(lhs, lt, rt);
-                None
+            (Ty::Int(_), Ty::Float(_)) => self
+                .coerce(lhs, lt, rt)
+                .then(|| rt.clone())
+                .filter(|_| crate::proto("PERAS_PROTO_NUM") == "c"),
+            (Ty::Float(_), Ty::Int(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.coerce(rhs, rt, lt).then(|| lt.clone())
             }
             // A float on the left, or anything else: convert the right operand.
             _ => {
