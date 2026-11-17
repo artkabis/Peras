@@ -1059,7 +1059,7 @@ impl Machine<'_> {
             let value = *operands.get(i).ok_or(Trap::Unreachable)?;
             this.bytes(value)
         };
-        if let F::SharedUnique | F::WeakNew | F::WeakAlive | F::WeakGet = f {
+        if f.on_shared() {
             return self.shared_runtime(f, operands);
         }
         if f == crate::RuntimeFn::BufEqual {
@@ -1413,6 +1413,27 @@ impl Machine<'_> {
         use crate::RuntimeFn as F;
         if f == F::SharedUnique {
             return self.shared_unique(operands.get(1).copied());
+        }
+        // Where a shared value is held: a slot of another, past its two
+        // first elements, or an element of a column.
+        if let (
+            F::SharedUniqueSlot | F::SharedUniqueElem,
+            Some(Value::Handle(block)),
+            Some(Value::I32(at)),
+        ) = (f, operands.get(1), operands.get(2))
+        {
+            let at = usize::try_from(*at).map_err(|_| Trap::Unchecked)?
+                + if f == F::SharedUniqueSlot { 2 } else { 0 };
+            let held = *self
+                .heap
+                .get(block)
+                .and_then(|e| e.get(at))
+                .ok_or(Trap::Unchecked)?;
+            let unique = self.shared_unique(Some(held))?;
+            if let Some(slot) = self.heap.get_mut(block).and_then(|e| e.get_mut(at)) {
+                *slot = unique;
+            }
+            return Ok(Value::Void);
         }
         let Some(Value::Handle(block)) = operands.first() else {
             return Err(Trap::UseAfterRelease);

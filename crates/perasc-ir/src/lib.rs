@@ -970,11 +970,17 @@ pub enum RuntimeFn {
     /// `(weak) -> owned`: the value a weak holder names, held once more, or
     /// the static environment of no function when it no longer lives.
     WeakGet,
+    /// `(bytes, shared, slot)`: the shared value held at this slot of
+    /// another, [`Self::SharedUnique`] where it is held (decision 0032).
+    SharedUniqueSlot,
+    /// `(bytes, column, index)`: the shared value held at this element of a
+    /// column of handles, [`Self::SharedUnique`] where it is held.
+    SharedUniqueElem,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 62] = [
+    pub const ALL: [Self; 64] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -1037,6 +1043,8 @@ impl RuntimeFn {
         Self::WeakNew,
         Self::WeakAlive,
         Self::WeakGet,
+        Self::SharedUniqueSlot,
+        Self::SharedUniqueElem,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -1105,6 +1113,8 @@ impl RuntimeFn {
             Self::WeakNew => "weak_new",
             Self::WeakAlive => "weak_alive",
             Self::WeakGet => "weak_get",
+            Self::SharedUniqueSlot => "shared_unique_slot",
+            Self::SharedUniqueElem => "shared_unique_elem",
         }
     }
 
@@ -1116,7 +1126,9 @@ impl RuntimeFn {
             Self::FmtInt | Self::FmtIntLen | Self::FmtUint | Self::FmtUintLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat | Self::FloatRem => Ty::F64,
-            Self::MapNew | Self::SharedUnique => Ty::I32,
+            Self::MapNew | Self::SharedUnique | Self::SharedUniqueSlot | Self::SharedUniqueElem => {
+                Ty::I32
+            }
             _ => Ty::Borrowed,
         }
     }
@@ -1126,7 +1138,9 @@ impl RuntimeFn {
     pub const fn operands(self) -> &'static [Ty] {
         match self {
             Self::NextPart | Self::NextChar => &[Ty::Borrowed, Ty::Borrowed, Ty::I32],
-            Self::IndexOf | Self::BufEqual => &[Ty::Borrowed, Ty::I32],
+            Self::IndexOf | Self::BufEqual | Self::SharedUniqueSlot | Self::SharedUniqueElem => {
+                &[Ty::Borrowed, Ty::I32]
+            }
             Self::StartsWith
             | Self::EndsWith
             | Self::Split
@@ -1224,9 +1238,26 @@ impl RuntimeFn {
             | Self::MapStoreH
             | Self::MapClear
             | Self::FmtIntAppend
-            | Self::FmtUintAppend => Ty::Void,
+            | Self::FmtUintAppend
+            | Self::SharedUniqueSlot
+            | Self::SharedUniqueElem => Ty::Void,
             _ => Ty::Owned,
         }
+    }
+
+    /// Whether it works on shared values or their weak holders (decision
+    /// 0032).
+    #[must_use]
+    pub const fn on_shared(self) -> bool {
+        matches!(
+            self,
+            Self::SharedUnique
+                | Self::SharedUniqueSlot
+                | Self::SharedUniqueElem
+                | Self::WeakNew
+                | Self::WeakAlive
+                | Self::WeakGet
+        )
     }
 
     /// Its position among the runtime's imports, after the allocator's.

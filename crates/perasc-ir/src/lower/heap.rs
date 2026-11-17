@@ -687,6 +687,9 @@ impl Lowering<'_> {
         loop {
             match self.ast.expr(target).kind {
                 AstExpr::Index { .. } => return true,
+                // A field of a shared value is written through it, even when
+                // an element holds it (decision 0032).
+                AstExpr::Field { base, .. } if self.is_shared(base) => return false,
                 AstExpr::Field { base, .. } | AstExpr::Paren(base) => target = base,
                 _ => return false,
             }

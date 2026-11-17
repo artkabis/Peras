@@ -107,3 +107,62 @@ fn sum(node: Option<Rc<Node>>): i32 {
 export fn tree(n: i32): i32 {
   return sum(build(1, n));
 }
+
+struct Leaf {
+  n: i32;
+  items: Array<i32>;
+}
+
+struct Pair {
+  left: Rc<Leaf>;
+  count: i32;
+}
+
+struct Holds {
+  leaf: Rc<Leaf>;
+}
+
+// A shared value held by another: a write through it makes both its
+// holder's own, each where it is held.
+export fn nested(): i32 {
+  let a = Rc.new(Pair(Rc.new(Leaf(1, [1])), 0));
+  let b = a;
+  b.left.n = 5;
+  b.left.items.push(2);
+  b.count++;
+  return a.left.n * 100000 + a.left.items.length * 10000 + a.count * 1000 + b.left.n * 100 + b.left.items.length * 10 + b.count;
+}
+
+// The inner value is held twice: by `leaf`, and by the pair.
+export fn inner(): i32 {
+  const leaf = Rc.new(Leaf(1, [1]));
+  let pair = Rc.new(Pair(leaf, 0));
+  pair.left.n = 9;
+  return leaf.n * 10 + pair.left.n;
+}
+
+// Shared values held by elements of an array.
+export fn elements(): i32 {
+  const mesh = Rc.new(Mesh([1, 2, 3]));
+  let fleet = [Lantern(mesh), Lantern(mesh)];
+  fleet[0].mesh.tris.push(4);
+  fleet[0].mesh.tris[0] = 7;
+  return fleet[0].mesh.tris.length * 1000 + fleet[1].mesh.tris.length * 100 + fleet[0].mesh.tris[0] * 10 + fleet[1].mesh.tris[0];
+}
+
+export fn elementFields(): i32 {
+  const leaf = Rc.new(Leaf(1, []));
+  let all = [Holds(leaf), Holds(leaf)];
+  all[1].leaf.n = 8;
+  all[0].leaf.n++;
+  return leaf.n * 100 + all[0].leaf.n * 10 + all[1].leaf.n;
+}
+
+// A step through a shared value a variable holds (finding F018).
+export fn stepped(): i32 {
+  const first = Rc.new(Leaf(1, []));
+  let r = first;
+  r.n++;
+  r.n += 10;
+  return first.n * 100 + r.n;
+}

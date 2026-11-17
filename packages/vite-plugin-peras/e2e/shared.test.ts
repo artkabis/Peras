@@ -34,6 +34,11 @@ const expected: [string, unknown[], number][] = [
   ["moved", [], 31],
   ["holders", [], 3417],
   ["tree", [100], 5050],
+  ["nested", [], 110521],
+  ["inner", [], 19],
+  ["elements", [], 4371],
+  ["elementFields", [], 128],
+  ["stepped", [], 112],
 ];
 
 describe("shared values, read only and copied on write", () => {

@@ -10,7 +10,7 @@ use perasc_syntax::ast::ExprId;
 use super::fnvalues::{from_slot, to_slot};
 use super::heap::{self, Mode};
 use super::{FnState, Lowering};
-use crate::{BinOp, BufOp, Const, EnvOp, Expr, ExprKind, RuntimeFn, Stmt, Ty};
+use crate::{BinOp, BufOp, BufStmt, Const, EnvOp, Expr, ExprKind, RuntimeFn, Stmt, Ty};
 
 impl Lowering<'_> {
     /// `const x = place`, `x` a shared value: lent rather than held once
@@ -144,53 +144,51 @@ impl Lowering<'_> {
         Self::fresh(state, vec![block], mode)
     }
 
-    /// The shared value a field written goes through: the local holding it,
-    /// the type it holds, and the leaves written, `None` when the target
-    /// reaches no `Rc`.
-    pub(super) fn shared_place(
-        &mut self,
-        state: &FnState,
-        target: ExprId,
-    ) -> Option<(crate::LocalId, CheckTy, usize, usize)> {
+    /// The shared value a field written goes through, `rc` in `rc.a.b = v`:
+    /// its expression, the type it holds, and the leaves written; `None`
+    /// when the target reaches no `Rc`.
+    pub(super) fn shared_place(&self, target: ExprId) -> Option<(ExprId, CheckTy, usize, usize)> {
         let perasc_syntax::ast::ExprKind::Field { base, name } = &self.ast.expr(target).kind else {
             return None;
         };
-        let (base, name) = (*base, self.ast.name(name.symbol).to_owned());
+        let (base, name) = (*base, self.ast.name(name.symbol));
         if let Some(CheckTy::Rc(inner)) = self.check_type(base) {
-            let (offset, len, _) = self.field(&inner, &name)?;
-            // A shared value held in a variable, or in a field of one; one
-            // held by another shared value or an element is not written yet.
-            let locals = self.place(state, base);
-            let Some([local]) = locals.as_deref() else {
-                self.unsupported(self.ast.expr(target).span, "rc-write");
-                return None;
-            };
-            return Some((*local, *inner, offset, len));
+            let (offset, len, _) = self.field(&inner, name)?;
+            return Some((base, *inner, offset, len));
         }
-        let (local, inner, outer, _) = self.shared_place(state, base)?;
+        let (rc, inner, outer, _) = self.shared_place(base)?;
         let base_ty = self.check_type(base)?;
-        let (offset, len, _) = self.field(&base_ty, &name)?;
-        Some((local, inner, outer + offset, len))
+        let (offset, len, _) = self.field(&base_ty, name)?;
+        Some((rc, inner, outer + offset, len))
     }
 
-    /// `rc.field = value`, or `op=`: the value made the holder's own first,
-    /// under r1, then its slots written; under r2, written in place, where
-    /// every holder sees it.
+    /// `rc.field = value`, `op=`, or `rc.field++` (no value): the value made
+    /// the holder's own first, under r1, then its slots written; under r2,
+    /// written in place, where every holder sees it.
     pub(super) fn shared_assign(
         &mut self,
         state: &mut FnState,
-        (handle, inner, offset, len): (crate::LocalId, CheckTy, usize, usize),
+        (rc, inner, offset, len): (ExprId, CheckTy, usize, usize),
         op: Option<BinOp>,
-        (target, value): (ExprId, ExprId),
+        (target, value): (ExprId, Option<ExprId>),
         out: &mut Vec<Stmt>,
     ) {
         let Some((leaves, slots, _)) = self.shared_slots(&inner) else {
             return;
         };
-        let mut values = self.value(state, value);
+        let mut values = match value {
+            Some(value) => self.value(state, value),
+            None => leaves
+                .get(offset)
+                .map(|t| vec![super::one(*t)])
+                .unwrap_or_default(),
+        };
         if let (Some(op), [one]) = (op, values.as_mut_slice()) {
+            let Some(current) = self.value_as(state, rc, Mode::Borrow).into_iter().next() else {
+                return;
+            };
             let current = self
-                .shared_fields(&heap::borrowed(handle), &inner, offset, 1)
+                .shared_fields(&current, &inner, offset, 1)
                 .pop()
                 .unwrap_or_else(|| super::zero(one.ty));
             let kind = self.int_kind(target);
@@ -211,8 +209,11 @@ impl Lowering<'_> {
                 }
             })
             .collect();
+        let Some(handle) = self.unique_handle(state, rc) else {
+            self.unsupported(self.ast.expr(target).span, "rc-write");
+            return;
+        };
         state.flush(out);
-        Self::make_unique(state, handle, leaves.len(), out);
         for ((leaf, &slot), value) in leaves.iter().zip(&slots).skip(offset).take(len).zip(values) {
             let (op, value) = if leaf.is_handle() {
                 (EnvOp::StoreHandle(slot), value)
@@ -220,35 +221,122 @@ impl Lowering<'_> {
                 (EnvOp::Store(slot), to_slot(value))
             };
             out.push(Stmt::Expr(Expr {
-                kind: ExprKind::Env(op, vec![heap::borrowed(handle), value]),
+                kind: ExprKind::Env(op, vec![handle.clone(), value]),
                 ty: Ty::Void,
             }));
         }
     }
 
-    /// Under r1, the shared value a local holds made its own: the same
-    /// block when it is the only holder, a copy otherwise; under r2, left
-    /// as it is, every holder seeing what is written.
-    fn make_unique(state: &mut FnState, handle: crate::LocalId, slots: usize, out: &mut Vec<Stmt>) {
-        if perasc_check::proto_rc() == "r2" {
-            return;
-        }
-        let bytes = 16 + 8 * i64::try_from(slots).unwrap_or(0);
-        let unique = Expr {
-            kind: ExprKind::Buf(
-                BufOp::Runtime(RuntimeFn::SharedUnique),
-                vec![
-                    Expr {
-                        kind: ExprKind::Const(Const::Int(bytes)),
-                        ty: Ty::I32,
-                    },
-                    heap::moved(state, handle),
-                ],
-            ),
-            ty: Ty::Owned,
+    /// The shared value `rc` names made its holder's own, under r1, where it
+    /// is held: a variable, a slot of another shared value, made its
+    /// holder's own first, or an element of an array; its handle, lent, to
+    /// read and write it. Under r2, the value as it is.
+    pub(super) fn unique_handle(&mut self, state: &mut FnState, rc: ExprId) -> Option<Expr> {
+        let slots = match self.check_type(rc) {
+            Some(CheckTy::Rc(inner)) => self.shared_slots(&inner)?.0.len(),
+            _ => return None,
         };
-        out.push(Stmt::Set(handle, unique));
-        state.live.insert(handle.0);
+        if perasc_check::proto_rc() == "r2" {
+            return self.value_as(state, rc, Mode::Borrow).into_iter().next();
+        }
+        let bytes = Expr {
+            kind: ExprKind::Const(Const::Int(16 + 8 * i64::try_from(slots).ok()?)),
+            ty: Ty::I32,
+        };
+        let holder = self.holder(rc);
+        if holder.is_none()
+            && let Some([local]) = self.place(state, rc).as_deref()
+        {
+            let unique = Expr {
+                kind: ExprKind::Buf(
+                    BufOp::Runtime(RuntimeFn::SharedUnique),
+                    vec![bytes, heap::moved(state, *local)],
+                ),
+                ty: Ty::Owned,
+            };
+            state.pre.push(Stmt::Set(*local, unique));
+            state.live.insert(local.0);
+            return Some(heap::borrowed(*local));
+        }
+        match holder? {
+            Holder::Shared(parent, offset) => {
+                let Some(CheckTy::Rc(outer)) = self.check_type(parent) else {
+                    return None;
+                };
+                let slot = *self.shared_slots(&outer)?.1.get(offset)?;
+                let parent = self.unique_handle(state, parent)?;
+                let at = Expr {
+                    kind: ExprKind::Const(Const::Int(i64::from(slot))),
+                    ty: Ty::I32,
+                };
+                state.pre.push(Stmt::Expr(Expr {
+                    kind: ExprKind::Buf(
+                        BufOp::Runtime(RuntimeFn::SharedUniqueSlot),
+                        vec![bytes, parent.clone(), at],
+                    ),
+                    ty: Ty::Void,
+                }));
+                Some(Expr {
+                    kind: ExprKind::Env(EnvOp::LoadHandle(slot), vec![parent]),
+                    ty: Ty::Borrowed,
+                })
+            }
+            Holder::Element(array, index, offset) => {
+                let column = self
+                    .value_as(state, array, Mode::Borrow)
+                    .into_iter()
+                    .nth(offset)?;
+                let index = self.expr(state, index);
+                let index = state.spill(index);
+                let len = Expr {
+                    kind: ExprKind::Buf(BufOp::Len, vec![column.clone()]),
+                    ty: Ty::I32,
+                };
+                state
+                    .pre
+                    .push(Stmt::Buf(BufStmt::CheckIndex, vec![index.clone(), len]));
+                state.pre.push(Stmt::Expr(Expr {
+                    kind: ExprKind::Buf(
+                        BufOp::Runtime(RuntimeFn::SharedUniqueElem),
+                        vec![bytes, column.clone(), index.clone()],
+                    ),
+                    ty: Ty::Void,
+                }));
+                Some(Expr {
+                    kind: ExprKind::Buf(BufOp::Get(crate::Elem::Handle), vec![column, index]),
+                    ty: Ty::Borrowed,
+                })
+            }
+        }
+    }
+
+    /// Where a shared value that is no variable is held: a leaf of another
+    /// shared value, `a.next`, or a column of an element, `fleet[i].mesh`.
+    fn holder(&self, rc: ExprId) -> Option<Holder> {
+        use perasc_syntax::ast::ExprKind as Ast;
+        let mut at = rc;
+        let mut offset = 0;
+        loop {
+            match &self.ast.expr(at).kind {
+                Ast::Field { base, name } => {
+                    let name = self.ast.name(name.symbol);
+                    match self.check_type(*base)? {
+                        CheckTy::Rc(inner) => {
+                            let (o, _, _) = self.field(&inner, name)?;
+                            return Some(Holder::Shared(*base, offset + o));
+                        }
+                        ty => {
+                            let (o, _, _) = self.field(&ty, name)?;
+                            offset += o;
+                            at = *base;
+                        }
+                    }
+                }
+                Ast::Index { base, index } => return Some(Holder::Element(*base, *index, offset)),
+                Ast::Paren(inner) => at = *inner,
+                _ => return None,
+            }
+        }
     }
 
     /// `rc.field`: read from its slots, a buffer lent, or held once more
@@ -265,18 +353,15 @@ impl Lowering<'_> {
         let Some(CheckTy::Rc(inner)) = self.check_type(base) else {
             return Vec::new();
         };
-        if self.analysis.changed.contains(&id) {
-            let locals = self.place(state, base);
-            let Some([local]) = locals.as_deref() else {
+        let handle = if self.analysis.changed.contains(&id) {
+            let handle = self.unique_handle(state, base);
+            if handle.is_none() {
                 self.unsupported(self.ast.expr(id).span, "rc-write");
-                return Vec::new();
-            };
-            let slots = self.shared_slots(&inner).map_or(0, |(l, _, _)| l.len());
-            let mut pre = Vec::new();
-            Self::make_unique(state, *local, slots, &mut pre);
-            state.pre.extend(pre);
-        }
-        let handle = self.value_as(state, base, Mode::Borrow).into_iter().next();
+            }
+            handle
+        } else {
+            self.value_as(state, base, Mode::Borrow).into_iter().next()
+        };
         let picked = self.field(&inner, self.ast.name(name));
         let (Some(handle), Some((offset, len, _))) = (handle, picked) else {
             return Vec::new();
@@ -356,4 +441,13 @@ impl Lowering<'_> {
             })
             .collect()
     }
+}
+
+/// Where a shared value that is no variable is held.
+enum Holder {
+    /// A leaf of the value another shared value holds: that one, and the
+    /// leaf.
+    Shared(ExprId, usize),
+    /// An element of an array: the array, the index, and the column.
+    Element(ExprId, ExprId, usize),
 }

@@ -1274,6 +1274,17 @@ impl Lowering<'_> {
                 self.index_assign(state, *target, Some(op), None, out);
             }
             StmtKind::Step { target, op } => {
+                // `rc.count++`, through a shared value (decision 0032).
+                if let Some(place) = self.shared_place(*target) {
+                    let op = if *op == StepOp::Increment {
+                        BinOp::Add
+                    } else {
+                        BinOp::Sub
+                    };
+                    self.shared_assign(state, place, Some(op), (*target, None), out);
+                    state.end_statement(out);
+                    return;
+                }
                 if let Some(globals) = self.global_place(state, *target) {
                     let op = if *op == StepOp::Increment {
                         BinOp::Add
@@ -1653,8 +1664,8 @@ impl Lowering<'_> {
             self.assign_globals(state, &globals, op, (value, kind), out);
             return;
         }
-        if let Some(place) = self.shared_place(state, target) {
-            self.shared_assign(state, place, assign_op(op), (target, value), out);
+        if let Some(place) = self.shared_place(target) {
+            self.shared_assign(state, place, assign_op(op), (target, Some(value)), out);
             return;
         }
         let Some(locals) = self.place(state, target) else {
