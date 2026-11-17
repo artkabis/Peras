@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0036-inlining-and-invariants.md](../../en/decisions/0036-inlining-and-invariants.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les insère ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `1f4b070` ; proposition : aucune, i0 gardée. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les insère ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -46,3 +46,30 @@ Lu avant le premier prototype (constat M020) : `optimize` (`crates/perasc-ir/src
 Il en va de même pour une fonction qui en appelle une donnant plusieurs résultats, une structure (`Function::uses_many`) : `render` appelle `lantern()`, qui donne un `Mesh`.
 
 Donc i2, et i3 avec elle, lance aussi le déplacement des invariants sur une fonction qui utilise le tas ou en appelle une donnant plusieurs résultats, les cibles d’un tel appel comptées comme des affectations, en ne déplaçant qu’une affectation à une variable locale qui n’est pas une poignée, d’une expression simple, qui ne lit aucun bloc (`is_simple` refuse `Buf`, `Move`, `Borrow` et `Alloc`) : ce qu’elle déplace ne peut ni allouer, ni libérer, ni lire la mémoire. i1 insère aussi dans une fonction qui utilise le tas, une petite fonction qui ne prend et ne donne que des nombres ou des booléens. Les autres passes d’`optimize` restent telles quelles ; le déplacement sur une fonction qui utilise le tas est mesuré au sein de i2, pas comme une cinquième option, puisque sans lui i2 n’atteindrait pas le bassin.
+
+### Justesse (2026-11-17)
+
+- **Le test différentiel**, son générateur étendu (quatre petites fonctions ; des petites fonctions appelées dans des boucles, l’une avec un argument lu deux fois ; une division de flottants et un appel qui ne changent pas dans une boucle, l’un dans une branche ; des arguments à effet dont l’ordre compte ; un appel à droite de `&&` ; un dans la condition d’une boucle ; une variable de module lue avant un appel qui la change) : chaque option le passe avec 2 000 graines. Trois mutations faites exprès le font échouer : i1 qui substitue chaque argument directement ; i1 qui calcule un argument dans une variable là où ce qui précède l’appel n’est pas simple ; i2 qui sort d’une branche une affectation qui n’est pas invariante.
+- **Chaque script `--check`** du projet passe sous i1, i2 et i3. `cargo test --workspace` passe sous chacune, sauf deux tests d’`opt_tests`, qui vérifient la forme de i0 : `g(n)`, qui rend `n`, sorti d’une boucle par i2, ce qui est permis puisque `g` ne peut pas arrêter le programme ; `g(n) = 10 / n` inséré par i1 là où il était appelé, dans le même ordre.
+
+### La mesure (2026-11-17)
+
+Deux exécutions au commit 1f4b070, l’une après l’autre, rien d’autre ne tournant ; chaque tableau dans [`bench/inline/RESULTS.md`](../../../bench/inline/RESULTS.md), avec la machine. Rapports à i0, médiane de 21 tours :
+
+| Charge                             | i1            | i2            | i3            |
+| ---------------------------------- | ------------- | ------------- | ------------- |
+| W1, le bassin, exécution 1, puis 2 | 0,991, 1,014  | 1,060, 0,994  | 0,915, 0,964  |
+| W2, le jardin                      | 1,046, 1,049  | 1,021, 1,009  | 1,053, 1,056  |
+| W3, chaque noyau                   | 0,966 à 1,107 | 0,925 à 1,018 | 0,761 à 1,006 |
+| Modules plus grands, sur 173       | 19            | 0             | 19            |
+| Modules changés, de même taille    | 2             | 26            | 9             |
+
+- **W3 est le bruit de la méthode** : le module des noyaux est le même, octet pour octet, sous les quatre options, et ses rapports vont pourtant de 0,761 à 1,107 en médiane. Une différence de quelques centièmes sur W1 est dans ce bruit. Le temps CPU sur le temps réel est de 0,98 à 1,03 partout : un seul fil, comme avant.
+- **L’insertion ralentit le jardin**, dans les deux exécutions, i1 comme i3, à chaque tour de la seconde exécution de i3 : 5 %. Pourquoi n’est pas mesuré. Une cause est possible, non montrée : `noise` grossit de quatre copies de `unit`, et le moteur, qui dimensionne sa propre insertion d’après les corps du module ([`inline.rs`](../../../crates/perasc-ir/src/inline.rs)), pourrait cesser de l’insérer dans `fbm`. Un verdict demanderait une mesure, pas ce raisonnement (constat M001).
+- **i1 et i3 agrandissent 19 modules**, de 1 à 3 %, ce que la règle du propriétaire ne permet pas.
+- **i2 sort de la boucle des pixels du bassin ce que F222 avait trouvé**, les divisions de la ligne et l’argument de `tri` (lu dans l’IR), et ne change aucune taille ; son gain sur W1, s’il existe, est sous le bruit de la méthode. Les versions écrites à la main de la décision 0029 gagnaient 3,5 % chacune dans leur propre profil ; ici, le moteur semble déjà en faire une partie, ce que cette exécution ne peut pas séparer.
+- **Le temps de compilation**, par `scripts/check-regression.mjs 1494bac` : de 1,004 à 1,009 pour chaque option ; le compilateur grossit de 24 640 octets avec les quatre construites.
+
+### Proposition
+
+**Aucune des options, i0 gardée.** i1 et i3 agrandissent des modules et ralentissent le jardin : une régression, sous la règle du propriétaire. i2 n’est pas une régression, mais n’apporte aucun gain que la méthode puisse distinguer de son bruit : une option qui coûte du code et n’apporte rien de mesuré n’est pas une amélioration. Une fois que le propriétaire aura décidé, les prototypes quittent le compilateur, leurs chiffres gardés ici et leur code dans git au commit 1f4b070 ; le test différentiel garde son générateur élargi. F222 reste ouvert, avec ce que cette décision a appris : une insertion pour le bassin devrait laisser telle quelle l’insertion propre au moteur, et son gain être montré au-dessus du bruit, par plus de tours ou sur une charge où il est plus grand. Le propriétaire décide.
