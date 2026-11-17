@@ -43,6 +43,17 @@ use crate::{BinOp, Const, Expr, ExprKind, FnId, Function, Local, LocalId, Module
 
 /// Runs every optimization pass on a module.
 pub fn optimize(module: &mut Module) {
+    let mode = proto_inline();
+    if matches!(mode, "i1" | "i3") {
+        crate::small::inline_small(module);
+    }
+    let calls = if matches!(mode, "i2" | "i3") {
+        Some(crate::licm::simple_calls(&crate::small::small_functions(
+            &module.functions,
+        )))
+    } else {
+        None
+    };
     for (index, function) in module.functions.iter_mut().enumerate() {
         let id = FnId(u32::try_from(index).unwrap_or(u32::MAX));
         // It only removes checks, never a release: it applies to every function.
@@ -53,14 +64,40 @@ pub fn optimize(module: &mut Module) {
         // No other pass is proven yet to keep releases exact, nor written for several
         // results: such code is left as written, and the verifiers check it.
         if function.uses_heap() || function.uses_many() {
+            // Option i2 of decision 0036: invariants of numbers move here too.
+            if let Some(calls) = &calls {
+                let wide = crate::licm::Wide {
+                    calls,
+                    locals: &function.locals.clone(),
+                };
+                function.body =
+                    crate::licm::hoist_invariants(std::mem::take(&mut function.body), Some(&wide));
+            }
             continue;
         }
         function.body = branchless_abs(std::mem::take(&mut function.body));
         eliminate_tail_recursion(function, id);
         function.body = rotate(std::mem::take(&mut function.body));
-        function.body = crate::licm::hoist_invariants(std::mem::take(&mut function.body));
+        let locals = function.locals.clone();
+        let wide = calls.as_ref().map(|calls| crate::licm::Wide {
+            calls,
+            locals: &locals,
+        });
+        function.body =
+            crate::licm::hoist_invariants(std::mem::take(&mut function.body), wide.as_ref());
         function.body = crate::licm::doubling_as_addition(std::mem::take(&mut function.body));
         crate::inline::unroll_recursion(function, id);
+    }
+}
+
+/// Decision 0036's option, for `scripts/bench-inline.mjs`: i0 (today), i1
+/// (small functions inlined), i2 (wider invariants), i3 (both).
+fn proto_inline() -> &'static str {
+    match std::env::var("PERAS_PROTO_INLINE").as_deref() {
+        Ok("i1") => "i1",
+        Ok("i2") => "i2",
+        Ok("i3") => "i3",
+        _ => "i0",
     }
 }
 

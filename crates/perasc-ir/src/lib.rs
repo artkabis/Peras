@@ -21,6 +21,7 @@ mod lookups;
 mod lower;
 mod opt;
 mod own;
+mod small;
 pub mod text;
 mod verify;
 

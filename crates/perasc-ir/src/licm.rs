@@ -24,7 +24,72 @@
 use std::collections::HashMap;
 
 use crate::opt::is_simple;
-use crate::{BinOp, Const, Expr, ExprKind, LocalId, Stmt};
+use crate::{BinOp, Const, Expr, ExprKind, Local, LocalId, Stmt};
+
+/// Decision 0036, option i2: what more the motion may move.
+pub struct Wide<'a> {
+    /// The functions a call to which is simple: small ones whose expression is
+    /// simple too, by index.
+    pub calls: &'a [bool],
+    /// The function's locals: only one that is not a handle is moved.
+    pub locals: &'a [Local],
+}
+
+impl Wide<'_> {
+    /// [`is_simple`], a float division and a call to a function of
+    /// [`Wide::calls`] included: neither can trap, loop or change anything.
+    pub fn simple(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => self.simple(x),
+            ExprKind::Binary(BinOp::Div, a, b) if e.ty.is_float() => {
+                self.simple(a) && self.simple(b)
+            }
+            ExprKind::Binary(op, a, b) => {
+                !matches!(op, BinOp::Div | BinOp::Rem | BinOp::DivU | BinOp::RemU)
+                    && self.simple(a)
+                    && self.simple(b)
+            }
+            ExprKind::Call(callee, args) => {
+                self.calls.get(callee.0 as usize).copied().unwrap_or(false)
+                    && args.iter().all(|a| self.simple(a))
+            }
+            _ => is_simple(e),
+        }
+    }
+
+    fn target(&self, l: LocalId) -> bool {
+        self.locals
+            .get(l.0 as usize)
+            .is_some_and(|l| !l.ty.is_handle())
+    }
+}
+
+/// The small functions whose expression is simple for [`Wide::simple`], calls
+/// to each other included, by index.
+pub fn simple_calls(small: &[Option<Expr>]) -> Vec<bool> {
+    let mut calls = vec![false; small.len()];
+    // Each round admits the functions that call only those already admitted.
+    loop {
+        let mut changed = false;
+        for (i, body) in small.iter().enumerate() {
+            if calls[i] {
+                continue;
+            }
+            let Some(body) = body else { continue };
+            let wide = Wide {
+                calls: &calls,
+                locals: &[],
+            };
+            if wide.simple(body) {
+                calls[i] = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            return calls;
+        }
+    }
+}
 
 /// `2.0 * x` and `x * 2.0` become `x + x`, for a float local `x`.
 pub fn doubling_as_addition(stmts: Vec<Stmt>) -> Vec<Stmt> {
@@ -133,15 +198,21 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
 }
 
 /// Loop-invariant code motion over a function body.
-pub fn hoist_invariants(body: Vec<Stmt>) -> Vec<Stmt> {
+pub fn hoist_invariants(body: Vec<Stmt>, wide: Option<&Wide>) -> Vec<Stmt> {
     let mut reads = HashMap::new();
     count_reads(&body, &mut reads);
-    Hoister { reads: &reads }.stmts(body)
+    Hoister {
+        reads: &reads,
+        wide,
+    }
+    .stmts(body)
 }
 
 struct Hoister<'a> {
     /// Reads of each local in the whole function.
     reads: &'a HashMap<u32, usize>,
+    /// Option i2 of decision 0036, when it is built.
+    wide: Option<&'a Wide<'a>>,
 }
 
 impl Hoister<'_> {
@@ -150,10 +221,17 @@ impl Hoister<'_> {
         for stmt in stmts {
             match stmt {
                 Stmt::Loop { cond, body, step } => {
-                    let body = self.stmts(body);
+                    let mut body = self.stmts(body);
                     let step = self.stmts(step);
-                    let (hoisted, body) = self.split(cond.as_ref(), body, &step);
-                    out.extend(hoisted);
+                    // With i2, what a moved assignment gives can let another move.
+                    for _ in 0..if self.wide.is_some() { 4 } else { 1 } {
+                        let (hoisted, kept) = self.split(cond.as_ref(), body, &step);
+                        body = kept;
+                        if hoisted.is_empty() {
+                            break;
+                        }
+                        out.extend(hoisted);
+                    }
                     out.push(Stmt::Loop { cond, body, step });
                 }
                 Stmt::If {
@@ -190,10 +268,8 @@ impl Hoister<'_> {
         for stmt in body {
             let movable = match &stmt {
                 Stmt::Set(l, e) => {
-                    let mut operands = HashMap::new();
-                    count_expr_reads(e, &mut operands);
-                    is_simple(e)
-                        && operands.keys().all(|o| !sets.contains_key(o))
+                    self.simple(*l, e)
+                        && invariant(e, &sets)
                         && sets.get(&l.0) == Some(&1)
                         && !before.contains_key(&l.0)
                         && inside.get(&l.0) == self.reads.get(&l.0)
@@ -202,13 +278,83 @@ impl Hoister<'_> {
             };
             if movable {
                 hoisted.push(stmt);
-            } else {
-                count_reads(std::slice::from_ref(&stmt), &mut before);
-                kept.push(stmt);
+                continue;
             }
+            let stmt = match stmt {
+                Stmt::If {
+                    cond,
+                    then,
+                    otherwise,
+                } if self.wide.is_some() => Stmt::If {
+                    cond,
+                    then: self.branch(then, &sets, &mut hoisted),
+                    otherwise: self.branch(otherwise, &sets, &mut hoisted),
+                },
+                other => other,
+            };
+            count_reads(std::slice::from_ref(&stmt), &mut before);
+            kept.push(stmt);
         }
         (hoisted, kept)
     }
+
+    /// Whether `l = e` may move, as an expression.
+    fn simple(&self, l: LocalId, e: &Expr) -> bool {
+        match self.wide {
+            None => is_simple(e),
+            Some(wide) => wide.target(l) && wide.simple(e),
+        }
+    }
+
+    /// Option i2: moves out of a branch of the loop an assignment that is
+    /// invariant, the only one to its local, which nothing reads but the
+    /// statements after it in the branch. Computed before the loop, its value
+    /// is read only where the branch would have computed the same.
+    fn branch(
+        &self,
+        stmts: Vec<Stmt>,
+        sets: &HashMap<u32, usize>,
+        hoisted: &mut Vec<Stmt>,
+    ) -> Vec<Stmt> {
+        let mut kept: Vec<Stmt> = Vec::with_capacity(stmts.len());
+        let mut rest: Vec<Stmt> = stmts;
+        rest.reverse();
+        while let Some(stmt) = rest.pop() {
+            if let Stmt::Set(l, e) = &stmt {
+                let mut after = HashMap::new();
+                count_reads(&rest, &mut after);
+                if self.simple(*l, e)
+                    && invariant(e, sets)
+                    && sets.get(&l.0) == Some(&1)
+                    && after.get(&l.0) == self.reads.get(&l.0)
+                {
+                    hoisted.push(stmt);
+                    continue;
+                }
+            }
+            let stmt = match stmt {
+                Stmt::If {
+                    cond,
+                    then,
+                    otherwise,
+                } => Stmt::If {
+                    cond,
+                    then: self.branch(then, sets, hoisted),
+                    otherwise: self.branch(otherwise, sets, hoisted),
+                },
+                other => other,
+            };
+            kept.push(stmt);
+        }
+        kept
+    }
+}
+
+/// No local `e` reads is assigned in the loop.
+fn invariant(e: &Expr, sets: &HashMap<u32, usize>) -> bool {
+    let mut operands = HashMap::new();
+    count_expr_reads(e, &mut operands);
+    operands.keys().all(|o| !sets.contains_key(o))
 }
 
 fn count_sets(stmts: &[Stmt], out: &mut HashMap<u32, usize>) {
