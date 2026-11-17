@@ -77,3 +77,10 @@ Exécution 1, au commit 6cb3444, rien d’autre en cours ; chaque tableau dans [
 ### Proposition
 
 **a2 avec b3** : chaque programme donne le résultat de JavaScript, R1, R2 et R6 se construisent tels qu’écrits, et aucun module du dépôt ne change. Son coût, les lignes que R3 demande pour utiliser un milieu arrondi comme indice, est le prix du résultat juste sur les nombres négatifs ; une étape suivante pourrait l’épargner là où les deux opérandes sont connus non négatifs. Le propriétaire décide.
+
+### Décision et installation (2026-11-17)
+
+Le propriétaire a choisi **a2 avec b3**. Installé au commit 80e6410 : `Math.f(x, …)` est la méthode `f` de `x` dans les deux modes, `Math.PI` et `Math.E` des nombres ; `floor`, `round`, `ceil` ou `trunc` sur un entier est E0215, son correctif le retrait, ou, sur une division entière, la division montrée et faite en flottants. a1, b1 et b2 ont été retirées du compilateur, leurs chiffres gardés ci-dessus ; `PERAS_PROTO_MATH=a0` et `PERAS_PROTO_WHOLE=b0` construisent les erreurs telles qu’elles étaient, pour `scripts/bench-math.mjs` seulement.
+
+- **Non-régression**, `node scripts/check-regression.mjs ff3fd04` : 167 modules du dépôt comparés, chacun identique ; les programmes de `bench/math` se construisent désormais, ce que rien ne construisait avant ; aucun ne cesse de se construire.
+- `scripts/bench-division.mjs` mesure la décision 0034 telle qu’enregistrée, sous a0 et b0 : les nouveaux défauts ont changé ce que rencontrent ses programmes (constat M007).

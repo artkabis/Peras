@@ -1,22 +1,22 @@
-# 0036 : Les petites fonctions mises en ligne, les invariants sortis des branches
+# 0036 : Les petites fonctions insérées, les invariants sortis des branches
 
 _Version anglaise : [../../en/decisions/0036-inlining-and-invariants.md](../../en/decisions/0036-inlining-and-invariants.md)._
 
-_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les met en ligne ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond au constat F222, que le profil de la [décision 0029](0029-pond-of-lanterns.md) a trouvé : dans le bassin, le travail qui ne dépend que de la ligne est fait à chaque pixel, et les petites fonctions sont appelées là où LLVM les insère ; fait à la main, chacun gagne environ 3,5 % de l’image. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
 Ce que fait le compilateur aujourd’hui, lu avant d’écrire ceci (constat M020) :
 
-- **Aucune fonction n’est mise en ligne**, sauf une fonction récursive en elle-même, sur trois niveaux (`crates/perasc-ir/src/inline.rs`). `tri`, `unit` et `byte` du bassin, quelques opérations chacune, sont des appels à chaque pixel.
+- **Aucune fonction n’est insérée**, sauf une fonction récursive en elle-même, sur trois niveaux (`crates/perasc-ir/src/inline.rs`). `tri`, `unit` et `byte` du bassin, quelques opérations chacune, sont des appels à chaque pixel.
 - **Le déplacement des invariants de boucle** (`crates/perasc-ir/src/licm.rs`) sort `l = e` d’une boucle quand `e` est simple (`is_simple`, `crates/perasc-ir/src/opt.rs`) : sans appel, et sans aucune division, même celle d’un flottant, qui ne peut pas arrêter le programme. Une affectation dans un `if` de la boucle ne sort pas.
 - **Une fonction qui ne change rien est connue** (`pure_functions`, décision 0031), pour `parallel for` ; rien d’autre ne s’en sert.
-- **Le moteur met en ligne de lui-même** aussi, selon son propre budget (constat de `inline.rs`) : un gain ici doit être mesuré, pas supposé.
+- **Le moteur insère de lui-même** aussi, selon son propre budget (constat de `inline.rs`) : un gain ici doit être mesuré, pas supposé.
 
 ## Options
 
 - **i0. Comme aujourd’hui.**
-- **i1. Les petites fonctions mises en ligne** : une fonction du module dont le corps est un seul `return e`, `e` d’au plus 40 nœuds, sans boucle, sans appel à elle-même ni valeur du tas, est remplacée à chaque appel par `e`, ses paramètres liés aux arguments, chacun évalué une fois et dans l’ordre.
+- **i1. Les petites fonctions insérées** : une fonction du module dont le corps est un seul `return e`, `e` d’au plus 40 nœuds, sans boucle, sans appel à elle-même ni valeur du tas, est remplacée à chaque appel par `e`, ses paramètres liés aux arguments, chacun évalué une fois et dans l’ordre.
 - **i2. Des invariants plus larges** : une division de flottants compte comme simple ; de même un appel à une fonction qui ne change rien et ne peut pas arrêter le programme ; et une affectation invariante dans un `if` de la boucle sort de la boucle quand son expression est simple, la calculer une fois étant alors sûr quelle que soit la branche.
 - **i3. Les deux**, i1 puis i2.
 

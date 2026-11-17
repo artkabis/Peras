@@ -77,3 +77,10 @@ Run 1, at commit 6cb3444, nothing else running; every table in [`bench/math/RESU
 ### Proposal
 
 **a2 with b3**: every program gives JavaScript's result, R1, R2 and R6 build as written, and no module of the repository changes. Its cost, the lines R3 asks to use a floored middle as an index, is the price of the right result on negative numbers; a later step could spare it where both operands are known not to be negative. The owner decides.
+
+### Decision and landing (2026-11-17)
+
+The owner chose **a2 with b3**. Landed at commit 80e6410: `Math.f(x, …)` is the method `f` of `x` in both modes, `Math.PI` and `Math.E` numbers; `floor`, `round`, `ceil` or `trunc` on an integer is E0215, its fix the removal, or, on an integer division, the division shown and divided as floats. a1, b1 and b2 were removed from the compiler, their figures kept above; `PERAS_PROTO_MATH=a0` and `PERAS_PROTO_WHOLE=b0` build the errors as they were, for `scripts/bench-math.mjs` only.
+
+- **Non-regression**, `node scripts/check-regression.mjs ff3fd04`: 167 modules of the repository compared, every one identical; the programs of `bench/math` build now, which nothing built before; none no longer builds.
+- `scripts/bench-division.mjs` measures decision 0034 as it was registered, under a0 and b0: the new defaults changed what its programs meet (finding M007).
