@@ -1,0 +1,28 @@
+// P1 without `Rc` (option r0): the mesh kept once, each lantern its number.
+
+struct Mesh {
+  x: Array<f64>;
+  y: Array<f64>;
+  z: Array<f64>;
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: i32;
+  x: f64;
+  z: f64;
+}
+
+export fn p1(count: i32): i32 {
+  let meshes: Array<Mesh> = [];
+  meshes.push(Mesh([0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0, 1, 2]));
+  let lanterns: Array<Lantern> = [];
+  for (let i = 0; i < count; i++) {
+    lanterns.push(Lantern(0, i.toF64(), 6.0));
+  }
+  let triangles = 0;
+  for (const lantern of lanterns) {
+    triangles += meshes[lantern.mesh].tris.length / 3;
+  }
+  return triangles;
+}

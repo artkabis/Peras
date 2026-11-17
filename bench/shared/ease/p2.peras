@@ -1,0 +1,36 @@
+// P2 of decision 0032: a binary search tree built from a list of numbers,
+// then summed: a type that holds itself (finding F310), as JavaScript
+// writes it, `node.left = insert(node.left, value)`.
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+fn insert(node: Option<Rc<Node>>, value: i32): Option<Rc<Node>> {
+  if (node.isNone()) {
+    return Some(Rc.new(Node(value, None, None)));
+  }
+  if (value < node.value) {
+    node.left = insert(node.left, value);
+  } else {
+    node.right = insert(node.right, value);
+  }
+  return node;
+}
+
+fn sum(node: Option<Rc<Node>>): i64 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value.toI64() + sum(node.left) + sum(node.right);
+}
+
+export fn p2(values: Array<i32>): i64 {
+  let root: Option<Rc<Node>> = None;
+  for (const value of values) {
+    root = insert(root, value);
+  }
+  return sum(root);
+}

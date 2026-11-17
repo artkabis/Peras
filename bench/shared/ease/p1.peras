@@ -1,0 +1,29 @@
+// P1 of decision 0032: the pond's shared mesh (bench/lanterns/shared-mesh.peras),
+// each lantern holding the mesh a thousand share, `lanterns.push({ mesh, x, z })`
+// in JavaScript.
+
+struct Mesh {
+  x: Array<f64>;
+  y: Array<f64>;
+  z: Array<f64>;
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Rc<Mesh>;
+  x: f64;
+  z: f64;
+}
+
+export fn p1(count: i32): i32 {
+  const mesh = Rc.new(Mesh([0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0, 1, 2]));
+  let lanterns: Array<Lantern> = [];
+  for (let i = 0; i < count; i++) {
+    lanterns.push(Lantern(mesh, i.toF64(), 6.0));
+  }
+  let triangles = 0;
+  for (const lantern of lanterns) {
+    triangles += lantern.mesh.tris.length / 3;
+  }
+  return triangles;
+}

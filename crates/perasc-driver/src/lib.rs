@@ -602,7 +602,9 @@ pub fn emit_direct_for(
     let overflow = localizer.message(&perasc_diag::Message::new("runtime-integer-overflow"));
     // The runtime this module needs: what its loader calls, and the
     // functions on strings and arrays the module calls.
-    let full = options.allocator.runtime(options.simd);
+    // Decision 0032's prototype r2: weak holders of shared values.
+    let weak = std::env::var("PERAS_PROTO_RC").as_deref() == Ok("r2");
+    let full = options.allocator.runtime_with(options.simd, weak);
     // With threads, the runtime imports the memory the loader may share.
     let imported = threads
         .then(|| perasc_runtime::import_memory(full, perasc_codegen_wasm::THREAD_PAGES).ok())

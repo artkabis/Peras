@@ -120,6 +120,9 @@ impl Lowering<'_> {
                 params.iter().try_for_each(compiled).and(compiled(ret))?;
                 Ok(vec![(String::new(), Ty::Owned)])
             }
+            // A shared value is one handle, its block (decision 0032): a type
+            // that holds itself through one has an end.
+            CheckTy::Rc(_) | CheckTy::Weak(_) => Ok(vec![(String::new(), Ty::Owned)]),
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -435,6 +438,11 @@ impl Lowering<'_> {
             AstExpr::Match { scrutinee, arms } => {
                 self.match_values(state, id, *scrutinee, arms, mode)
             }
+            AstExpr::Field { base, name }
+                if matches!(self.check_type(*base), Some(CheckTy::Rc(_))) =>
+            {
+                self.shared_field(state, (id, *base), name.symbol, mode)
+            }
             AstExpr::Field { base, name } => {
                 // A field is read from its structure, which keeps it, unless
                 // the checker moved it out (decision 0025): its buffers then
@@ -530,6 +538,23 @@ impl Lowering<'_> {
                 let values = self.call_results(state, function, args, &back);
                 Self::fresh(state, values, mode)
             }
+            AstExpr::Field { base, name }
+                if self.ast.name(name.symbol) == "new"
+                    && matches!(self.check_type(id), Some(CheckTy::Rc(_)))
+                    && matches!(self.ast.expr(base).kind, AstExpr::Name(s) if self.ast.name(s) == "Rc") =>
+            {
+                let Some(&value) = args.first() else {
+                    return Vec::new();
+                };
+                self.shared_new(state, id, value, mode)
+            }
+            AstExpr::Field { base, name }
+                if matches!(self.ast.name(name.symbol), "weak" | "get")
+                    && (matches!(self.check_type(id), Some(CheckTy::Weak(_)))
+                        || matches!(self.check_type(base), Some(CheckTy::Weak(_)))) =>
+            {
+                self.weak_call(state, (base, args.first().copied()), mode)
+            }
             AstExpr::Field { base, name } => {
                 let method = self.ast.name(name.symbol);
                 if let Some(values) = self.map_new(state, id, base, method, mode) {
@@ -603,8 +628,9 @@ impl Lowering<'_> {
                 })
                 .collect(),
             CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
-            // The environment of no function, static (decision 0026).
-            CheckTy::Callback(..) => vec![Expr {
+            // The environment of no function, static (decision 0026); a
+            // shared value none holds (decision 0032).
+            CheckTy::Callback(..) | CheckTy::Rc(_) | CheckTy::Weak(_) => vec![Expr {
                 kind: ExprKind::Env(crate::EnvOp::Zero, Vec::new()),
                 ty: Ty::Owned,
             }],
@@ -1436,6 +1462,8 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Map(..)
             | CheckTy::Set(_)
             | CheckTy::Callback(..)
+            | CheckTy::Rc(_)
+            | CheckTy::Weak(_)
     )
 }
 
@@ -1548,7 +1576,10 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Map(..)
         | CheckTy::Set(_) => Ok(()),
         CheckTy::Callback(params, ret) => params.iter().try_for_each(compiled).and(compiled(ret)),
-        CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
+        CheckTy::Array(inner)
+        | CheckTy::Option(inner)
+        | CheckTy::Rc(inner)
+        | CheckTy::Weak(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         _ => Err("struct"),
     }

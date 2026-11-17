@@ -1,0 +1,29 @@
+// W2 of decision 0032: a binary tree of `n` nodes, each holding its
+// children through `Rc<Node>`, a type that holds itself (finding F310):
+// built, summed, then released when `tree` returns.
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+fn build(lo: i32, hi: i32): Option<Rc<Node>> {
+  if (lo > hi) {
+    return None;
+  }
+  const mid = lo + (hi - lo) / 2;
+  return Some(Rc.new(Node(mid, build(lo, mid - 1), build(mid + 1, hi))));
+}
+
+fn sum(node: Option<Rc<Node>>): i64 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value.toI64() + sum(node.left) + sum(node.right);
+}
+
+export fn tree(n: i32): i64 {
+  const root = build(1, n);
+  return sum(root);
+}

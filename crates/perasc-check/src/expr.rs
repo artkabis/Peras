@@ -621,6 +621,9 @@ impl Checker<'_> {
                     span,
                     expected,
                 };
+                if let Some(ty) = self.rc_new(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.collection_new(&site, *base, name) {
                     return ty;
                 }
@@ -634,6 +637,13 @@ impl Checker<'_> {
                     return ty;
                 }
                 let receiver = self.receiver(*base, name.symbol);
+                // `weak.get()`: the shared value while it lives (r2).
+                if let Ty::Weak(inner) = &receiver
+                    && self.name(name.symbol) == "get"
+                {
+                    self.arity(span, "get", 0, args.len(), None);
+                    return Ty::Option(Box::new(Ty::Rc(inner.clone())));
+                }
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
@@ -654,6 +664,7 @@ impl Checker<'_> {
                 if changes && let Some(root) = self.root(*base) {
                     let base_span = self.ast.expr(*base).span;
                     self.check_mutable(root, base_span);
+                    self.mark_changed(*base);
                 }
                 self.method_call(&receiver, name.symbol, name.span, args, span)
             }
@@ -1035,6 +1046,11 @@ impl Checker<'_> {
         let text = self.name(name);
         match base {
             Ty::Error => Ty::Error,
+            // A shared value's field, read through it (decision 0032).
+            Ty::Rc(inner) => {
+                let inner = (**inner).clone();
+                self.field(&inner, name, span)
+            }
             Ty::Host(h) => {
                 let text = text.to_owned();
                 self.host_field(*h, &text, span)

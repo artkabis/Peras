@@ -1,0 +1,13 @@
+// P4 of decision 0032: a list held by two holders, then changed through
+// one: the other must not see the change, as every value of Peras.
+
+struct List {
+  items: Array<i32>;
+}
+
+export fn p4(): i32 {
+  let a = Rc.new(List([1, 2, 3]));
+  let b = Rc.new(List(a.items.copy()));
+  b.items.push(4);
+  return a.items.length * 10 + b.items.length;
+}

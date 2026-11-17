@@ -15,6 +15,7 @@ mod maps;
 mod matching;
 mod parallel;
 mod parts;
+mod shared;
 mod values;
 
 use std::collections::{BTreeSet, HashMap};
@@ -1645,6 +1646,10 @@ impl Lowering<'_> {
             self.assign_globals(state, &globals, op, (value, kind), out);
             return;
         }
+        if let Some(place) = self.shared_place(state, target) {
+            self.shared_assign(state, place, assign_op(op), (target, value), out);
+            return;
+        }
         let Some(locals) = self.place(state, target) else {
             return;
         };
@@ -1837,6 +1842,11 @@ impl Lowering<'_> {
             AstExpr::Lambda { .. } => return self.not_yet(span, "function-value", ty),
             AstExpr::Field { base, .. } if self.is_buffer(*base) || self.is_map(*base) => {
                 return self.array_length(state, *base);
+            }
+            // A field read through a shared value (decision 0032).
+            AstExpr::Field { base, name } if self.is_shared(*base) => {
+                let read = self.shared_field(state, (id, *base), name.symbol, heap::Mode::Borrow);
+                return read.into_iter().next().unwrap_or_else(|| zero(ty));
             }
             AstExpr::Field { base, name } => {
                 if !self.is_aggregate(*base) {

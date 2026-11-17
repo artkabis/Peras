@@ -120,6 +120,10 @@ pub struct Analysis {
     /// Integer values converted to the float type they are used as
     /// (decision 0030, option c, prototype).
     pub widened: HashMap<ExprId, Ty>,
+    /// The fields and elements on the way to a place the program changes:
+    /// `b.items` in `b.items.push(4)`. A shared value read on such a way is
+    /// made the holder's own first (decision 0032, prototype r1).
+    pub changed: HashSet<ExprId>,
 }
 
 /// A declared name, for code generation.
@@ -275,6 +279,19 @@ pub fn proto_closure() -> String {
         .ok()
         .filter(|m| matches!(m.as_str(), "move" | "copy" | "lend"))
         .unwrap_or_else(|| "auto".to_owned())
+}
+
+/// The option of decision 0032 a build follows for shared values: `r0`, no
+/// `Rc` (sharing by indices), unless `PERAS_PROTO_RC` names another option
+/// measured, `r1` (read only, copied on write) or `r2` (changeable, with
+/// `Weak`), for the measure script only (`scripts/bench-shared.mjs`).
+#[must_use]
+pub fn proto_rc() -> String {
+    match std::env::var("PERAS_PROTO_RC").as_deref() {
+        Ok("r1") => "r1".to_owned(),
+        Ok("r2") => "r2".to_owned(),
+        _ => "r0".to_owned(),
+    }
 }
 
 /// The option of decision 0031 a build follows for `parallel for`: `p2`,
@@ -508,6 +525,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         copies: checker.copies,
         narrowed: checker.narrowed,
         widened: checker.widened,
+        changed: checker.changed,
         moves: checker.moves,
         enums: checker
             .enums
@@ -566,12 +584,29 @@ pub(crate) enum TypeDef {
     Set,
     Option,
     Result,
+    /// `Rc<T>` (decision 0032, prototype).
+    Rc,
+    /// `Weak<T>` (decision 0032, prototype r2).
+    Weak,
     Generic(Template, usize),
     /// `type Name = …`, by its index in [`Checker::aliases`].
     Alias(usize),
     /// An interface, by its index in [`Checker::interfaces`]: a constraint,
     /// not a type.
     Interface(usize),
+}
+
+impl TypeDef {
+    /// How many type arguments it takes, an alias's and an interface's
+    /// aside.
+    const fn arity(&self) -> usize {
+        match self {
+            Self::Array | Self::Set | Self::Option | Self::Promise | Self::Rc | Self::Weak => 1,
+            Self::Result | Self::Map => 2,
+            Self::Generic(_, count) => *count,
+            _ => 0,
+        }
+    }
 }
 
 struct Checker<'a> {
@@ -634,6 +669,8 @@ struct Checker<'a> {
     narrowed_now: HashMap<usize, Ty>,
     narrowed: HashSet<ExprId>,
     widened: HashMap<ExprId, Ty>,
+    /// See [`Analysis::changed`].
+    changed: HashSet<ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -694,6 +731,13 @@ impl<'a> Checker<'a> {
         types.insert("Set".to_owned(), TypeDef::Set);
         types.insert("Option".to_owned(), TypeDef::Option);
         types.insert("Result".to_owned(), TypeDef::Result);
+        // Decision 0032's options, prototyped: `Rc<T>`.
+        if proto_rc() != "r0" {
+            types.insert("Rc".to_owned(), TypeDef::Rc);
+        }
+        if proto_rc() == "r2" {
+            types.insert("Weak".to_owned(), TypeDef::Weak);
+        }
         // Managed only, each refused in an owned module.
         types.insert("number".to_owned(), TypeDef::Number);
         types.insert("Promise".to_owned(), TypeDef::Promise);
@@ -733,6 +777,7 @@ impl<'a> Checker<'a> {
             narrowed_now: HashMap::new(),
             narrowed: HashSet::new(),
             widened: HashMap::new(),
+            changed: HashSet::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),
@@ -1665,10 +1710,6 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         };
         let expected = match def {
-            TypeDef::Plain(_) | TypeDef::Number | TypeDef::Host(_) => 0,
-            TypeDef::Array | TypeDef::Set | TypeDef::Option | TypeDef::Promise => 1,
-            TypeDef::Result | TypeDef::Map => 2,
-            TypeDef::Generic(_, count) => count,
             TypeDef::Alias(index) => self.aliases.get(index).map_or(0, |a| a.generics.len()),
             TypeDef::Interface(index) => {
                 let name = self.interfaces.get(index).map(|i| i.name.clone());
@@ -1678,6 +1719,7 @@ impl<'a> Checker<'a> {
                 ));
                 return Ty::Error;
             }
+            ref other => other.arity(),
         };
         if args.len() != expected {
             self.report(errors::type_argument_count(
@@ -1706,6 +1748,8 @@ impl<'a> Checker<'a> {
                 Ty::Set(Box::new(key))
             }
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
+            TypeDef::Rc => Ty::Rc(Box::new(self.type_arg(args))),
+            TypeDef::Weak => Ty::Weak(Box::new(self.type_arg(args))),
             TypeDef::Result => {
                 let ok = self.type_arg(args);
                 let err = args.get(1).map_or(Ty::Error, |a| self.resolve_type(a));

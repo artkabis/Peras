@@ -71,7 +71,7 @@ pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, 
     let allocator = runtime
         .instantiate_and_start(&mut store, &wasmi::Module::new(&engine, allocator_module)?)?;
     let mut linker = Linker::new(&engine);
-    let strings = perasc_ir::RuntimeFn::ALL.map(perasc_ir::RuntimeFn::name);
+    let strings = ordinary_runtime().map(perasc_ir::RuntimeFn::name);
     let core = [
         "alloc",
         "release",
@@ -112,4 +112,13 @@ pub fn instantiate_with(wasm: &[u8], allocator_module: &[u8]) -> Result<Linked, 
         allocator,
         module,
     })
+}
+
+/// The runtime's functions on strings, arrays and maps, but the weak holders
+/// of decision 0032's prototype r2, which only its own variant has.
+fn ordinary_runtime() -> impl Iterator<Item = perasc_ir::RuntimeFn> {
+    use perasc_ir::RuntimeFn as F;
+    F::ALL
+        .into_iter()
+        .filter(|f| !matches!(f, F::WeakNew | F::WeakAlive | F::WeakGet))
 }

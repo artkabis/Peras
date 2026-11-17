@@ -166,6 +166,12 @@ pub enum Ty {
     Option(Box<Ty>),
     /// `Result<T, E>`: `Ok(T)` or `Err(E)`.
     Result(Box<Ty>, Box<Ty>),
+    /// `Rc<T>`: a value shared by a count of its holders (decision 0032,
+    /// prototype).
+    Rc(Box<Ty>),
+    /// `Weak<T>`: a holder of a shared value that does not keep it alive
+    /// (decision 0032, prototype r2).
+    Weak(Box<Ty>),
     /// A structure, with its name for messages.
     Struct(StructId, String),
     /// An enumeration, with its name for messages.
@@ -247,6 +253,8 @@ impl fmt::Display for Ty {
             Self::Promise(t) => write!(f, "Promise<{t}>"),
             Self::Option(t) => write!(f, "Option<{t}>"),
             Self::Result(t, e) => write!(f, "Result<{t}, {e}>"),
+            Self::Rc(t) => write!(f, "Rc<{t}>"),
+            Self::Weak(t) => write!(f, "Weak<{t}>"),
             Self::Struct(_, name)
             | Self::Enum(_, name)
             | Self::Param(_, name)

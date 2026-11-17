@@ -50,3 +50,22 @@ Four quantities, as for decisions 0027, 0028 and 0030, and three questions of th
 ## Record
 
 _Each part is recorded here as it lands._
+
+### The prototypes (2026-11-17)
+
+Built behind `PERAS_PROTO_RC`; the build without it is r0, today's compiler.
+
+- **r1.** `Rc<T>` is one handle: the counted block of function values (decision 0026), holding the leaves of `T`, its buffers first (`EnvOp::Shared`). A copy holds it once more (`buf_clone`), a release lets go (`buf_release`), and the last holder releases what it owns. A field is read from its slot, a buffer lent. A field written, or a place changed through it (`rc.items.push(4)`, `rc.items[0] = 5`), first makes the value the holder's own: the runtime's `shared_unique` gives the same block when one holder holds it, a copy otherwise, its buffers copied and the shared values it holds held once more. The checker marks the way to every place changed (`Analysis::changed`). Not built: a write through a shared value held by another shared value or by an element (E0900, `rc-write`), and `Rc` in a managed module (E0900).
+- **r2.** The same, written in place: every holder sees the write. `Weak<T>`, made by `Rc.weak(rc)` and read by `weak.get()`, an `Option<Rc<T>>`, is the value's address with its lowest bit set; the value's first word counts its weak holders, and its block goes with the last of its holders, strong or weak. The runtime's code for weak holders is in a variant of its own (`;; @r2` in `buffers.wat`, `Allocator::runtime_with`), linked only under r2: no other module carries it.
+- **r3, not built.** A detector of cycles by trial deletion walks, from each possible root, the shared values it holds. The runtime cannot: a block records how many of its first slots it owns, not which are shared values, and an array or a map owns its handles without knowing whether they are shared values or strings. It would need a description of every type at run time, a buffer of roots and a scan, the core of a collector: more than this decision, and on top of r2, whose holes found below it would keep. Reported as not built, not ranked (finding M001).
+
+Found while building them: F016 and F017, two bugs of the prototypes, closed before any measure; F114 and F115, two frictions of narrowing, met by P2 and P3.
+
+What `node scripts/bench-shared.mjs --check` showed before the measure, and checks from now on:
+
+- **P3 as written** gives, under r1, 45 where JavaScript gives 100: each child holds its parent as it was before the child was added, since a value can only point to values made before it. Under r2 it gives 100 and leaves 34 blocks alive, its cycle not broken; with a weak parent, none.
+- **Two holders of one value**: a loop over `a.items` while `b` replaces `items` gives 6 under r1, as JavaScript, and 91 under r2, the loop reading the new array from its second turn on (`bench/shared/aliasing/loop.peras`).
+- **In a turn of `parallel for`**, reading a shared value is accepted by both; holding it once more is refused by both (E0241); writing a field of it is refused by r1, where the write makes the value the holder's own and so assigns the variable, and accepted by r2, where several threads would write the same block.
+- **W1 makes two count operations per lantern in the loop that draws**, under both: `const mesh = fleet[i].mesh` holds the mesh once more, then lets it go. The protocol's target was 0.
+
+The measure, at the commit that lands the prototypes, is recorded next.

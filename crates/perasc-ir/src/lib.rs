@@ -542,6 +542,10 @@ pub enum EnvOp {
     /// environment releases with its last holder; a `borrowed` one is lent
     /// to it (decision 0027, prototypes).
     New(FnId, u32),
+    /// `[slots…]`: a shared value, `Rc.new(v)` (decision 0032, prototype):
+    /// the same counted block as [`Self::New`], of no function, its slots
+    /// the value's, the `owned` buffers and shared values first.
+    Shared(u32),
     /// `[]`: the environment of no function, held by a `None` or an empty
     /// variant; it is static, at [`ZERO_ENV`], and is never called.
     Zero,
@@ -549,6 +553,12 @@ pub enum EnvOp {
     Load(u32),
     /// `[env]`, lent: the buffer at this slot, lent in turn.
     LoadHandle(u32),
+    /// `[env, value]`, the environment lent: stores the `i64` at this slot,
+    /// a field written through a shared value (decision 0032, prototype).
+    Store(u32),
+    /// `[env, value]`, the environment lent, the value `owned`: stores the
+    /// buffer at this slot and releases the one it held.
+    StoreHandle(u32),
 }
 
 /// The shapes of expression.
@@ -946,11 +956,25 @@ pub enum RuntimeFn {
     /// `parseF64` reads it ([`text::is_decimal`]); NaN when it is not one,
     /// which no text it accepts can write.
     ParseFloat,
+    /// `(bytes, shared: owned) -> owned`: a shared value of `bytes` bytes,
+    /// header included, that only this holder holds: the same block when it
+    /// is the only one, otherwise a copy, the buffers it owns copied and the
+    /// shared values it holds held once more, and one fewer holding the
+    /// original (decision 0032, prototype r1).
+    SharedUnique,
+    /// `(shared) -> owned`: a holder of the shared value that does not keep
+    /// it alive, `Weak<T>` (decision 0032, prototype r2).
+    WeakNew,
+    /// `(weak) -> bool`: whether the value a weak holder names still lives.
+    WeakAlive,
+    /// `(weak) -> owned`: the value a weak holder names, held once more, or
+    /// the static environment of no function when it no longer lives.
+    WeakGet,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 58] = [
+    pub const ALL: [Self; 62] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -1009,6 +1033,10 @@ impl RuntimeFn {
         Self::FmtUint,
         Self::FmtUintLen,
         Self::FmtUintAppend,
+        Self::SharedUnique,
+        Self::WeakNew,
+        Self::WeakAlive,
+        Self::WeakGet,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -1073,6 +1101,10 @@ impl RuntimeFn {
             Self::MapNext => "map_next",
             Self::MapKeyI => "map_key_i",
             Self::MapKeyS => "map_key_s",
+            Self::SharedUnique => "shared_unique",
+            Self::WeakNew => "weak_new",
+            Self::WeakAlive => "weak_alive",
+            Self::WeakGet => "weak_get",
         }
     }
 
@@ -1084,7 +1116,7 @@ impl RuntimeFn {
             Self::FmtInt | Self::FmtIntLen | Self::FmtUint | Self::FmtUintLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat | Self::FloatRem => Ty::F64,
-            Self::MapNew => Ty::I32,
+            Self::MapNew | Self::SharedUnique => Ty::I32,
             _ => Ty::Borrowed,
         }
     }
@@ -1125,7 +1157,10 @@ impl RuntimeFn {
             | Self::FmtInt
             | Self::FmtBool
             | Self::ParseInt
-            | Self::MapClear => &[],
+            | Self::MapClear
+            | Self::WeakNew
+            | Self::WeakAlive
+            | Self::WeakGet => &[],
             Self::Repeat
             | Self::ArrSort
             | Self::IsInt
@@ -1140,7 +1175,7 @@ impl RuntimeFn {
             | Self::MapPutI
             | Self::FmtIntAppend
             | Self::FmtUintAppend => &[Ty::I64],
-            Self::MapPutS => &[Ty::Owned],
+            Self::MapPutS | Self::SharedUnique => &[Ty::Owned],
             Self::MapPutAtI => &[Ty::I32, Ty::I64],
             Self::MapPutAtS => &[Ty::I32, Ty::Owned],
             Self::MapPutAtSLent => &[Ty::I32, Ty::Borrowed],
@@ -1175,7 +1210,8 @@ impl RuntimeFn {
             | Self::IsInt
             | Self::MapDeleteI
             | Self::MapDeleteS
-            | Self::BufEqual => Ty::Bool,
+            | Self::BufEqual
+            | Self::WeakAlive => Ty::Bool,
             Self::ParseInt | Self::MapValue | Self::MapKeyI => Ty::I64,
             Self::MapKeyS | Self::MapValueH => Ty::Borrowed,
             Self::MapValueF | Self::ParseFloat | Self::FloatRem => Ty::F64,
@@ -1952,8 +1988,11 @@ fn expr(e: &Expr) -> String {
                 EnvOp::Static(id, at) => format!("env.static #{} @{at}", id.0),
                 EnvOp::New(id, 0) => format!("env.new #{}", id.0),
                 EnvOp::New(id, owned) => format!("env.new #{} owns {owned}", id.0),
+                EnvOp::Shared(owned) => format!("rc.new owns {owned}"),
                 EnvOp::Zero => "env.zero".to_owned(),
                 EnvOp::Load(slot) => format!("env.load {slot}"),
+                EnvOp::Store(slot) => format!("env.store {slot}"),
+                EnvOp::StoreHandle(slot) => format!("env.store_handle {slot}"),
                 EnvOp::LoadHandle(slot) => format!("env.handle {slot}"),
             };
             format!("({op} {})", args.join(" "))

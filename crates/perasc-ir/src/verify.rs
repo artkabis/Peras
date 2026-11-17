@@ -86,7 +86,10 @@ impl<'a> Verifier<'a> {
             | ExprKind::Call(..)
             | ExprKind::CallIndirect(..)
             | ExprKind::Buf(BufOp::New(_) | BufOp::Literal(_) | BufOp::Clone | BufOp::Take, _)
-            | ExprKind::Env(EnvOp::Static(..) | EnvOp::New(..) | EnvOp::Zero, _) => {
+            | ExprKind::Env(
+                EnvOp::Static(..) | EnvOp::New(..) | EnvOp::Shared(_) | EnvOp::Zero,
+                _,
+            ) => {
                 self.expr(value);
             }
             ExprKind::Buf(BufOp::Runtime(f), _) if f.result() == Ty::Owned => {
@@ -535,7 +538,12 @@ impl<'a> Verifier<'a> {
     fn env_expr(&mut self, op: EnvOp, args: &[Expr], ty: Ty) {
         let named = match op {
             EnvOp::Static(id, _) | EnvOp::New(id, _) => Some(id),
-            EnvOp::Zero | EnvOp::Load(_) | EnvOp::LoadHandle(_) => None,
+            EnvOp::Zero
+            | EnvOp::Shared(_)
+            | EnvOp::Load(_)
+            | EnvOp::LoadHandle(_)
+            | EnvOp::Store(_)
+            | EnvOp::StoreHandle(_) => None,
         };
         if let Some(id) = named {
             let last = usize::try_from(id.0)
@@ -562,7 +570,7 @@ impl<'a> Verifier<'a> {
                 self.operands("env", args, &[]);
                 Ty::Owned
             }
-            EnvOp::New(_, owned) => {
+            EnvOp::New(_, owned) | EnvOp::Shared(owned) => {
                 // The buffers it owns first, then those lent, then numbers.
                 let owned = usize::try_from(owned).unwrap_or(usize::MAX);
                 for (i, arg) in args.iter().enumerate() {
@@ -587,6 +595,19 @@ impl<'a> Verifier<'a> {
                 self.buffer(args.first());
                 self.operands("env.handle", args.get(1..).unwrap_or(&[]), &[]);
                 Ty::Borrowed
+            }
+            EnvOp::Store(_) => {
+                self.buffer(args.first());
+                self.operands("env.store", args.get(1..).unwrap_or(&[]), &[Ty::I64]);
+                Ty::Void
+            }
+            EnvOp::StoreHandle(_) => {
+                self.buffer(args.first());
+                match args.get(1..) {
+                    Some([value]) if value.ty == Ty::Owned => self.handed_over(value),
+                    _ => self.problem("env.store_handle takes an env and an owned value"),
+                }
+                Ty::Void
             }
         };
         if ty != expected {

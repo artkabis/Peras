@@ -1,0 +1,14 @@
+// Question 7 of decision 0032: a turn holds a shared value once more, which
+// changes its count from several threads at once.
+
+struct Mesh {
+  x: Array<f64>;
+}
+
+export fn holds(out: inout Array<f64>): void {
+  const mesh = Rc.new(Mesh([1.0, 2.0, 3.0]));
+  parallel for (let i = 0; i < out.length; i++) {
+    const held = mesh;
+    out[i] = held.x[i % 3];
+  }
+}

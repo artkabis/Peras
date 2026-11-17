@@ -49,6 +49,15 @@ pub const DEBUG_ALLOCATOR_SCALAR: &[u8] =
 pub const TLSF_ALLOCATOR_SCALAR: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf_scalar.wasm"));
 
+/// The four allocators with the weak holders of decision 0032's prototype
+/// r2, in the order of [`Allocator::runtime_with`].
+const WEAK_ALLOCATORS: [&[u8]; 4] = [
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug_weak.wasm")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf_weak.wasm")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_debug_scalar_weak.wasm")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf_scalar_weak.wasm")),
+];
+
 /// Which allocator a module is linked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Allocator {
@@ -74,6 +83,21 @@ impl Allocator {
             (Self::Tlsf, true) => TLSF_ALLOCATOR,
             (Self::Debug, false) => DEBUG_ALLOCATOR_SCALAR,
             (Self::Tlsf, false) => TLSF_ALLOCATOR_SCALAR,
+        }
+    }
+
+    /// [`Self::runtime`], or, with `weak`, the same with the weak holders of
+    /// shared values (decision 0032, prototype r2).
+    #[must_use]
+    pub const fn runtime_with(self, simd: bool, weak: bool) -> &'static [u8] {
+        if !weak {
+            return self.runtime(simd);
+        }
+        match (self, simd) {
+            (Self::Debug, true) => WEAK_ALLOCATORS[0],
+            (Self::Tlsf, true) => WEAK_ALLOCATORS[1],
+            (Self::Debug, false) => WEAK_ALLOCATORS[2],
+            (Self::Tlsf, false) => WEAK_ALLOCATORS[3],
         }
     }
 }

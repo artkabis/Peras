@@ -113,6 +113,14 @@
   ;; elements are buffers, then its elements.
   (func $buf_release (export "buf_release") (param $h i32) (param $site i32)
     (local $data i32) (local $len i32) (local $deep i32) (local $i i32) (local $shape i32)
+    ;; @r2
+    ;; A weak holder of a shared value (decision 0032, prototype r2).
+    (if (i32.and (local.get $h) (i32.const 1))
+      (then
+        (call $weak_drop (i32.and (local.get $h) (i32.const -2)) (local.get $site))
+        (return)))
+    ;; @r0
+    ;; @r-end
     ;; An environment: one fewer holds it. Released twice, its block holds
     ;; the debug allocator's poison, without SHARED: the release below
     ;; catches it.
@@ -126,6 +134,15 @@
           (then
             (i32.store offset=4 (local.get $h) (local.get $len))
             (return)))
+        ;; @r2
+        ;; A shared value no one holds is dead from now on; held weakly
+        ;; once more while what it owns goes, which may let go of it weakly.
+        (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $RC))
+          (then
+            (i32.store offset=4 (local.get $h) (i32.const 0))
+            (i32.store (local.get $h) (i32.add (i32.load (local.get $h)) (i32.const 1)))))
+        ;; @r0
+        ;; @r-end
         ;; The last holder: the buffers it owns, its first slots, go first.
         (local.set $len (i32.load offset=8 (local.get $h)))
         (block $done
@@ -136,6 +153,13 @@
               (local.get $site))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             (br $next)))
+        ;; @r2
+        (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $RC))
+          (then
+            (call $weak_drop (local.get $h) (local.get $site))
+            (return)))
+        ;; @r0
+        ;; @r-end
         (call $release (local.get $h) (local.get $site))
         (return)))
     ;; A map: its header first, which catches a block released twice, then
@@ -174,6 +198,15 @@
   ;; A copy of a buffer, with copies of the buffers it owns.
   (func $buf_clone (export "buf_clone") (param $h i32) (param $site i32) (result i32)
     (local $copy i32) (local $len i32) (local $size i32) (local $i i32) (local $at i32)
+    ;; @r2
+    ;; A weak holder: one more holds the shared value weakly.
+    (if (i32.and (local.get $h) (i32.const 1))
+      (then
+        (local.set $at (i32.and (local.get $h) (i32.const -2)))
+        (i32.store (local.get $at) (i32.add (i32.load (local.get $at)) (i32.const 1)))
+        (return (local.get $h))))
+    ;; @r0
+    ;; @r-end
     ;; An environment is shared: one more holds it, unless it is static.
     (if (i32.and (i32.load offset=12 (local.get $h)) (global.get $SHARED))
       (then
@@ -2650,3 +2683,62 @@
     (i32.store offset=16 (local.get $m) (i32.const 0))
     (i32.store offset=20 (local.get $m) (i32.const 0))
     (i32.store offset=24 (local.get $m) (i32.const 0)))
+
+  ;; A shared value (decision 0032, prototype r1) of `bytes` bytes that only
+  ;; this holder holds: the same block when it is the only one; otherwise a
+  ;; copy, the buffers it owns copied and the shared values it holds held
+  ;; once more by `buf_clone`, and one fewer holding the original, which
+  ;; others still hold.
+  (func (export "shared_unique") (param $bytes i32) (param $h i32) (result i32)
+    (local $copy i32) (local $n i32) (local $i i32) (local $at i32)
+    (if (i32.eq (i32.load offset=4 (local.get $h)) (i32.const 1))
+      (then (return (local.get $h))))
+    (local.set $copy (call $alloc (local.get $bytes) (i32.const 0)))
+    (memory.copy (local.get $copy) (local.get $h) (local.get $bytes))
+    (i32.store offset=4 (local.get $copy) (i32.const 1))
+    (local.set $n (i32.load offset=8 (local.get $h)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (i32.add (local.get $copy) (i32.const 16))
+          (i32.shl (local.get $i) (i32.const 3))))
+        (i32.store (local.get $at) (call $buf_clone (i32.load (local.get $at)) (i32.const 0)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (call $buf_release (local.get $h) (i32.const 0))
+    (local.get $copy))
+  ;; @r2
+
+  ;; Weak holders of a shared value (decision 0032, prototype r2): the
+  ;; value's address with its lowest bit set; the value's +0 counts them,
+  ;; and its block goes with the last of its holders, strong or weak. A
+  ;; shared value carries RC besides SHARED.
+  (global $RC i32 (i32.const 0x4000))
+
+  ;; One fewer holds `t` weakly; the last frees it once it is dead.
+  (func $weak_drop (param $t i32) (param $site i32)
+    (local $n i32)
+    (local.set $n (i32.sub (i32.load (local.get $t)) (i32.const 1)))
+    (i32.store (local.get $t) (local.get $n))
+    (if (i32.and (i32.eqz (local.get $n)) (i32.eqz (i32.load offset=4 (local.get $t))))
+      (then (call $release (local.get $t) (local.get $site)))))
+
+  (func (export "weak_new") (param $t i32) (result i32)
+    (i32.store (local.get $t) (i32.add (i32.load (local.get $t)) (i32.const 1)))
+    (i32.or (local.get $t) (i32.const 1)))
+
+  (func (export "weak_alive") (param $w i32) (result i32)
+    (i32.ne (i32.load offset=4 (i32.and (local.get $w) (i32.const -2))) (i32.const 0)))
+
+  ;; The value, held once more, or the static environment of no function,
+  ;; at 16, when it is dead.
+  (func (export "weak_get") (param $w i32) (result i32)
+    (local $t i32) (local $n i32)
+    (local.set $t (i32.and (local.get $w) (i32.const -2)))
+    (local.set $n (i32.load offset=4 (local.get $t)))
+    (if (i32.eqz (local.get $n))
+      (then (return (i32.const 16))))
+    (i32.store offset=4 (local.get $t) (i32.add (local.get $n) (i32.const 1)))
+    (local.get $t))
+  ;; @r0
+  ;; @r-end

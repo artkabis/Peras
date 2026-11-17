@@ -50,3 +50,22 @@ Quatre quantités, comme pour les décisions 0027, 0028 et 0030, et trois questi
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### Les prototypes (2026-11-17)
+
+Construits derrière `PERAS_PROTO_RC` ; le build sans elle est r0, le compilateur d’aujourd’hui.
+
+- **r1.** `Rc<T>` est une poignée : le bloc compté des valeurs de fonction (décision 0026), qui tient les feuilles de `T`, ses tampons d’abord (`EnvOp::Shared`). Une copie le tient une fois de plus (`buf_clone`), une libération le lâche (`buf_release`), et le dernier détenteur libère ce qu’il possède. Un champ est lu dans son emplacement, un tampon prêté. Un champ écrit, ou une place changée à travers lui (`rc.items.push(4)`, `rc.items[0] = 5`), rend d’abord la valeur propre à son détenteur : `shared_unique`, dans le runtime, rend le même bloc quand un seul détenteur le tient, une copie sinon, ses tampons copiés et les valeurs partagées qu’il tient tenues une fois de plus. Le vérificateur marque le chemin de chaque place changée (`Analysis::changed`). Non construit : une écriture à travers une valeur partagée tenue par une autre valeur partagée ou par un élément (E0900, `rc-write`), et `Rc` dans un module managed (E0900).
+- **r2.** La même, écrite sur place : chaque détenteur voit l’écriture. `Weak<T>`, fait par `Rc.weak(rc)` et lu par `weak.get()`, un `Option<Rc<T>>`, est l’adresse de la valeur avec son bit le plus bas mis ; le premier mot de la valeur compte ses détenteurs faibles, et son bloc part avec le dernier de ses détenteurs, forts ou faibles. Le code du runtime pour les détenteurs faibles est dans une variante à part (`;; @r2` dans `buffers.wat`, `Allocator::runtime_with`), liée seulement sous r2 : aucun autre module ne le porte.
+- **r3, non construite.** Un détecteur de cycles par suppression d’essai parcourt, depuis chaque racine possible, les valeurs partagées qu’elle tient. Le runtime ne le peut pas : un bloc note combien de ses premiers emplacements il possède, non lesquels sont des valeurs partagées, et un tableau ou une table possède ses poignées sans savoir si ce sont des valeurs partagées ou des chaînes. Il faudrait une description de chaque type à l’exécution, un tampon de racines et un parcours, le cœur d’un ramasse-miettes : plus que cette décision, et par-dessus r2, dont elle garderait les trous trouvés plus bas. Dite non construite, non classée (constat M001).
+
+Trouvés en les construisant : F016 et F017, deux bogues des prototypes, fermés avant toute mesure ; F114 et F115, deux frictions du rétrécissement, rencontrées par P2 et P3.
+
+Ce que `node scripts/bench-shared.mjs --check` a montré avant la mesure, et vérifie désormais :
+
+- **P3 tel qu’écrit** donne, sous r1, 45 là où JavaScript donne 100 : chaque enfant tient son parent tel qu’il était avant l’ajout de l’enfant, puisqu’une valeur ne peut pointer que vers des valeurs faites avant elle. Sous r2 il donne 100 et laisse 34 blocs vivants, son cycle non cassé ; avec un parent faible, aucun.
+- **Deux détenteurs d’une valeur** : une boucle sur `a.items` pendant que `b` remplace `items` donne 6 sous r1, comme JavaScript, et 91 sous r2, la boucle lisant le nouveau tableau dès son deuxième tour (`bench/shared/aliasing/loop.peras`).
+- **Dans un tour de `parallel for`**, lire une valeur partagée est accepté par les deux ; la tenir une fois de plus est refusé par les deux (E0241) ; écrire un de ses champs est refusé par r1, où l’écriture rend la valeur propre à son détenteur et affecte donc la variable, et accepté par r2, où plusieurs fils écriraient le même bloc.
+- **W1 fait deux opérations de compte par lanterne dans la boucle qui dessine**, sous les deux : `const mesh = fleet[i].mesh` tient le maillage une fois de plus, puis le lâche. La cible du protocole était 0.
+
+La mesure, au commit qui apporte les prototypes, est consignée ensuite.

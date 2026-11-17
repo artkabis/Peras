@@ -550,6 +550,59 @@ impl<'a> Checker<'a> {
         Some(self.call_method(at, id, &text, None))
     }
 
+    /// `Rc.new(value)`: the value shared (decision 0032, prototype), when
+    /// `Rc` names no binding of the program.
+    pub(crate) fn rc_new(&mut self, at: &CallSite<'_>, base: ExprId, name: &Ident) -> Option<Ty> {
+        let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
+            return None;
+        };
+        let method = self.name(name.symbol).to_owned();
+        let weak = method == "weak" && crate::proto_rc() == "r2";
+        if self.name(symbol) != "Rc"
+            || (method != "new" && !weak)
+            || crate::proto_rc() == "r0"
+            || self.scopes.lookup(symbol).is_some()
+        {
+            return None;
+        }
+        let [value] = at.args else {
+            self.report(errors::argument_count(
+                at.span,
+                &method,
+                1,
+                at.args.len(),
+                None,
+            ));
+            self.check_args(at.args, &[]);
+            return Some(Ty::Error);
+        };
+        // `Rc.weak(rc)`: a holder that does not keep it alive (r2).
+        if weak {
+            let expected = match at.expected {
+                Some(Ty::Weak(inner)) => Some(Ty::Rc(inner.clone())),
+                _ => None,
+            };
+            return Some(match self.infer(*value, expected.as_ref()) {
+                Ty::Rc(inner) => Ty::Weak(inner),
+                Ty::Error => Ty::Error,
+                other => {
+                    let wanted = expected.unwrap_or_else(|| Ty::Rc(Box::new(Ty::Error)));
+                    self.coerce(*value, &other, &wanted);
+                    Ty::Error
+                }
+            });
+        }
+        let inner = match at.expected {
+            Some(Ty::Rc(inner)) => Some((**inner).clone()),
+            _ => None,
+        };
+        let ty = self.infer(*value, inner.as_ref());
+        if let Some(inner) = &inner {
+            self.coerce(*value, &ty, inner);
+        }
+        Some(Ty::Rc(Box::new(inner.unwrap_or(ty).defaulted())))
+    }
+
     /// `Map.new()` or `Set.new()`: an empty collection, its types those the
     /// context expects, `let seen: Map<String, i32> = Map.new()`. Only when
     /// `Map` or `Set` names no binding of the program.
@@ -690,6 +743,7 @@ impl<'a> Checker<'a> {
         {
             let span = self.ast.expr(base).span;
             self.check_mutable(root, span);
+            self.mark_changed(base);
         }
     }
 

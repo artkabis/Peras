@@ -90,6 +90,7 @@ pub fn run_with_heap(
                     .map(|g| constant(g.init, g.ty))
                     .collect(),
                 counts: std::collections::BTreeMap::new(),
+                weak: std::collections::BTreeMap::new(),
             };
             let value = machine.call(id, &args)?;
             let report = HeapReport {
@@ -134,7 +135,14 @@ struct Machine<'a> {
     /// one, and the last frees the block. Its elements are the function's
     /// number, how many of its first slots it owns, then the slots.
     counts: std::collections::BTreeMap<u32, u32>,
+    /// How many weak holders name each shared value (decision 0032,
+    /// prototype r2); a value none holds any more stays, empty, until the
+    /// last weak holder lets go.
+    weak: std::collections::BTreeMap<u32, u32>,
 }
+
+/// Marks a weak holder of a shared value: its block, with this bit set.
+const WEAK: u32 = 0x2000_0000;
 
 /// Marks a static environment among the static handles: the function's
 /// number follows, or [`ZERO_ENV`] for [`EnvOp::Zero`].
@@ -421,9 +429,34 @@ impl Machine<'_> {
                 self.counts.insert(self.allocated, 1);
                 Value::Handle(self.allocated)
             }
+            (EnvOp::Shared(owned), slots) => {
+                self.allocated += 1;
+                let owned = i32::try_from(owned).unwrap_or(i32::MAX);
+                let mut elements = vec![Value::I32(-1), Value::I32(owned)];
+                elements.extend_from_slice(slots);
+                self.heap.insert(self.allocated, elements);
+                self.counts.insert(self.allocated, 1);
+                Value::Handle(self.allocated)
+            }
             (EnvOp::Load(slot) | EnvOp::LoadHandle(slot), [env]) => {
                 let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 2;
                 *self.elements(*env)?.get(index).ok_or(Trap::Unchecked)?
+            }
+            (EnvOp::Store(slot) | EnvOp::StoreHandle(slot), [env, value]) => {
+                let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 2;
+                let Value::Handle(block) = env else {
+                    return Err(Trap::UseAfterRelease);
+                };
+                let at = self
+                    .heap
+                    .get_mut(block)
+                    .and_then(|e| e.get_mut(index))
+                    .ok_or(Trap::Unchecked)?;
+                let old = std::mem::replace(at, *value);
+                if let (EnvOp::StoreHandle(_), Value::Handle(old)) = (op, old) {
+                    self.free(old)?;
+                }
+                Value::Void
             }
             _ => return Err(Trap::Unreachable),
         })
@@ -1026,6 +1059,9 @@ impl Machine<'_> {
             let value = *operands.get(i).ok_or(Trap::Unreachable)?;
             this.bytes(value)
         };
+        if let F::SharedUnique | F::WeakNew | F::WeakAlive | F::WeakGet = f {
+            return self.shared_runtime(f, operands);
+        }
         if f == crate::RuntimeFn::BufEqual {
             let (Some(a), Some(b)) = (operands.first(), operands.get(1)) else {
                 return Err(Trap::Unreachable);
@@ -1299,6 +1335,20 @@ impl Machine<'_> {
         if block & STATIC != 0 {
             return Err(Trap::DoubleRelease);
         }
+        // A weak holder: the value's block goes with the last, once no one
+        // holds the value itself.
+        if block & WEAK != 0 {
+            let shared = block & !WEAK;
+            let left = self.weak.get_mut(&shared).ok_or(Trap::DoubleRelease)?;
+            *left -= 1;
+            if *left == 0 {
+                self.weak.remove(&shared);
+                if !self.counts.contains_key(&shared) {
+                    self.heap.remove(&shared);
+                }
+            }
+            return Ok(());
+        }
         if let Some(count) = self.counts.get_mut(&block) {
             *count -= 1;
             if *count > 0 {
@@ -1307,6 +1357,9 @@ impl Machine<'_> {
             self.counts.remove(&block);
             // The buffers the environment owns, its first slots, go with it.
             let elements = self.heap.remove(&block).ok_or(Trap::DoubleRelease)?;
+            if self.weak.contains_key(&block) {
+                self.heap.insert(block, Vec::new());
+            }
             let owned = match elements.get(1) {
                 Some(Value::I32(n)) => usize::try_from(*n).unwrap_or(0),
                 _ => 0,
@@ -1354,8 +1407,70 @@ impl Machine<'_> {
         Ok(())
     }
 
+    /// The functions of the runtime on shared values and their weak holders
+    /// (decision 0032, prototypes).
+    fn shared_runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
+        use crate::RuntimeFn as F;
+        if f == F::SharedUnique {
+            return self.shared_unique(operands.get(1).copied());
+        }
+        let Some(Value::Handle(block)) = operands.first() else {
+            return Err(Trap::UseAfterRelease);
+        };
+        let shared = block & !WEAK;
+        let alive = self.counts.contains_key(&shared);
+        Ok(match f {
+            F::WeakNew => {
+                *self.weak.entry(shared).or_insert(0) += 1;
+                Value::Handle(shared | WEAK)
+            }
+            F::WeakAlive => Value::Bool(alive),
+            _ if alive => self.clone_buffer(Value::Handle(shared))?,
+            _ => self.static_env(ZERO_ENV, Value::I32(-1)),
+        })
+    }
+
+    /// [`crate::RuntimeFn::SharedUnique`]: a shared value only this holder
+    /// holds, its own block or a copy (decision 0032, prototype r1).
+    fn shared_unique(&mut self, shared: Option<Value>) -> Result<Value, Trap> {
+        let Some(Value::Handle(block)) = shared else {
+            return Err(Trap::UseAfterRelease);
+        };
+        let count = self
+            .counts
+            .get(&block)
+            .copied()
+            .ok_or(Trap::UseAfterRelease)?;
+        if count == 1 {
+            return Ok(Value::Handle(block));
+        }
+        let mut elements = self.elements(Value::Handle(block))?.clone();
+        let owned = match elements.get(1) {
+            Some(Value::I32(n)) => usize::try_from(*n).unwrap_or(0),
+            _ => 0,
+        };
+        for slot in elements.iter_mut().skip(2).take(owned) {
+            *slot = self.clone_buffer(*slot)?;
+        }
+        self.free(block)?;
+        self.allocated += 1;
+        self.heap.insert(self.allocated, elements);
+        self.counts.insert(self.allocated, 1);
+        Ok(Value::Handle(self.allocated))
+    }
+
     /// A copy of a buffer, with copies of the buffers it owns.
     fn clone_buffer(&mut self, buf: Value) -> Result<Value, Trap> {
+        if let Value::Handle(block) = buf
+            && block & WEAK != 0
+            && block & STATIC == 0
+        {
+            *self
+                .weak
+                .get_mut(&(block & !WEAK))
+                .ok_or(Trap::UseAfterRelease)? += 1;
+            return Ok(buf);
+        }
         let mut elements = self.elements(buf)?.clone();
         let Value::Handle(block) = buf else {
             return Err(Trap::UseAfterRelease);

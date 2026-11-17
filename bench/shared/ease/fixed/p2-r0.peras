@@ -1,0 +1,49 @@
+// P2 without `Rc` (option r0): the nodes in arrays, each child a number,
+// -1 for none.
+
+struct Tree {
+  value: Array<i32>;
+  left: Array<i32>;
+  right: Array<i32>;
+}
+
+fn insert(tree: inout Tree, value: i32) {
+  const at = tree.value.length;
+  tree.value.push(value);
+  tree.left.push(-1);
+  tree.right.push(-1);
+  if (at == 0) {
+    return;
+  }
+  let node = 0;
+  while (true) {
+    if (value < tree.value[node]) {
+      if (tree.left[node] < 0) {
+        tree.left[node] = at;
+        return;
+      }
+      node = tree.left[node];
+    } else {
+      if (tree.right[node] < 0) {
+        tree.right[node] = at;
+        return;
+      }
+      node = tree.right[node];
+    }
+  }
+}
+
+fn sum(tree: Tree, node: i32): i64 {
+  if (node < 0) {
+    return 0;
+  }
+  return tree.value[node].toI64() + sum(tree, tree.left[node]) + sum(tree, tree.right[node]);
+}
+
+export fn p2(values: Array<i32>): i64 {
+  let tree = Tree([], [], []);
+  for (const value of values) {
+    insert(&tree, value);
+  }
+  return sum(tree, 0);
+}

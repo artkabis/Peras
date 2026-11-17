@@ -60,6 +60,8 @@ const DEEP: i32 = 0x100;
 const INLINE: u32 = 0x200;
 /// An environment of a function value, counted (`$SHARED`, decision 0026).
 const SHARED: i32 = 0x2000;
+/// A shared value, `Rc<T>` (`$RC`, decision 0032, prototype).
+const RC: i32 = 0x4000;
 /// The module JavaScript's `Math` is imported as.
 pub const HOST_MODULE: &str = "Math";
 /// The function types of the imports from `Math`.
@@ -962,16 +964,21 @@ impl<'a> FnEncoder<'a> {
                     i32::try_from(perasc_ir::ZERO_ENV).unwrap_or(0),
                 ));
             }
-            EnvOp::New(f, owned) => {
+            EnvOp::New(_, owned) | EnvOp::Shared(owned) => {
                 let bytes = 16 + 8 * args.len();
                 self.emit(&I::I32Const(i32::try_from(bytes).unwrap_or(i32::MAX)));
                 let site = self.alloc_site();
                 self.emit(&I::I32Const(site));
                 self.emit(&I::Call(ALLOC));
                 self.emit(&I::LocalSet(self.temp_env));
-                let position = self.host.table_position(f);
+                // A shared value (decision 0032) names no function: its +0
+                // counts its weak holders, and it carries RC.
+                let (position, flags) = match op {
+                    EnvOp::New(f, _) => (self.host.table_position(f), SHARED),
+                    _ => (0, SHARED | RC),
+                };
                 let owned = i32::try_from(owned).unwrap_or(i32::MAX);
-                for (offset, word) in [(0, position), (4, 1), (8, owned), (12, SHARED)] {
+                for (offset, word) in [(0, position), (4, 1), (8, owned), (12, flags)] {
                     self.emit(&I::LocalGet(self.temp_env));
                     self.emit(&I::I32Const(word));
                     self.emit(&I::I32Store(mem(offset, 4)));
@@ -1000,6 +1007,28 @@ impl<'a> FnEncoder<'a> {
                     self.expr(env);
                 }
                 self.emit(&I::I32Load(mem(16 + 8 * u64::from(slot), 4)));
+            }
+            EnvOp::Store(slot) => {
+                for arg in args {
+                    self.expr(arg);
+                }
+                self.emit(&I::I64Store(mem(16 + 8 * u64::from(slot), 8)));
+            }
+            EnvOp::StoreHandle(slot) => {
+                // The buffer it held released first: the lowering gives the
+                // new one moved out of a local, which this cannot free.
+                let offset = 16 + 8 * u64::from(slot);
+                if let Some(env) = args.first() {
+                    self.expr(env);
+                    self.emit(&I::I32Load(mem(offset, 4)));
+                    let site = self.site(format!("{} (rc field)", self.name));
+                    self.emit(&I::I32Const(site));
+                    self.emit(&I::Call(BUF_RELEASE));
+                }
+                for arg in args {
+                    self.expr(arg);
+                }
+                self.emit(&I::I32Store(mem(offset, 4)));
             }
         }
     }

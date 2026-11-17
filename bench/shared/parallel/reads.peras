@@ -1,0 +1,13 @@
+// Question 7 of decision 0032: a turn of a parallel loop reads a shared
+// value, which no turn changes nor holds once more.
+
+struct Mesh {
+  x: Array<f64>;
+}
+
+export fn reads(out: inout Array<f64>): void {
+  const mesh = Rc.new(Mesh([1.0, 2.0, 3.0]));
+  parallel for (let i = 0; i < out.length; i++) {
+    out[i] = mesh.x[i % 3];
+  }
+}

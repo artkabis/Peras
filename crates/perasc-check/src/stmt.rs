@@ -367,6 +367,7 @@ impl Checker<'_> {
                 {
                     let span = self.ast.expr(*base).span;
                     self.check_mutable(root, span);
+                    self.mark_changed(*base);
                 }
                 // A property of the browser that can only be read.
                 if let ExprKind::Field { base, name } = &expr.kind
@@ -390,6 +391,21 @@ impl Checker<'_> {
                 ExprKind::Field { base, .. } | ExprKind::Index { base, .. } => expr = *base,
                 ExprKind::Paren(inner) => expr = *inner,
                 _ => return None,
+            }
+        }
+    }
+
+    /// Marks every field and element from `expr` down to its binding as on
+    /// the way to a place changed (see [`crate::Analysis::changed`]).
+    pub(crate) fn mark_changed(&mut self, mut expr: ExprId) {
+        loop {
+            match &self.ast.expr(expr).kind {
+                ExprKind::Field { base, .. } | ExprKind::Index { base, .. } => {
+                    self.changed.insert(expr);
+                    expr = *base;
+                }
+                ExprKind::Paren(inner) => expr = *inner,
+                _ => return,
             }
         }
     }

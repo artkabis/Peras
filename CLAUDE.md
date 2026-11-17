@@ -48,6 +48,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 
 ## Code: the traps already fallen into
 
+- **A lowering never drops a statement in silence**: a path it cannot build reports E0900. A write through an `Rc` returned with nothing written and nothing said, `w()` gave 3 (F016).
 - **Edit by exact, unique replacements.** Never replace a slice between two markers: one script deleted every function between `keep_before` and the end of a file. After a scripted edit, `git diff --stat` and a build.
 - **The release verifier is right until proven otherwise.** When it refuses code, reduce the case to a few lines, add it as a test that fails, then fix the lowering (F001, F002).
 - **A test that passes here and fails in CI is a race until proven otherwise.** Reproduce it by changing the timing (a smaller or larger workload), trace the messages, and make the code wait for an explicit signal rather than raising a timeout (F106).
@@ -73,4 +74,5 @@ What a program can rely on, and what it cannot yet; the details and their eviden
 - Numbers: a literal takes the type it is used as, `2 * x` on a float, `[1, s, 0]` (decision 0030; E0211 retired); a variable is never converted, `n * x` with `n` an `i32` needs `n.toF64()` (E0210). `i / n` on integers is an integer division (F113). `PERAS_PROTO_NUM` builds the other options measured, for `scripts/bench-numbers.mjs` only.
 - Integers: all eight compiled (decision 0024). JavaScript's values are wrapped to their type, `u32` and `u64` come back non-negative, `u64` as a `BigInt`. An `Array<u8>` is a byte an element; in an array of structures, such a field takes four bytes.
 - A `String` parameter also takes a `Uint8Array` of UTF-8 bytes, checked, a leading byte order mark dropped (decision 0020, F217).
+- Shared values: none yet (r0). `PERAS_PROTO_RC=r1` or `r2` builds the prototypes of decision 0032, for `scripts/bench-shared.mjs` only; under r2 the runtime is a variant of its own (`Allocator::runtime_with`).
 - Slow: adding to a large `Set` (F215), a key built per row only to be looked up (F202). Fast: `split`, sorts by a key, `get` then `set` of one key (F216).
