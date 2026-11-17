@@ -76,3 +76,7 @@ Ce que cela dit :
 ### Proposition
 
 **d1** : la seule option qui soit une amélioration sans régression, sous la règle du propriétaire du 2026-11-17. Elle change deux des trois résultats faux en justes, ne change aucun module, et ne coûte rien en temps ni en octets. Ce qu’elle laisse, Q5, et les deux frictions rencontrées en route, F116 (`Math`) et F117 (`floor` sur un entier), sont chacun une étape à part, mesurée comme celle-ci. Le propriétaire décide.
+
+### L’option d1 arrive (2026-11-17)
+
+Acceptée par le propriétaire, au commit e4988c6. d2 et d3 sont retirées du compilateur, leurs chiffres gardés plus haut et leur code à 4dc37e9 ; `PERAS_PROTO_DIV=d0` construit l’erreur telle qu’elle était, pour `scripts/bench-division.mjs`. Testé par `tests/ui/check/E0210-integer-division.peras`, et par les exemples du guide et de la page de E0210, que construisent les tests de la documentation. Contre 4dc37e9, `node scripts/check-regression.mjs 4dc37e9` : 167 modules comparés, chacun identique ; temps de compilation à 0,974 du sien ; le compilateur plus petit de 3 168 octets, le code de d2 et d3 parti.

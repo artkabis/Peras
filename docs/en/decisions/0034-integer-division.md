@@ -76,3 +76,7 @@ What it says:
 ### Proposal
 
 **d1**: the only option that is an improvement without a regression, under the owner's rule of 2026-11-17. It turns two of the three wrong results into right ones, changes no module, and costs nothing in time or bytes. What it leaves, Q5, and the two frictions met on the way, F116 (`Math`) and F117 (`floor` on an integer), are each a step of their own, measured as this one was. The owner decides.
+
+### Option d1 lands (2026-11-17)
+
+Accepted by the owner, in commit e4988c6. d2 and d3 are removed from the compiler, their figures kept above and their code at 4dc37e9; `PERAS_PROTO_DIV=d0` builds the error as it was, for `scripts/bench-division.mjs`. Tested by `tests/ui/check/E0210-integer-division.peras`, and by the examples of the guide and of the page of E0210, which the docs tests build. Against 4dc37e9, `node scripts/check-regression.mjs 4dc37e9`: 167 modules compared, every one identical; compile time at 0.974 of its own; the compiler 3,168 bytes smaller, the code of d2 and d3 gone.
