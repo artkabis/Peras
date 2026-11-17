@@ -157,6 +157,20 @@ jobs:
         run: node scripts/bench-garden.mjs --check
       - name: The pond of lanterns gives the same pixels in every version (decision 0029)
         run: node scripts/bench-lanterns.mjs --check
+      - name: Numbers written as JavaScript writes them, every option agreeing in both modes (decision 0030)
+        run: node scripts/bench-numbers.mjs --check
+      - name: Parallel loops give the bytes of one thread, every option (decision 0031)
+        run: node scripts/bench-parallel.mjs --check
+      - name: Shared values give JavaScript's results, and leak only where their option says (decision 0032)
+        run: node scripts/bench-shared.mjs --check
+      - name: Shared values in a managed module agree with the owned module, every option (decision 0033)
+        run: node scripts/bench-shared-managed.mjs --check
+      - name: Integer division as a user from JavaScript meets it, every option (decision 0034)
+        run: node scripts/bench-division.mjs --check
+      - name: Math as JavaScript writes it, and rounding an integer, every option (decision 0035)
+        run: node scripts/bench-math.mjs --check
+      - name: Every way a managed module checks its indices gives the reference's results (decision 0037)
+        run: node scripts/bench-index.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

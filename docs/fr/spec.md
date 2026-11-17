@@ -60,7 +60,7 @@ Le typage est statique, fort et sans échappatoire. L'inférence locale évite d
 - **Unions discriminées et narrowing** comme en TS, avec un `match` qui doit être exhaustif.
 - **Génériques monomorphisés** : chaque instanciation produit du code spécialisé, sans coût à l'exécution.
 - **Traits** à la place de l'héritage : `impl Display for User`.
-- **Aucune conversion implicite** : `i32 + f64` est une erreur, il faut écrire `x.toF64() + y`.
+- **Aucune conversion implicite** d’une valeur : `i32 + f64` est une erreur, il faut écrire `x.toF64() + y`. Un littéral prend le type auquel il sert : `2 * x` sur un flottant ([décision 0030](decisions/0030-numeric-literals.md)).
 - **Débordements vérifiés** en debug, avec des opérations explicites `wrappingAdd` et `checkedAdd`.
 
 ## Modèle mémoire

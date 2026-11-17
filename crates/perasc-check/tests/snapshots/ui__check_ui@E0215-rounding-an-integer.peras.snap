@@ -1,0 +1,17 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0215-rounding-an-integer.peras
+---
+diagnostics:
+  error[E0215] check-whole-division { method: "round" }
+    primary 5:17-5:47: check-whole-division-label { method: "round" }
+    secondary 5:28-5:46: check-truncated-label
+    cause: check-unknown-member-why
+    fix: check-whole-division-fix { method: "round" }
+      5:17-5:47 -> "((done * 100).toF64() / total.toF64()).round()"
+  error[E0215] check-whole { method: "floor" }
+    primary 10:10-10:19: check-whole-label
+    cause: check-unknown-member-why
+    fix: check-whole-fix { method: "floor" }
+      10:10-10:19 -> "n"

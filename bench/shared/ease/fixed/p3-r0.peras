@@ -1,0 +1,26 @@
+// P3 without `Rc` (option r0): the nodes in one array, the parent and the
+// children by their numbers.
+
+struct Node {
+  name: String;
+  parent: i32;
+  children: Array<i32>;
+}
+
+export fn p3(count: i32): i32 {
+  let nodes: Array<Node> = [];
+  nodes.push(Node("root", -1, []));
+  for (let i = 0; i < count; i++) {
+    nodes.push(Node(`child ${i}`, 0, []));
+    nodes[0].children.push(nodes.length - 1);
+  }
+  // Every child sees its parent's children.
+  let seen = 0;
+  for (const child of nodes[0].children) {
+    const parent = nodes[child].parent;
+    if (parent >= 0) {
+      seen += nodes[parent].children.length;
+    }
+  }
+  return seen;
+}

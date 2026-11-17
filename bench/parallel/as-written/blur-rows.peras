@@ -1,0 +1,31 @@
+// The blur on threads (decision 0031, program P3), as first written from
+// blur.peras: its rows split by a `parallel for`, each turn writing its
+// row. Kept as written; the version that builds is ../blur-rows.peras.
+export fn blur(input: Array<f64>, output: inout Array<f64>, width: i32, height: i32): i32 {
+  parallel for (let y = 0; y < height; y++) {
+    let up = y - 1;
+    if (y == 0) {
+      up = 0;
+    }
+    let down = y + 1;
+    if (y == height - 1) {
+      down = height - 1;
+    }
+    for (let x = 0; x < width; x++) {
+      let left = x - 1;
+      if (x == 0) {
+        left = 0;
+      }
+      let right = x + 1;
+      if (x == width - 1) {
+        right = width - 1;
+      }
+      let sum = 0.0;
+      for (const row of [up, y, down]) {
+        sum += input[row * width + left] + input[row * width + x] + input[row * width + right];
+      }
+      output[y * width + x] = sum / 9;
+    }
+  }
+  return width * height;
+}

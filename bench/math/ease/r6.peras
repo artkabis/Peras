@@ -1,0 +1,5 @@
+// R6 of decision 0035: a price rounded to cents, on a float; JavaScript's
+// `Math.round` takes a half up, `Math.round(12.5)` is 13.
+export fn r6(price: f64): f64 {
+  return Math.round(price * 100) / 100;
+}

@@ -1121,6 +1121,7 @@ impl<'c, 'a> Owner<'c, 'a> {
             ExprKind::Name(_) | ExprKind::Field { .. } | ExprKind::Index { .. } => {
                 if let Some(root) = self.root(arg) {
                     self.checker.check_mutable(root, span);
+                    self.checker.mark_changed(arg);
                 }
             }
             ExprKind::Paren(inner) => self.check_inout_place(*inner),

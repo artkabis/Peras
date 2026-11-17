@@ -1,22 +1,24 @@
-// The functions of numbers imported from JavaScript's Math, and hypot.
-export fn polar(x: f64, y: f64): f64 {
-  return y.atan2(x) + x.hypot(y) + x.pow(2.0) + x.exp().log() + x.sin() * x.sin() + x.cos() * x.cos() + (x * 0.5).tan();
+// Decision 0035: `Math` as JavaScript writes it, the same values in an
+// owned module and in a managed one.
+export fn polar(x: f64, y: f64): String {
+  const distance = Math.sqrt(x * x + y * y);
+  const angle = Math.atan2(y, x) * 180 / Math.PI;
+  return `${distance.toFixed(2)} ${angle.toFixed(1)}`;
 }
 
-export fn rounded(x: f64): f64 {
-  return x.round();
+export fn clamp(v: i32): i32 {
+  return Math.min(Math.max(v, 0), 255);
 }
 
-export fn single(x: f32): f32 {
-  return x.pow(3.0) + x.sin() + x.round();
+export fn cents(price: f64): f64 {
+  return Math.round(price * 100) / 100;
 }
 
-// `%` on floats, which WebAssembly has no instruction for: the runtime's,
-// exact (decision 0021).
-export fn remainder(x: f64, y: f64): f64 {
-  return x % y;
+export fn percent(done: i32, total: i32): String {
+  const value = ((done * 100).toF64() / total.toF64()).round();
+  return `${value} %`;
 }
 
-export fn remainder32(x: f32, y: f32): f32 {
-  return x % y;
+export fn growth(rate: f64): f64 {
+  return Math.pow(Math.E, rate) + Math.abs(-rate) + Math.floor(rate * 10) + Math.ceil(rate);
 }

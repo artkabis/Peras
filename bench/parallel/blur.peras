@@ -1,0 +1,31 @@
+// A blur of an image (decision 0031, program P3), on one thread, written
+// from blur.ts: each pixel of the output is the mean of the 3 × 3 pixels
+// around it in the input, the edges repeated.
+export fn blur(input: Array<f64>, output: inout Array<f64>, width: i32, height: i32): i32 {
+  for (let y = 0; y < height; y++) {
+    let up = y - 1;
+    if (y == 0) {
+      up = 0;
+    }
+    let down = y + 1;
+    if (y == height - 1) {
+      down = height - 1;
+    }
+    for (let x = 0; x < width; x++) {
+      let left = x - 1;
+      if (x == 0) {
+        left = 0;
+      }
+      let right = x + 1;
+      if (x == width - 1) {
+        right = width - 1;
+      }
+      let sum = 0.0;
+      for (const row of [up, y, down]) {
+        sum += input[row * width + left] + input[row * width + x] + input[row * width + right];
+      }
+      output[y * width + x] = sum / 9;
+    }
+  }
+  return width * height;
+}

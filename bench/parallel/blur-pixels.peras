@@ -1,0 +1,31 @@
+// The blur on threads (decision 0031, program P3, options p0 and p1): one
+// turn a pixel, the only index a turn may write without parts; the three
+// rows read one by one, a turn making no array.
+export fn blur(input: Array<f64>, output: inout Array<f64>, width: i32, height: i32): i32 {
+  parallel for (let p = 0; p < width * height; p++) {
+    const x = p % width;
+    const y = p / width;
+    let up = y - 1;
+    if (y == 0) {
+      up = 0;
+    }
+    let down = y + 1;
+    if (y == height - 1) {
+      down = height - 1;
+    }
+    let left = x - 1;
+    if (x == 0) {
+      left = 0;
+    }
+    let right = x + 1;
+    if (x == width - 1) {
+      right = width - 1;
+    }
+    let sum = 0.0;
+    sum += input[up * width + left] + input[up * width + x] + input[up * width + right];
+    sum += input[y * width + left] + input[y * width + x] + input[y * width + right];
+    sum += input[down * width + left] + input[down * width + x] + input[down * width + right];
+    output[p] = sum / 9;
+  }
+  return width * height;
+}

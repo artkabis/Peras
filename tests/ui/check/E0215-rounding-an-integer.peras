@@ -1,0 +1,11 @@
+// Decision 0035: `round` of an integer division rounds a quotient already
+// truncated; the error shows the division and divides as floats. On any
+// other integer, whole already, its fix removes the call.
+export fn percent(done: i32, total: i32): String {
+  const value = Math.round(done * 100 / total);
+  return `${value} %`;
+}
+
+export fn whole(n: i32): i32 {
+  return n.floor();
+}

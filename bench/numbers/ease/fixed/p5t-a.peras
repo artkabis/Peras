@@ -1,0 +1,13 @@
+// P5' (decision 0030, added after the protocol was registered): the
+// Fixed until it builds with option a, as the diagnostic says.
+// gradient's steps summed, `t = i / (steps - 1)` as JavaScript writes it.
+// P5's total does not depend on `t`, so it cannot show whether `t` is an
+// integer division; this one does.
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t.toF64();
+  }
+  return total;
+}

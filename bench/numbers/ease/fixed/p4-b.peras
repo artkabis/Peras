@@ -1,0 +1,12 @@
+// P4 (decision 0030): prices in cents with a tax of 20 % and a rounding, as
+// Fixed until it builds with option b.
+// a user writes them from JavaScript. The first price is beyond 2^53.
+export fn taxed(count: i32): i64 {
+  let total: i64 = 9007199254740993;
+  for (let i = 0; i < count; i++) {
+    const cents: i64 = 1999;
+    const withTax = (cents.toF64() * 1.2).round();
+    total += withTax.toI64();
+  }
+  return total;
+}

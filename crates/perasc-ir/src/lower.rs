@@ -14,6 +14,8 @@ mod ints;
 mod maps;
 mod matching;
 mod parallel;
+mod parts;
+mod shared;
 mod values;
 
 use std::collections::{BTreeSet, HashMap};
@@ -138,6 +140,7 @@ pub fn lower_units(
         current: String::new(),
         body_span: Span::new(0, 0),
         jobs: Vec::new(),
+        pure_pending: Vec::new(),
         job_base: 0,
         applied: HashMap::new(),
         arrows: Vec::new(),
@@ -363,6 +366,21 @@ impl<'a> Lowering<'a> {
             }
         }
         functions.append(&mut jobs);
+        // The turns that call: refused where a function they call is not
+        // pure, which is named (decision 0031).
+        if !self.pure_pending.is_empty() {
+            let pure = parallel::pure_functions(&functions);
+            for (span, u, called) in std::mem::take(&mut self.pure_pending) {
+                let impure = called
+                    .iter()
+                    .find(|f| !pure.get(f.0 as usize).copied().unwrap_or(false))
+                    .and_then(|f| functions.get(f.0 as usize));
+                if let (Some(f), Some(e)) = (impure, errors.get_mut(u)) {
+                    let name = f.name.split("__").next().unwrap_or(&f.name).to_owned();
+                    e.push(parallel::refused(span, "impure", &name));
+                }
+            }
+        }
         functions
     }
 
@@ -566,6 +584,10 @@ struct Lowering<'a> {
     jobs: Vec<Function>,
     /// The id of the first job: the number of other functions.
     job_base: u32,
+    /// The turns of `parallel for` that call functions, by their span and
+    /// unit, and the functions they call: judged once the module is lowered
+    /// (decision 0031, option p1, prototype).
+    pure_pending: Vec<(Span, usize, Vec<FnId>)>,
     /// A function given to `map` and the others by its value, not written
     /// as an arrow function (decision 0025): the scalars of this turn's
     /// element, its arguments, and the type of its result.
@@ -665,6 +687,14 @@ struct FnState {
     ///
     /// [decision 0004]: https://github.com/artkabis/Peras/blob/main/docs/en/decisions/0004-strings-without-allocation.md
     counted: Option<ExprId>,
+    /// The turn of `parallel for` being lowered: its counter, and the first
+    /// of its own locals (decision 0031, option p2, prototype).
+    turn: Option<(Symbol, usize)>,
+    /// The parts bound in it, by name.
+    parts: HashMap<Symbol, parts::Part>,
+    /// The parts taken at the turn's counter with a size it does not
+    /// compute: their offset and length locals.
+    turn_parts: Vec<(LocalId, LocalId)>,
 }
 
 impl FnState {
@@ -685,6 +715,9 @@ impl FnState {
             views_owned: false,
             fixed: std::collections::HashSet::new(),
             counted: None,
+            turn: None,
+            parts: HashMap::new(),
+            turn_parts: Vec::new(),
         }
     }
 
@@ -1241,6 +1274,17 @@ impl Lowering<'_> {
                 self.index_assign(state, *target, Some(op), None, out);
             }
             StmtKind::Step { target, op } => {
+                // `rc.count++`, through a shared value (decision 0032).
+                if let Some(place) = self.shared_place(*target) {
+                    let op = if *op == StepOp::Increment {
+                        BinOp::Add
+                    } else {
+                        BinOp::Sub
+                    };
+                    self.shared_assign(state, place, Some(op), (*target, None), out);
+                    state.end_statement(out);
+                    return;
+                }
                 if let Some(globals) = self.global_place(state, *target) {
                     let op = if *op == StepOp::Increment {
                         BinOp::Add
@@ -1393,6 +1437,16 @@ impl Lowering<'_> {
     ) {
         if let (Some(block), Some(init)) = (&local.otherwise, local.init) {
             self.local_else(state, local, init, block, out);
+            return;
+        }
+        if self.part_local(state, local, out) {
+            return;
+        }
+        if let Some(values) = self.lent_shared(state, local) {
+            state.flush(out);
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.insert(local.name.symbol, Binding::Lent(values));
+            }
             return;
         }
         let name = self.ast.name(local.name.symbol);
@@ -1610,6 +1664,10 @@ impl Lowering<'_> {
             self.assign_globals(state, &globals, op, (value, kind), out);
             return;
         }
+        if let Some(place) = self.shared_place(target) {
+            self.shared_assign(state, place, assign_op(op), (target, Some(value)), out);
+            return;
+        }
         let Some(locals) = self.place(state, target) else {
             return;
         };
@@ -1711,6 +1769,57 @@ impl Lowering<'_> {
     }
 
     fn expr(&mut self, state: &mut FnState, id: ExprId) -> Expr {
+        // Decision 0030's option c, prototyped: an integer used as a float.
+        if let Some(target) = self.analysis.widened.get(&id).cloned() {
+            let inner = self.expr_as_written(state, id);
+            let ty = Self::ir_type(&target).unwrap_or(Ty::F64);
+            return Expr {
+                kind: ExprKind::Convert(Box::new(inner)),
+                ty,
+            };
+        }
+        if let Some(constant) = self.math_constant(id) {
+            return constant;
+        }
+        self.expr_as_written(state, id)
+    }
+
+    /// An integer literal: a constant of its integer type, or, typed as a
+    /// float (decision 0030's options b and c, prototyped), that float.
+    fn int_literal(&self, id: ExprId, value: u64, negative: bool, ty: Ty) -> ExprKind {
+        if ty.is_float() {
+            #[allow(clippy::cast_precision_loss)]
+            let v = value as f64;
+            return ExprKind::Const(Const::Float(if negative { -v } else { v }));
+        }
+        if negative {
+            return ExprKind::Const(int_const(value, true));
+        }
+        ExprKind::Const(match self.int_kind(id) {
+            Some(kind) => ints::literal(value, kind),
+            None => int_const(value, false),
+        })
+    }
+
+    /// `Math.PI`, `Math.E` (decision 0035, a2): the number.
+    fn math_constant(&self, id: ExprId) -> Option<Expr> {
+        let AstExpr::Field { base, name } = &self.ast.expr(id).kind else {
+            return None;
+        };
+        let math = matches!(self.ast.expr(*base).kind, AstExpr::Name(s) if self.ast.name(s) == "Math")
+            && !self.analysis.names.contains_key(base);
+        let value = match self.ast.name(name.symbol) {
+            "PI" if math => std::f64::consts::PI,
+            "E" if math => std::f64::consts::E,
+            _ => return None,
+        };
+        Some(Expr {
+            kind: ExprKind::Const(Const::Float(value)),
+            ty: Ty::F64,
+        })
+    }
+
+    fn expr_as_written(&mut self, state: &mut FnState, id: ExprId) -> Expr {
         if self.applied.contains_key(&id) {
             return self.applied_expr(state, id);
         }
@@ -1724,10 +1833,7 @@ impl Lowering<'_> {
         let ast_expr = self.ast.expr(id);
         let span = ast_expr.span;
         let kind = match &ast_expr.kind {
-            AstExpr::Int(value) => ExprKind::Const(match self.int_kind(id) {
-                Some(kind) => ints::literal(*value, kind),
-                None => int_const(*value, false),
-            }),
+            AstExpr::Int(value) => self.int_literal(id, *value, false, ty),
             AstExpr::Float(value) => ExprKind::Const(Const::Float(*value)),
             AstExpr::Bool(value) => ExprKind::Const(Const::Bool(*value)),
             AstExpr::Name(symbol) => match self.scalar_local(state, id, *symbol) {
@@ -1737,7 +1843,7 @@ impl Lowering<'_> {
             AstExpr::Paren(inner) => return self.expr(state, *inner),
             AstExpr::Unary { op, operand } => {
                 if let (UnaryOp::Neg, AstExpr::Int(value)) = (op, &self.ast.expr(*operand).kind) {
-                    ExprKind::Const(int_const(*value, true))
+                    self.int_literal(id, *value, true, ty)
                 } else {
                     return self.unary(state, *op, *operand, ty, span);
                 }
@@ -1776,6 +1882,11 @@ impl Lowering<'_> {
             AstExpr::Field { base, .. } if self.is_buffer(*base) || self.is_map(*base) => {
                 return self.array_length(state, *base);
             }
+            // A field read through a shared value (decision 0032).
+            AstExpr::Field { base, name } if self.is_shared(*base) => {
+                let read = self.shared_field(state, (id, *base), name.symbol, heap::Mode::Borrow);
+                return read.into_iter().next().unwrap_or_else(|| zero(ty));
+            }
             AstExpr::Field { base, name } => {
                 if !self.is_aggregate(*base) {
                     return self.not_yet(span, "field", ty);
@@ -1786,6 +1897,7 @@ impl Lowering<'_> {
                 let Some((offset, len, _)) = picked else {
                     return zero(ty);
                 };
+                let (offset, len) = self.narrowed_leaves(id, offset, len);
                 return Self::pick(state, fields, offset, len)
                     .into_iter()
                     .next()
@@ -1943,6 +2055,16 @@ impl Lowering<'_> {
                     .into_iter()
                     .next()
                     .unwrap_or_else(|| zero(ty))
+            }
+            // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
+            AstExpr::Field { name, .. } if self.analysis.math_calls.contains(&call) => {
+                let Some((&first, rest)) = args.split_first() else {
+                    return self.not_yet(span, "method", ty);
+                };
+                let receiver = self.expr(state, first);
+                let method = self.ast.name(name.symbol);
+                let from = self.check_type(first);
+                self.method(state, (receiver, from), method, rest, (ty, call), span)
             }
             AstExpr::Field { base, name } if self.is_aggregate(*base) => {
                 let method = self.ast.name(name.symbol);

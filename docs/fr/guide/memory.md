@@ -12,7 +12,7 @@ En mode possédé, Peras gère la mémoire sans ramasse-miettes et sans que vous
 - Seul le propriétaire peut déplacer une valeur : un paramètre qui n’est pas `sink`, un élément, ou un champ d’une structure que la fonction ne possède pas ne font que l’emprunter ([E0209](../errors/E0209.md)). Déplacez une copie, `xs.copy()`, pour garder les deux.
 - Un champ se déplace hors d’une structure que la fonction possède, une variable ou un paramètre `sink` : `const country = row.country;`. Les autres champs de la structure restent utilisables ; la structure elle-même, ou le champ, ne peuvent plus servir tant que le champ ne reçoit pas une nouvelle valeur ([E0204](../errors/E0204.md), [décision 0025](../decisions/0025-moved-fields-and-function-values.md)).
 - Aucune référence n’est jamais stockée dans une structure ou un tableau, si bien qu’il n’y a jamais de durée de vie à écrire, contrairement à Rust.
-- Le partage sera explicite, avec `Rc<T>`, visible dans le type.
+- Le partage est explicite, avec `Rc<T>`, visible dans le type : voir [Partager une valeur](#partager-une-valeur).
 
 Les vérifications suivent chaque chemin : une valeur déplacée d’un côté d’un `if` compte comme déplacée après lui ; dans une boucle, une valeur déplacée pendant un tour l’est encore au tour suivant, sauf si le tour lui donne une nouvelle valeur ou sort avec `break`.
 
@@ -47,6 +47,58 @@ export fn process(data: sink Array<f32>): i32 {
   return consume(buf);
 }
 ```
+
+## Partager une valeur
+
+`Rc.new(valeur)` fait une valeur que plusieurs détenteurs peuvent tenir : copier un `Rc<T>` tient la même valeur une fois de plus, sans la copier, et le dernier détenteur à finir la libère. Un type peut se contenir à travers lui, un arbre ou une liste ([décision 0032](../decisions/0032-shared-values.md)).
+
+```peras build
+struct Mesh {
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Rc<Mesh>;
+  x: f64;
+}
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+export fn triangles(count: i32): i32 {
+  const mesh = Rc.new(Mesh([0, 1, 2]));
+  let lanterns: Array<Lantern> = [];
+  for (let i = 0; i < count; i++) {
+    lanterns.push(Lantern(mesh, i.toF64()));
+  }
+  let total = 0;
+  for (const lantern of lanterns) {
+    total += lantern.mesh.tris.length / 3;
+  }
+  return total;
+}
+
+fn sum(node: Option<Rc<Node>>): i32 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value + sum(node.left) + sum(node.right);
+}
+
+export fn small(): i32 {
+  const leaf = Some(Rc.new(Node(1, None, None)));
+  return sum(Some(Rc.new(Node(2, leaf, None))));
+}
+```
+
+- **Une valeur partagée reste une valeur.** Écrire par un détenteur, `b.tris.push(3)` ou `b.x = 1`, rend d’abord la valeur propre à ce détenteur : sur place quand personne d’autre ne la tient, sur une copie sinon. Les autres détenteurs gardent ce qu’ils avaient.
+- **Aucun cycle ne peut se construire**, donc rien ne reste jamais vivant : une valeur ne peut tenir que des valeurs faites avant elle. Un enfant ne peut pas tenir le parent auquel il est ajouté ; un graphe qui pointe en arrière s’écrit depuis le parent, ou par des numéros dans un tableau.
+- **Lire ne coûte rien de plus.** `const mesh = lanterns[i].mesh` est prêté, pas tenu une fois de plus, tant que rien ne change `lanterns` ni `i`. Un tour de `parallel for` peut lire une valeur partagée, ni la tenir une fois de plus ni l’écrire ([E0241](../errors/E0241.md)).
+- **Un module managed partage les valeurs comme un module owned** : son `Rc` est une boîte qui compte ses détenteurs, copiée à la première écriture par l’un de plusieurs ([décision 0033](../decisions/0033-shared-values-in-managed-modules.md)) ; le même programme donne les mêmes valeurs dans les deux modes.
+- **Pour la vitesse, les numéros gagnent encore.** Un arbre d’un million de nœuds partagés prend 6,8 fois le temps du même arbre gardé dans des tableaux, chaque enfant son indice, et 4,75 fois la mémoire.
 
 ## Quand la mémoire est libérée
 

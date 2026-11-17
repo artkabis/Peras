@@ -1,0 +1,18 @@
+// P2 (decision 0030): the mean and the standard deviation of samples, as a
+// Fixed until it builds with option a.
+// user writes them from JavaScript.
+export fn spread(xs: Array<f64>): f64 {
+  let sum = 0.0;
+  for (const x of xs) {
+    sum += x;
+  }
+  const mean = sum / xs.length.toF64();
+  let squares = 0.0;
+  for (const x of xs) {
+    squares += (x - mean) * (x - mean);
+  }
+  if (xs.length < 2) {
+    return 0.0;
+  }
+  return (squares / (xs.length - 1).toF64()).sqrt() + mean;
+}

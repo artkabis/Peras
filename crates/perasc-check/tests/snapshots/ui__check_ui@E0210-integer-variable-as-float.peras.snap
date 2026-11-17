@@ -1,0 +1,11 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0210-integer-variable-as-float.peras
+---
+diagnostics:
+  error[E0210] check-mismatch { expected: "f64", found: "i32" }
+    primary 5:16-5:17: check-mismatch-label { found: "i32" }
+    cause: check-mismatch-why
+    fix: check-mismatch-fix-convert { method: "toF64", expected: "f64" }
+      5:17-5:17 -> ".toF64()"

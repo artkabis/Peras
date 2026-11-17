@@ -21,15 +21,15 @@ Rules, the same in every backend:
 - integer division and remainder by zero stop the program, as does `MIN / -1`;
 - float to integer conversions round toward zero and saturate; NaN becomes 0; between integers, `toU8()` and the others keep the low bits, as Rust's `as` does;
 - at the boundary with JavaScript, `i64` and `u64` are `BigInt`s and the others numbers; a value JavaScript gives is wrapped to its type, as a typed array of that type stores it (300 given as a `u8` is 44), and a `u32` or a `u64` comes back non-negative ([decision 0024](../decisions/0024-integer-types.md)). An `Array<u8>` is stored a byte an element, and a `PerasArray` of `u8`, `i8`, `i16`, `u16`, `u32` or `u64` is viewed as its typed array;
-- no conversion is implicit: [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).
+- no conversion of a value is implicit ([E0210](../errors/E0210.md)); a literal takes the type it is used as ([decision 0030](../decisions/0030-numeric-literals.md)).
 
 ### Literals
 
-| Form                       | Example                   | Type                                         |
-| -------------------------- | ------------------------- | -------------------------------------------- |
-| decimal                    | `42`, `1_000_000`         | the context's integer type, `i32` by default |
-| hexadecimal, octal, binary | `0xFF`, `0o755`, `0b1010` | same                                         |
-| float                      | `3.14`, `1.5e-3`, `2e10`  | the context's float type, `f64` by default   |
+| Form                       | Example                   | Type                                                  |
+| -------------------------- | ------------------------- | ----------------------------------------------------- |
+| decimal                    | `42`, `1_000_000`         | the context's integer or float type, `i32` by default |
+| hexadecimal, octal, binary | `0xFF`, `0o755`, `0b1010` | same                                                  |
+| float                      | `3.14`, `1.5e-3`, `2e10`  | the context's float type, `f64` by default            |
 
 A literal that does not fit its type is an error ([E0212](../errors/E0212.md)).
 

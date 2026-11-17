@@ -17,15 +17,17 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $trap = (what) => { throw new WebAssembly.RuntimeError(what); };",
     ),
+    // A shared value's box (decision 0033): one more holds it; a write
+    // through a holder of a box others hold gives that holder its own.
     (
-        "$at",
-        &["$bounds"],
-        "const $at = (xs, i) => (i >>> 0 < xs.length ? xs[i] : $bounds(i, xs.length));",
+        "$hold",
+        &[],
+        "const $hold = (b) => { if (b != null) b.n += 1; return b; };",
     ),
     (
-        "$put",
-        &["$bounds"],
-        "const $put = (xs, i, v) => { if (i >>> 0 >= xs.length) $bounds(i, xs.length); xs[i] = v; };",
+        "$own",
+        &[],
+        "const $own = (b) => { if (b.n <= 1) return b; b.n -= 1; return { v: structuredClone(b.v), n: 1 }; };",
     ),
     (
         "$div",

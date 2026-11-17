@@ -782,3 +782,61 @@ export fn main(): Array<String> {{
         );
     }
 }
+
+/// Calls each exported function of `names` in Node, and prints, for each,
+/// what it gives or throws and what `logged()` gives after it.
+fn effects(source: &str, names: &[&str]) -> Option<String> {
+    let node = node()?;
+    let module = js(source);
+    let key = source.len() * 37 + source.bytes().map(usize::from).sum::<usize>();
+    let dir = std::env::temp_dir().join(format!("perasc-fx-{}-{key}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok()?;
+    let file = dir.join("m.mjs");
+    std::fs::write(&file, &module).ok()?;
+    let list = names
+        .iter()
+        .map(|n| format!("'{n}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let script = format!(
+        "import(process.argv[1]).then((m) => {{ for (const f of [{list}]) {{ let r; \
+         try {{ r = String(m[f]()); }} catch (e) {{ r = e.constructor.name + ': ' + e.message; }} \
+         console.log(f + ' ' + r + ' [' + m.logged() + ']'); }} }});"
+    );
+    let output = Command::new(node)
+        .arg("--input-type=module")
+        .arg("-e")
+        .arg(script)
+        .arg(&file)
+        .output()
+        .ok()?;
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        output.status.success(),
+        "{}\n{module}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// An index out of bounds throws after the effects it threw after before
+/// (decision 0037): the index, then the value, in every place an element is
+/// read or written.
+#[test]
+fn an_index_out_of_bounds_throws_after_the_same_effects() {
+    let source = "let log = \"\";\n\
+         fn mark(s: String, v: i32): i32 {\n  log += s;\n  return v;\n}\n\
+         export fn logged(): String {\n  return log;\n}\n\
+         export fn read(): i32 {\n  log = \"\";\n  const xs = [1, 2];\n  return xs[mark(\"i\", 5)] + mark(\"v\", 1);\n}\n\
+         export fn write(): i32 {\n  log = \"\";\n  let xs = [1, 2];\n  xs[mark(\"i\", 5)] = mark(\"v\", 1);\n  return xs.length;\n}\n\
+         export fn compound(): i32 {\n  log = \"\";\n  let xs = [1, 2];\n  xs[mark(\"i\", 5)] += mark(\"v\", 1);\n  return xs.length;\n}\n\
+         export fn stepped(): i32 {\n  log = \"\";\n  let xs = [1, 2];\n  xs[mark(\"i\", 5)]++;\n  return xs.length;\n}\n\
+         export fn inside(): i32 {\n  log = \"\";\n  let xs = [1, 2];\n  xs[mark(\"i\", 1)] += mark(\"v\", 7);\n  return xs[mark(\"r\", 1)];\n}\n";
+    if let Some(found) = effects(source, &["read", "write", "compound", "stepped", "inside"]) {
+        let bounds = "RangeError: index 5 is out of bounds: the length is 2";
+        let expected = format!(
+            "read {bounds} [i]\nwrite {bounds} [iv]\ncompound {bounds} [i]\nstepped {bounds} [i]\ninside 9 [ivr]"
+        );
+        assert_eq!(found, expected, "{}", js(source));
+    }
+}

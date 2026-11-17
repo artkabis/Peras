@@ -1,0 +1,19 @@
+// P3 of decision 0032: a scene graph whose nodes point to their parent, as
+// JavaScript writes it: the parent holds its children, each child its
+// parent, a cycle.
+
+struct Node {
+  name: String;
+  children: Array<Rc<Node>>;
+}
+
+export fn p3(count: i32): i32 {
+  let root = Rc.new(Node("root", []));
+  for (let i = 0; i < count; i++) {
+    const child = Rc.new(Node(`child ${i}`, []));
+    root.children.push(child);
+  }
+  // Every child sees its parent's children: no child can hold the parent
+  // it is added to (option r1 builds no cycle), so they are counted from it.
+  return root.children.length * root.children.length;
+}

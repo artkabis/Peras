@@ -1,0 +1,21 @@
+// Decision 0030: an integer literal takes the float type it is used as, in
+// an operation, a comparison, an assignment, a return, an argument and an
+// array literal, `f64` and `f32`, negative too.
+fn mix(a: f64, b: f64, t: f64): f64 {
+  return a * (1 - t) + b * t;
+}
+
+export fn shade(c: f64, s: f64): f64 {
+  let v = c;
+  if (c < 0) {
+    v = 0;
+  } else if (c > 1) {
+    v = -1;
+  }
+  const stops = [1, s, 0, -s];
+  const half: f32 = 1 / 2;
+  if (half > 0) {
+    return mix(stops[0], 2, v) * 255 + 0.5;
+  }
+  return 0;
+}

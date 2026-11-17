@@ -120,6 +120,9 @@ impl Lowering<'_> {
                 params.iter().try_for_each(compiled).and(compiled(ret))?;
                 Ok(vec![(String::new(), Ty::Owned)])
             }
+            // A shared value is one handle, its block (decision 0032): a type
+            // that holds itself through one has an end.
+            CheckTy::Rc(_) => Ok(vec![(String::new(), Ty::Owned)]),
             // A tag, 0 for `Ok`, then the data of `Ok`, then that of `Err`.
             CheckTy::Result(ok, err) => {
                 let mut out = vec![("tag".to_owned(), Ty::I32)];
@@ -435,6 +438,11 @@ impl Lowering<'_> {
             AstExpr::Match { scrutinee, arms } => {
                 self.match_values(state, id, *scrutinee, arms, mode)
             }
+            AstExpr::Field { base, name }
+                if matches!(self.check_type(*base), Some(CheckTy::Rc(_))) =>
+            {
+                self.shared_field(state, (id, *base), name.symbol, mode)
+            }
             AstExpr::Field { base, name } => {
                 // A field is read from its structure, which keeps it, unless
                 // the checker moved it out (decision 0025): its buffers then
@@ -445,6 +453,7 @@ impl Lowering<'_> {
                 let Some((offset, len, _)) = picked else {
                     return Vec::new();
                 };
+                let (offset, len) = self.narrowed_leaves(id, offset, len);
                 let picked = Self::pick(state, fields, offset, len);
                 if mode == Mode::Consume && self.analysis.moves.contains(&id) {
                     picked
@@ -530,6 +539,16 @@ impl Lowering<'_> {
                 let values = self.call_results(state, function, args, &back);
                 Self::fresh(state, values, mode)
             }
+            AstExpr::Field { base, name }
+                if self.ast.name(name.symbol) == "new"
+                    && matches!(self.check_type(id), Some(CheckTy::Rc(_)))
+                    && matches!(self.ast.expr(base).kind, AstExpr::Name(s) if self.ast.name(s) == "Rc") =>
+            {
+                let Some(&value) = args.first() else {
+                    return Vec::new();
+                };
+                self.shared_new(state, id, value, mode)
+            }
             AstExpr::Field { base, name } => {
                 let method = self.ast.name(name.symbol);
                 if let Some(values) = self.map_new(state, id, base, method, mode) {
@@ -603,8 +622,9 @@ impl Lowering<'_> {
                 })
                 .collect(),
             CheckTy::Map(..) | CheckTy::Set(_) => self.empty_map(ty).into_iter().collect(),
-            // The environment of no function, static (decision 0026).
-            CheckTy::Callback(..) => vec![Expr {
+            // The environment of no function, static (decision 0026); a
+            // shared value none holds (decision 0032).
+            CheckTy::Callback(..) | CheckTy::Rc(_) => vec![Expr {
                 kind: ExprKind::Env(crate::EnvOp::Zero, Vec::new()),
                 ty: Ty::Owned,
             }],
@@ -1351,6 +1371,18 @@ impl Lowering<'_> {
     }
 }
 
+impl Lowering<'_> {
+    /// The leaves of a field read: its option's value alone when a test
+    /// narrowed it, its tag left out (finding F115).
+    pub(super) fn narrowed_leaves(&self, id: ExprId, offset: usize, len: usize) -> (usize, usize) {
+        if self.analysis.narrowed.contains(&id) && len > 0 {
+            (offset + 1, len - 1)
+        } else {
+            (offset, len)
+        }
+    }
+}
+
 /// A value whose making cannot be seen: pure, a literal or an empty
 /// buffer made, or a block moved out of a temporary.
 /// A value whose making cannot be seen: a read, a literal, a new buffer, or a
@@ -1436,6 +1468,7 @@ pub(super) const fn is_aggregate(ty: &CheckTy) -> bool {
             | CheckTy::Map(..)
             | CheckTy::Set(_)
             | CheckTy::Callback(..)
+            | CheckTy::Rc(_)
     )
 }
 
@@ -1548,7 +1581,7 @@ fn compiled(ty: &CheckTy) -> Result<(), &'static str> {
         | CheckTy::Map(..)
         | CheckTy::Set(_) => Ok(()),
         CheckTy::Callback(params, ret) => params.iter().try_for_each(compiled).and(compiled(ret)),
-        CheckTy::Array(inner) | CheckTy::Option(inner) => compiled(inner),
+        CheckTy::Array(inner) | CheckTy::Option(inner) | CheckTy::Rc(inner) => compiled(inner),
         CheckTy::Result(ok, err) => compiled(ok).and(compiled(err)),
         _ => Err("struct"),
     }

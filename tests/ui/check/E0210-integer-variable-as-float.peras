@@ -1,0 +1,6 @@
+// E0210: a literal takes the float type it is used as (decision 0030), a
+// variable is never converted: where a value changes type, the source says
+// so, `n.toF64()`.
+export fn mean(sum: f64, n: i32): f64 {
+  return sum / n;
+}

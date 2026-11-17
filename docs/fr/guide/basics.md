@@ -95,9 +95,26 @@ export fn tiny(): f64 {
 
 > Aujourd’hui, `i32`, `i64`, `f32` et `f64` sont compilés en WebAssembly ; les types sur 8 et 16 bits et les non signés sont vérifiés, pas encore compilés.
 
+## Les littéraux prennent le type auquel ils servent
+
+Un littéral entier utilisé là où un flottant est attendu est ce flottant, comme en Swift et en Go ([décision 0030](../decisions/0030-numeric-literals.md)) : `2 * x`, `if (c < 0)`, `v = 1;`, `return 0;`, un argument. Un tableau littéral de nombres prend le type de ses éléments ensemble, un flottant si l’un en est un.
+
+```peras build
+export fn bounce(p: f64, v: f64): f64 {
+  let x = p + v;
+  if (x < 0) {
+    x = -x;
+  } else if (x > 1) {
+    x = 2 - x;
+  }
+  const weights = [1, 0.5, 0];
+  return x * 100 + weights[1];
+}
+```
+
 ## Aucune conversion implicite
 
-Mélanger deux types de nombres est une erreur : on convertit explicitement, si bien qu’une perte de précision est toujours visible.
+Une variable ne change jamais de type en silence. Mélanger deux types de nombres est une erreur : on convertit explicitement, si bien qu’une perte de précision est toujours visible.
 
 ```peras error E0210
 export fn mean(total: i32, count: i64): i64 {
@@ -112,6 +129,42 @@ export fn mean(total: i32, count: i64): i64 {
 ```
 
 Convertir un flottant en entier arrondit vers zéro et sature : `(1e20).toI32()` vaut le plus grand `i32`, jamais une valeur indéfinie.
+
+`/` sur deux entiers est une division entière, tronquée vers zéro, comme en Rust, Go et Swift : `5 / 2` vaut `2`, là où JavaScript donne `2.5`. Quand son quotient est utilisé là où un flottant est attendu, l’erreur montre la division, même derrière un `const`, et convertit ses opérandes à cet endroit, avant de diviser ([décision 0034](../decisions/0034-integer-division.md)) : convertir le quotient après le laisserait tronqué.
+
+```peras error E0210
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}
+```
+
+```peras build
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i.toF64() / (count - 1).toF64();
+    total += t;
+  }
+  return total;
+}
+```
+
+`Math` s’écrit comme en JavaScript, dans les deux modes : `Math.sqrt(x)`, `Math.max(a, b)`, `Math.round(x)`, `Math.PI`, `Math.E` ; chacun est la méthode de son premier argument, `x.sqrt()`, `a.max(b)` ([décision 0035](../decisions/0035-math-as-javascript-writes-it.md)). `Math.round` arrondit un demi vers le haut, comme JavaScript. Sur un entier, déjà entier, `floor`, `round` et `ceil` sont refusés avec leur retrait pour correction ; sur une division entière, l’erreur montre la division et divise en flottants, pour que ce soit la fraction qui soit arrondie : `Math.round(200 / 3)` arrondirait 66, pas 66,67.
+
+```peras build
+export fn polar(x: f64, y: f64): f64 {
+  return Math.atan2(y, x) * 180 / Math.PI + Math.sqrt(x * x + y * y);
+}
+
+export fn percent(done: i32, total: i32): f64 {
+  return ((done * 100).toF64() / total.toF64()).round();
+}
+```
 
 ## Booléens
 

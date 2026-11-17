@@ -21,15 +21,15 @@ Les règles, les mêmes dans chaque backend :
 - la division et le reste entiers par zéro arrêtent le programme, comme `MIN / -1` ;
 - les conversions de flottant vers entier arrondissent vers zéro et saturent ; NaN devient 0 ; entre entiers, `toU8()` et les autres gardent les bits de poids faible, comme le `as` de Rust ;
 - à la frontière avec JavaScript, `i64` et `u64` sont des `BigInt` et les autres des nombres ; une valeur que JavaScript donne est enveloppée à son type, comme un tableau typé de ce type la range (300 donné comme `u8` vaut 44), et un `u32` ou un `u64` revient positif ou nul ([décision 0024](../decisions/0024-integer-types.md)). Un `Array<u8>` est rangé un octet par élément, et un `PerasArray` de `u8`, `i8`, `i16`, `u16`, `u32` ou `u64` se voit comme son tableau typé ;
-- aucune conversion n’est implicite : [E0210](../errors/E0210.md), [E0211](../errors/E0211.md).
+- aucune conversion d’une valeur n’est implicite ([E0210](../errors/E0210.md)) ; un littéral prend le type auquel il sert ([décision 0030](../decisions/0030-numeric-literals.md)).
 
 ### Littéraux
 
-| Forme                       | Exemple                   | Type                                           |
-| --------------------------- | ------------------------- | ---------------------------------------------- |
-| décimal                     | `42`, `1_000_000`         | le type entier du contexte, `i32` par défaut   |
-| hexadécimal, octal, binaire | `0xFF`, `0o755`, `0b1010` | idem                                           |
-| flottant                    | `3.14`, `1.5e-3`, `2e10`  | le type flottant du contexte, `f64` par défaut |
+| Forme                       | Exemple                   | Type                                                     |
+| --------------------------- | ------------------------- | -------------------------------------------------------- |
+| décimal                     | `42`, `1_000_000`         | le type entier ou flottant du contexte, `i32` par défaut |
+| hexadécimal, octal, binaire | `0xFF`, `0o755`, `0b1010` | idem                                                     |
+| flottant                    | `3.14`, `1.5e-3`, `2e10`  | le type flottant du contexte, `f64` par défaut           |
 
 Un littéral qui ne tient pas dans son type est une erreur ([E0212](../errors/E0212.md)).
 

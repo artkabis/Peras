@@ -421,9 +421,34 @@ impl Machine<'_> {
                 self.counts.insert(self.allocated, 1);
                 Value::Handle(self.allocated)
             }
+            (EnvOp::Shared(owned), slots) => {
+                self.allocated += 1;
+                let owned = i32::try_from(owned).unwrap_or(i32::MAX);
+                let mut elements = vec![Value::I32(-1), Value::I32(owned)];
+                elements.extend_from_slice(slots);
+                self.heap.insert(self.allocated, elements);
+                self.counts.insert(self.allocated, 1);
+                Value::Handle(self.allocated)
+            }
             (EnvOp::Load(slot) | EnvOp::LoadHandle(slot), [env]) => {
                 let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 2;
                 *self.elements(*env)?.get(index).ok_or(Trap::Unchecked)?
+            }
+            (EnvOp::Store(slot) | EnvOp::StoreHandle(slot), [env, value]) => {
+                let index = usize::try_from(slot).map_err(|_| Trap::Unchecked)? + 2;
+                let Value::Handle(block) = env else {
+                    return Err(Trap::UseAfterRelease);
+                };
+                let at = self
+                    .heap
+                    .get_mut(block)
+                    .and_then(|e| e.get_mut(index))
+                    .ok_or(Trap::Unchecked)?;
+                let old = std::mem::replace(at, *value);
+                if let (EnvOp::StoreHandle(_), Value::Handle(old)) = (op, old) {
+                    self.free(old)?;
+                }
+                Value::Void
             }
             _ => return Err(Trap::Unreachable),
         })
@@ -1026,6 +1051,9 @@ impl Machine<'_> {
             let value = *operands.get(i).ok_or(Trap::Unreachable)?;
             this.bytes(value)
         };
+        if f.on_shared() {
+            return self.shared_runtime(f, operands);
+        }
         if f == crate::RuntimeFn::BufEqual {
             let (Some(a), Some(b)) = (operands.first(), operands.get(1)) else {
                 return Err(Trap::Unreachable);
@@ -1352,6 +1380,66 @@ impl Machine<'_> {
             }
         }
         Ok(())
+    }
+
+    /// The functions of the runtime that make a shared value its holder's
+    /// own (decision 0032).
+    fn shared_runtime(&mut self, f: crate::RuntimeFn, operands: &[Value]) -> Result<Value, Trap> {
+        use crate::RuntimeFn as F;
+        if f == F::SharedUnique {
+            return self.shared_unique(operands.get(1).copied());
+        }
+        // Where a shared value is held: a slot of another, past its two
+        // first elements, or an element of a column.
+        if let (
+            F::SharedUniqueSlot | F::SharedUniqueElem,
+            Some(Value::Handle(block)),
+            Some(Value::I32(at)),
+        ) = (f, operands.get(1), operands.get(2))
+        {
+            let at = usize::try_from(*at).map_err(|_| Trap::Unchecked)?
+                + if f == F::SharedUniqueSlot { 2 } else { 0 };
+            let held = *self
+                .heap
+                .get(block)
+                .and_then(|e| e.get(at))
+                .ok_or(Trap::Unchecked)?;
+            let unique = self.shared_unique(Some(held))?;
+            if let Some(slot) = self.heap.get_mut(block).and_then(|e| e.get_mut(at)) {
+                *slot = unique;
+            }
+            return Ok(Value::Void);
+        }
+        Err(Trap::Unreachable)
+    }
+
+    /// [`crate::RuntimeFn::SharedUnique`]: a shared value only this holder
+    /// holds, its own block or a copy (decision 0032, prototype r1).
+    fn shared_unique(&mut self, shared: Option<Value>) -> Result<Value, Trap> {
+        let Some(Value::Handle(block)) = shared else {
+            return Err(Trap::UseAfterRelease);
+        };
+        let count = self
+            .counts
+            .get(&block)
+            .copied()
+            .ok_or(Trap::UseAfterRelease)?;
+        if count == 1 {
+            return Ok(Value::Handle(block));
+        }
+        let mut elements = self.elements(Value::Handle(block))?.clone();
+        let owned = match elements.get(1) {
+            Some(Value::I32(n)) => usize::try_from(*n).unwrap_or(0),
+            _ => 0,
+        };
+        for slot in elements.iter_mut().skip(2).take(owned) {
+            *slot = self.clone_buffer(*slot)?;
+        }
+        self.free(block)?;
+        self.allocated += 1;
+        self.heap.insert(self.allocated, elements);
+        self.counts.insert(self.allocated, 1);
+        Ok(Value::Handle(self.allocated))
     }
 
     /// A copy of a buffer, with copies of the buffers it owns.

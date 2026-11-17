@@ -212,6 +212,19 @@ macro_rules! active {
     };
 }
 
+/// A code retired by a decision: its pages stay, and no UI test needs it.
+macro_rules! retired {
+    ($code:expr, $id:literal, $number:literal) => {
+        CodeInfo {
+            code: $code,
+            message_id: $id,
+            retired: true,
+            docs_en: include_str!(concat!("../../../docs/en/errors/", $number, ".md")),
+            docs_fr: include_str!(concat!("../../../docs/fr/errors/", $number, ".md")),
+        }
+    };
+}
+
 /// Every code issued so far, in numeric order.
 pub const REGISTRY: &[CodeInfo] = &[
     active!(INVALID_CHARACTER, "lex-invalid-character", "E0001"),
@@ -264,7 +277,8 @@ pub const REGISTRY: &[CodeInfo] = &[
     active!(ALIASING, "check-alias", "E0207"),
     active!(MOVE_OUT_OF_BORROW, "check-move-out", "E0209"),
     active!(MISMATCHED_TYPES, "check-mismatch", "E0210"),
-    active!(INTEGER_FOR_FLOAT, "check-integer-for-float", "E0211"),
+    // Retired by decision 0030: a literal takes the float type it is used as.
+    retired!(INTEGER_FOR_FLOAT, "check-integer-for-float", "E0211"),
     active!(LITERAL_OUT_OF_RANGE, "check-out-of-range", "E0212"),
     active!(UNKNOWN_TYPE, "check-unknown-type", "E0213"),
     active!(ARGUMENT_COUNT, "check-argument-count", "E0214"),

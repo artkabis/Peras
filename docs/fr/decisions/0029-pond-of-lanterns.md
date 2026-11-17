@@ -118,10 +118,61 @@ Chacune avec ce qui la réfute. Les temps sont ceux de l’image 600 en 1024 × 
 - **Peras est à 0,89 de Rust** (H2), en deux fois moins d’octets (H5), et sa sûreté coûte 8 % (H7).
 - **Le module managed est 2,4 fois plus lent que le TypeScript** (H3, constat F221) : la même source compilée en JavaScript ne donne pas le JavaScript qu’une personne écrit. Pas examiné ici.
 - **Peras est aussi long que TypeScript, mais pas aussi facile à écrire** : 1,10 fois ses lignes une fois construit (H6 tient), après 45 erreurs, chacune un littéral entier là où un `f64` est attendu ou un tableau typé par son premier élément (constat F112), le plus qu’un programme ait rencontré.
-- **Ce qui manque à la scène, consigné comme constats** : `parallel for` ne peut pas la dessiner (F301), et un maillage partagé par mille lanternes ne peut pas être tenu par chacune (F310, décision 0030).
+- **Ce qui manque à la scène, consigné comme constats** : `parallel for` ne peut pas la dessiner (F301), et un maillage partagé par mille lanternes ne peut pas être tenu par chacune (F310). Le propriétaire a ensuite ordonné le travail que l’étude demandait : la décision 0030 sur les littéraux numériques (F112), la 0031 sur les threads (F301), et `Rc<T>` après elles, mesuré sur cette scène.
 
 ### Écarts au protocole
 
 - **H4 n’a pas de mesure** : sa version ne peut pas s’écrire, comme le protocole le prévoyait ; `bench/lanterns/threads.peras` garde l’essai et son diagnostic.
 - **Le temps CPU sur le temps réel** est mesuré sur chaque version seule dans une page neuve, 5 images après 2, les versions n’alternant pas ; les temps de H1 à H3 et H7 viennent des exécutions alternées.
 - **La mémoire hors du tas** a été ajoutée après l’exécution 1, la mesure du protocole, le tas seul, laissant de côté les tampons des versions JavaScript.
+
+### Après l’étude : où passe le temps de Peras
+
+Demandé par le propriétaire le 2026-11-17, pour faire des résultats du travail sur Peras. Un profil en retirant (constat F201) : dans des copies des trois versions, un masque saute une phase de l’image à la fois, les versions étant par ailleurs les mêmes ; le coût d’une phase est le temps de l’image entière moins le temps sans elle, la médiane des différences tour par tour, dans Node, image 600, 15 tours. Une autre machine que celle de l’étude (un Intel Xeon à 2,10 GHz) : seuls les rapports se comparent (constat M016).
+
+| Phase                            |  TypeScript |       Peras |        Rust |
+| -------------------------------- | ----------: | ----------: | ----------: |
+| Le ciel et l’eau, chaque pixel   |      5,8 ms |      7,2 ms |      1,5 ms |
+| Les triangles, dont leurs pixels | 28,8 (26,3) | 31,2 (28,8) | 26,7 (26,4) |
+| Les halos                        |        14,4 |        14,3 |        12,8 |
+| Les couleurs rangées             |         6,6 |        13,0 |         6,4 |
+
+Puis chaque suspect retiré seul de Peras, le temps de l’image contre le module inchangé dans un même processus :
+
+- **Les vérifications de chaque indice**, toutes retirées par un compilateur construit pour l’expérience seulement : 1,009. Elles ne coûtent rien de mesurable.
+- **Les appels à de petites fonctions**, `byte` et le `hash` des étoiles écrits sur place à la main : 0,966 ; les couleurs de 10,0 à 8,3 ms.
+- **Ce qui ne dépend que de la ligne**, deux divisions et deux appels à `tri` calculés une fois par ligne au lieu d’une fois par pixel, comme le fait LLVM en insérant `tri` et en le sortant de la boucle : 0,965 ; le ciel de 5,8 à 4,1 ms. La passe de Peras qui sort les invariants des boucles ne sort ni un appel ni ce qui est dans une branche.
+- **Le SIMD n’explique pas l’avance de Rust** : Rust construit sans lui dessine le ciel en 2,2 ms et les couleurs en 8,6.
+
+Ce que cela dit : les trois quarts de l’image, les triangles et les halos, prennent à Peras le temps qu’ils prennent à TypeScript et à Rust, à 10 % près ; l’écart est dans les deux passes sur chaque pixel qui appellent de petites fonctions, où les insérer et sortir de la boucle ce qui ne change pas regagne environ 7 % de l’image (constat F222). Ni l’un ni l’autre ne mène Peras à 1,3 fois la vitesse de TypeScript : sur cette image, cela ne peut venir que de ce que JavaScript ne fait pas, les threads (constat F301). Rien ici ne désigne un type de pixels ou un `Framebuffer` : les couleurs coûtent ce que coûtent les appels à `byte`.
+
+### Le profil de F221, enregistré avant toute mesure (2026-11-17)
+
+Pourquoi le module managed prend 2,41 fois le temps du TypeScript, profilé en retirant (constat F201), chaque variante retirant une différence de plus au module que l’étude a mesuré (`scripts/profile-managed.mjs`) :
+
+- **M0**, le module managed tel que l’étude l’a construit, `perasc build` sans option de build : un build de débogage, chaque opération entière vérifiée contre le débordement. Le protocole ci-dessus disait « compilé en JavaScript » sans dire quel build : l’étude a comparé ce module de débogage au TypeScript, alors que le module owned était mesuré dans son build de production.
+- **M1**, construit pour la production (`--allocator tlsf`) : aucune vérification de débordement ; chaque indice encore vérifié.
+- **M2**, M1 avec chaque lecture et écriture d’indice, `$at` et `$put`, écrite comme un accès direct.
+- **M3**, M2 avec chaque `$saturate(Math.floor(e), …)` écrit `Math.floor(e)`, comme `pond.ts` l’écrit.
+- **M4**, M3 avec les six tableaux des points projetés faits comme `pond.ts` les fait, `new Float64Array(vertices)`, non remplis par `push`.
+
+Le module TypeScript et les cinq variantes dans un même processus, dans Node, image 600 en 1024 × 768 avec 1 000 lanternes, 15 tours comme le profil ci-dessus, l’ordre alternant ; le rapport de chacune au TypeScript tour par tour, sa médiane et son étendue. Chaque variante doit donner les pixels du TypeScript, ce que le script vérifie. Ce que chaque retrait récupère est la différence des médianes consécutives. Le 2,41 de l’étude a été mesuré dans Chromium ; Node fait tourner le même moteur, et seuls les rapports se comparent (constat M016).
+
+### Le profil de F221, mesuré (2026-11-17)
+
+Au commit 189fca0, rien d’autre ne tournant ; Intel Xeon à 2,30 GHz, Node 24.22.1, 15 tours, image 600 en 1024 × 768. Chaque variante donne les pixels du TypeScript ; 46 lectures et 18 écritures d’indice, 10 conversions et 6 tableaux remplacés.
+
+| Version    |   Median | / TypeScript, median (range) |
+| ---------- | -------: | ---------------------------- |
+| TypeScript |  49.9 ms | 1.000 (1.000 to 1.000)       |
+| M0         | 194.8 ms | 4.039 (2.767 to 4.803)       |
+| M1         | 128.8 ms | 2.616 (1.936 to 2.991)       |
+| M2         |  51.4 ms | 1.089 (0.986 to 2.201)       |
+| M3         |  46.3 ms | 1.013 (0.852 to 1.552)       |
+| M4         |  47.8 ms | 0.992 (0.618 to 1.194)       |
+
+- **L’étude a mesuré un build de débogage** (constat M029) : M0 à 4,04 fois le temps du TypeScript dans Node, là où le navigateur de l’étude donnait 2,41. Construit pour la production, 2,62 : les vérifications de débordement coûtent le reste.
+- **Les vérifications d’indice sont l’écart** : écrites comme des accès directs, 2,62 devient 1,09. Dans le module owned, les mêmes vérifications ne coûtent rien de mesurable (1,009, ci-dessus) ; en JavaScript, chacune passe par `$at` ou `$put`, une seule fonction pour chaque tableau du module, de flottants, d’entiers, typé ou non. Pourquoi cela coûte autant n’est pas mesuré ici : une fonction partagée par des tableaux de chaque sorte d’élément est une cause possible, non montrée (constat M001).
+- **Le reste est dans le bruit** : les conversions saturantes, de 1,09 à 1,01 ; des tableaux typés pour les points projetés, de 1,01 à 0,99, des étendues de 0,62 à 1,55.
+
+Ce que cela dit : le module managed, construit pour la production, peut dessiner l’image aussi vite que le TypeScript une fois ses indices vérifiés autrement. Comment, sans renoncer à la vérification qui arrête un programme sur un mauvais indice, est une décision, ses options mesurées.

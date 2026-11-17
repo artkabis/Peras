@@ -52,9 +52,72 @@ fn settled(js: &str) -> bool {
         || js.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
+/// Whether a JavaScript expression can be read twice for the same value and
+/// no effect: a literal, a temporary, a name or a path of fields.
+fn repeatable(js: &str) -> bool {
+    settled(js)
+        || (js
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+            && js
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.'))
+}
+
 impl Module<'_> {
+    /// A part read twice by a check, kept in a temporary unless reading it
+    /// again gives the same value and does nothing.
+    pub(crate) fn repeatable(&mut self, js: String) -> String {
+        if repeatable(&js) {
+            js
+        } else {
+            let t = self.temp();
+            self.line(format!("const {t} = {js};"));
+            t
+        }
+    }
+
+    /// An element read, its index checked where it is read (decision 0037):
+    /// out of bounds, the `RangeError` of owned modules. `base` and `index`
+    /// are read twice, so each is a name, a literal or a temporary.
+    pub(crate) fn checked_read(&mut self, base: &str, index: &str) -> String {
+        let bounds = self.helper("$bounds");
+        format!(
+            "({index} >>> 0 < {base}.length ? {base}[{index}] : {bounds}({index}, {base}.length))"
+        )
+    }
+
+    /// An element written, its index checked where it is written (decision
+    /// 0037): the value computed first, then the test, then the assignment.
+    pub(crate) fn checked_write(&mut self, base: &str, index: &str, value: &str) -> String {
+        let value = self.repeatable(value.to_owned());
+        let bounds = self.helper("$bounds");
+        format!(
+            "({index} >>> 0 < {base}.length ? ({base}[{index}] = {value}) : {bounds}({index}, {base}.length))"
+        )
+    }
+
     /// An expression.
     pub(crate) fn expr(&mut self, id: ExprId) -> String {
+        // Decision 0030's option c, prototyped: an integer used as a float;
+        // a `BigInt` becomes a number.
+        if self.analysis.widened.contains_key(&id) {
+            let inner = self.expr_as_written(id);
+            return match self.analysis.types.get(&id) {
+                Some(Ty::Int(int)) if crate::is_big(*int) => format!("Number({inner})"),
+                _ => inner,
+            };
+        }
+        // A shared value read to be held once more (decision 0033).
+        if self.is_rc_place(id) {
+            let js = self.expr_as_written(id);
+            return self.held(&js);
+        }
+        self.expr_as_written(id)
+    }
+
+    pub(crate) fn expr_as_written(&mut self, id: ExprId) -> String {
         let expr = self.ast.expr(id);
         let span = expr.span;
         match &expr.kind {
@@ -95,8 +158,10 @@ impl Module<'_> {
                 if proven {
                     format!("{}[{}]", values[0], values[1])
                 } else {
-                    let at = self.helper("$at");
-                    format!("{at}({}, {})", values[0], values[1])
+                    // Read twice by the check: each part evaluated once.
+                    let base = self.repeatable(values[0].clone());
+                    let index = self.repeatable(values[1].clone());
+                    self.checked_read(&base, &index)
                 }
             }
             ExprKind::Try(inner) => self.try_(id, *inner),
@@ -445,8 +510,23 @@ impl Module<'_> {
         if let Some((_, NameKind::Enum(_))) = self.bound(base) {
             return format!("{{ kind: {}, values: [] }}", string_literal(text));
         }
+        // `Math.PI`, `Math.E` (decision 0035, a2).
+        if matches!(self.ast.expr(base).kind, ExprKind::Name(s) if self.ast.name(s) == "Math")
+            && self.bound(base).is_none()
+            && matches!(text, "PI" | "E")
+        {
+            return format!("Math.{text}");
+        }
         let ty = self.ty(base);
-        let value = self.expr(base);
+        // On the way to a write, the shared value is made its holder's own
+        // first (decision 0033).
+        if matches!(ty, Ty::Rc(_)) && self.analysis.changed.contains(&id) {
+            self.own(base);
+        }
+        let value = self.lent(base);
+        if matches!(ty, Ty::Rc(_)) {
+            return format!("{}.{text}", Self::through(&value));
+        }
         match (&ty, text) {
             (Ty::Array(_) | Ty::String, "length") => format!("{value}.length"),
             (Ty::Map(..) | Ty::Set(_), "size") => format!("{value}.size"),
@@ -582,6 +662,16 @@ impl Module<'_> {
         }
         if let Some(js) = self.group_new(id, base, name) {
             return js;
+        }
+        // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
+        if self.analysis.math_calls.contains(&id)
+            && let Some((&first, rest)) = args.split_first()
+        {
+            return self.builtin(id, first, text, rest);
+        }
+        // `Rc.new(value)` (decision 0033).
+        if text == "new" && matches!(self.ty(id), Ty::Rc(_)) && self.bound(base).is_none() {
+            return self.shared_new(args.first().copied());
         }
         // A method of the browser.
         if let Ty::Host(h) = self.ty(base) {

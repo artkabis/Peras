@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 45 } else { 46 };
+    let choices = if depth == 0 { 49 } else { 50 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -161,6 +161,16 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         42 => "const o = names.get(i % 4); if (o.isNone()) { names.set(i % 4, `n${i}`); acc += 1; continue; } acc += o.length * 3; names.set((i + 1) % 4, o); const q = nums.get(i % 7); if (q.isNone()) { acc += 2; continue; } acc += q % 11;".to_owned(),
         43 => "acc += nums.get(i % 5).unwrapOr(bumped(i)) % 13 + names.get(i % 6).unwrapOr(`f${tally % 7}`).length;".to_owned(),
         44 => "const key = `${k}${i % 3}`; m.set(key, m.get(key).unwrapOr(0) + key.length); const nm = `p${i % 4}`; pairs.set(`p${i % 4}`, Pair(nm, nm.length + i % 3));".to_owned(),
+        // Decision 0036: small functions called in loops, one with an
+        // argument read twice, a float division and a call to a small
+        // function that do not change in the loop, one in a branch.
+        45 => "for (let j = 0; j < 4; j++) { const fx = i.toF64() / 3.0; acc += (tri(fx + j.toF64() * 0.25) * 100.0).toI32() + (unit(i * 7919 + j) * 50.0).toI32(); }".to_owned(),
+        46 => "for (let j = 0; j < 3; j++) { if (j % 2 == 0) { const q = i.toF64() / 7.0 + tri(i.toF64() * 0.1); acc += (q * 3.0).toI32() % 41 + j; } else { const r = acc.toF64() / 9.0; acc += mixed(i, j) % 23 + (r * 0.5).toI32() % 7; } }".to_owned(),
+        // Arguments with an effect, whose order counts; a call on the right
+        // of `&&`; a module variable read before a call that changes it.
+        47 => "acc += mixed(bumped(i), bumped(i + 1)) % 31 + twice(acc % 100); if (acc % 3 == 0 && mixed(bumped(i), i) > 3) { acc += 1; } acc += tally % 7 + twice(bumped(i));".to_owned(),
+        // A small function in the condition of a loop, evaluated at each turn.
+        48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -223,6 +233,22 @@ fn inc(x: i32): i32 {{
 
 fn dbl(x: i32): i32 {{
   return x * 2 % 1000;
+}}
+
+fn tri(x: f64): f64 {{
+  return (2.0 * (x - x.floor()) - 1.0).abs();
+}}
+
+fn unit(h: i32): f64 {{
+  return (h & 16777215).toF64() / 16777216.0;
+}}
+
+fn mixed(a: i32, b: i32): i32 {{
+  return a * 3 + b / 7 - a % 5;
+}}
+
+fn twice(x: i32): i32 {{
+  return inc(x) + inc(x * 2);
 }}
 
 fn pickFn(i: i32): (i32) => i32 {{

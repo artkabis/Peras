@@ -46,6 +46,10 @@ const calls: [string, ...unknown[]][] = [
   ["movedAtCall", "ab c ab  d"],
   ["fallbacks", 1],
   ["fallbacks", 2],
+  ["narrowedReturned", 3],
+  ["narrowedReturned", 8],
+  ["someBlocks", 7],
+  ["fieldNarrowed", 7],
 ];
 
 function results(m: Module): unknown[] {

@@ -83,14 +83,15 @@ WebAssembly n’a pas d’instruction pour `round`, `exp`, `log`, la trigonomét
 
 ### Ordre, morceaux et recherche
 
-| Méthode             | Donne                                                                                                               | Statut                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `slice(start, end)` | un nouveau tableau des éléments de `start` à `end` ; un négatif compte depuis la fin, au-delà est ramené dedans     | <span class="status compiled">compilé</span> |
-| `concat(other)`     | un nouveau tableau de ses éléments, puis de ceux de `other`                                                         | <span class="status compiled">compilé</span> |
-| `reverse()`         | renverse les éléments, sur place : le tableau est un `let`                                                          | <span class="status compiled">compilé</span> |
-| `sort()`            | trie des nombres par ordre croissant, sur place, comme les tableaux typés de JavaScript : -0 avant +0, NaN à la fin | <span class="status compiled">compilé</span> |
-| `includes(x)`       | si un élément vaut `x` ; nombres, booléens et chaînes                                                               | <span class="status compiled">compilé</span> |
-| `indexOf(x)`        | l’indice du premier élément égal à `x`, ou `-1`                                                                     | <span class="status compiled">compilé</span> |
+| Méthode             | Donne                                                                                                                                                                               | Statut                                       |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `slice(start, end)` | un nouveau tableau des éléments de `start` à `end` ; un négatif compte depuis la fin, au-delà est ramené dedans                                                                     | <span class="status compiled">compilé</span> |
+| `part(i, k)`        | dans un tour de `parallel for` compté par `i`, les éléments `i * k` à `(i + 1) * k`, une vue que le tour lit et écrit ([décision 0031](../decisions/0031-useful-parallel-loops.md)) | <span class="status compiled">compilé</span> |
+| `concat(other)`     | un nouveau tableau de ses éléments, puis de ceux de `other`                                                                                                                         | <span class="status compiled">compilé</span> |
+| `reverse()`         | renverse les éléments, sur place : le tableau est un `let`                                                                                                                          | <span class="status compiled">compilé</span> |
+| `sort()`            | trie des nombres par ordre croissant, sur place, comme les tableaux typés de JavaScript : -0 avant +0, NaN à la fin                                                                 | <span class="status compiled">compilé</span> |
+| `includes(x)`       | si un élément vaut `x` ; nombres, booléens et chaînes                                                                                                                               | <span class="status compiled">compilé</span> |
+| `indexOf(x)`        | l’indice du premier élément égal à `x`, ou `-1`                                                                                                                                     | <span class="status compiled">compilé</span> |
 
 ```peras build
 export fn median(samples: Array<f64>): f64 {

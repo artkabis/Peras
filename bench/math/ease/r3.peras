@@ -1,0 +1,18 @@
+// R3 of decision 0035 (Q3 of decision 0034): the middle of a binary search, an integer meant;
+// JavaScript writes `Math.floor((lo + hi) / 2)`.
+export fn r3(xs: Array<i32>, wanted: i32): i32 {
+  let lo = 0;
+  let hi = xs.length - 1;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (xs[mid] == wanted) {
+      return mid;
+    }
+    if (xs[mid] < wanted) {
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return -1;
+}

@@ -1,0 +1,27 @@
+// Decision 0031: a turn of a parallel loop calls a pure function, one that
+// returns a structure, and writes the parts of two arrays taken at its
+// counter, reading where it writes.
+struct Pair {
+  a: f64;
+  b: f64;
+}
+
+fn curve(x: f64): f64 {
+  return x * x * 0.001 + 1.0;
+}
+
+fn split(x: f64): Pair {
+  return Pair(x * 0.5, x + 2.0);
+}
+
+export fn bands(xs: inout Array<f64>, ys: inout Array<f64>, n: i32, rows: i32): void {
+  parallel for (let b = 0; b < n; b++) {
+    let xb = xs.part(b, rows);
+    let yb = ys.part(b, rows);
+    for (let r = 0; r < rows; r++) {
+      xb[r] = curve(xb[r]) + xb[0];
+      const p = split(xb[r]);
+      yb[r] = p.a * p.b;
+    }
+  }
+}

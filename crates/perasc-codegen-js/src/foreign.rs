@@ -139,6 +139,7 @@ impl Module<'_> {
             Ty::Opaque(..) => "\"opaque\"".to_owned(),
             Ty::Array(t) => format!("[\"array\", {}]", inner(t)),
             Ty::Option(t) => format!("[\"option\", {}]", inner(t)),
+            Ty::Rc(t) => self.shape(t, depth),
             Ty::Set(t) => format!("[\"set\", {}]", inner(t)),
             Ty::Map(k, v) => format!("[\"map\", {}, {}]", inner(k), inner(v)),
             Ty::Result(ok, err) => format!(

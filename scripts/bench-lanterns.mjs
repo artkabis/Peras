@@ -47,9 +47,13 @@ function sh(command, args, options = {}) {
     throw new Error(`${command} ${args.join(" ")}\n${result.stdout}${result.stderr}`);
   return result;
 }
-/** What perasc says of a file it refuses: its error codes, and its first error. @param {string[]} args */
-function refused(args) {
-  const result = spawnSync(perasc, args, { encoding: "utf8" });
+/**
+ * What perasc says of a file it refuses: its error codes, and its first error.
+ * @param {string[]} args
+ * @param {Record<string, string>} [env]
+ */
+function refused(args, env = {}) {
+  const result = spawnSync(perasc, args, { encoding: "utf8", env: { ...process.env, ...env } });
   if (result.status === 0) throw new Error(`perasc ${args.join(" ")}: accepted, expected refused`);
   const codes = [...result.stderr.matchAll(/^error\[(E\d+)\]: (.*)$/gm)];
   return { codes: codes.map((m) => m[1] ?? ""), first: codes[0]?.[2] ?? "" };
@@ -69,7 +73,16 @@ const source = join(dir, "pond.peras");
 sh(perasc, ["build", source, "--allocator", "tlsf", "--out", join(work, "peras")]);
 sh(perasc, ["build", source, "--out", join(work, "debug")]);
 copyFileSync(source, join(work, "managed-src", "pond.apeiron"));
-sh(perasc, ["build", join(work, "managed-src", "pond.apeiron"), "--out", join(work, "managed")]);
+// The study measured the managed module's debug build, which its protocol
+// did not name (finding M029); named here, so that the run is the study's.
+sh(perasc, [
+  "build",
+  join(work, "managed-src", "pond.apeiron"),
+  "--allocator",
+  "debug",
+  "--out",
+  join(work, "managed"),
+]);
 const withRust = !process.argv.includes("--no-rust") && has("cargo") && has("wasm-bindgen");
 if (withRust) {
   const crate = join(dir, "rust");
@@ -200,7 +213,11 @@ const code = {
   peras: lines(readFileSync(source, "utf8")),
 };
 if (withRust) code.rust = lines(readFileSync(join(dir, "rust", "src", "lib.rs"), "utf8"));
-const asWritten = refused(["check", join(dir, "as-written", "pond.peras")]);
+// The first version as it met the compiler of decision 0029: decision 0030
+// made it build, so its errors are counted with that compiler's literals.
+const asWritten = refused(["check", join(dir, "as-written", "pond.peras")], {
+  PERAS_PROTO_NUM: "a",
+});
 const threads = refused([
   "build",
   join(dir, "threads.peras"),

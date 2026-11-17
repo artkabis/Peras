@@ -1,0 +1,30 @@
+---
+source: crates/perasc-ir/tests/ui.rs
+expression: out
+input_file: tests/ui/build/E0241-parallel-parts.peras
+---
+diagnostics:
+  error[E0241] check-parallel { reason: "impure", name: "bump" }
+    primary 12:3-14:4: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix
+  error[E0241] check-parallel { reason: "impure", name: "mark" }
+    primary 24:3-26:4: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix
+  error[E0241] check-parallel { reason: "part", name: "" }
+    primary 31:13-31:30: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix
+  error[E0241] check-parallel { reason: "part", name: "" }
+    primary 38:13-38:26: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix
+  error[E0241] check-parallel { reason: "index", name: "" }
+    primary 44:3-48:4: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix
+  error[E0241] check-parallel { reason: "part", name: "" }
+    primary 52:11-52:24: check-parallel-label
+    cause: check-parallel-why
+    fix: check-parallel-fix

@@ -1,0 +1,18 @@
+// Decision 0032: a loop over a field of a shared value, while another
+// holder of the same value replaces that field. JavaScript gives 6: its
+// loop goes on over the array it started with.
+
+struct List {
+  items: Array<i32>;
+}
+
+export fn alias(): i32 {
+  let a = Rc.new(List([1, 2, 3]));
+  let b = a;
+  let total = 0;
+  for (const v of a.items) {
+    b.items = [10, 20, 30, 40];
+    total += v;
+  }
+  return total;
+}

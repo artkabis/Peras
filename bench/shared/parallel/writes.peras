@@ -1,0 +1,14 @@
+// Question 7 of decision 0032: a turn writes a field of a shared value,
+// which every turn reaches at once.
+
+struct Cell {
+  value: f64;
+}
+
+export fn writes(out: inout Array<f64>): void {
+  let cell = Rc.new(Cell(1.0));
+  parallel for (let i = 0; i < out.length; i++) {
+    cell.value = i.toF64();
+    out[i] = cell.value;
+  }
+}

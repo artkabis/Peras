@@ -141,7 +141,9 @@ export fn total(text: String): i32 {
 }
 ```
 
-The methods of `Option`, `isSome()`, `isNone()` and `unwrapOr`, still read the option whole, so a program written with them keeps building. A `let` is not narrowed: it could be given `None` later. Copy it into a `const` first, `const found = best;`, then test it.
+In the block of `if (x.isSome()) { … }`, `x` is its value too. A field of a `const` or of a parameter is narrowed as a variable is, by either test: `if (child.parent.isSome()) { … child.parent.name … }`.
+
+The methods of `Option`, `isSome()`, `isNone()` and `unwrapOr`, still read the option whole, so a program written with them keeps building; so does a narrowed name where its option is expected, `return node;` in a function that returns `Option<Node>`. A `let` is not narrowed: it could be given `None` later. Copy it into a `const` first, `const found = best;`, then test it.
 
 ## Results: errors as values
 

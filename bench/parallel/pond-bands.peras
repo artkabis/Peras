@@ -1,0 +1,365 @@
+// The pond of a thousand lanterns (decision 0029) on threads (decision
+// 0031, program P1): pond.peras, its frame split into bands of rows, each
+// drawn by a turn of a `parallel for`. It must give the same bytes, pixel
+// for pixel; scripts/bench-parallel.mjs checks it.
+//
+// At night, paper lanterns drift on a pond. Each frame, every lantern's
+// mesh, one shape shared by all, is turned, placed and projected, its
+// triangles filled with a depth buffer, then again mirrored in the water,
+// shaken by ripples; last, each flame adds its halo. A quarter of them are
+// sky lanterns, rising slowly; the moon looks on.
+
+// lowbias32 (Wellons, 2018) of a lattice point and a seed.
+fn hash(x: i32, y: i32, seed: i32): i32 {
+  let h = x.wrappingMul(374761393).wrappingAdd(y.wrappingMul(668265263)).wrappingAdd(seed.wrappingMul(1274126177));
+  h = h ^ ((h >> 16) & 65535);
+  h = h.wrappingMul(2146121005);
+  h = h ^ ((h >> 15) & 131071);
+  h = h.wrappingMul(-2073254261);
+  h = h ^ ((h >> 16) & 65535);
+  return h;
+}
+
+// 24 bits of a hash as a number in [0, 1).
+fn unit(h: i32): f64 {
+  return (h & 16777215).toF64() / 16777216.0;
+}
+
+// A triangle wave of period 1, from 1 to 0 and back: a sway without sin.
+fn tri(x: f64): f64 {
+  return (2.0 * (x - x.floor()) - 1.0).abs();
+}
+
+// A colour component, 0 to 255.
+fn byte(c: f64): i32 {
+  let v = c;
+  if (c < 0.0) {
+    v = 0.0;
+  } else if (c > 1.0) {
+    v = 1.0;
+  }
+  return (v * 255.0 + 0.5).floor().toI32();
+}
+
+// The lantern's mesh, shared by every lantern: three rings of eight points,
+// at the bottom, the middle and the top, and their triangles.
+struct Mesh {
+  x: Array<f64>;
+  y: Array<f64>;
+  z: Array<f64>;
+  tris: Array<i32>;
+}
+
+fn lantern(): Mesh {
+  const s = 0.5.sqrt();
+  const dx = [1.0, s, 0.0, -s, -1.0, -s, 0.0, s];
+  const dz = [0.0, s, 1.0, s, 0.0, -s, -1.0, -s];
+  let mesh = Mesh([], [], [], []);
+  for (let ring = 0; ring < 3; ring++) {
+    let radius = 0.7;
+    if (ring == 1) {
+      radius = 1.0;
+    }
+    for (let k = 0; k < 8; k++) {
+      mesh.x.push(dx[k] * radius);
+      mesh.y.push(ring.toF64() * 0.8);
+      mesh.z.push(dz[k] * radius);
+    }
+  }
+  for (let band = 0; band < 2; band++) {
+    for (let k = 0; k < 8; k++) {
+      const a = band * 8 + k;
+      const b = band * 8 + (k + 1) % 8;
+      mesh.tris.push(a);
+      mesh.tris.push(b);
+      mesh.tris.push(a + 8);
+      mesh.tris.push(b);
+      mesh.tris.push(b + 8);
+      mesh.tris.push(a + 8);
+    }
+  }
+  for (let k = 1; k < 7; k++) {
+    mesh.tris.push(0);
+    mesh.tris.push(k);
+    mesh.tris.push(k + 1);
+    mesh.tris.push(16);
+    mesh.tris.push(16 + k + 1);
+    mesh.tris.push(16 + k);
+  }
+  return mesh;
+}
+
+const EYE = 3.0;
+
+// Draws frame `frame` of `lanterns` lanterns into `pixels`, one RGBA word
+// per pixel; `depth` and `light` (three per pixel) are the caller's. The
+// frame is split into `bands` bands of rows, `height` a multiple of it, each
+// drawn by a turn of a `parallel for` into its parts of the buffers. Gives
+// the number of pixels filled by a lantern or its reflection.
+export fn render(pixels: inout Array<i32>, depth: inout Array<f64>, light: inout Array<f64>, width: i32, height: i32, lanterns: i32, frame: i32, bands: i32): i32 {
+  const horizon = (height.toF64() * 0.42).floor().toI32();
+  const w = width.toF64();
+  const focal = w * 0.9;
+  const t = frame.toF64();
+  const moonX = w * 0.78;
+  const moonY = height.toF64() * 0.16;
+  const moonR = w * 0.045;
+  const rows = height / bands;
+  const mesh = lantern();
+  const warmR = [1.0, 1.0, 0.95, 1.0];
+  const warmG = [0.55, 0.35, 0.75, 0.45];
+  const warmB = [0.2, 0.25, 0.35, 0.55];
+  const vertices = mesh.x.length;
+  let sx: Array<f64> = [];
+  let sy: Array<f64> = [];
+  let sz: Array<f64> = [];
+  let wx: Array<f64> = [];
+  let wy: Array<f64> = [];
+  let wz: Array<f64> = [];
+  // Each band its own vertices, in its part of these.
+  for (let v = 0; v < vertices * bands; v++) {
+    sx.push(0.0);
+    sy.push(0.0);
+    sz.push(0.0);
+    wx.push(0.0);
+    wy.push(0.0);
+    wz.push(0.0);
+  }
+  let counts: Array<i32> = [];
+  for (let k = 0; k < bands; k++) {
+    counts.push(0);
+  }
+  parallel for (let strip = 0; strip < bands; strip++) {
+    let lightB = light.part(strip, rows * width * 3);
+    let depthB = depth.part(strip, rows * width);
+    let pixelsB = pixels.part(strip, rows * width);
+    let sxB = sx.part(strip, vertices);
+    let syB = sy.part(strip, vertices);
+    let szB = sz.part(strip, vertices);
+    let wxB = wx.part(strip, vertices);
+    let wyB = wy.part(strip, vertices);
+    let wzB = wz.part(strip, vertices);
+    let countB = counts.part(strip, 1);
+    const top = strip * rows;
+    const bottom = top + rows - 1;
+    let filled = 0;
+    // The sky, its stars twinkling, and the water, darker near.
+    for (let py = top; py <= bottom; py++) {
+      for (let px = 0; px < width; px++) {
+        const p = (py - top) * width + px;
+        depthB[p] = 1e9;
+        let r = 0.0;
+        let g = 0.0;
+        let b = 0.0;
+        if (py < horizon) {
+          const v = py.toF64() / horizon.toF64();
+          r = 0.02 + 0.06 * v;
+          g = 0.03 + 0.08 * v;
+          b = 0.1 + 0.14 * v;
+          // The moon, its edge soft.
+          const mx = (px.toF64() + 0.5 - moonX) / moonR;
+          const my = (py.toF64() + 0.5 - moonY) / moonR;
+          const m2 = mx * mx + my * my;
+          if (m2 < 1.44) {
+            let m = 1.0;
+            if (m2 >= 1.0) {
+              m = (1.44 - m2) / 0.44;
+            }
+            r += 0.85 * m;
+            g += 0.83 * m;
+            b += 0.75 * m;
+          }
+          if (unit(hash(px, py, 7)) < 0.0015) {
+            const s = (0.5 + 0.5 * unit(hash(px, py, 8))) * (0.6 + 0.4 * tri(unit(hash(px, py, 9)) + t * 0.02));
+            r += s;
+            g += s;
+            b += s;
+          }
+        } else {
+          const d = (py - horizon).toF64() / (height - horizon).toF64();
+          r = 0.01;
+          g = 0.02 + 0.03 * d;
+          b = 0.05 + 0.07 * d;
+          // The moon's path on the water, broken by ripples.
+          const off = (px.toF64() + 0.5 - moonX + 6.0 * (2.0 * tri(py.toF64() * 0.11 + t * 0.03) - 1.0)).abs();
+          const band = moonR * (0.6 + 2.5 * d);
+          if (off < band) {
+            const glint = (1.0 - off / band) * tri(py.toF64() * 0.37 + t * 0.05) * (0.5 - 0.35 * d);
+            r += 0.8 * glint;
+            g += 0.78 * glint;
+            b += 0.7 * glint;
+          }
+        }
+        lightB[3 * p] = r;
+        lightB[3 * p + 1] = g;
+        lightB[3 * p + 2] = b;
+      }
+    }
+    for (let i = 0; i < lanterns; i++) {
+      // Where the lantern is, how it turns, its colour and its flame.
+      let x = -45.0 + 90.0 * unit(hash(i, 1, 11)) + (unit(hash(i, 3, 11)) - 0.5) * 0.02 * t;
+      x -= 90.0 * ((x + 45.0) / 90.0).floor();
+      let z = 120.0 * unit(hash(i, 2, 11)) - (0.01 + 0.03 * unit(hash(i, 4, 11))) * t;
+      z = 6.0 + z - 120.0 * (z / 120.0).floor();
+      const a = 2.0 * tri(unit(hash(i, 5, 11)) + 0.002 * t) - 1.0;
+      const cos = (1.0 - a * a) / (1.0 + a * a);
+      const sin = 2.0 * a / (1.0 + a * a);
+      const size = 0.35 + 0.25 * unit(hash(i, 7, 11));
+      let lift = 0.05 * tri(unit(hash(i, 11, 11)) + 0.01 * t);
+      if ((hash(i, 12, 11) & 3) == 0) {
+        // A sky lantern: it rises, and starts again from the water.
+        const rise = unit(hash(i, 13, 11)) + 0.0015 * t;
+        lift += 18.0 * (rise - rise.floor());
+      }
+      const hue = hash(i, 8, 11) & 3;
+      const flame = 0.75 + 0.25 * tri(unit(hash(i, 9, 11)) + t * (0.03 + 0.04 * unit(hash(i, 10, 11))));
+      const cr = warmR[hue];
+      const cg = warmG[hue];
+      const cb = warmB[hue];
+      for (let v = 0; v < vertices; v++) {
+        const mx = mesh.x[v] * size;
+        const mz = mesh.z[v] * size;
+        wxB[v] = x + mx * cos - mz * sin;
+        wyB[v] = lift + mesh.y[v] * size;
+        wzB[v] = z + mx * sin + mz * cos;
+      }
+      // Twice: the lantern, then its reflection, the world mirrored in the
+      // water and shaken by ripples.
+      for (let mirror = 0; mirror < 2; mirror++) {
+        let sign = 1.0;
+        if (mirror == 1) {
+          sign = -1.0;
+        }
+        for (let v = 0; v < vertices; v++) {
+          const zz = wzB[v];
+          const yy = horizon.toF64() - focal * (sign * wyB[v] - EYE) / zz;
+          let xx = w / 2.0 + focal * wxB[v] / zz;
+          if (mirror == 1) {
+            xx += 2.5 * (2.0 * tri(yy * 0.045 + t * 0.02) - 1.0);
+          }
+          sxB[v] = xx;
+          syB[v] = yy;
+          szB[v] = zz;
+        }
+        for (let k = 0; k < mesh.tris.length; k += 3) {
+          const i0 = mesh.tris[k];
+          const i1 = mesh.tris[k + 1];
+          const i2 = mesh.tris[k + 2];
+          const x0 = sxB[i0];
+          const y0 = syB[i0];
+          const x1 = sxB[i1];
+          const y1 = syB[i1];
+          const x2 = sxB[i2];
+          const y2 = syB[i2];
+          const area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+          if (area == 0.0) {
+            continue;
+          }
+          // Flat shading: paper lit from inside, brighter where it faces the eye.
+          const ax = wxB[i1] - wxB[i0];
+          const ay = wyB[i1] - wyB[i0];
+          const az = wzB[i1] - wzB[i0];
+          const bx = wxB[i2] - wxB[i0];
+          const by = wyB[i2] - wyB[i0];
+          const bz = wzB[i2] - wzB[i0];
+          const nx = ay * bz - az * by;
+          const ny = az * bx - ax * bz;
+          const nz = ax * by - ay * bx;
+          const ex = -wxB[i0];
+          const ey = EYE - wyB[i0];
+          const ez = -wzB[i0];
+          const dot = nx * ex + ny * ey + nz * ez;
+          const len = ((nx * nx + ny * ny + nz * nz) * (ex * ex + ey * ey + ez * ez)).sqrt();
+          let facing = 0.0;
+          if (len > 0.0) {
+            facing = dot.abs() / len;
+          }
+          let shade = flame * (0.45 + 0.55 * facing);
+          if (mirror == 1) {
+            shade *= 0.4;
+          }
+          const r = cr * shade;
+          const g = cg * shade;
+          const b = cb * shade;
+          const z0 = szB[i0];
+          const z1 = szB[i1];
+          const z2 = szB[i2];
+          const minX = x0.min(x1).min(x2).floor().toI32().max(0);
+          const maxX = x0.max(x1).max(x2).floor().toI32().min(width - 1);
+          const minY = y0.min(y1).min(y2).floor().toI32().max(top);
+          const maxY = y0.max(y1).max(y2).floor().toI32().min(bottom);
+          for (let py = minY; py <= maxY; py++) {
+            const cy = py.toF64() + 0.5;
+            for (let px = minX; px <= maxX; px++) {
+              const cx = px.toF64() + 0.5;
+              const w0 = (x2 - x1) * (cy - y1) - (y2 - y1) * (cx - x1);
+              const w1 = (x0 - x2) * (cy - y2) - (y0 - y2) * (cx - x2);
+              const w2 = (x1 - x0) * (cy - y0) - (y1 - y0) * (cx - x0);
+              let inside = w0 <= 0.0 && w1 <= 0.0 && w2 <= 0.0;
+              if (area > 0.0) {
+                inside = w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0;
+              }
+              if (!inside) {
+                continue;
+              }
+              const zz = (w0 * z0 + w1 * z1 + w2 * z2) / area;
+              const p = (py - top) * width + px;
+              if (zz < depthB[p]) {
+                if (depthB[p] == 1e9) {
+                  filled += 1;
+                }
+                depthB[p] = zz;
+                lightB[3 * p] = r;
+                lightB[3 * p + 1] = g;
+                lightB[3 * p + 2] = b;
+              }
+            }
+          }
+        }
+      }
+      // The flame's halo, and its reflection.
+      for (let mirror = 0; mirror < 2; mirror++) {
+        let sign = 1.0;
+        let glow = 0.45 * flame;
+        if (mirror == 1) {
+          sign = -1.0;
+          glow = 0.45 * flame * 0.5;
+        }
+        const cy = horizon.toF64() - focal * (sign * (lift + 0.8 * size) - EYE) / z;
+        let cx = w / 2.0 + focal * x / z;
+        if (mirror == 1) {
+          cx += 2.5 * (2.0 * tri(cy * 0.045 + t * 0.02) - 1.0);
+        }
+        const reach = focal * 2.2 * size / z;
+        const minX = (cx - reach).floor().toI32().max(0);
+        const maxX = (cx + reach).floor().toI32().min(width - 1);
+        const minY = (cy - reach).floor().toI32().max(top);
+        const maxY = (cy + reach).floor().toI32().min(bottom);
+        for (let py = minY; py <= maxY; py++) {
+          const dy = py.toF64() + 0.5 - cy;
+          for (let px = minX; px <= maxX; px++) {
+            const dx = px.toF64() + 0.5 - cx;
+            const d2 = (dx * dx + dy * dy) / (reach * reach);
+            if (d2 >= 1.0) {
+              continue;
+            }
+            const k = (1.0 - d2) * (1.0 - d2) * glow;
+            const p = 3 * ((py - top) * width + px);
+            lightB[p] += cr * k;
+            lightB[p + 1] += cg * k;
+            lightB[p + 2] += cb * k;
+          }
+        }
+      }
+    }
+    for (let p = 0; p < rows * width; p++) {
+      pixelsB[p] = byte(lightB[3 * p]) + byte(lightB[3 * p + 1]) * 256 + byte(lightB[3 * p + 2]) * 65536 - 16777216;
+    }
+    countB[0] = filled;
+  }
+  let filled = 0;
+  for (const c of counts) {
+    filled += c;
+  }
+  return filled;
+}

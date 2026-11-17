@@ -1,0 +1,10 @@
+// Decision 0034: an integer division whose quotient meets a float is shown,
+// and fixed at the division, not where the quotient is used.
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}

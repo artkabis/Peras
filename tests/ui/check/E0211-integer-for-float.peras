@@ -1,4 +1,5 @@
-// E0211: write a decimal point for a float.
+// E0211, retired by decision 0030: an integer literal is the float it is
+// used as, as in Swift and Go. These lines were refused; they build.
 fn f(x: f64): f64 {
   let gain: f32 = 1;
   let _g = gain;

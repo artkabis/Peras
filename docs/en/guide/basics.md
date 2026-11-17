@@ -95,9 +95,26 @@ export fn tiny(): f64 {
 
 > Today, `i32`, `i64`, `f32` and `f64` compile to WebAssembly; the 8-, 16-bit and unsigned types are checked, not compiled yet.
 
+## Literals take the type they are used as
+
+An integer literal used where a float is expected is that float, as in Swift and Go ([decision 0030](../decisions/0030-numeric-literals.md)): `2 * x`, `if (c < 0)`, `v = 1;`, `return 0;`, an argument. An array literal of numbers takes the type of its elements together, a float if one is.
+
+```peras build
+export fn bounce(p: f64, v: f64): f64 {
+  let x = p + v;
+  if (x < 0) {
+    x = -x;
+  } else if (x > 1) {
+    x = 2 - x;
+  }
+  const weights = [1, 0.5, 0];
+  return x * 100 + weights[1];
+}
+```
+
 ## No implicit conversion
 
-Mixing two number types is an error: you convert explicitly, so a loss of precision is always visible.
+A variable never changes type silently. Mixing two number types is an error: you convert explicitly, so a loss of precision is always visible.
 
 ```peras error E0210
 export fn mean(total: i32, count: i64): i64 {
@@ -112,6 +129,42 @@ export fn mean(total: i32, count: i64): i64 {
 ```
 
 Converting a float to an integer rounds toward zero and saturates: `(1e20).toI32()` is the largest `i32`, never an undefined value.
+
+`/` on two integers is an integer division, truncated toward zero, as in Rust, Go and Swift: `5 / 2` is `2`, where JavaScript gives `2.5`. When its quotient is used where a float is expected, the error shows the division, even behind a `const`, and converts its operands there, before dividing ([decision 0034](../decisions/0034-integer-division.md)): converting the quotient afterwards would keep it truncated.
+
+```peras error E0210
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    total += t;
+  }
+  return total;
+}
+```
+
+```peras build
+export fn steps(count: i32): f64 {
+  let total = 0.0;
+  for (let i = 0; i < count; i++) {
+    const t = i.toF64() / (count - 1).toF64();
+    total += t;
+  }
+  return total;
+}
+```
+
+`Math` is written as in JavaScript, in both modes: `Math.sqrt(x)`, `Math.max(a, b)`, `Math.round(x)`, `Math.PI`, `Math.E`; each is the method of its first argument, `x.sqrt()`, `a.max(b)` ([decision 0035](../decisions/0035-math-as-javascript-writes-it.md)). `Math.round` takes a half up, as JavaScript does. On an integer, already whole, `floor`, `round` and `ceil` are refused with their removal as the fix; on an integer division, the error shows the division and divides as floats, so that the fraction is what gets rounded: `Math.round(200 / 3)` would round 66, not 66.67.
+
+```peras build
+export fn polar(x: f64, y: f64): f64 {
+  return Math.atan2(y, x) * 180 / Math.PI + Math.sqrt(x * x + y * y);
+}
+
+export fn percent(done: i32, total: i32): f64 {
+  return ((done * 100).toF64() / total.toF64()).round();
+}
+```
 
 ## Booleans
 

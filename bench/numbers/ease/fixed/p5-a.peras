@@ -1,0 +1,19 @@
+// P5 (decision 0030): a colour mixed from three components, and a gradient,
+// Fixed until it builds with option a.
+// as a user writes them from JavaScript.
+fn mix(a: f64, b: f64, t: f64): f64 {
+  return a * (1.0 - t) + b * t;
+}
+
+export fn gradient(steps: i32): f64 {
+  const stops = [0.0, 0.5, 1.0];
+  let total = 0.0;
+  for (let i = 0; i < steps; i++) {
+    const t = i.toF64() / (steps - 1).toF64();
+    const r = mix(stops[0], stops[1], t);
+    const g = mix(stops[1], stops[2], t);
+    const b = mix(stops[2], 0.0, t);
+    total += r * 255.0 + g * 255.0 + b * 255.0;
+  }
+  return total;
+}

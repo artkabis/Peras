@@ -2650,3 +2650,43 @@
     (i32.store offset=16 (local.get $m) (i32.const 0))
     (i32.store offset=20 (local.get $m) (i32.const 0))
     (i32.store offset=24 (local.get $m) (i32.const 0)))
+
+  ;; A shared value (decision 0032, option r1) of `bytes` bytes that only
+  ;; this holder holds: the same block when it is the only one; otherwise a
+  ;; copy, the buffers it owns copied and the shared values it holds held
+  ;; once more by `buf_clone`, and one fewer holding the original, which
+  ;; others still hold.
+  (func $shared_unique (export "shared_unique") (param $bytes i32) (param $h i32) (result i32)
+    (local $copy i32) (local $n i32) (local $i i32) (local $at i32)
+    (if (i32.eq (i32.load offset=4 (local.get $h)) (i32.const 1))
+      (then (return (local.get $h))))
+    (local.set $copy (call $alloc (local.get $bytes) (i32.const 0)))
+    (memory.copy (local.get $copy) (local.get $h) (local.get $bytes))
+    (i32.store offset=4 (local.get $copy) (i32.const 1))
+    (local.set $n (i32.load offset=8 (local.get $h)))
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $i) (local.get $n)))
+        (local.set $at (i32.add (i32.add (local.get $copy) (i32.const 16))
+          (i32.shl (local.get $i) (i32.const 3))))
+        (i32.store (local.get $at) (call $buf_clone (i32.load (local.get $at)) (i32.const 0)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $next)))
+    (call $buf_release (local.get $h) (i32.const 0))
+    (local.get $copy))
+
+  ;; The shared value held at slot `slot` of the shared value `env`, made
+  ;; the holder's own where it is held.
+  (func (export "shared_unique_slot") (param $bytes i32) (param $env i32) (param $slot i32)
+    (local $at i32)
+    (local.set $at (i32.add (i32.add (local.get $env) (i32.const 16))
+      (i32.shl (local.get $slot) (i32.const 3))))
+    (i32.store (local.get $at) (call $shared_unique (local.get $bytes) (i32.load (local.get $at)))))
+
+  ;; The shared value held at element `i` of a column of handles, made the
+  ;; holder's own where it is held.
+  (func (export "shared_unique_elem") (param $bytes i32) (param $column i32) (param $i i32)
+    (local $at i32)
+    (local.set $at (i32.add (i32.load offset=8 (local.get $column))
+      (i32.shl (local.get $i) (i32.const 2))))
+    (i32.store (local.get $at) (call $shared_unique (local.get $bytes) (i32.load (local.get $at)))))

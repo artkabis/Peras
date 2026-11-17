@@ -1,0 +1,86 @@
+# 0035 : `Math` tel que JavaScript l’écrit, et arrondir un entier
+
+_Version anglaise : [../../en/decisions/0035-math-as-javascript-writes-it.md](../../en/decisions/0035-math-as-javascript-writes-it.md)._
+
+_État : protocole enregistré le 2026-11-17, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées à `6cb3444` ; options a2 et b3 acceptées par le propriétaire le 2026-11-17. Il répond aux constats F116 et F117, que la [décision 0034](0034-integer-division.md) a rencontrés, et à ce que cette décision a laissé de F113 : un pourcentage arrondi, `Math.round(done * 100 / total)`, donne 66 % là où JavaScript donne 67 %. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+
+## Contexte
+
+Ce que fait le compilateur aujourd’hui, lu avant d’écrire ceci (constat M020) :
+
+- **`Math` n’est défini dans aucun mode** : `Math.floor(x)`, `Math.max(a, b)`, `Math.PI` donnent `` `Math` is not defined `` (E0200), dont la correction, « déclare-le, ou vérifie son orthographe », n’offre rien (F116). Peras les écrit en méthodes : `abs`, `min`, `max`, `clamp` sur chaque nombre ; `sqrt`, `sin`, `cos`, `tan`, `floor`, `ceil`, `round`, `exp`, `log`, `pow`, `atan2`, `hypot` sur les flottants (`crates/perasc-check/src/builtins.rs`). Il n’a ni `PI`, ni `E`, ni `trunc`.
+- **Un entier n’a ni `floor`, ni `round`, ni `ceil`** : `(p / width).floor()` donne E0215, sans correction (F117). Un entier est déjà entier, mais une division entière est tronquée : `round` sur l’une d’elles arrondit une fraction dans le mauvais sens, `Math.round(200 / 3)` 66 là où JavaScript donne 67.
+- **Chaque diagnostic bloque la construction** : il n’y a pas d’avertissement.
+
+## Options
+
+Deux questions, mesurées ensemble, puisque l’une mène à l’autre : `Math.round(a / b)` écrit autrement devient `(a / b).round()`.
+
+- **Question A, `Math` :**
+  - **a0.** Comme aujourd’hui.
+  - **a1. L’erreur offre la méthode** : `Math.f(x)` donne E0200 avec la correction `x.f()`, `Math.f(a, b)` avec `a.f(b)`, `Math.PI` avec sa valeur écrite, `3.141592653589793`.
+  - **a2. `Math` accepté tel qu’écrit** : `Math.f(x)` est `x.f()` dans un module owned, le `Math.f(x)` de JavaScript dans un module managed ; `Math.PI` et `Math.E` sont ces nombres.
+- **Question B, `floor`, `round`, `ceil` ou `trunc` sur un entier :**
+  - **b0.** Comme aujourd’hui.
+  - **b1. L’erreur offre d’enlever l’appel**, l’entier étant déjà entier.
+  - **b2. Accepté** : l’appel donne l’entier.
+  - **b3. Distingué** : sur une division entière, l’erreur montre la division et convertit ses opérandes, comme l’option d1 de la décision 0034, pour que la fraction soit arrondie, `((done * 100).toF64() / total.toF64()).round()` ; sur tout autre entier, la correction enlève l’appel.
+
+## Protocole, enregistré avant tout prototype
+
+Chaque option est prototypée derrière `PERAS_PROTO_MATH` (a0 à a2) et `PERAS_PROTO_WHOLE` (b0 à b3) ; le build sans elles garde le comportement d’aujourd’hui, a0 et b0. Les paires mesurées : a0 b0, et chacune de a1 et a2 avec chacune de b1, b2 et b3.
+
+1. **Facilité d’écriture, et les résultats que donnent les corrections** : six programmes, écrits comme un utilisateur les écrit à partir de JavaScript, puis corrigés en appliquant les modifications qu’offrent leurs diagnostics, telles que données, rien d’autre, jusqu’à ce qu’ils se construisent ; un programme dont les diagnostics n’offrent aucune modification est bloqué :
+   - R1, une distance et un angle, `Math.sqrt(dx * dx + dy * dy)`, `Math.atan2(dy, dx) * 180 / Math.PI` ;
+   - R2, une composante de couleur bornée, `Math.min(Math.max(v, 0), 255)`, sur des entiers ;
+   - R3, le milieu d’une recherche dichotomique, `Math.floor((lo + hi) / 2)` (Q3 de la décision 0034) ;
+   - R4, la ligne d’un pixel, `Math.floor(p / width)` (Q4) ;
+   - R5, un pourcentage, `Math.round(done * 100 / total)` (Q5) ;
+   - R6, un prix arrondi au centime, `Math.round(price * 100) / 100`, sur un flottant.
+
+   Pour chaque paire : les erreurs rencontrées, avec leurs codes ; les lignes changées ; si le programme se construit ; et s’il donne le résultat de JavaScript. Un résultat faux atteint en suivant les corrections du compilateur lui-même compte contre la paire, quoi qu’elle gagne par ailleurs.
+
+2. **Non-régression** (la règle du propriétaire) : `scripts/check-regression.mjs` sous chaque option contre le compilateur d’aujourd’hui : les programmes qui ne se construisent plus, ou qui changent.
+3. **Vitesse et charge du processeur** : R4 et R1 tels que chaque paire les a corrigés, sur 10 000 000 de tours, modules owned sur TLSF dans Node, dans un même processus, l’ordre alternant, 21 tours, la médiane des rapports à la première paire qui les construit, tour par tour, et leur étendue (constat M017), le temps CPU sur le temps réel. Une paire qui laisse un programme bloqué n’en a pas de version : mesurée comme non construite (constat M001).
+4. **Octets** : le module de chaque version, brut et en gzip.
+
+`node scripts/bench-math.mjs` les lance ; `--check` vérifie que chaque programme se construit et donne ce qu’il a donné, et tourne avec chaque vérification du projet.
+
+## Registre
+
+_Chaque partie est consignée ici à son arrivée._
+
+### Une précision du protocole (2026-11-17)
+
+Le point 3 mesure R1 sur 10 000 000 de tours. R1 rend une chaîne : ses appels mesureraient le passage vers JavaScript et les chaînes qu’il fait, pas `Math`. Avant toute mesure, R6, un flottant arrondi, a pris sa place, sur 10 000 000 d’appels ; R4 fait sa propre boucle de 10 000 000 de pixels, comme enregistré.
+
+### La mesure (2026-11-17)
+
+Exécution 1, au commit 6cb3444, rien d’autre en cours ; chaque tableau dans [`bench/math/RESULTS.md`](../../../bench/math/RESULTS.md), avec la machine ; la non-régression par `node scripts/check-regression.mjs 6cb3444 PERAS_PROTO_MATH=a1` et ainsi de suite, chaque option seule.
+
+| Paire | Programmes justes, sur 6 | R5, le pourcentage (67 %) | Lignes changées, R1 à R6 | W1, / a1 b1           | Octets de W1 (gzip) |
+| ----- | ------------------------ | ------------------------- | ------------------------ | --------------------- | ------------------- |
+| a0 b0 | 0 : tous bloqués à E0200 | bloqué                    | -                        | -                     | -                   |
+| a1 b1 | 5                        | 66 %                      | 4, 2, 2, 2, 2, 2         | 1                     | 135 (123)           |
+| a1 b2 | 5                        | 66 %, en silence          | 4, 2, 2, 2, 2, 2         | 1,001                 | 135 (123)           |
+| a1 b3 | **6**                    | 67 %                      | 4, 2, 12, 4, 2, 2        | 0,846                 | 148 (140)           |
+| a2 b1 | 5                        | 66 %                      | 0, 0, 2, 2, 2, 0         | 1,000                 | 135 (123)           |
+| a2 b2 | 5                        | 66 %, en silence          | 0, 0, 0, 0, 0, 0         | 1,001                 | 135 (123)           |
+| a2 b3 | **6**                    | 67 %                      | 0, 0, 12, 4, 2, 0        | 0,845 (0,816 à 0,922) | 148 (140)           |
+
+- **Non-régression** : chaque option seule, contre 6cb3444 : 167 modules du dépôt comparés, chacun identique ; aucun ne cesse de se construire ; a2 construit R1, R2 et R6 de cette décision, que rien ne construisait avant. Temps de compilation de 0,973 à 1,010.
+- **W2**, R6 sur 10 000 000 d’appels : chaque paire entre 0,999 et 1,032 de la première, le même code ; c’est le passage vers JavaScript qu’il mesure.
+- **a2 prend les programmes tels que JavaScript les a écrits** : R1, R2 et R6 se construisent sans changement et donnent le résultat de JavaScript, `Math.round(12.5)` 13 compris.
+- **b2 donne un nombre faux en silence** : `Math.round(done * 100 / total)` se construit et donne 66 %, la division entière jamais montrée. b1 ne la montre pas mieux : sa correction enlève l’appel, et le pourcentage reste 66 %.
+- **b3 est la seule qui donne chaque résultat juste**, avec a1 ou a2. Elle coûte des lignes là où un entier était voulu : `Math.floor((lo + hi) / 2)` devient une division flottante arrondie vers le bas, et le milieu un flottant, reconverti à chacun de ses usages comme indice, 12 lignes dans R3 ; en échange, elle arrondit vers le bas comme JavaScript aussi sur les nombres négatifs, où la troncature ne le fait pas (`Math.floor(-7 / 2)` vaut -4 ; `-7 / 2` vaut -3). Sa boucle est la plus rapide sur W1, une division flottante coûtant moins qu’une division entière vérifiée.
+
+### Proposition
+
+**a2 avec b3** : chaque programme donne le résultat de JavaScript, R1, R2 et R6 se construisent tels qu’écrits, et aucun module du dépôt ne change. Son coût, les lignes que R3 demande pour utiliser un milieu arrondi comme indice, est le prix du résultat juste sur les nombres négatifs ; une étape suivante pourrait l’épargner là où les deux opérandes sont connus non négatifs. Le propriétaire décide.
+
+### Décision et installation (2026-11-17)
+
+Le propriétaire a choisi **a2 avec b3**. Installé au commit 80e6410 : `Math.f(x, …)` est la méthode `f` de `x` dans les deux modes, `Math.PI` et `Math.E` des nombres ; `floor`, `round`, `ceil` ou `trunc` sur un entier est E0215, son correctif le retrait, ou, sur une division entière, la division montrée et faite en flottants. a1, b1 et b2 ont été retirées du compilateur, leurs chiffres gardés ci-dessus ; `PERAS_PROTO_MATH=a0` et `PERAS_PROTO_WHOLE=b0` construisent les erreurs telles qu’elles étaient, pour `scripts/bench-math.mjs` seulement.
+
+- **Non-régression**, `node scripts/check-regression.mjs ff3fd04` : 167 modules du dépôt comparés, chacun identique ; les programmes de `bench/math` se construisent désormais, ce que rien ne construisait avant ; aucun ne cesse de se construire.
+- `scripts/bench-division.mjs` mesure la décision 0034 telle qu’enregistrée, sous a0 et b0 : les nouveaux défauts ont changé ce que rencontrent ses programmes (constat M007).

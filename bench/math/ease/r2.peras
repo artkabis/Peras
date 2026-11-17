@@ -1,0 +1,4 @@
+// R2 of decision 0035: a colour component clamped, on integers.
+export fn r2(v: i32): i32 {
+  return Math.min(Math.max(v, 0), 255);
+}

@@ -1,0 +1,11 @@
+// R4 of decision 0035 (Q4 of decision 0034): a pixel's row and column, an integer meant;
+// JavaScript writes `Math.floor(p / width)`.
+export fn r4(width: i32, height: i32): i32 {
+  let total = 0;
+  for (let p = 0; p < width * height; p++) {
+    const y = Math.floor(p / width);
+    const x = p % width;
+    total += y * 3 + x;
+  }
+  return total;
+}

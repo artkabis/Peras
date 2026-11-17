@@ -118,10 +118,61 @@ Each with what refutes it. Times are of frame 600 at 1024 × 768 with 1,000 lant
 - **Peras is within 0.89 of Rust** (H2), in half its bytes (H5), and its safety costs 8 % (H7).
 - **The managed module is 2.4 times slower than the TypeScript** (H3, finding F221): the same source compiled to JavaScript does not give the JavaScript a person writes. Not looked into here.
 - **Peras is as long as TypeScript, but not as easy to write**: 1.10 times its lines once it builds (H6 holds), after 45 errors, every one an integer literal where an `f64` is expected or an array typed by its first element (finding F112), the most any program has met.
-- **What the scene lacks, entered as findings**: `parallel for` cannot draw it (F301), and a mesh shared by a thousand lanterns cannot be held by each (F310, decision 0030).
+- **What the scene lacks, entered as findings**: `parallel for` cannot draw it (F301), and a mesh shared by a thousand lanterns cannot be held by each (F310). The owner then ordered the work the study asked for: decision 0030 on numeric literals (F112), 0031 on threads (F301), and `Rc<T>` after them, measured on this scene.
 
 ### Departures from the protocol
 
 - **H4 has no measure**: its version cannot be written, as the protocol foresaw; `bench/lanterns/threads.peras` keeps the attempt and its diagnostic.
 - **The CPU time over the wall time** is measured on each version alone in a fresh page, 5 frames after 2, the versions not alternating; the times of H1 to H3 and H7 come from the alternating runs.
 - **The memory outside the heap** was added after run 1, the protocol's measure, the heap alone, leaving out the buffers of the JavaScript versions.
+
+### After the study: where Peras's time goes
+
+Asked by the owner on 2026-11-17, to turn the results into work on Peras. A profile by removing (finding F201): in copies of the three versions, a mask skips one phase of the frame at a time, the versions otherwise the same; a phase's cost is the full frame's time minus the time without it, the median of the differences round by round, in Node, frame 600, 15 rounds. Another machine than the study's (an Intel Xeon at 2.10 GHz): only ratios compare (finding M016).
+
+| Phase                                |  TypeScript |       Peras |        Rust |
+| ------------------------------------ | ----------: | ----------: | ----------: |
+| The sky and the water, each pixel    |      5.8 ms |      7.2 ms |      1.5 ms |
+| The triangles, of which their pixels | 28.8 (26.3) | 31.2 (28.8) | 26.7 (26.4) |
+| The halos                            |        14.4 |        14.3 |        12.8 |
+| The colours packed                   |         6.6 |        13.0 |         6.4 |
+
+Then each suspect removed alone from Peras, the frame's time against the unchanged module in one process:
+
+- **The checks of every index**, all removed by a compiler built for the experiment only: 1.009. They cost nothing measurable.
+- **The calls to small functions**, `byte` and the star's `hash` written in place by hand: 0.966; the colours 10.0 to 8.3 ms.
+- **What depends on the row only**, two divisions and two calls to `tri` computed once a row instead of once a pixel, as LLVM does by inlining `tri` and moving it out of the loop: 0.965; the sky 5.8 to 4.1 ms. Peras's pass that moves invariants out of loops moves neither a call nor what is in a branch.
+- **SIMD does not explain Rust's lead**: Rust built without it draws the sky in 2.2 ms and the colours in 8.6.
+
+What it says: three quarters of the frame, the triangles and the halos, take Peras the time they take TypeScript and Rust, within 10 %; the gap is in the two passes over every pixel that call small functions, where inlining them and moving what does not change out of the loop recovers about 7 % of the frame (finding F222). Neither gets Peras to 1.3 times TypeScript's speed: on this frame, that can only come from what JavaScript cannot do, the threads (finding F301). Nothing here points at a type of pixels or a `Framebuffer`: the colours cost what the calls to `byte` cost.
+
+### F221's profile, registered before any measure (2026-11-17)
+
+Why the managed module takes 2.41 times TypeScript's time, profiled by removing (finding F201), each variant removing one more difference from the module the study measured (`scripts/profile-managed.mjs`):
+
+- **M0**, the managed module as the study built it, `perasc build` with no build option: a debug build, every integer operation checked for overflow. The protocol above said "compiled to JavaScript" and did not say which build: the study compared this debug module with TypeScript, while the owned module was measured in its production build.
+- **M1**, built for production (`--allocator tlsf`): no overflow check; every index still checked.
+- **M2**, M1 with each index read and write, `$at` and `$put`, written as a direct access.
+- **M3**, M2 with each `$saturate(Math.floor(e), …)` written `Math.floor(e)`, as `pond.ts` writes it.
+- **M4**, M3 with the six arrays of the projected points made as `pond.ts` makes them, `new Float64Array(vertices)`, not filled by `push`.
+
+TypeScript's module and the five variants in one process, in Node, frame 600 at 1024 × 768 with 1,000 lanterns, 15 rounds as the profile above, the order alternating; the ratio of each to TypeScript round by round, its median and range. Every variant must give TypeScript's pixels, which the script checks. What each removal recovers is the difference of consecutive medians. The study's 2.41 was measured in Chromium; Node runs the same engine, and only ratios compare (finding M016).
+
+### F221's profile, measured (2026-11-17)
+
+At commit 189fca0, nothing else running; Intel Xeon at 2.30 GHz, Node 24.22.1, 15 rounds, frame 600 at 1024 × 768. Every variant gives TypeScript's pixels; 46 reads and 18 writes of indices, 10 conversions and 6 arrays replaced.
+
+| Version    |   Median | / TypeScript, median (range) |
+| ---------- | -------: | ---------------------------- |
+| TypeScript |  49.9 ms | 1.000 (1.000 to 1.000)       |
+| M0         | 194.8 ms | 4.039 (2.767 to 4.803)       |
+| M1         | 128.8 ms | 2.616 (1.936 to 2.991)       |
+| M2         |  51.4 ms | 1.089 (0.986 to 2.201)       |
+| M3         |  46.3 ms | 1.013 (0.852 to 1.552)       |
+| M4         |  47.8 ms | 0.992 (0.618 to 1.194)       |
+
+- **The study measured a debug build** (finding M029): M0 at 4.04 times TypeScript's time in Node, where the study's browser gave 2.41. Built for production, 2.62: the overflow checks cost the rest.
+- **The checks of indices are the gap**: written as direct accesses, 2.62 becomes 1.09. In the owned module the same checks cost nothing measurable (1.009, above); in JavaScript, each goes through `$at` or `$put`, one function for every array of the module, of doubles, of integers, typed or not. Why that costs so much is not measured here: one function shared by arrays of every kind of element is a possible cause, not a shown one (finding M001).
+- **The rest is within the noise**: the saturating conversions, 1.09 to 1.01; typed arrays for the projected points, 1.01 to 0.99, ranges of 0.62 to 1.55.
+
+What it says: the managed module, built for production, can draw the frame as fast as TypeScript once its indices are checked another way. How, without giving up the check that stops a program at a wrong index, is a decision, its options measured.

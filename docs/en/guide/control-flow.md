@@ -57,7 +57,27 @@ export fn brighten(pixels: Array<i32>, out: inout Array<i32>, gain: i32): void {
 }
 ```
 
-The compiler proves it: a turn that assigns a variable declared outside the loop, reads at another index an array the loop writes, calls a function, makes or releases a string or an array, or leaves the loop with `break` or `return` is refused ([E0241](../errors/E0241.md)). The results are then those of the loop run in order, bit for bit. Built with `--threads on`, the turns run on every core of a page that can share memory, and on one thread elsewhere: see [Peras and JavaScript](javascript.md#threads). Built without, the loop runs as any other. <span class="status compiled">compiled</span>
+A turn may call a function that changes nothing: that makes or releases no string or array, writes no element and no module variable, and calls no function value, nor does any function it calls. And it may write a part of an array of its own: in a turn counted by `b`, `let band = xs.part(b, k)` is the elements `b * k` to `(b + 1) * k` of `xs`, which the turn reads and writes as `band[j]`; the parts of two turns never overlap ([decision 0031](../decisions/0031-useful-parallel-loops.md)). A frame splits so into bands of rows:
+
+```peras build
+fn shade(x: f64, y: f64): f64 {
+  return (x * x + y * y).sqrt();
+}
+
+export fn draw(pixels: inout Array<f64>, width: i32, height: i32, bands: i32): void {
+  const rows = height / bands;
+  parallel for (let b = 0; b < bands; b++) {
+    let band = pixels.part(b, rows * width);
+    for (let r = 0; r < rows; r++) {
+      for (let x = 0; x < width; x++) {
+        band[r * width + x] = shade(x.toF64(), (b * rows + r).toF64());
+      }
+    }
+  }
+}
+```
+
+The compiler proves it: a turn that assigns a variable declared outside the loop, writes elsewhere than its index or its parts, reads at another index an array the loop writes, calls a function that changes something, makes or releases a string or an array, or leaves the loop with `break` or `return` is refused, with its reason ([E0241](../errors/E0241.md)). The results are then those of the loop run in order, bit for bit. Built with `--threads on`, the turns run on every core of a page that can share memory, and on one thread elsewhere: see [Peras and JavaScript](javascript.md#threads). Built without, the loop runs as any other. <span class="status compiled">compiled</span>
 
 ## `for…of`
 

@@ -284,6 +284,78 @@ pub fn mismatch(
     )
 }
 
+/// `E0210`, the integer met an integer division (decision 0034, option
+/// d1): the division shown, its operands converted.
+pub fn truncated(
+    span: Span,
+    expected: &Ty,
+    found: &Ty,
+    division: Span,
+    operands: [(Span, bool); 2],
+    method: &str,
+) -> Diagnostic {
+    let mut edits = Vec::new();
+    for (at, wrap) in operands {
+        if wrap {
+            edits.push(insert(at.start, "("));
+            edits.push(insert(at.end, format!(").{method}()")));
+        } else {
+            edits.push(insert(at.end, format!(".{method}()")));
+        }
+    }
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-mismatch")
+            .text("expected", expected.to_string())
+            .text("found", found.to_string()),
+        vec![
+            primary(
+                span,
+                Message::new("check-mismatch-label").text("found", found.to_string()),
+            ),
+            secondary(division, Message::new("check-truncated-label")),
+        ],
+        Fix {
+            message: Message::new("check-truncated-fix").text("method", method),
+            edits,
+        },
+    )
+}
+
+/// `E0215` on `floor` or `round` called on an integer (decision 0035, b3):
+/// the call removed.
+pub fn whole_call(span: Span, method: &str, written: &str) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_MEMBER,
+        Message::new("check-whole").text("method", method),
+        vec![primary(span, Message::new("check-whole-label"))],
+        Fix {
+            message: Message::new("check-whole-fix").text("method", method),
+            edits: vec![replace(span, written)],
+        },
+    )
+}
+
+/// `E0215` on `round` of an integer division (decision 0035, b3): the division
+/// shown, its operands converted so that the fraction is rounded.
+pub fn rounded_division(span: Span, division: Span, method: &str, written: &str) -> Diagnostic {
+    diagnostic(
+        codes::UNKNOWN_MEMBER,
+        Message::new("check-whole-division").text("method", method),
+        vec![
+            primary(
+                span,
+                Message::new("check-whole-division-label").text("method", method),
+            ),
+            secondary(division, Message::new("check-truncated-label")),
+        ],
+        Fix {
+            message: Message::new("check-whole-division-fix").text("method", method),
+            edits: vec![replace(span, written)],
+        },
+    )
+}
+
 /// `E0211`
 pub fn integer_for_float(span: Span, literal: &str, expected: &Ty) -> Diagnostic {
     diagnostic(

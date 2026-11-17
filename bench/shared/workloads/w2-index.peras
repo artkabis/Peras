@@ -1,0 +1,37 @@
+// W2 of decision 0032 without `Rc` (option r0): the same tree, its nodes in
+// arrays, each child a number, -1 for none, as a program does today.
+
+struct Tree {
+  value: Array<i32>;
+  left: Array<i32>;
+  right: Array<i32>;
+}
+
+fn build(nodes: inout Tree, lo: i32, hi: i32): i32 {
+  if (lo > hi) {
+    return -1;
+  }
+  const mid = lo + (hi - lo) / 2;
+  const at = nodes.value.length;
+  nodes.value.push(mid);
+  nodes.left.push(-1);
+  nodes.right.push(-1);
+  const left = build(&nodes, lo, mid - 1);
+  const right = build(&nodes, mid + 1, hi);
+  nodes.left[at] = left;
+  nodes.right[at] = right;
+  return at;
+}
+
+fn sum(nodes: Tree, at: i32): i64 {
+  if (at < 0) {
+    return 0;
+  }
+  return nodes.value[at].toI64() + sum(nodes, nodes.left[at]) + sum(nodes, nodes.right[at]);
+}
+
+export fn tree(n: i32): i64 {
+  let nodes = Tree([], [], []);
+  const root = build(&nodes, 1, n);
+  return sum(nodes, root);
+}

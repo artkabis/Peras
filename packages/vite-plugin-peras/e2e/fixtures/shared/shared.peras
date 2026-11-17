@@ -1,0 +1,168 @@
+// Decision 0032, option r1: shared values, read only, copied on write. A
+// `const` read from a place is lent, unless something may change or move
+// that place while it is used: then it holds the value once more.
+
+struct Mesh {
+  tris: Array<i32>;
+}
+
+struct Lantern {
+  mesh: Rc<Mesh>;
+}
+
+struct Node {
+  value: i32;
+  left: Option<Rc<Node>>;
+  right: Option<Rc<Node>>;
+}
+
+fn three(): Lantern {
+  return Lantern(Rc.new(Mesh([1, 2, 3])));
+}
+
+fn one(): Lantern {
+  return Lantern(Rc.new(Mesh([9])));
+}
+
+fn take(lanterns: sink Array<Lantern>): i32 {
+  return lanterns.length;
+}
+
+// Lent: nothing changes `fleet` or `i` while `mesh` is used.
+export fn lent(): i32 {
+  const mesh = Rc.new(Mesh([1, 2, 3]));
+  let fleet: Array<Lantern> = [];
+  for (let i = 0; i < 4; i++) {
+    fleet.push(Lantern(mesh));
+  }
+  let total = 0;
+  for (let i = 0; i < fleet.length; i++) {
+    const m = fleet[i].mesh;
+    total += m.tris.length;
+  }
+  return total;
+}
+
+// The array is replaced while the mesh read from it is used.
+export fn reassigned(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  fleet = [one()];
+  return m.tris.length * 10 + fleet[0].mesh.tris.length;
+}
+
+// The index changes while the mesh read at it is used.
+export fn index(): i32 {
+  let fleet = [three(), one()];
+  let i = 0;
+  const m = fleet[i].mesh;
+  i = 1;
+  return m.tris.length * 10 + fleet[i].mesh.tris.length;
+}
+
+// The element is replaced, then the array grows.
+export fn replaced(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  fleet[0] = one();
+  for (let k = 0; k < 100; k++) {
+    fleet.push(one());
+  }
+  return m.tris.length * 1000 + fleet.length;
+}
+
+// The array moves away while the mesh read from it is used.
+export fn moved(): i32 {
+  let fleet = [three()];
+  const m = fleet[0].mesh;
+  const n = take(fleet);
+  return m.tris.length * 10 + n;
+}
+
+// Two holders: a write through one is its own.
+export fn holders(): i32 {
+  let a = Rc.new(Mesh([1, 2, 3]));
+  let b = a;
+  b.tris.push(4);
+  b.tris[0] = 7;
+  return a.tris.length * 1000 + b.tris.length * 100 + a.tris[0] * 10 + b.tris[0];
+}
+
+fn build(lo: i32, hi: i32): Option<Rc<Node>> {
+  if (lo > hi) {
+    return None;
+  }
+  const mid = lo + (hi - lo) / 2;
+  return Some(Rc.new(Node(mid, build(lo, mid - 1), build(mid + 1, hi))));
+}
+
+fn sum(node: Option<Rc<Node>>): i32 {
+  if (node.isNone()) {
+    return 0;
+  }
+  return node.value + sum(node.left) + sum(node.right);
+}
+
+// A type that holds itself, through `Rc` (finding F310).
+export fn tree(n: i32): i32 {
+  return sum(build(1, n));
+}
+
+struct Leaf {
+  n: i32;
+  items: Array<i32>;
+}
+
+struct Pair {
+  left: Rc<Leaf>;
+  count: i32;
+}
+
+struct Holds {
+  leaf: Rc<Leaf>;
+}
+
+// A shared value held by another: a write through it makes both its
+// holder's own, each where it is held.
+export fn nested(): i32 {
+  let a = Rc.new(Pair(Rc.new(Leaf(1, [1])), 0));
+  let b = a;
+  b.left.n = 5;
+  b.left.items.push(2);
+  b.count++;
+  return a.left.n * 100000 + a.left.items.length * 10000 + a.count * 1000 + b.left.n * 100 + b.left.items.length * 10 + b.count;
+}
+
+// The inner value is held twice: by `leaf`, and by the pair.
+export fn inner(): i32 {
+  const leaf = Rc.new(Leaf(1, [1]));
+  let pair = Rc.new(Pair(leaf, 0));
+  pair.left.n = 9;
+  return leaf.n * 10 + pair.left.n;
+}
+
+// Shared values held by elements of an array.
+export fn elements(): i32 {
+  const mesh = Rc.new(Mesh([1, 2, 3]));
+  let fleet = [Lantern(mesh), Lantern(mesh)];
+  fleet[0].mesh.tris.push(4);
+  fleet[0].mesh.tris[0] = 7;
+  return fleet[0].mesh.tris.length * 1000 + fleet[1].mesh.tris.length * 100 + fleet[0].mesh.tris[0] * 10 + fleet[1].mesh.tris[0];
+}
+
+export fn elementFields(): i32 {
+  const leaf = Rc.new(Leaf(1, []));
+  let all = [Holds(leaf), Holds(leaf)];
+  all[1].leaf.n = 8;
+  all[0].leaf.n++;
+  return leaf.n * 100 + all[0].leaf.n * 10 + all[1].leaf.n;
+}
+
+// A step through a shared value a variable holds (finding F018).
+export fn stepped(): i32 {
+  const first = Rc.new(Leaf(1, []));
+  let r = first;
+  r.n++;
+  r.n += 10;
+  return first.n * 100 + r.n;
+}

@@ -117,6 +117,21 @@ pub struct Analysis {
     /// The names of options read after a test that leaves when they are
     /// `None`: their value (decision 0028, option 2e).
     pub narrowed: HashSet<ExprId>,
+    /// Integer values converted to the float type they are used as
+    /// (decision 0030, option c, prototype).
+    pub widened: HashMap<ExprId, Ty>,
+    /// The fields and elements on the way to a place the program changes:
+    /// `b.items` in `b.items.push(4)`. A shared value read on such a way is
+    /// made the holder's own first (decision 0032, prototype r1).
+    pub changed: HashSet<ExprId>,
+    /// Every place the program changes or may change: the binding it starts
+    /// from, an index in [`Analysis::bindings`], and where. A shared value
+    /// read from a place none changes while it is used is lent
+    /// (decision 0032).
+    pub mutations: Vec<(usize, Span)>,
+    /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
+    /// option a2).
+    pub math_calls: HashSet<ExprId>,
 }
 
 /// A declared name, for code generation.
@@ -274,21 +289,95 @@ pub fn proto_closure() -> String {
         .unwrap_or_else(|| "auto".to_owned())
 }
 
-/// The option of decision 0028 a build follows for one of its questions:
-/// the one chosen, 1b for `PERAS_PROTO_MOVE`, 2e for `PERAS_PROTO_TAKE`, 3b
-/// for `PERAS_PROTO_FALLBACK`, unless the variable names another option
-/// measured (`a` to `e`), or `before`, the compiler before the decision, for
-/// the measure script only (`scripts/bench-options.mjs`).
+/// The option of decision 0032 a build follows for shared values: `r1`,
+/// chosen, `Rc<T>` read only and copied on write; unless `PERAS_PROTO_RC`
+/// names `r0`, no `Rc`, the reference of the measure script
+/// (`scripts/bench-shared.mjs`). Option r2 was removed once measured: it
+/// was not chosen, and its runtime cost every build of the compiler 90 KB.
+#[must_use]
+pub fn proto_rc() -> String {
+    match std::env::var("PERAS_PROTO_RC").as_deref() {
+        Ok("r0") => "r0".to_owned(),
+        _ => "r1".to_owned(),
+    }
+}
+
+/// The option of decision 0034 a build follows for an integer division
+/// met where a float is expected: `d1`, chosen, the error shows the
+/// division and fixes it there; unless `PERAS_PROTO_DIV` names `d0`, the
+/// error as it was, the reference of the measure script
+/// (`scripts/bench-division.mjs`). Options d2 and d3 were removed once
+/// measured: each made programs of the repository no longer build.
+#[must_use]
+pub fn proto_div() -> String {
+    match std::env::var("PERAS_PROTO_DIV").as_deref() {
+        Ok("d0") => "d0".to_owned(),
+        _ => "d1".to_owned(),
+    }
+}
+
+/// The options of decision 0035 a build follows: `a2`, chosen, `Math` as
+/// JavaScript writes it; `b3`, chosen, `floor` or `round` on an integer
+/// division shown and converted, removed on any other integer. Unless
+/// `PERAS_PROTO_MATH` names `a0` and `PERAS_PROTO_WHOLE` `b0`, the errors
+/// as they were, the reference of the measure script
+/// (`scripts/bench-math.mjs`). Options a1, b1 and b2 were removed once
+/// measured.
+#[must_use]
+pub fn proto_math() -> String {
+    match std::env::var("PERAS_PROTO_MATH").as_deref() {
+        Ok("a0") => "a0".to_owned(),
+        _ => "a2".to_owned(),
+    }
+}
+
+/// See [`proto_math`].
+#[must_use]
+pub fn proto_whole() -> String {
+    match std::env::var("PERAS_PROTO_WHOLE").as_deref() {
+        Ok("b0") => "b0".to_owned(),
+        _ => "b3".to_owned(),
+    }
+}
+
+/// The option of decision 0031 a build follows for `parallel for`: `p2`,
+/// pure calls and parts in a turn, the one chosen, unless `PERAS_PROTO_PAR`
+/// names another option measured, `p0` (the rules before it, as `before`)
+/// or `p1` (pure calls only), for the measure script only
+/// (`scripts/bench-parallel.mjs`).
+#[must_use]
+pub fn proto_par() -> String {
+    match std::env::var("PERAS_PROTO_PAR").as_deref() {
+        Ok("p0" | "before") => "p0".to_owned(),
+        Ok("p1") => "p1".to_owned(),
+        _ => "p2".to_owned(),
+    }
+}
+
+/// The option of decisions 0028 and 0030 a build follows for one of their
+/// questions: the one chosen, 1b for `PERAS_PROTO_MOVE`, 2e for
+/// `PERAS_PROTO_TAKE`, 3b for `PERAS_PROTO_FALLBACK`, b for
+/// `PERAS_PROTO_NUM`, unless the variable names another option measured (`a`
+/// to `e`), or `before`, the compiler before the decision, for the measure
+/// scripts only (`scripts/bench-options.mjs`, `scripts/bench-numbers.mjs`).
 #[must_use]
 pub fn proto(variable: &str) -> String {
     let chosen = match variable {
         "PERAS_PROTO_TAKE" => "e",
+        // Decision 0030's option b for `PERAS_PROTO_NUM`; 0028's 1b and 3b.
         _ => "b",
     };
     std::env::var(variable)
         .ok()
         .filter(|v| matches!(v.as_str(), "a" | "b" | "c" | "d" | "e" | "before"))
         .unwrap_or_else(|| chosen.to_owned())
+}
+
+/// Whether an integer literal takes the float type it is used as (decision
+/// 0030, option b, the default; c too); option a and `before`, today's
+/// refusal, for `scripts/bench-numbers.mjs` only.
+pub(crate) fn literals_take_their_type() -> bool {
+    matches!(proto("PERAS_PROTO_NUM").as_str(), "b" | "c")
 }
 
 /// The exported functions of an owned module's source, as a managed module
@@ -481,6 +570,10 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         escaping: checker.escaping,
         copies: checker.copies,
         narrowed: checker.narrowed,
+        widened: checker.widened,
+        changed: checker.changed,
+        mutations: checker.mutations,
+        math_calls: checker.math_calls,
         moves: checker.moves,
         enums: checker
             .enums
@@ -539,12 +632,27 @@ pub(crate) enum TypeDef {
     Set,
     Option,
     Result,
+    /// `Rc<T>` (decision 0032, prototype).
+    Rc,
     Generic(Template, usize),
     /// `type Name = …`, by its index in [`Checker::aliases`].
     Alias(usize),
     /// An interface, by its index in [`Checker::interfaces`]: a constraint,
     /// not a type.
     Interface(usize),
+}
+
+impl TypeDef {
+    /// How many type arguments it takes, an alias's and an interface's
+    /// aside.
+    const fn arity(&self) -> usize {
+        match self {
+            Self::Array | Self::Set | Self::Option | Self::Promise | Self::Rc => 1,
+            Self::Result | Self::Map => 2,
+            Self::Generic(_, count) => *count,
+            _ => 0,
+        }
+    }
 }
 
 struct Checker<'a> {
@@ -606,6 +714,20 @@ struct Checker<'a> {
     /// and every name read so (decision 0028, option 2e).
     narrowed_now: HashMap<usize, Ty>,
     narrowed: HashSet<ExprId>,
+    /// The fields narrowed now, `child.parent` in the block of
+    /// `if (child.parent.isSome())`: a binding, the fields' names from it,
+    /// and the type of the option's value (finding F115).
+    narrowed_fields: Vec<(usize, Vec<Symbol>, Ty)>,
+    widened: HashMap<ExprId, Ty>,
+    /// See [`Analysis::changed`].
+    changed: HashSet<ExprId>,
+    /// See [`Analysis::mutations`].
+    mutations: Vec<(usize, Span)>,
+    /// See [`Analysis::math_calls`].
+    math_calls: HashSet<ExprId>,
+    /// The `const`s an integer division initialised, by binding: that
+    /// division (decision 0034, option d1, prototype).
+    int_divisions: HashMap<usize, ExprId>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -666,6 +788,10 @@ impl<'a> Checker<'a> {
         types.insert("Set".to_owned(), TypeDef::Set);
         types.insert("Option".to_owned(), TypeDef::Option);
         types.insert("Result".to_owned(), TypeDef::Result);
+        // Decision 0032's options, prototyped: `Rc<T>`.
+        if proto_rc() != "r0" {
+            types.insert("Rc".to_owned(), TypeDef::Rc);
+        }
         // Managed only, each refused in an owned module.
         types.insert("number".to_owned(), TypeDef::Number);
         types.insert("Promise".to_owned(), TypeDef::Promise);
@@ -704,6 +830,12 @@ impl<'a> Checker<'a> {
             copies: HashSet::new(),
             narrowed_now: HashMap::new(),
             narrowed: HashSet::new(),
+            narrowed_fields: Vec::new(),
+            widened: HashMap::new(),
+            changed: HashSet::new(),
+            mutations: Vec::new(),
+            math_calls: HashSet::new(),
+            int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),
@@ -1636,10 +1768,6 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         };
         let expected = match def {
-            TypeDef::Plain(_) | TypeDef::Number | TypeDef::Host(_) => 0,
-            TypeDef::Array | TypeDef::Set | TypeDef::Option | TypeDef::Promise => 1,
-            TypeDef::Result | TypeDef::Map => 2,
-            TypeDef::Generic(_, count) => count,
             TypeDef::Alias(index) => self.aliases.get(index).map_or(0, |a| a.generics.len()),
             TypeDef::Interface(index) => {
                 let name = self.interfaces.get(index).map(|i| i.name.clone());
@@ -1649,6 +1777,7 @@ impl<'a> Checker<'a> {
                 ));
                 return Ty::Error;
             }
+            ref other => other.arity(),
         };
         if args.len() != expected {
             self.report(errors::type_argument_count(
@@ -1677,6 +1806,7 @@ impl<'a> Checker<'a> {
                 Ty::Set(Box::new(key))
             }
             TypeDef::Option => Ty::Option(Box::new(self.type_arg(args))),
+            TypeDef::Rc => Ty::Rc(Box::new(self.type_arg(args))),
             TypeDef::Result => {
                 let ok = self.type_arg(args);
                 let err = args.get(1).map_or(Ty::Error, |a| self.resolve_type(a));

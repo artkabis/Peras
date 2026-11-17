@@ -50,6 +50,17 @@ impl Checker<'_> {
                 self.settle(id, expected);
                 true
             }
+            // Decision 0030's options b and c, prototyped: a literal takes
+            // the float type it is used as, as in Swift and Go.
+            (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if crate::literals_take_their_type() => {
+                self.settle(id, expected);
+                true
+            }
+            // Option c: an integer variable becomes the float too.
+            (Ty::Int(_), Ty::Float(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(id, expected.clone());
+                true
+            }
             (Ty::IntLit, Ty::Float(_) | Ty::FloatLit) if self.literal(id).is_some() => {
                 let literal = self.slice(span).to_owned();
                 self.report(errors::integer_for_float(span, &literal, expected));
@@ -86,11 +97,66 @@ impl Checker<'_> {
                 true
             }
             _ => {
+                // Decision 0034, option d1: an integer division where a
+                // float is expected is shown, and fixed there.
+                if crate::proto_div() == "d1"
+                    && matches!(actual, Ty::Int(_))
+                    && matches!(expected, Ty::Float(_))
+                    && let Some(division) = self.division_behind(id)
+                    && let ExprKind::Binary { lhs, rhs, .. } = self.ast.expr(division).kind
+                {
+                    let operand = |c: &Self, side: ExprId| {
+                        let e = c.ast.expr(side);
+                        let wrap =
+                            matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. });
+                        (e.span, wrap)
+                    };
+                    let method = expected.conversion().unwrap_or("toF64");
+                    let (l, r) = (operand(self, lhs), operand(self, rhs));
+                    let division = self.ast.expr(division).span;
+                    self.report(errors::truncated(
+                        span,
+                        expected,
+                        actual,
+                        division,
+                        [l, r],
+                        method,
+                    ));
+                    return false;
+                }
                 let conversion = self.conversion(id, actual, expected);
                 self.report(errors::mismatch(span, expected, actual, conversion));
                 false
             }
         }
+    }
+
+    /// A division of two integers: `id` itself, in parentheses or not.
+    pub(crate) fn int_division(&self, id: ExprId) -> Option<ExprId> {
+        match &self.ast.expr(id).kind {
+            ExprKind::Paren(inner) => self.int_division(*inner),
+            ExprKind::Binary {
+                op: BinaryOp::Div,
+                lhs,
+                rhs,
+            } => {
+                let int = |side: &ExprId| {
+                    matches!(self.expr_types.get(side), Some(Ty::Int(_) | Ty::IntLit))
+                };
+                (int(lhs) && int(rhs)).then_some(id)
+            }
+            _ => None,
+        }
+    }
+
+    /// The integer division behind a value: written there, or the one that
+    /// initialised the `const` it names (decision 0034, d1).
+    fn division_behind(&self, id: ExprId) -> Option<ExprId> {
+        if let Some(division) = self.int_division(id) {
+            return Some(division);
+        }
+        let index = self.resolved.get(&id)?;
+        self.int_divisions.get(index).copied()
     }
 
     /// The explicit conversion turning a number of type `from` into `to`.
@@ -206,6 +272,14 @@ impl Checker<'_> {
                 if let Some(index) = self.scopes.lookup(*symbol) {
                     self.resolved.insert(id, index);
                     self.capture(index, span);
+                    // Where its option is expected, a narrowed name is the
+                    // option whole, `return node;` (finding F114).
+                    if let Some(option) = self.narrowed_now.get(&index).cloned()
+                        && expected == Some(&option)
+                    {
+                        self.read_name(*symbol, span);
+                        return option;
+                    }
                     if self.narrowed_now.contains_key(&index) {
                         self.narrowed.insert(id);
                     }
@@ -237,11 +311,23 @@ impl Checker<'_> {
                 Ty::String
             }
             ExprKind::Field { base, name } => {
+                if let Some(ty) = self.math_constant(*base, name, span) {
+                    return ty;
+                }
                 if let Some(ty) = self.enum_variant(*base, name, None, span, expected) {
                     return ty;
                 }
                 let base_ty = self.infer(*base, None);
-                self.field(&base_ty, name.symbol, name.span)
+                let ty = self.field(&base_ty, name.symbol, name.span);
+                // A field narrowed by a test is its value, but where its
+                // option is expected (findings F114, F115).
+                match self.narrowed_field(id) {
+                    Some(inner) if expected != Some(&ty) => {
+                        self.narrowed.insert(id);
+                        inner
+                    }
+                    _ => ty,
+                }
             }
             ExprKind::Match { scrutinee, arms } => {
                 self.match_expr(*scrutinee, arms, span, expected)
@@ -353,8 +439,28 @@ impl Checker<'_> {
             _ => None,
         };
         let mut element: Option<Ty> = expected_element.clone();
-        for &item in items {
+        for (k, &item) in items.iter().enumerate() {
             match element.clone() {
+                // Decision 0030's options b and c, prototyped: integer
+                // literals before a float take its type, `[1, s, 0]`.
+                Some(Ty::IntLit) if crate::literals_take_their_type() => {
+                    let actual = self.infer(item, None);
+                    if actual.is_float() {
+                        let float = if actual == Ty::FloatLit {
+                            Ty::Float(crate::ty::FloatTy::F64)
+                        } else {
+                            actual.clone()
+                        };
+                        for &before in &items[..k] {
+                            self.settle(before, &float);
+                        }
+                        self.coerce(item, &actual, &float);
+                        element = Some(float);
+                    } else {
+                        let merged = self.merge(item, &actual, &Ty::IntLit);
+                        element = Some(merged);
+                    }
+                }
                 Some(e) => {
                     let actual = self.infer(item, Some(&e));
                     let merged = self.merge(item, &actual, &e);
@@ -499,7 +605,20 @@ impl Checker<'_> {
         if lt == rt {
             return Some(lt.clone());
         }
+        let f64_ty = Ty::Float(crate::ty::FloatTy::F64);
         match (lt, rt) {
+            // Decision 0030's option c, prototyped: an integer against a float
+            // literal becomes an `f64`, `cents * 1.2`.
+            (Ty::Int(_), Ty::FloatLit) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(lhs, f64_ty.clone());
+                self.settle(rhs, &f64_ty);
+                Some(f64_ty)
+            }
+            (Ty::FloatLit, Ty::Int(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.widened.insert(rhs, f64_ty.clone());
+                self.settle(lhs, &f64_ty);
+                Some(f64_ty)
+            }
             (Ty::IntLit | Ty::FloatLit, Ty::Int(_) | Ty::Float(_) | Ty::FloatLit) => {
                 self.coerce(lhs, lt, rt).then(|| rt.clone())
             }
@@ -517,9 +636,12 @@ impl Checker<'_> {
                 self.coerce(narrow, narrow_ty, wide);
                 None
             }
-            (Ty::Int(_), Ty::Float(_)) => {
-                self.coerce(lhs, lt, rt);
-                None
+            (Ty::Int(_), Ty::Float(_)) => self
+                .coerce(lhs, lt, rt)
+                .then(|| rt.clone())
+                .filter(|_| crate::proto("PERAS_PROTO_NUM") == "c"),
+            (Ty::Float(_), Ty::Int(_)) if crate::proto("PERAS_PROTO_NUM") == "c" => {
+                self.coerce(rhs, rt, lt).then(|| lt.clone())
             }
             // A float on the left, or anything else: convert the right operand.
             _ => {
@@ -574,6 +696,12 @@ impl Checker<'_> {
                     span,
                     expected,
                 };
+                if let Some(ty) = self.math_call(&site, *base, name) {
+                    return ty;
+                }
+                if let Some(ty) = self.rc_new(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.collection_new(&site, *base, name) {
                     return ty;
                 }
@@ -587,6 +715,9 @@ impl Checker<'_> {
                     return ty;
                 }
                 let receiver = self.receiver(*base, name.symbol);
+                if let Some(ty) = self.whole_call(id, *base, &receiver, name, args) {
+                    return ty;
+                }
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
@@ -607,6 +738,7 @@ impl Checker<'_> {
                 if changes && let Some(root) = self.root(*base) {
                     let base_span = self.ast.expr(*base).span;
                     self.check_mutable(root, base_span);
+                    self.mark_changed(*base);
                 }
                 self.method_call(&receiver, name.symbol, name.span, args, span)
             }
@@ -864,6 +996,17 @@ impl Checker<'_> {
             ExprKind::Name(symbol) => self.scopes.lookup(symbol),
             _ => None,
         };
+        // A field narrowed, read whole by the methods of `Option`.
+        let reads_whole = matches!(
+            self.name(method),
+            "isSome" | "isNone" | "unwrapOr" | "unwrapOrElse" | "unwrap"
+        );
+        if reads_whole && self.narrowed_field(base).is_some() {
+            let fields = std::mem::take(&mut self.narrowed_fields);
+            let ty = self.infer(base, None);
+            self.narrowed_fields = fields;
+            return ty;
+        }
         let whole = index.and_then(|i| self.narrowed_now.get(&i).cloned().map(|t| (i, t)));
         let Some((index, option)) = whole.filter(|_| {
             matches!(
@@ -988,6 +1131,11 @@ impl Checker<'_> {
         let text = self.name(name);
         match base {
             Ty::Error => Ty::Error,
+            // A shared value's field, read through it (decision 0032).
+            Ty::Rc(inner) => {
+                let inner = (**inner).clone();
+                self.field(&inner, name, span)
+            }
             Ty::Host(h) => {
                 let text = text.to_owned();
                 self.host_field(*h, &text, span)
@@ -1097,5 +1245,106 @@ fn operand_allowed(op: BinaryOp, ty: &Ty) -> bool {
             ty.is_integer()
         }
         BinaryOp::And | BinaryOp::Or => *ty == Ty::Bool,
+    }
+}
+
+/// Decision 0035, options a2 and b3: `Math` as JavaScript writes it, and
+/// rounding an integer.
+impl Checker<'_> {
+    /// Whether `base` names JavaScript's `Math`, no binding of the program.
+    fn is_math(&self, base: ExprId) -> bool {
+        matches!(self.ast.expr(base).kind, ExprKind::Name(s)
+            if self.name(s) == "Math" && self.scopes.lookup(s).is_none())
+    }
+
+    /// `Math.PI`, `Math.E`: the numbers (decision 0035, a2).
+    fn math_constant(
+        &mut self,
+        base: ExprId,
+        name: &perasc_syntax::ast::Ident,
+        span: Span,
+    ) -> Option<Ty> {
+        if !self.is_math(base) {
+            return None;
+        }
+        let _ = span;
+        let constant = matches!(self.name(name.symbol), "PI" | "E");
+        (constant && crate::proto_math() == "a2").then_some(Ty::Float(crate::ty::FloatTy::F64))
+    }
+
+    /// `Math.f(x, …)`, as JavaScript writes it: the method `f` of `x`
+    /// (decision 0035, a2).
+    fn math_call(
+        &mut self,
+        at: &crate::methods::CallSite<'_>,
+        base: ExprId,
+        name: &perasc_syntax::ast::Ident,
+    ) -> Option<Ty> {
+        let option = crate::proto_math();
+        if option == "a0" || !self.is_math(base) {
+            return None;
+        }
+        let (&first, rest) = at.args.split_first()?;
+        let receiver = self.infer(first, None);
+        self.math_calls.insert(at.call);
+        if let Some(ty) = self.whole_call(at.call, first, &receiver, name, rest) {
+            return Some(ty);
+        }
+        Some(self.method_call(&receiver, name.symbol, name.span, rest, at.span))
+    }
+
+    /// `floor`, `round`, `ceil` or `trunc` on an integer, `call` the whole
+    /// call (decision 0035, b3): on an integer division, the error shows
+    /// the division and converts its operands, so that the fraction is
+    /// rounded; on any other integer, whole already, its fix removes the
+    /// call.
+    fn whole_call(
+        &mut self,
+        call: ExprId,
+        base: ExprId,
+        receiver: &Ty,
+        name: &perasc_syntax::ast::Ident,
+        args: &[ExprId],
+    ) -> Option<Ty> {
+        let method = self.name(name.symbol).to_owned();
+        let me = receiver.clone().defaulted();
+        if !matches!(method.as_str(), "floor" | "round" | "ceil" | "trunc")
+            || !args.is_empty()
+            || !matches!(me, Ty::Int(_))
+        {
+            return None;
+        }
+        let span = self.ast.expr(call).span;
+        let option = crate::proto_whole();
+        match option.as_str() {
+            "b3" if let Some(division) = self.int_division(base) => {
+                let ExprKind::Binary { lhs, rhs, .. } = self.ast.expr(division).kind else {
+                    return Some(me);
+                };
+                let wrap = |c: &Self, id: ExprId| {
+                    let e = c.ast.expr(id);
+                    let text = c.slice(e.span);
+                    if matches!(e.kind, ExprKind::Binary { .. } | ExprKind::Unary { .. }) {
+                        format!("({text})")
+                    } else {
+                        text.to_owned()
+                    }
+                };
+                let written = format!(
+                    "({}.toF64() / {}.toF64()).{method}()",
+                    wrap(self, lhs),
+                    wrap(self, rhs)
+                );
+                let division = self.ast.expr(division).span;
+                self.report(errors::rounded_division(span, division, &method, &written));
+                Some(Ty::Float(crate::ty::FloatTy::F64))
+            }
+            "b3" => {
+                let written = self.slice(self.ast.expr(base).span).to_owned();
+                self.report(errors::whole_call(span, &method, &written));
+                Some(me)
+            }
+            _ => None,
+        }
     }
 }

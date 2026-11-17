@@ -62,7 +62,7 @@ fn taken(state: &mut FnState, value: &Expr, proto: Option<&str>, fns: bool) -> O
 
 /// A scalar as the `i64` of a slot: an integer extended, a float by its
 /// bits, a `bool` as 0 or 1 (decision 0026).
-fn to_slot(value: Expr) -> Expr {
+pub(super) fn to_slot(value: Expr) -> Expr {
     let wide = |e: Expr| Expr {
         kind: ExprKind::Convert(Box::new(e)),
         ty: Ty::I64,
@@ -80,7 +80,7 @@ fn to_slot(value: Expr) -> Expr {
 }
 
 /// The scalar of type `ty` a slot holds: [`to_slot`] undone.
-fn from_slot(slot: Expr, ty: Ty) -> Expr {
+pub(super) fn from_slot(slot: Expr, ty: Ty) -> Expr {
     let narrow = |e: Expr, ty: Ty| Expr {
         kind: ExprKind::Convert(Box::new(e)),
         ty,
@@ -609,7 +609,8 @@ impl Lowering<'_> {
         }
         let deeper = depth + 1;
         match ty {
-            CheckTy::Callback(..) => 1,
+            // A shared value copies as a function value does (decision 0032).
+            CheckTy::Callback(..) | CheckTy::Rc(_) => 1,
             CheckTy::Struct(id, _) => self.analysis.structs.get(id.0).map_or(0, |(_, fields)| {
                 fields.iter().map(|(_, f)| self.fn_leaves(f, deeper)).sum()
             }),
