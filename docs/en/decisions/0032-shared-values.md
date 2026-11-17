@@ -69,3 +69,34 @@ What `node scripts/bench-shared.mjs --check` showed before the measure, and chec
 - **W1 makes two count operations per lantern in the loop that draws**, under both: `const mesh = fleet[i].mesh` holds the mesh once more, then lets it go. The protocol's target was 0.
 
 The measure, at the commit that lands the prototypes, is recorded next.
+
+### The measure (2026-11-17)
+
+Run 1, at commit b30819e, nothing else running; every table in [`bench/shared/RESULTS.md`](../../../bench/shared/RESULTS.md), with the machine.
+
+| Quantity                                            | r0                           | r1                                          | r2                                               |
+| --------------------------------------------------- | ---------------------------- | ------------------------------------------- | ------------------------------------------------ |
+| P1, the shared mesh                                 | 9 lines, numbers in an array | builds as written                           | builds as written                                |
+| P2, a tree                                          | 50 lines, an arena           | 9 lines (F114, E0205)                       | 9 lines (F114, E0205)                            |
+| P3, parents                                         | 18 lines, numbers            | 12 lines: no cycle, counted from the parent | 6 lines, 34 blocks leaked; 13 with `Weak`, none  |
+| P4, two holders                                     | 4 lines, `copy()`            | builds as written                           | 2 lines: the other holder sees the write         |
+| W1, the pond, / r0                                  | 1                            | 1.012 (0.779 to 1.150)                      | 0.967 (0.770 to 1.140)                           |
+| W2, a tree of 1,000,000, / r0                       | 1                            | 6.812 (4.555 to 7.482)                      | 6.797 (5.083 to 10.698)                          |
+| CPU / wall                                          | 0.99                         | 1.00                                        | 1.00                                             |
+| Memory after W2                                     | 16,448 KiB                   | 78,144 KiB                                  | 78,144 KiB                                       |
+| Bytes of W1 (gzip)                                  | 14,652 (5,591)               | 14,783 (5,623)                              | 14,930 (5,674)                                   |
+| Leaks possible                                      | no                           | no: no cycle can be built                   | yes, unless broken by `Weak`                     |
+| Count operations in W1's loop                       | -                            | 2,000 a frame                               | 2,000 a frame                                    |
+| `parallel for`                                      | -                            | reads; holding or writing refused           | reads; holding refused, writing accepted: a race |
+| Two holders, a loop over a field the other replaces | -                            | 6, as JavaScript                            | 91                                               |
+| r3                                                  |                              |                                             | not built                                        |
+
+What it says:
+
+- **Sharing costs nothing measurable where it is used as the pond uses it.** W1 under r1 and r2 is within the range of r0, whose own rounds vary as much; its 2,000 count operations a frame are lost in 50 ms of drawing.
+- **A tree of shared nodes is 6.8 times slower than an arena, and holds 4.75 times its memory**, under both: each node is a block of its own, with its header, where an arena keeps three numbers in three arrays. `Rc` makes the type that holds itself possible (F310); it does not make it as fast as indices.
+- **r1 and r2 run alike.** What separates them is what they let a program do: r2 leaks P3 as written, lets a loop see a write made through another holder, and lets the turns of a parallel loop write the same block. r1 refuses the last, gives JavaScript's result for the second, and cannot build the first, P3's cycle, which it asks to write from the parent.
+
+### Proposal
+
+**r1**, read only and copied on write: as fast as r2, no leak possible, no write seen through another holder, and nothing a parallel loop could race on; the values of Peras stay values (P4 as written). Its cost is P3: a graph that points back to its parents is written from the parent, or by numbers, as r0 writes it today. If the owner chooses it, the next steps are: to lend a shared value read in a loop rather than hold it once more (W1's 2,000 count operations a frame, the protocol's target being 0); F114 and F115; a write through a shared value held by another; and `Rc` in a managed module.

@@ -69,3 +69,34 @@ Ce que `node scripts/bench-shared.mjs --check` a montré avant la mesure, et vé
 - **W1 fait deux opérations de compte par lanterne dans la boucle qui dessine**, sous les deux : `const mesh = fleet[i].mesh` tient le maillage une fois de plus, puis le lâche. La cible du protocole était 0.
 
 La mesure, au commit qui apporte les prototypes, est consignée ensuite.
+
+### La mesure (2026-11-17)
+
+Exécution 1, au commit b30819e, rien d’autre en cours ; chaque tableau dans [`bench/shared/RESULTS.md`](../../../bench/shared/RESULTS.md), avec la machine.
+
+| Quantité                                                      | r0                                    | r1                                                | r2                                                |
+| ------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| P1, le maillage partagé                                       | 9 lignes, des numéros dans un tableau | se construit tel qu’écrit                         | se construit tel qu’écrit                         |
+| P2, un arbre                                                  | 50 lignes, une arène                  | 9 lignes (F114, E0205)                            | 9 lignes (F114, E0205)                            |
+| P3, des parents                                               | 18 lignes, des numéros                | 12 lignes : pas de cycle, compté depuis le parent | 6 lignes, 34 blocs perdus ; 13 avec `Weak`, aucun |
+| P4, deux détenteurs                                           | 4 lignes, `copy()`                    | se construit tel qu’écrit                         | 2 lignes : l’autre détenteur voit l’écriture      |
+| W1, le bassin, / r0                                           | 1                                     | 1,012 (0,779 à 1,150)                             | 0,967 (0,770 à 1,140)                             |
+| W2, un arbre de 1 000 000, / r0                               | 1                                     | 6,812 (4,555 à 7,482)                             | 6,797 (5,083 à 10,698)                            |
+| CPU / temps réel                                              | 0,99                                  | 1,00                                              | 1,00                                              |
+| Mémoire après W2                                              | 16 448 Kio                            | 78 144 Kio                                        | 78 144 Kio                                        |
+| Octets de W1 (gzip)                                           | 14 652 (5 591)                        | 14 783 (5 623)                                    | 14 930 (5 674)                                    |
+| Fuites possibles                                              | non                                   | non : aucun cycle ne se construit                 | oui, sauf cassées par `Weak`                      |
+| Opérations de compte dans la boucle de W1                     | -                                     | 2 000 par image                                   | 2 000 par image                                   |
+| `parallel for`                                                | -                                     | lit ; tenir ou écrire refusé                      | lit ; tenir refusé, écrire accepté : une course   |
+| Deux détenteurs, une boucle sur un champ que l’autre remplace | -                                     | 6, comme JavaScript                               | 91                                                |
+| r3                                                            |                                       |                                                   | non construite                                    |
+
+Ce que cela dit :
+
+- **Partager ne coûte rien de mesurable là où on s’en sert comme le bassin.** W1 sous r1 et r2 est dans l’étendue de r0, dont les tours varient autant ; ses 2 000 opérations de compte par image se perdent dans 50 ms de dessin.
+- **Un arbre de nœuds partagés est 6,8 fois plus lent qu’une arène, et tient 4,75 fois sa mémoire**, sous les deux : chaque nœud est un bloc à lui, avec son en-tête, là où une arène garde trois nombres dans trois tableaux. `Rc` rend possible le type qui se contient (F310) ; il ne le rend pas aussi rapide que des indices.
+- **r1 et r2 vont aussi vite.** Ce qui les sépare est ce qu’elles laissent faire : r2 fait fuir P3 tel qu’écrit, laisse une boucle voir une écriture faite par un autre détenteur, et laisse les tours d’une boucle parallèle écrire le même bloc. r1 refuse le dernier, donne le résultat de JavaScript pour le deuxième, et ne peut construire le premier, le cycle de P3, qu’elle demande d’écrire depuis le parent.
+
+### Proposition
+
+**r1**, en lecture seule et copiée à l’écriture : aussi rapide que r2, sans fuite possible, sans écriture vue par un autre détenteur, et sans rien sur quoi une boucle parallèle pourrait faire la course ; les valeurs de Peras restent des valeurs (P4 tel qu’écrit). Son coût est P3 : un graphe qui pointe vers ses parents s’écrit depuis le parent, ou par des numéros, comme r0 l’écrit aujourd’hui. Si le propriétaire la choisit, les étapes suivantes sont : prêter une valeur partagée lue dans une boucle plutôt que la tenir une fois de plus (les 2 000 opérations de compte par image de W1, la cible du protocole étant 0) ; F114 et F115 ; une écriture à travers une valeur partagée tenue par une autre ; et `Rc` dans un module managed.
