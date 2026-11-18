@@ -28,6 +28,8 @@ export default defineConfig(
       "bench/data/**",
       // The candle's TypeScript as often written, measured as written (scripts/candle.mjs).
       "bench/candle/**",
+      // The programs of decision 0038, measured as written (scripts/bench-json.mjs).
+      "bench/json/**",
       // The versions of decision 0015, measured as written (scripts/bench-stream.mjs).
       "bench/stream/**",
       "packages/*/e2e/fixtures/**",

@@ -1,0 +1,20 @@
+// P2 of decision 0038, as Peras reads JSON today (j0): records read from a
+// text, one field summed.
+struct Record {
+  id: i32,
+  name: String,
+  price: number,
+  tags: Array<String>,
+}
+
+extern from "./json.js" {
+  fn parseRecords(text: String): Array<Record>;
+}
+
+export fn total(text: String): number {
+  let sum = 0.0;
+  for (const r of parseRecords(text)) {
+    sum += r.price;
+  }
+  return sum;
+}
