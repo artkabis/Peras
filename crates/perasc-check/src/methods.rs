@@ -1003,4 +1003,26 @@ impl<'a> Checker<'a> {
         self.json_calls.insert(at.call, crate::JsonCall::Text);
         Some(Ty::String)
     }
+
+    /// `T.fromJson(text)` (option j1) or `Json.parse(text)` (option j2).
+    pub(crate) fn json_static(
+        &mut self,
+        at: &CallSite<'_>,
+        base: ExprId,
+        name: &Ident,
+    ) -> Option<Ty> {
+        self.json_from(at, base, name)
+            .or_else(|| self.json_parse(at, base, name))
+    }
+
+    /// `x.toJson()` (option j1) or `json.toText()` (option j2).
+    pub(crate) fn json_method(
+        &mut self,
+        at: &CallSite<'_>,
+        receiver: &Ty,
+        name: &Ident,
+    ) -> Option<Ty> {
+        self.json_to(at, receiver, name)
+            .or_else(|| self.json_text(at, receiver, name))
+    }
 }

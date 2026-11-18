@@ -40,6 +40,7 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 - **Decide a change by an A/B in one process, not by two profiles**: the machine drifts within a session; `node scripts/ab-data.mjs <ref>` alternates both compilers and takes the ratio round by round (M017).
 - **`pnpm run check` is the last command before a commit**, after every build and test: a build rewrites the files it generates (M012).
 - **A failing check stops the commit**: chain the checks and the commit with `&&`, never print exit codes and commit in the same line; export `PERAS_CHROMIUM` in every command that runs a check in a browser (M028).
+- **A check filtered by `grep` must still stop the commit**: a pipeline's status is its last command's; run the checks under `set -euo pipefail`, never `cargo clippy … | grep …;` (M030).
 - **Format, lint and commit before a measure**, so that the run is at a known commit; a run started on code that changes afterwards is stopped and run again (M002).
 - **Nothing that uses the processor during a measure**: no build, no test. Write, read, plan.
 - **A build that reuses a cache must prove it rebuilt what changed.** Old sources extracted with their commit dates look older than the cache and are not recompiled; extract them dated now, or give each its own target (M009).

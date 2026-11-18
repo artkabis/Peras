@@ -708,10 +708,7 @@ impl Checker<'_> {
                 if let Some(ty) = self.group_new(*base, name, args, span) {
                     return ty;
                 }
-                if let Some(ty) = self.json_from(&site, *base, name) {
-                    return ty;
-                }
-                if let Some(ty) = self.json_parse(&site, *base, name) {
+                if let Some(ty) = self.json_static(&site, *base, name) {
                     return ty;
                 }
                 if let Some(ty) = self.static_method(&site, *base, name) {
@@ -727,10 +724,7 @@ impl Checker<'_> {
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
-                if let Some(ty) = self.json_to(&site, &receiver, name) {
-                    return ty;
-                }
-                if let Some(ty) = self.json_text(&site, &receiver, name) {
+                if let Some(ty) = self.json_method(&site, &receiver, name) {
                     return ty;
                 }
                 // `push` and `pop` change the array, `set` and `delete` the map: it must
