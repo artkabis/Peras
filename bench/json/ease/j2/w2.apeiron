@@ -1,0 +1,13 @@
+// W2 of decision 0038, option j2: records written, built as `Json` values.
+export fn write(n: i32): String {
+  let records: Array<Json> = [];
+  for (let i = 0; i < n; i++) {
+    let o: Map<String, Json> = Map.new();
+    o.set("id", Json.Number(i.toF64()));
+    o.set("name", Json.Text(`item ${i}`));
+    o.set("price", Json.Number(i.toF64() * 0.25));
+    o.set("tags", Json.List([Json.Text("a"), Json.Text("b")]));
+    records.push(Json.Object(o));
+  }
+  return Json.List(records).toText();
+}

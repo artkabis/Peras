@@ -1,0 +1,19 @@
+// W2 of decision 0038, as Peras writes JSON today (j0): records written.
+struct Record {
+  id: i32,
+  name: String,
+  price: number,
+  tags: Array<String>,
+}
+
+extern from "./json.js" {
+  fn stringifyRecords(records: Array<Record>): String;
+}
+
+export fn write(n: i32): String {
+  let records: Array<Record> = [];
+  for (let i = 0; i < n; i++) {
+    records.push(Record(i, `item ${i}`, i.toF64() * 0.25, ["a", "b"]));
+  }
+  return stringifyRecords(records);
+}

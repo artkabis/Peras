@@ -7,13 +7,17 @@ struct Record {
   tags: Array<String>,
 }
 
+struct Records {
+  items: Array<Record>,
+}
+
 extern from "./json.js" {
-  fn parseRecords(text: String): Array<Record>;
+  fn parseRecords(text: String): Records;
 }
 
 export fn total(text: String): number {
   let sum = 0.0;
-  for (const r of parseRecords(text)) {
+  for (const r of parseRecords(text).items) {
     sum += r.price;
   }
   return sum;

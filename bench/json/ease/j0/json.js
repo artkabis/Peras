@@ -3,3 +3,4 @@
 export const parseSettings = (text) => JSON.parse(text);
 export const parseRecords = (text) => JSON.parse(text);
 export const stringifySummary = (s) => JSON.stringify(s);
+export const stringifyRecords = (records) => JSON.stringify(records);
