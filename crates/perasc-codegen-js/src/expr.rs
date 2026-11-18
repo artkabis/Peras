@@ -669,7 +669,11 @@ impl Module<'_> {
                 perasc_check::JsonCall::From(ty) => {
                     let text = self.exprs(args).into_iter().next().unwrap_or_default();
                     let helper = self.helper("$fromJson");
-                    format!("{helper}({text}, {})", self.shape(&ty, 0))
+                    let shape = self.shape(&ty, 0);
+                    format!(
+                        "{helper}({text}, {}, () => {shape})",
+                        string_literal(&shape)
+                    )
                 }
                 perasc_check::JsonCall::Parse => {
                     let text = self.exprs(args).into_iter().next().unwrap_or_default();
@@ -684,7 +688,11 @@ impl Module<'_> {
                 perasc_check::JsonCall::To(ty) => {
                     let value = self.lent(base);
                     let helper = self.helper("$toJson");
-                    format!("{helper}({value}, {})", self.shape(&ty, 0))
+                    let shape = self.shape(&ty, 0);
+                    format!(
+                        "{helper}({value}, {}, () => {shape})",
+                        string_literal(&shape)
+                    )
                 }
             };
         }
