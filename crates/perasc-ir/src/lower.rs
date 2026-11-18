@@ -819,7 +819,8 @@ impl Lowering<'_> {
             // Every other integer in an `i32` or an `i64` (decision 0024).
             CheckTy::Int(kind) => ints::storage(*kind),
             CheckTy::Float(FloatTy::F32) => Ty::F32,
-            CheckTy::Float(FloatTy::F64) | CheckTy::FloatLit => Ty::F64,
+            CheckTy::Float(FloatTy::F64 | FloatTy::Duration | FloatTy::Instant)
+            | CheckTy::FloatLit => Ty::F64,
             CheckTy::Bool => Ty::Bool,
             CheckTy::Void => Ty::Void,
             _ => return None,
@@ -2055,6 +2056,30 @@ impl Lowering<'_> {
                     .into_iter()
                     .next()
                     .unwrap_or_else(|| zero(ty))
+            }
+            // `Duration` and `Instant` (decision 0039, prototype).
+            AstExpr::Field { base, .. } if self.analysis.time_calls.contains_key(&call) => {
+                let time = self.analysis.time_calls.get(&call).copied();
+                let (operand, op, by) = match time {
+                    Some(perasc_check::TimeCall::Make(f)) => match args.first() {
+                        Some(&x) => (x, BinOp::Mul, f),
+                        None => return self.not_yet(span, "method", ty),
+                    },
+                    Some(perasc_check::TimeCall::Read(d)) => (*base, BinOp::Div, d),
+                    _ => return self.not_yet(span, "method", ty),
+                };
+                let value = self.expr(state, operand);
+                Expr {
+                    kind: ExprKind::Binary(
+                        op,
+                        Box::new(value),
+                        Box::new(Expr {
+                            kind: ExprKind::Const(Const::Float(by)),
+                            ty: Ty::F64,
+                        }),
+                    ),
+                    ty: Ty::F64,
+                }
             }
             // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
             AstExpr::Field { name, .. } if self.analysis.math_calls.contains(&call) => {

@@ -43,7 +43,13 @@ impl Checker<'_> {
             Global::Timer => {
                 self.arity(span, name, 2, args.len(), None);
                 if let Some(&delay) = args.first() {
-                    self.expect(delay, &Ty::Int(IntTy::I32));
+                    // Decision 0039: a timer waits a `Duration`.
+                    let wait = if crate::proto_time() == "t0" {
+                        Ty::Int(IntTy::I32)
+                    } else {
+                        Ty::Float(crate::ty::FloatTy::Duration)
+                    };
+                    self.expect(delay, &wait);
                 }
                 if let Some(&f) = args.get(1) {
                     self.arrow(f, &[], None);

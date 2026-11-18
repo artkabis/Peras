@@ -101,6 +101,11 @@ pub enum FloatTy {
     F32,
     /// `f64`, the default for a float literal.
     F64,
+    /// `Duration`, milliseconds underneath (decision 0039, prototype).
+    Duration,
+    /// `Instant`, milliseconds since the page started underneath (decision
+    /// 0039, prototype).
+    Instant,
 }
 
 impl FloatTy {
@@ -110,7 +115,15 @@ impl FloatTy {
         match self {
             Self::F32 => "f32",
             Self::F64 => "f64",
+            Self::Duration => "Duration",
+            Self::Instant => "Instant",
         }
+    }
+
+    /// `Duration` or `Instant`, a number with a meaning (decision 0039).
+    #[must_use]
+    pub const fn is_time(self) -> bool {
+        matches!(self, Self::Duration | Self::Instant)
     }
 
     /// The conversion method to this type.
@@ -118,7 +131,7 @@ impl FloatTy {
     pub const fn conversion(self) -> &'static str {
         match self {
             Self::F32 => "toF32",
-            Self::F64 => "toF64",
+            Self::F64 | Self::Duration | Self::Instant => "toF64",
         }
     }
 }
@@ -228,6 +241,7 @@ impl Ty {
     pub fn conversion(&self) -> Option<&'static str> {
         match self {
             Self::Int(i) => Some(i.conversion()),
+            Self::Float(f) if f.is_time() => None,
             Self::Float(f) => Some(f.conversion()),
             _ => None,
         }

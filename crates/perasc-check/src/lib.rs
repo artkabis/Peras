@@ -20,6 +20,7 @@ mod resources;
 mod scope;
 mod stdlib;
 mod stmt;
+mod time;
 pub mod ty;
 
 use std::collections::{HashMap, HashSet};
@@ -135,6 +136,20 @@ pub struct Analysis {
     /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
     /// read or written (decision 0038, option j1).
     pub json_calls: HashMap<ExprId, JsonCall>,
+    /// The calls of decision 0039's `Duration` and `Instant`, by call
+    /// (prototype).
+    pub time_calls: HashMap<ExprId, TimeCall>,
+}
+
+/// A call of decision 0039: each is arithmetic on a number of milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TimeCall {
+    /// `Duration.seconds(x)` and its kin: `x` times this many milliseconds.
+    Make(f64),
+    /// `d.toSeconds()` and its kin: the milliseconds divided by this.
+    Read(f64),
+    /// `Instant.now()`, in a managed module.
+    Now,
 }
 
 /// A call of decision 0038's option j1: JSON read into or written from a
@@ -341,6 +356,17 @@ pub fn proto_math() -> String {
     match std::env::var("PERAS_PROTO_MATH").as_deref() {
         Ok("a0") => "a0".to_owned(),
         _ => "a2".to_owned(),
+    }
+}
+
+/// Decision 0039's option, for `scripts/bench-time.mjs`: t0 (today), t1
+/// (`Duration` and `Instant`), t2 (t1 and literals with a unit).
+#[must_use]
+pub fn proto_time() -> String {
+    match std::env::var("PERAS_PROTO_TIME").as_deref() {
+        Ok("t1") => "t1".to_owned(),
+        Ok("t2") => "t2".to_owned(),
+        _ => "t0".to_owned(),
     }
 }
 
@@ -588,6 +614,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         mutations: checker.mutations,
         math_calls: checker.math_calls,
         json_calls: checker.json_calls,
+        time_calls: checker.time_calls,
         moves: checker.moves,
         enums: checker
             .enums
@@ -741,6 +768,8 @@ struct Checker<'a> {
     math_calls: HashSet<ExprId>,
     /// See [`Analysis::json_calls`].
     json_calls: HashMap<ExprId, JsonCall>,
+    /// See [`Analysis::time_calls`].
+    time_calls: HashMap<ExprId, TimeCall>,
     /// The `const`s an integer division initialised, by binding: that
     /// division (decision 0034, option d1, prototype).
     int_divisions: HashMap<usize, ExprId>,
@@ -795,6 +824,11 @@ impl<'a> Checker<'a> {
         }
         for float in [FloatTy::F32, FloatTy::F64] {
             types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
+        }
+        if proto_time() != "t0" {
+            for float in [FloatTy::Duration, FloatTy::Instant] {
+                types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
+            }
         }
         types.insert("bool".to_owned(), TypeDef::Plain(Ty::Bool));
         types.insert("String".to_owned(), TypeDef::Plain(Ty::String));
@@ -852,6 +886,7 @@ impl<'a> Checker<'a> {
             mutations: Vec::new(),
             math_calls: HashSet::new(),
             json_calls: HashMap::new(),
+            time_calls: HashMap::new(),
             int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),

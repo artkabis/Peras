@@ -40,6 +40,20 @@ impl Checker<'_> {
             return true;
         }
         let span = self.ast.expr(id).span;
+        // Decision 0039: a number is no duration, nor an instant; its unit
+        // is written, `Duration.ms(300)`.
+        if let Ty::Float(time) = expected
+            && time.is_time()
+            && !matches!(actual, Ty::Float(f) if f.is_time())
+            && matches!(
+                actual,
+                Ty::IntLit | Ty::FloatLit | Ty::Int(_) | Ty::Float(_)
+            )
+        {
+            let written = self.slice(span).to_owned();
+            self.report(errors::time_number(span, time.name(), &written));
+            return false;
+        }
         match (actual, expected) {
             (Ty::IntLit, Ty::Int(int)) => {
                 self.range_check(id, *int);
@@ -569,6 +583,9 @@ impl Checker<'_> {
         let operand_hint = if op.is_comparison() { None } else { expected };
         let lt = self.infer(lhs, operand_hint);
         let rt = self.infer(rhs, operand_hint.or(Some(&lt)));
+        if let Some(ty) = self.time_binary(op, (lhs, &lt), (rhs, &rt), span) {
+            return ty;
+        }
         // An operand the operator cannot take at all: say so, rather than
         // "mismatched types" against the other operand.
         for (side, ty) in [(lhs, &lt), (rhs, &rt)] {
@@ -696,19 +713,7 @@ impl Checker<'_> {
                     span,
                     expected,
                 };
-                if let Some(ty) = self.math_call(&site, *base, name) {
-                    return ty;
-                }
-                if let Some(ty) = self.rc_new(&site, *base, name) {
-                    return ty;
-                }
-                if let Some(ty) = self.collection_new(&site, *base, name) {
-                    return ty;
-                }
-                if let Some(ty) = self.group_new(*base, name, args, span) {
-                    return ty;
-                }
-                if let Some(ty) = self.json_static(&site, *base, name) {
+                if let Some(ty) = self.named_call(&site, *base, name, span) {
                     return ty;
                 }
                 if let Some(ty) = self.static_method(&site, *base, name) {
@@ -724,7 +729,10 @@ impl Checker<'_> {
                 if let Some(ty) = self.user_method(&site, *base, &receiver, name) {
                     return ty;
                 }
-                if let Some(ty) = self.json_method(&site, &receiver, name) {
+                if let Some(ty) = self
+                    .time_method(&site, &receiver, name)
+                    .or_else(|| self.json_method(&site, &receiver, name))
+                {
                     return ty;
                 }
                 // `push` and `pop` change the array, `set` and `delete` the map: it must
@@ -1352,5 +1360,23 @@ impl Checker<'_> {
             }
             _ => None,
         }
+    }
+
+    /// A call on a name of the language, not of the program: `Math.f(x)`,
+    /// `Rc.new(v)`, `Map.new()`, `Group.new()`, `T.fromJson(text)`,
+    /// `Duration.seconds(x)`.
+    fn named_call(
+        &mut self,
+        site: &crate::methods::CallSite<'_>,
+        base: ExprId,
+        name: &perasc_syntax::ast::Ident,
+        span: Span,
+    ) -> Option<Ty> {
+        self.math_call(site, base, name)
+            .or_else(|| self.rc_new(site, base, name))
+            .or_else(|| self.collection_new(site, base, name))
+            .or_else(|| self.group_new(base, name, site.args, span))
+            .or_else(|| self.json_static(site, base, name))
+            .or_else(|| self.time_static(site, base, name))
     }
 }
