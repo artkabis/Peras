@@ -594,6 +594,36 @@ impl Parser<'_> {
     /// An integer or float literal; `E0107` when it does not fit in 64 bits.
     fn number(&mut self, token: Token) -> ExprId {
         let text = self.text(token);
+        // `300ms` is `Duration.ms(300)` (decision 0039, t2, prototype).
+        let cut = text.find(|c: char| {
+            c.is_ascii_alphabetic() && !matches!(c, 'e' | 'E' | 'x' | 'X' | 'o' | 'O' | 'b' | 'B')
+        });
+        let unit = cut.and_then(|i| text.get(i..)).and_then(crate::unit_suffix);
+        if let (Some(i), Some(method)) = (cut, unit) {
+            let digits: String = text
+                .get(..i)
+                .unwrap_or("")
+                .chars()
+                .filter(|&c| c != '_')
+                .collect();
+            let value = digits.parse::<f64>().unwrap_or(f64::INFINITY);
+            let number = self.alloc(ExprKind::Float(value), token.span);
+            let owner = self.ast.interner.intern("Duration");
+            let base = self.alloc(ExprKind::Name(owner), token.span);
+            let name = Ident {
+                symbol: self.ast.interner.intern(method),
+                span: token.span,
+            };
+            let callee = self.alloc(ExprKind::Field { base, name }, token.span);
+            return self.alloc(
+                ExprKind::Call {
+                    callee,
+                    types: Vec::new(),
+                    args: vec![number],
+                },
+                token.span,
+            );
+        }
         let digits: String = text.chars().filter(|&c| c != '_').collect();
         if token.kind == TokenKind::Float {
             let value = digits.parse::<f64>().unwrap_or(f64::INFINITY);
