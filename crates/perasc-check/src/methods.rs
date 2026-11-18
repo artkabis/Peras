@@ -868,7 +868,7 @@ impl<'a> Checker<'a> {
     }
 
     /// `T.fromJson(text)`, `T` a structure or an enumeration of the program
-    /// without a method of that name (decision 0038, option j1, prototype):
+    /// without a method of that name (decision 0038, option j1):
     /// a `Result<T, String>`, the error naming where and what.
     pub(crate) fn json_from(
         &mut self,
@@ -876,7 +876,7 @@ impl<'a> Checker<'a> {
         base: ExprId,
         name: &Ident,
     ) -> Option<Ty> {
-        if crate::proto_json() != "j1" || self.name(name.symbol) != "fromJson" {
+        if self.name(name.symbol) != "fromJson" {
             return None;
         }
         let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
@@ -916,10 +916,9 @@ impl<'a> Checker<'a> {
     }
 
     /// `x.toJson()`, `x` a structure or an enumeration of the program without
-    /// a method of that name (decision 0038, option j1, prototype).
+    /// a method of that name (decision 0038, option j1).
     pub(crate) fn json_to(&mut self, at: &CallSite<'_>, receiver: &Ty, name: &Ident) -> Option<Ty> {
-        if crate::proto_json() != "j1"
-            || self.name(name.symbol) != "toJson"
+        if self.name(name.symbol) != "toJson"
             || !matches!(receiver, Ty::Struct(..) | Ty::Enum(..) | Ty::Array(_))
         {
             return None;
@@ -939,72 +938,7 @@ impl<'a> Checker<'a> {
         Some(Ty::String)
     }
 
-    /// `Json.parse(text)`, `Json` the enumeration of option j2's prelude
-    /// (decision 0038, prototype): a `Result<Json, String>`.
-    pub(crate) fn json_parse(
-        &mut self,
-        at: &CallSite<'_>,
-        base: ExprId,
-        name: &Ident,
-    ) -> Option<Ty> {
-        if crate::proto_json() != "j2" || self.name(name.symbol) != "parse" {
-            return None;
-        }
-        let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
-            return None;
-        };
-        if self.name(symbol) != "Json" {
-            return None;
-        }
-        let index = self.scopes.lookup(symbol)?;
-        if !matches!(self.scopes.bindings.get(index)?.kind, Kind::Enum(_)) {
-            return None;
-        }
-        if let Some(binding) = self.scopes.bindings.get_mut(index) {
-            binding.used = true;
-        }
-        self.resolved.insert(base, index);
-        let ty = self
-            .scopes
-            .bindings
-            .get(index)
-            .map_or(Ty::Error, |b| b.ty.clone());
-        self.check_args(at.args, &[Ty::String]);
-        if at.args.len() != 1 {
-            self.report(errors::argument_count(
-                at.span,
-                "parse",
-                1,
-                at.args.len(),
-                None,
-            ));
-        }
-        self.json_calls.insert(at.call, crate::JsonCall::Parse);
-        Some(Ty::Result(Box::new(ty), Box::new(Ty::String)))
-    }
-
-    /// `json.toText()` on option j2's `Json` (decision 0038, prototype).
-    pub(crate) fn json_text(
-        &mut self,
-        at: &CallSite<'_>,
-        receiver: &Ty,
-        name: &Ident,
-    ) -> Option<Ty> {
-        let Ty::Enum(id, _) = receiver else {
-            return None;
-        };
-        if crate::proto_json() != "j2"
-            || self.name(name.symbol) != "toText"
-            || self.enums.get(id.0).is_none_or(|e| e.name != "Json")
-        {
-            return None;
-        }
-        self.check_args(at.args, &[]);
-        self.json_calls.insert(at.call, crate::JsonCall::Text);
-        Some(Ty::String)
-    }
-
-    /// `T.fromJson(text)` (option j1) or `Json.parse(text)` (option j2).
+    /// `T.fromJson(text)` (decision 0038, j1).
     pub(crate) fn json_static(
         &mut self,
         at: &CallSite<'_>,
@@ -1012,10 +946,9 @@ impl<'a> Checker<'a> {
         name: &Ident,
     ) -> Option<Ty> {
         self.json_from(at, base, name)
-            .or_else(|| self.json_parse(at, base, name))
     }
 
-    /// `x.toJson()` (option j1) or `json.toText()` (option j2).
+    /// `x.toJson()` (decision 0038, j1).
     pub(crate) fn json_method(
         &mut self,
         at: &CallSite<'_>,
@@ -1023,6 +956,5 @@ impl<'a> Checker<'a> {
         name: &Ident,
     ) -> Option<Ty> {
         self.json_to(at, receiver, name)
-            .or_else(|| self.json_text(at, receiver, name))
     }
 }

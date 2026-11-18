@@ -67,7 +67,6 @@ pub fn check_file(path: &Path, source: &str) -> Checked {
     if Mode::from_path(path) != Some(Mode::Managed) {
         return check(source);
     }
-    let source = &*perasc_check::with_json_prelude(source);
     let parsed = perasc_syntax::parse(source);
     if !parsed.diagnostics.is_empty() {
         return Checked::capped(parsed.diagnostics);
@@ -386,7 +385,6 @@ pub fn build_managed(
     debug: bool,
     localizer: &Localizer,
 ) -> Result<ManagedOutput, ToolError> {
-    let source = &*perasc_check::with_json_prelude(source);
     let parsed = perasc_syntax::parse(source);
     if !parsed.diagnostics.is_empty() {
         return Err(ToolError::Diagnostics(Checked::capped(parsed.diagnostics)));

@@ -1,6 +1,6 @@
 # Writing the programs of decision 0038: the errors met
 
-Each program written once, as a user would, then built; every error the compiler reported before it built is listed here, with what fixed it. The counts of lines and notions are made by `scripts/bench-json.mjs`.
+Each program written once, as a user would, then built; every error the compiler reported before it built is listed here, with what fixed it. The counts of lines are made by `scripts/bench-json.mjs`. The programs of j2 left the repository once j1 was chosen; they are in git at commit 33d5838.
 
 | Option | Program | Errors met                                                                                                                              |
 | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |

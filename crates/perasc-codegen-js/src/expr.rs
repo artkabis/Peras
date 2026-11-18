@@ -663,7 +663,7 @@ impl Module<'_> {
         if let Some(js) = self.group_new(id, base, name) {
             return js;
         }
-        // `T.fromJson(text)` and `x.toJson()` (decision 0038, j1, prototype).
+        // `T.fromJson(text)` and `x.toJson()` (decision 0038, j1).
         if let Some(call) = self.analysis.json_calls.get(&id).cloned() {
             return match call {
                 perasc_check::JsonCall::From(ty) => {
@@ -674,16 +674,6 @@ impl Module<'_> {
                         "{helper}({text}, {}, () => {shape})",
                         string_literal(&shape)
                     )
-                }
-                perasc_check::JsonCall::Parse => {
-                    let text = self.exprs(args).into_iter().next().unwrap_or_default();
-                    let helper = self.helper("$jsonParse");
-                    format!("{helper}({text})")
-                }
-                perasc_check::JsonCall::Text => {
-                    let value = self.lent(base);
-                    let helper = self.helper("$jsonText");
-                    format!("{helper}({value})")
                 }
                 perasc_check::JsonCall::To(ty) => {
                     let value = self.lent(base);

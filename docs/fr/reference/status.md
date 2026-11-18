@@ -65,6 +65,7 @@ Chaque méthode intégrée, avec son état, est dans la [référence des méthod
 | le DOM, les évènements, un canvas, les minuteurs, `fetch`, le stockage ([navigateur](browser.md))                                       | <span class="status compiled">compilé</span>, en mode géré                       |
 | écouteurs et minuteurs comme ressources, libérés avec leur propriétaire ou quand ils sont remplacés, fuites signalées en debug          | <span class="status compiled">compilé</span>, en mode géré                       |
 | blocs `extern` : JavaScript et npm appelés avec des types déclarés, chaque valeur vérifiée                                              | <span class="status compiled">compilé</span>, en mode géré                       |
+| JSON, `T.fromJson(text)` et `x.toJson()`, un texte invalide une erreur qui nomme le champ ([décision 0038](../decisions/0038-json.md))  | <span class="status compiled">compilé</span>, en mode géré                       |
 | fonctions fléchées à instructions, qui capturent ce qu’elles utilisent, comme valeurs ([guide](../guide/managed.md#fonctions-fléchées)) | <span class="status compiled">compilé</span>, en mode géré                       |
 | prise en charge des éditeurs (LSP), formateur, lanceur de tests                                                                         | <span class="status planned">prévu</span>                                        |
 

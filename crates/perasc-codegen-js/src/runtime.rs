@@ -17,7 +17,7 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $trap = (what) => { throw new WebAssembly.RuntimeError(what); };",
     ),
-    // Decision 0038's option j1, prototyped: JSON read into a value of the
+    // Decision 0038, j1: JSON read into a value of the
     // program, the path of what is wrong named, and written from one.
     (
         "$fromJson",
@@ -37,20 +37,6 @@ const $fromJson = (text, key, make) => { let r = $jsonReaders.get(key); if (r ==
 const $jsonAsIs = (s) => (typeof s === "string" ? s !== "i64" && s !== "u64" : (s[0] === "array" && $jsonAsIs(s[1])) || (s[0] === "tuple" && s[1].every($jsonAsIs)) || (s[0] === "struct" && Object.values(s[1]).every($jsonAsIs)));
 const $jsonWriters = new Map();
 const $toJson = (v, key, make) => { let w = $jsonWriters.get(key); if (w === undefined) { const s = make(); w = $jsonAsIs(s) ? (x) => JSON.stringify(x) : (x) => JSON.stringify($jsonOut(s, x)); $jsonWriters.set(key, w); } return w(v); };"#,
-    ),
-    // Decision 0038's option j2, prototyped: a JSON text as a `Json` value,
-    // and back.
-    (
-        "$jsonParse",
-        &[],
-        r#"const $jsonWrap = (v) => (v === null ? { kind: "Null", values: [] } : typeof v === "boolean" ? { kind: "Bool", values: [v] } : typeof v === "number" ? { kind: "Number", values: [v] } : typeof v === "string" ? { kind: "Text", values: [v] } : Array.isArray(v) ? { kind: "List", values: [v.map($jsonWrap)] } : { kind: "Object", values: [new Map(Object.keys(v).map((k) => [k, $jsonWrap(v[k])]))] });
-const $jsonParse = (text) => { let v; try { v = JSON.parse(text); } catch (e) { return { kind: "Err", values: [`the text: not JSON, ${e.message}`] }; } return { kind: "Ok", values: [$jsonWrap(v)] }; };"#,
-    ),
-    (
-        "$jsonText",
-        &[],
-        r#"const $jsonPlain = (j) => { switch (j.kind) { case "Null": return null; case "List": return j.values[0].map($jsonPlain); case "Object": { const o = {}; for (const [k, x] of j.values[0]) o[k] = $jsonPlain(x); return o; } default: return j.values[0]; } };
-const $jsonText = (j) => JSON.stringify($jsonPlain(j));"#,
     ),
     // A shared value's box (decision 0033): one more holds it; a write
     // through a holder of a box others hold gives that holder its own.

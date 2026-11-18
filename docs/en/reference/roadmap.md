@@ -49,7 +49,7 @@ The everyday tools, with the same rules: explicit types, no hidden allocation, e
 | collections | ~~`Map<K, V>`, `Set<T>`~~ (done, [decision 0005](../decisions/0005-maps-and-sets.md); keys of structures and floats later), `Deque<T>`                                                                      |
 | numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                                   |
 | time        | durations and instants                                                                                                                                                                                      |
-| data        | JSON, text encoding, bytes                                                                                                                                                                                  |
+| data        | ~~JSON~~ (done in managed modules, [decision 0038](../decisions/0038-json.md); owned modules next), text encoding, bytes                                                                                    |
 
 ```peras build
 export fn words(text: String): i32 {

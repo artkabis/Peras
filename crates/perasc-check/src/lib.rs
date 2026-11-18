@@ -133,129 +133,18 @@ pub struct Analysis {
     /// option a2).
     pub math_calls: HashSet<ExprId>,
     /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
-    /// read or written (decision 0038, option j1, prototype).
+    /// read or written (decision 0038, option j1).
     pub json_calls: HashMap<ExprId, JsonCall>,
 }
 
-/// A call of decision 0038's option j1.
+/// A call of decision 0038's option j1: JSON read into or written from a
+/// value of the program.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonCall {
     /// `T.fromJson(text)`: a `Result<T, String>`.
     From(Ty),
     /// `x.toJson()`: a `String`.
     To(Ty),
-    /// `Json.parse(text)`: a `Result<Json, String>` (option j2).
-    Parse,
-    /// `json.toText()`: a `String` (option j2).
-    Text,
-}
-
-/// Decision 0038's option j2, prototyped: the `Json` value and its readers,
-/// written in Peras, added after a managed module's source that names
-/// `Json` and declares none, so that its own positions do not move.
-pub const JSON_PRELUDE: &str = "
-
-enum Json {
-  Null,
-  Bool(bool),
-  Number(number),
-  Text(String),
-  List(Array<Json>),
-  Object(Map<String, Json>),
-}
-
-impl Json {
-  fn get(self, key: String): Option<Json> {
-    match (self) {
-      Object(m) => {
-        return m.get(key);
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn at(self, i: i32): Option<Json> {
-    match (self) {
-      List(xs) => {
-        if (i >= 0 && i < xs.length) {
-          return Some(xs[i]);
-        }
-        return None;
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn asNumber(self): Option<number> {
-    match (self) {
-      Number(n) => {
-        return Some(n);
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn asText(self): Option<String> {
-    match (self) {
-      Text(s) => {
-        return Some(s);
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn asBool(self): Option<bool> {
-    match (self) {
-      Bool(b) => {
-        return Some(b);
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn asList(self): Option<Array<Json>> {
-    match (self) {
-      List(xs) => {
-        return Some(xs);
-      }
-      _ => {
-        return None;
-      }
-    }
-  }
-
-  fn isNull(self): bool {
-    match (self) {
-      Null => {
-        return true;
-      }
-      _ => {
-        return false;
-      }
-    }
-  }
-}
-";
-
-/// A managed module's source, with [`JSON_PRELUDE`] after it under option
-/// j2 when it names `Json` and declares none.
-#[must_use]
-pub fn with_json_prelude(source: &str) -> std::borrow::Cow<'_, str> {
-    if proto_json() == "j2" && source.contains("Json") && !source.contains("enum Json") {
-        std::borrow::Cow::Owned(format!("{source}{JSON_PRELUDE}"))
-    } else {
-        std::borrow::Cow::Borrowed(source)
-    }
 }
 
 /// A declared name, for code generation.
@@ -452,17 +341,6 @@ pub fn proto_math() -> String {
     match std::env::var("PERAS_PROTO_MATH").as_deref() {
         Ok("a0") => "a0".to_owned(),
         _ => "a2".to_owned(),
-    }
-}
-
-/// Decision 0038's option, for `scripts/bench-json.mjs`: j0 (today), j1
-/// (`T.fromJson` and `x.toJson`, derived), j2 (a `Json` value).
-#[must_use]
-pub fn proto_json() -> String {
-    match std::env::var("PERAS_PROTO_JSON").as_deref() {
-        Ok("j1") => "j1".to_owned(),
-        Ok("j2") => "j2".to_owned(),
-        _ => "j0".to_owned(),
     }
 }
 

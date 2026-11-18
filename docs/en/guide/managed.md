@@ -259,6 +259,48 @@ Peras checks every value JavaScript gives back against the type declared, in pro
 
 The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as JavaScript imports it: Vite resolves it, and `perasc build` keeps it as written.
 
+## JSON
+
+A structure or an enumeration of the module reads itself from a JSON text, and any value of one writes itself as one ([decision 0038](../decisions/0038-json.md)):
+
+```apeiron build
+struct Server {
+  host: String,
+  port: i32,
+}
+
+enum Theme {
+  Light,
+  Dark,
+}
+
+struct Settings {
+  title: String,
+  theme: Theme,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+export fn describe(text: String): String {
+  match (Settings.fromJson(text)) {
+    Ok(s) => {
+      return `${s.title}: ${s.servers.length} servers`;
+    }
+    Err(e) => {
+      return `invalid: ${e}`;
+    }
+  }
+}
+
+export fn save(s: Settings): String {
+  return s.toJson();
+}
+```
+
+`T.fromJson(text)` gives a `Result<T, String>`. A text that is not JSON, or whose value is not a `T`, is an `Err` the program tests, which names where and what: `servers[0].port: expected an integer from -2147483648 to 2147483647, found "80"`. A missing field is an error unless it is an option; a number that does not fit its integer type is refused, never rounded. An enumeration is written as JSON writes one: a variant without data as its name, `"Dark"`; one with data as an object of one key, `{ "Circle": [2.5] }`. A map takes its keys as an object's; a 64-bit integer is read only when a JSON number holds it exactly.
+
+The reader of each type is made once, the first time it is used: reading 100,000 records takes the time of `JSON.parse` followed by the fields checked by hand, `extern` or not. An owned module cannot read JSON yet ([E0900](../errors/E0900.md)): its application parses the text and passes the object, which the loader checks.
+
 ## Not yet
 
 - **More of the browser, typed**: forms, `requestAnimationFrame`, WebSockets and workers, until then declared in an `extern` block.

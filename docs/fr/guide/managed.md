@@ -259,6 +259,48 @@ Peras vérifie chaque valeur que JavaScript rend contre le type déclaré, en pr
 
 Le chemin est un fichier, `"./chart.js"`, ou un paquet npm, `"date-fns"`, importé comme JavaScript l’importe : Vite le résout, et `perasc build` le garde tel qu’il est écrit.
 
+## JSON
+
+Une structure ou une énumération du module se lit depuis un texte JSON, et toute valeur de l’une d’elles s’écrit en JSON ([décision 0038](../decisions/0038-json.md)) :
+
+```apeiron build
+struct Server {
+  host: String,
+  port: i32,
+}
+
+enum Theme {
+  Light,
+  Dark,
+}
+
+struct Settings {
+  title: String,
+  theme: Theme,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+export fn describe(text: String): String {
+  match (Settings.fromJson(text)) {
+    Ok(s) => {
+      return `${s.title}: ${s.servers.length} servers`;
+    }
+    Err(e) => {
+      return `invalid: ${e}`;
+    }
+  }
+}
+
+export fn save(s: Settings): String {
+  return s.toJson();
+}
+```
+
+`T.fromJson(text)` donne un `Result<T, String>`. Un texte qui n’est pas du JSON, ou dont la valeur n’est pas un `T`, est un `Err` que le programme teste, qui dit où et quoi : `servers[0].port: expected an integer from -2147483648 to 2147483647, found "80"`. Un champ manquant est une erreur, sauf s’il est une option ; un nombre qui ne tient pas dans son type entier est refusé, jamais arrondi. Une énumération s’écrit comme JSON en écrit une : une variante sans données par son nom, `"Dark"` ; une avec données par un objet d’une clé, `{ "Circle": [2.5] }`. Une table prend ses clés comme celles d’un objet ; un entier de 64 bits n’est lu que si un nombre JSON le tient exactement.
+
+Le lecteur de chaque type est fait une fois, la première fois qu’il sert : lire 100 000 enregistrements prend le temps de `JSON.parse` suivi des champs vérifiés à la main, `extern` ou non. Un module owned ne peut pas encore lire de JSON ([E0900](../errors/E0900.md)) : son application analyse le texte et passe l’objet, que le chargeur vérifie.
+
 ## Pas encore
 
 - **Davantage du navigateur, typé** : les formulaires, `requestAnimationFrame`, les WebSockets et les workers, d’ici là déclarés dans un bloc `extern`.
