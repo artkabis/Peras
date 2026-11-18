@@ -671,6 +671,16 @@ impl Module<'_> {
                     let helper = self.helper("$fromJson");
                     format!("{helper}({text}, {})", self.shape(&ty, 0))
                 }
+                perasc_check::JsonCall::Parse => {
+                    let text = self.exprs(args).into_iter().next().unwrap_or_default();
+                    let helper = self.helper("$jsonParse");
+                    format!("{helper}({text})")
+                }
+                perasc_check::JsonCall::Text => {
+                    let value = self.lent(base);
+                    let helper = self.helper("$jsonText");
+                    format!("{helper}({value})")
+                }
                 perasc_check::JsonCall::To(ty) => {
                     let value = self.lent(base);
                     let helper = self.helper("$toJson");

@@ -711,6 +711,9 @@ impl Checker<'_> {
                 if let Some(ty) = self.json_from(&site, *base, name) {
                     return ty;
                 }
+                if let Some(ty) = self.json_parse(&site, *base, name) {
+                    return ty;
+                }
                 if let Some(ty) = self.static_method(&site, *base, name) {
                     return ty;
                 }
@@ -725,6 +728,9 @@ impl Checker<'_> {
                     return ty;
                 }
                 if let Some(ty) = self.json_to(&site, &receiver, name) {
+                    return ty;
+                }
+                if let Some(ty) = self.json_text(&site, &receiver, name) {
                     return ty;
                 }
                 // `push` and `pop` change the array, `set` and `delete` the map: it must

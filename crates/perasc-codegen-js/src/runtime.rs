@@ -32,6 +32,20 @@ const $fromJson = (text, s) => { let v; try { v = JSON.parse(text); } catch (e) 
         r#"const $jsonOut = (s, v) => { if (typeof s === "string") return typeof v === "bigint" ? Number(v) : v; switch (s[0]) { case "array": return v.map((x) => $jsonOut(s[1], x)); case "set": return [...v].map((x) => $jsonOut(s[1], x)); case "option": return v === undefined ? null : $jsonOut(s[1], v); case "map": { const o = {}; for (const [k, x] of v) o[String(k)] = $jsonOut(s[2], x); return o; } case "tuple": return s[1].map((e, i) => $jsonOut(e, v[i])); case "struct": { const o = {}; for (const k of Object.keys(s[1])) o[k] = $jsonOut(s[1][k], v[k]); return o; } case "enum": return v.values.length === 0 ? v.kind : { [v.kind]: s[1][v.kind].map((e, i) => $jsonOut(e, v.values[i])) }; default: return v; } };
 const $toJson = (v, s) => JSON.stringify($jsonOut(s, v));"#,
     ),
+    // Decision 0038's option j2, prototyped: a JSON text as a `Json` value,
+    // and back.
+    (
+        "$jsonParse",
+        &[],
+        r#"const $jsonWrap = (v) => (v === null ? { kind: "Null", values: [] } : typeof v === "boolean" ? { kind: "Bool", values: [v] } : typeof v === "number" ? { kind: "Number", values: [v] } : typeof v === "string" ? { kind: "Text", values: [v] } : Array.isArray(v) ? { kind: "List", values: [v.map($jsonWrap)] } : { kind: "Object", values: [new Map(Object.keys(v).map((k) => [k, $jsonWrap(v[k])]))] });
+const $jsonParse = (text) => { let v; try { v = JSON.parse(text); } catch (e) { return { kind: "Err", values: [`the text: not JSON, ${e.message}`] }; } return { kind: "Ok", values: [$jsonWrap(v)] }; };"#,
+    ),
+    (
+        "$jsonText",
+        &[],
+        r#"const $jsonPlain = (j) => { switch (j.kind) { case "Null": return null; case "List": return j.values[0].map($jsonPlain); case "Object": { const o = {}; for (const [k, x] of j.values[0]) o[k] = $jsonPlain(x); return o; } default: return j.values[0]; } };
+const $jsonText = (j) => JSON.stringify($jsonPlain(j));"#,
+    ),
     // A shared value's box (decision 0033): one more holds it; a write
     // through a holder of a box others hold gives that holder its own.
     (

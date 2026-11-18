@@ -144,6 +144,118 @@ pub enum JsonCall {
     From(Ty),
     /// `x.toJson()`: a `String`.
     To(Ty),
+    /// `Json.parse(text)`: a `Result<Json, String>` (option j2).
+    Parse,
+    /// `json.toText()`: a `String` (option j2).
+    Text,
+}
+
+/// Decision 0038's option j2, prototyped: the `Json` value and its readers,
+/// written in Peras, added after a managed module's source that names
+/// `Json` and declares none, so that its own positions do not move.
+pub const JSON_PRELUDE: &str = "
+
+enum Json {
+  Null,
+  Bool(bool),
+  Number(number),
+  Text(String),
+  List(Array<Json>),
+  Object(Map<String, Json>),
+}
+
+impl Json {
+  fn get(self, key: String): Option<Json> {
+    match (self) {
+      Object(m) => {
+        return m.get(key);
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn at(self, i: i32): Option<Json> {
+    match (self) {
+      List(xs) => {
+        if (i >= 0 && i < xs.length) {
+          return Some(xs[i]);
+        }
+        return None;
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn asNumber(self): Option<number> {
+    match (self) {
+      Number(n) => {
+        return Some(n);
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn asText(self): Option<String> {
+    match (self) {
+      Text(s) => {
+        return Some(s);
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn asBool(self): Option<bool> {
+    match (self) {
+      Bool(b) => {
+        return Some(b);
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn asList(self): Option<Array<Json>> {
+    match (self) {
+      List(xs) => {
+        return Some(xs);
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+
+  fn isNull(self): bool {
+    match (self) {
+      Null => {
+        return true;
+      }
+      _ => {
+        return false;
+      }
+    }
+  }
+}
+";
+
+/// A managed module's source, with [`JSON_PRELUDE`] after it under option
+/// j2 when it names `Json` and declares none.
+#[must_use]
+pub fn with_json_prelude(source: &str) -> std::borrow::Cow<'_, str> {
+    if proto_json() == "j2" && source.contains("Json") && !source.contains("enum Json") {
+        std::borrow::Cow::Owned(format!("{source}{JSON_PRELUDE}"))
+    } else {
+        std::borrow::Cow::Borrowed(source)
+    }
 }
 
 /// A declared name, for code generation.
