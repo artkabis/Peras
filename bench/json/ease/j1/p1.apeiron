@@ -1,0 +1,30 @@
+// P1 of decision 0038, option j1: settings read from a text into a
+// structure, `Settings.fromJson`, derived by the compiler.
+struct Server {
+  host: String,
+  port: i32,
+}
+
+enum Theme {
+  Light,
+  Dark,
+}
+
+struct Settings {
+  title: String,
+  retries: i32,
+  theme: Theme,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+export fn describe(text: String): String {
+  match (Settings.fromJson(text)) {
+    Ok(s) => {
+      return `${s.title}: ${s.servers.length} servers, ${s.retries} retries`;
+    }
+    Err(e) => {
+      return `invalid: ${e}`;
+    }
+  }
+}

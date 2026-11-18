@@ -1,0 +1,27 @@
+// P2 of decision 0038, option j1: records read from a text, one field
+// summed.
+struct Record {
+  id: i32,
+  name: String,
+  price: number,
+  tags: Array<String>,
+}
+
+struct Records {
+  items: Array<Record>,
+}
+
+export fn total(text: String): number {
+  let sum = 0.0;
+  match (Records.fromJson(text)) {
+    Ok(r) => {
+      for (const item of r.items) {
+        sum += item.price;
+      }
+    }
+    Err(e) => {
+      return -1.0;
+    }
+  }
+  return sum;
+}

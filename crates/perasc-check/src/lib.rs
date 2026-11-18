@@ -132,6 +132,18 @@ pub struct Analysis {
     /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
     /// option a2).
     pub math_calls: HashSet<ExprId>,
+    /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
+    /// read or written (decision 0038, option j1, prototype).
+    pub json_calls: HashMap<ExprId, JsonCall>,
+}
+
+/// A call of decision 0038's option j1.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsonCall {
+    /// `T.fromJson(text)`: a `Result<T, String>`.
+    From(Ty),
+    /// `x.toJson()`: a `String`.
+    To(Ty),
 }
 
 /// A declared name, for code generation.
@@ -328,6 +340,17 @@ pub fn proto_math() -> String {
     match std::env::var("PERAS_PROTO_MATH").as_deref() {
         Ok("a0") => "a0".to_owned(),
         _ => "a2".to_owned(),
+    }
+}
+
+/// Decision 0038's option, for `scripts/bench-json.mjs`: j0 (today), j1
+/// (`T.fromJson` and `x.toJson`, derived), j2 (a `Json` value).
+#[must_use]
+pub fn proto_json() -> String {
+    match std::env::var("PERAS_PROTO_JSON").as_deref() {
+        Ok("j1") => "j1".to_owned(),
+        Ok("j2") => "j2".to_owned(),
+        _ => "j0".to_owned(),
     }
 }
 
@@ -574,6 +597,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         changed: checker.changed,
         mutations: checker.mutations,
         math_calls: checker.math_calls,
+        json_calls: checker.json_calls,
         moves: checker.moves,
         enums: checker
             .enums
@@ -725,6 +749,8 @@ struct Checker<'a> {
     mutations: Vec<(usize, Span)>,
     /// See [`Analysis::math_calls`].
     math_calls: HashSet<ExprId>,
+    /// See [`Analysis::json_calls`].
+    json_calls: HashMap<ExprId, JsonCall>,
     /// The `const`s an integer division initialised, by binding: that
     /// division (decision 0034, option d1, prototype).
     int_divisions: HashMap<usize, ExprId>,
@@ -835,6 +861,7 @@ impl<'a> Checker<'a> {
             changed: HashSet::new(),
             mutations: Vec::new(),
             math_calls: HashSet::new(),
+            json_calls: HashMap::new(),
             int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),

@@ -663,6 +663,21 @@ impl Module<'_> {
         if let Some(js) = self.group_new(id, base, name) {
             return js;
         }
+        // `T.fromJson(text)` and `x.toJson()` (decision 0038, j1, prototype).
+        if let Some(call) = self.analysis.json_calls.get(&id).cloned() {
+            return match call {
+                perasc_check::JsonCall::From(ty) => {
+                    let text = self.exprs(args).into_iter().next().unwrap_or_default();
+                    let helper = self.helper("$fromJson");
+                    format!("{helper}({text}, {})", self.shape(&ty, 0))
+                }
+                perasc_check::JsonCall::To(ty) => {
+                    let value = self.lent(base);
+                    let helper = self.helper("$toJson");
+                    format!("{helper}({value}, {})", self.shape(&ty, 0))
+                }
+            };
+        }
         // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
         if self.analysis.math_calls.contains(&id)
             && let Some((&first, rest)) = args.split_first()

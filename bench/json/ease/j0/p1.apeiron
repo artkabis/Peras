@@ -33,13 +33,13 @@ extern from "./json.js" {
 }
 
 fn theme(name: String): Result<Theme, String> {
-  if (name == "light") {
+  if (name == "Light") {
     return Ok(Theme.Light);
   }
-  if (name == "dark") {
+  if (name == "Dark") {
     return Ok(Theme.Dark);
   }
-  return Err(`theme: expected "light" or "dark", found "${name}"`);
+  return Err(`theme: expected "Light" or "Dark", found "${name}"`);
 }
 
 export fn read(text: String): Result<Settings, String> {
