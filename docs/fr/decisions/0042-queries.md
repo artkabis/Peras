@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0042-queries.md](../../en/decisions/0042-queries.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet. C’est le troisième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage : « une extension d’éditeur et un serveur de langage ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `ca5dd0e` ; proposition : q2. C’est le troisième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage : « une extension d’éditeur et un serveur de langage ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -50,3 +50,33 @@ q1 et q2 sont prototypées derrière `PERAS_PROTO_QUERY` ; sans elle, `perasc` e
 `node scripts/bench-query.mjs` exécute les points 1 à 4 ; `--check` vérifie les réponses des points 1 et 2 et tourne avec chaque vérification du projet.
 
 ## Registre
+
+### La mesure (2026-11-23)
+
+`node scripts/bench-query.mjs` au commit `ca5dd0e`, perasc construit pour la production, les tables complètes dans [`bench/query/RESULTS.md`](../../../bench/query/RESULTS.md).
+
+|                                                                           | q1, un processus par requête                                               | q2, un processus par session                                                                                                     |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Bonnes réponses, sur 50                                                | 50                                                                         | 50                                                                                                                               |
+| 2. Un fichier en cours de frappe, sur 10                                  | 10                                                                         | 10                                                                                                                               |
+| 3. Une requête sur 53 lignes, médiane                                     | 3,0 à 3,7 ms                                                               | 0,1 à 0,4 ms                                                                                                                     |
+| 3. Une requête sur 356 lignes, médiane (95e centile)                      | 7,1 à 11,5 ms (jusqu’à 22,3)                                               | 0,1 à 2,2 ms (jusqu’à 4,4)                                                                                                       |
+| 3. Une requête sur 5 340 lignes, médiane (95e centile)                    | 72 à 139 ms (jusqu’à 165)                                                  | 0,1 à 27 ms ; un texte vérifié la première fois 63 ms                                                                            |
+| 3. 100 modifications, chacune suivie de `diagnostics` et `hover`, médiane | 2 046 ms (1 915 à 2 087)                                                   | 862 ms (819 à 954), 2,4 fois plus vite                                                                                           |
+| 3. Temps CPU sur temps réel, même scénario                                | 1,00                                                                       | 0,97                                                                                                                             |
+| 4. Pic de mémoire                                                         | 5,5 Mo, un processus sur 356 lignes                                        | 20,7 Mo, les 378 fichiers Peras du dépôt ouverts                                                                                 |
+| 4. Octets ajoutés à `perasc` (4 621 432 sans requêtes)                    | 124 976                                                                    | 166 584                                                                                                                          |
+| 5. Le client du scénario                                                  | 18 lignes ; un processus par requête, le texte sur son entrée ; aucun état | 32 lignes ; un processus, des requêtes numérotées et leurs réponses appariées, les fichiers ouverts avertis de chaque changement |
+| 5. Erreurs rencontrées en écrivant le client                              | aucune                                                                     | les types des réponses appariées par numéro, que l’outil de lint demandait                                                       |
+
+Ce que disent les chiffres :
+
+- **Les deux sont justes** : les cinquante réponses écrites à la main, et les dix sur un fichier en cours de frappe, depuis un seul moteur ; un fichier avec une erreur de syntaxe est analysé depuis l’arbre que l’analyseur a rétabli, ce qui répond à un survol, une définition ou aux membres après un `.` sur la ligne en cours de frappe. Le point 2 ne départage pas les options : elles répondent depuis le même code.
+- **q2 répond à ce qu’un éditeur demande pendant qu’une personne tape, q1 non** : une réponse en un dixième de milliseconde depuis ce que q2 garde, contre 7 à 11 ms pour q1 sur le plus grand fichier du dépôt, et 72 à 139 ms sur 5 340 lignes, au-delà des 50 ms sous lesquelles on attend le survol d’un éditeur. Sur le scénario de frappe, q2 met 862 ms là où q1 en met 2 046.
+- **q2 coûte de la mémoire et des octets** : 20,7 Mo avec chaque fichier du dépôt ouvert, là où un processus q1 prend 5,5 Mo et dure une requête ; 42 Ko de plus dans `perasc`, la lecture des requêtes JSON ; et un client qui garde un processus et numérote ses requêtes, 14 lignes de plus.
+
+Écarts au protocole : une position de `queries.json` écrite avant tout prototype était fausse, sur le mot `mean` du texte d’un gabarit plutôt que sur `s.mean` (`report.peras`, ligne 5, colonne 30 pour 39) ; trouvée par la première exécution de q1, elle a été corrigée dans le commit des prototypes et sa réponse attendue laissée telle qu’écrite. Le temps CPU des processus de q1 est lu dans Linux comme le temps des enfants que Node a attendus (`cutime` et `cstime` de `/proc/self/stat`), le pic de mémoire d’un processus q1 échantillonné chaque milliseconde pendant qu’il tourne ; les octets sont ceux de trois builds de `perasc`, avec une option, l’autre ou aucune, faits hors du dépôt aux commits `ca5dd0e` et `628ce00`.
+
+### Proposition
+
+**q2**, `perasc serve` : le serveur de langage de `peras-tools` garde un processus pour la session d’un éditeur et obtient ses réponses en moins d’une milliseconde, là où q1 dépense une vérification pour chacune et dépasse 50 ms sur un grand fichier. Ses coûts sont ceux d’un processus qui reste : 20 Mo avec tout un dépôt ouvert, 42 Ko dans `perasc`. q1 est plus simple pour un script qui demande une fois, ce que servent déjà `perasc check --json` et `perasc fmt`. Le propriétaire décide. Si q2 est retenue, l’installation retire q1 et `PERAS_PROTO_QUERY`, écrit le protocole de `perasc serve` dans la référence, une page sur laquelle construit le dépôt privé, et ses réponses à un fichier qui en importe un autre suivent les changements de cet autre.

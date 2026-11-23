@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0042-queries.md](../../fr/decisions/0042-queries.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks. It is the third step of phase 7 of the [roadmap](../reference/roadmap.md), tooling: "an editor extension and a language server". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `ca5dd0e`; proposal: q2. It is the third step of phase 7 of the [roadmap](../reference/roadmap.md), tooling: "an editor extension and a language server". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -50,3 +50,33 @@ q1 and q2 are prototyped behind `PERAS_PROTO_QUERY`; without it, `perasc` is as 
 `node scripts/bench-query.mjs` runs points 1 to 4; `--check` checks the answers of points 1 and 2 and runs with every check of the project.
 
 ## Record
+
+### The measure (2026-11-23)
+
+`node scripts/bench-query.mjs` at `ca5dd0e`, perasc built for release, the full tables in [`bench/query/RESULTS.md`](../../../bench/query/RESULTS.md).
+
+|                                                                  | q1, a process a query                                        | q2, a process for a session                                                                              |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| 1. Right answers, of 50                                          | 50                                                           | 50                                                                                                       |
+| 2. A file being typed, of 10                                     | 10                                                           | 10                                                                                                       |
+| 3. A query on 53 lines, median                                   | 3.0 to 3.7 ms                                                | 0.1 to 0.4 ms                                                                                            |
+| 3. A query on 356 lines, median (95th percentile)                | 7.1 to 11.5 ms (up to 22.3)                                  | 0.1 to 2.2 ms (up to 4.4)                                                                                |
+| 3. A query on 5,340 lines, median (95th percentile)              | 72 to 139 ms (up to 165)                                     | 0.1 to 27 ms; a text first checked 63 ms                                                                 |
+| 3. 100 edits, each followed by `diagnostics` and `hover`, median | 2,046 ms (1,915 to 2,087)                                    | 862 ms (819 to 954), 2.4 times faster                                                                    |
+| 3. CPU time over wall time, the same scenario                    | 1.00                                                         | 0.97                                                                                                     |
+| 4. Peak of memory                                                | 5.5 MB, one process on 356 lines                             | 20.7 MB, the 378 Peras files of the repository opened                                                    |
+| 4. Bytes added to `perasc` (4,621,432 without queries)           | 124,976                                                      | 166,584                                                                                                  |
+| 5. The client of the scenario                                    | 18 lines; a process a query, the text on its input; no state | 32 lines; one process, requests numbered and their answers matched, the files opened told of each change |
+| 5. Errors met writing the client                                 | none                                                         | the types of the answers matched by number, which the linter asked for                                   |
+
+What the figures say:
+
+- **Both are right**: the fifty answers written by hand, and the ten on a file being typed, from one engine; a file with a syntax error is analysed from the tree the parser recovered, which answers a hover, a definition or the members after a `.` on the line being typed. Point 2 does not tell the options apart: they answer from the same code.
+- **q2 answers what an editor asks while a person types, q1 does not**: an answer in a tenth of a millisecond from what q2 keeps, against 7 to 11 ms for q1 on the largest file of the repository, and 72 to 139 ms on 5,340 lines, past the 50 ms an editor's hover is expected under. On the scenario of typing, q2 takes 862 ms where q1 takes 2,046.
+- **q2 costs memory and bytes**: 20.7 MB with every file of the repository opened, where a q1 process takes 5.5 MB and lasts a query; 42 KB more in `perasc`, the reading of JSON requests; and a client that keeps a process and numbers its requests, 14 lines more.
+
+Departures from the protocol: one position of `queries.json` written before any prototype was wrong, on the word `mean` of a template's text rather than on `s.mean` (`report.peras`, line 5, column 30 for 39); found by the first run of q1, it was corrected in the commit of the prototypes and its expected answer left as written. The CPU time of q1's processes is read from Linux as the time of the children Node waited for (`cutime` and `cstime` of `/proc/self/stat`), the peak of memory of a q1 process sampled every millisecond while it runs; the bytes are those of three builds of `perasc`, with one option, the other or none, made apart from the repository at `ca5dd0e` and `628ce00`.
+
+### Proposal
+
+**q2**, `perasc serve`: the language server of `peras-tools` keeps one process for an editor's session and gets its answers under a millisecond, where q1 spends a check on each and passes 50 ms on a large file. Its costs are those of a process that stays: 20 MB with a whole repository open, 42 KB in `perasc`. q1 is simpler for a script that asks once, which `perasc check --json` and `perasc fmt` already serve. The owner decides. If q2 is chosen, the landing removes q1 and `PERAS_PROTO_QUERY`, writes the protocol of `perasc serve` in the reference, a page the private repository builds on, and its answers to a file that imports another follow the changes to that other.
