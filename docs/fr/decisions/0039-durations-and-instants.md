@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0039-durations-and-instants.md](../../en/decisions/0039-durations-and-instants.md)._
 
-_État : protocole enregistré le 2026-11-18, avant tout prototype et toute mesure, comme le demande la règle du projet. Il répond à la ligne « temps » de la phase 3 de la [feuille de route](../reference/roadmap.md), durées et instants ; les dates du calendrier et les fuseaux horaires sont laissés à une décision suivante. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-18, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `370b4ce` ; proposition : t1. Il répond à la ligne « temps » de la phase 3 de la [feuille de route](../reference/roadmap.md), durées et instants ; les dates du calendrier et les fuseaux horaires sont laissés à une décision suivante. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -44,3 +44,26 @@ Chaque option est prototypée derrière `PERAS_PROTO_TIME` ; le build sans elle 
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### La mesure (2026-11-23)
+
+Deux exécutions au commit 370b4ce, l’une après l’autre, rien d’autre ne tournant, chaque module construit pour la production ; chaque tableau dans [`bench/time/RESULTS.md`](../../../bench/time/RESULTS.md), avec la machine (un Intel Xeon à 2,10 GHz). Sous t2, un bug s’écrit comme sous t1 : c’est l’unité qui manque.
+
+| Bug                                                     | TypeScript             | t0, aujourd’hui        | t1 et t2                                                       |
+| ------------------------------------------------------- | ---------------------- | ---------------------- | -------------------------------------------------------------- |
+| B1, cinq secondes écrites `setTimeout(5, …)`            | se construit, inaperçu | se construit, inaperçu | refusé, E0210 : un nombre n’est pas une `Duration`             |
+| B2, `start + 30` pour trente secondes                   | se construit, inaperçu | se construit, inaperçu | refusé, E0210                                                  |
+| B3, deux instants additionnés                           | se construit, inaperçu | se construit, inaperçu | refusé, E0221 : `+` ne peut pas prendre `Instant` et `Instant` |
+| B4, des millisecondes lues comme des secondes           | se construit, inaperçu | se construit, inaperçu | refusé, E0210, là où les minutes rencontrent `5`               |
+| B5, un zéro manquant, `Duration.ms(minutes * 60 * 100)` | se construit, inaperçu | se construit, inaperçu | se construit, inaperçu                                         |
+| B6, un instant d’une autre horloge                      | se construit, inaperçu | se construit, inaperçu | refusé, E0210, mais son correctif est faux (constat F225)      |
+
+- **t1 et t2 attrapent quatre bugs sur six**, TypeScript et le Peras d’aujourd’hui aucun. B5 n’est pas attrapé : écrit en millisecondes, le nombre est un nombre ; `Duration.minutes(minutes)` ne laisserait pas le zéro manquer, ce qu’aucun compilateur ne peut faire écrire à une personne. B6 est refusé, le nombre de l’autre horloge n’étant pas un `Instant`, mais le correctif proposé, `Duration.ms(created)`, en fait une durée, ce qui est faux : c’est un instant d’une autre horloge (constat F225).
+- **Facilité** : chaque programme prend les mêmes lignes sous les trois options (P1 11, P2 13, P3 9, P4 11, W1 12), aucun n’a rencontré d’erreur en s’écrivant. Ce qui change est ce qui s’apprend : t1 ajoute deux types, quatre façons de faire une durée, quatre de la lire et `Instant.now()` ; t2 ajoute les quatre suffixes, `ms`, `s`, `min` et `h`, et écrit `300ms` là où t1 écrit `Duration.ms(300)`.
+- **Vitesse, charge et octets** : un temps coûte un nombre. Les modules de W1 sous t1 et t2 sont ceux de t0, octet pour octet, dans les deux modes (506 octets en JavaScript, 170 en WebAssembly) ; W1 tourne à 0,90 à 0,92 du temps du TypeScript dans un module managed et 0,63 à 0,64 dans un module owned sous chaque option, le temps CPU sur le temps réel de 0,9 à 1,0.
+- **Non-régression**, `scripts/check-regression.mjs 0158806` sous t1 et t2 : aucun module plus grand, plus petit ni changé ; temps de compilation de 1,012 à 1,024. Mais **trois programmes du dépôt ne se construisent plus**, chacun attendant un nombre de millisecondes : `orders.apeiron` et `orders-extern.apeiron` de l’étude de cas, et la fixture de bout en bout `browser/ui.apeiron`, avec six exemples de la documentation. Retenir t1 ou t2 change le langage : chaque `setTimeout(300, …)` écrit son unité. Les autres modules qui ne se construisent plus sont les programmes de cette décision pour t0.
+- **Un module owned** a des durées et pas d’horloge : `Instant.now()` y est E0900, comme le protocole le disait.
+
+### Proposition
+
+**t1**, `Duration` et `Instant` : quatre des six bugs attrapés, sans coût en temps ni en octets, chaque programme aussi long qu’aujourd’hui. t2 attrape les mêmes bugs au même coût et écrit une durée en moins de caractères, `300ms`, pour quatre notions de plus et un changement de l’analyseur lexical ; elle peut s’ajouter plus tard à t1 sans rien changer de ce que t1 écrit, ce que t1 ne pourrait pas être après t2. Son prix, dans les deux cas, est la migration de chaque minuterie qui attend un nombre nu : trois programmes et six exemples ici, et ceux de chaque utilisateur. Le propriétaire décide.

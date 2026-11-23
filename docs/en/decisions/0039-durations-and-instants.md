@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0039-durations-and-instants.md](../../fr/decisions/0039-durations-and-instants.md)._
 
-_Status: protocol registered on 2026-11-18, before any prototype and any measure, as the rule of the project asks. It answers the "time" line of phase 3 of the [roadmap](../reference/roadmap.md), durations and instants; dates of the calendar and time zones are left to a later decision. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-18, before any prototype and any measure, as the rule of the project asks; options measured at `370b4ce`; proposal: t1. It answers the "time" line of phase 3 of the [roadmap](../reference/roadmap.md), durations and instants; dates of the calendar and time zones are left to a later decision. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -44,3 +44,26 @@ Each option is prototyped behind `PERAS_PROTO_TIME`; the build without it keeps 
 ## Record
 
 _Each part is recorded here as it lands._
+
+### The measure (2026-11-23)
+
+Two runs at commit 370b4ce, one after the other, nothing else running, every module built for production; every table in [`bench/time/RESULTS.md`](../../../bench/time/RESULTS.md), with the machine (an Intel Xeon at 2.10 GHz). Under t2 a bug is written as under t1: it is the unit that is missing.
+
+| Bug                                                   | TypeScript    | t0, today     | t1 and t2                                               |
+| ----------------------------------------------------- | ------------- | ------------- | ------------------------------------------------------- |
+| B1, five seconds written `setTimeout(5, …)`           | builds unseen | builds unseen | refused, E0210: a number is not a `Duration`            |
+| B2, `start + 30` for thirty seconds                   | builds unseen | builds unseen | refused, E0210                                          |
+| B3, two instants added                                | builds unseen | builds unseen | refused, E0221: `+` cannot take `Instant` and `Instant` |
+| B4, milliseconds read as seconds                      | builds unseen | builds unseen | refused, E0210, where the minutes meet `5`              |
+| B5, a zero missing, `Duration.ms(minutes * 60 * 100)` | builds unseen | builds unseen | builds unseen                                           |
+| B6, an instant of another clock                       | builds unseen | builds unseen | refused, E0210, but its fix is wrong (finding F225)     |
+
+- **t1 and t2 catch four bugs of six**, TypeScript and today's Peras none. B5 is not caught: written in milliseconds, the number is a number; `Duration.minutes(minutes)` would not let the zero go missing, which no compiler can make a person write. B6 is refused, the other clock's number being no `Instant`, but the fix proposed, `Duration.ms(created)`, makes it a duration, which is wrong: it is an instant of another clock (finding F225).
+- **Ease**: every program takes the same lines under the three options (P1 11, P2 13, P3 9, P4 11, W1 12), none met an error while written. What changes is what is learnt: t1 adds two types, four ways to make a duration, four to read one and `Instant.now()`; t2 adds the four suffixes, `ms`, `s`, `min` and `h`, and writes `300ms` where t1 writes `Duration.ms(300)`.
+- **Speed, load and bytes**: a time costs a number. W1's modules under t1 and t2 are those of t0, byte for byte, in both modes (506 bytes in JavaScript, 170 in WebAssembly); W1 runs at 0.90 to 0.92 of TypeScript's time in a managed module and 0.63 to 0.64 in an owned one under every option, the CPU time over the wall time 0.9 to 1.0.
+- **Non-regression**, `scripts/check-regression.mjs 0158806` under t1 and t2: no module larger, smaller or changed; compile time 1.012 to 1.024. But **three programs of the repository no longer build**, each waiting a number of milliseconds: the case study's `orders.apeiron` and `orders-extern.apeiron`, and the end-to-end fixture `browser/ui.apeiron`, with six examples of the documentation. Choosing t1 or t2 changes the language: every `setTimeout(300, …)` writes its unit. The other modules that no longer build are this decision's programs for t0.
+- **An owned module** has durations and no clock: `Instant.now()` there is E0900, as the protocol said.
+
+### Proposal
+
+**t1**, `Duration` and `Instant`: four of the six bugs caught, at no cost in time or bytes, every program as long as today's. t2 catches the same bugs at the same cost and writes a duration in fewer characters, `300ms`, for four more notions and a change of the lexer; it can be added later on t1 without changing anything t1 writes, which t1 could not be after t2. Its price, in either case, is the migration of every timer that waits a bare number: three programs and six examples here, and each user's. The owner decides.
