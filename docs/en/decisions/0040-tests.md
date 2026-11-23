@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0040-tests.md](../../fr/decisions/0040-tests.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks. It opens phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23: tests, then a formatter, then a language server, then `create-peras`. The [specification](../spec.md#tooling-tests-and-security) foresees a `test "name" { … }` block run by Vitest through an adapter. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `d47168a`; proposal: v2. It opens phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23: tests, then a formatter, then a language server, then `create-peras`. The [specification](../spec.md#tooling-tests-and-security) foresees a `test "name" { … }` block run by Vitest through an adapter. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -37,3 +37,28 @@ Each option is prototyped behind `PERAS_PROTO_TEST`; the build without it keeps 
 ## Record
 
 _Each part is recorded here as it lands._
+
+### The measure (2026-11-23)
+
+Two runs at commit d47168a, one after the other, nothing else running; every table in [`bench/tests/RESULTS.md`](../../../bench/tests/RESULTS.md), with the machine. The two runs agree on points 1 to 3 to the character.
+
+| Measure                                   | v0, today: TypeScript                                                                 | v1, `assert`, `assertEqual`                               | v2, `expect(a).toBe(b)`                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Lines of the tests, M1, M2, M3            | 14, 10, 11                                                                            | 16, 8, 8                                                  | 16, 8, 8                                                                                                 |
+| A private function tested                 | cannot be: `digit` is not exported                                                    | yes                                                       | yes                                                                                                      |
+| Planted bugs found, of 9                  | 9                                                                                     | 9                                                         | 9                                                                                                        |
+| What a failure says                       | the values as JavaScript sees them, `{ kind: 'Err', … }`, at a line of the TypeScript | the line of the Peras source and the assertion as written | the line of the Peras source and both values, `expected 80, got 0`                                       |
+| Errors met while writing                  | none                                                                                  | none                                                      | one: an array cannot be written in a failure's text (E0239), so M3 compares with `==` and expects `true` |
+| A production build with the tests         | —                                                                                     | the module's bytes, byte for byte                         | the module's bytes, byte for byte                                                                        |
+| From the command to the result of a suite | 0.47 to 0.54 s                                                                        | 0.48 to 0.51 s                                            | 0.45 to 0.50 s                                                                                           |
+
+- **Every option finds every bug.** What differs is what the failure tells. v0 says the values, but as the loader gives them to JavaScript, and at a line of the TypeScript; v1 says where in the Peras and what was asserted; v2 says where and what was got. For M3's arrays, v2 says only `expected true, got false`, because a failure's text cannot hold an array.
+- **v1 and v2 reach what v0 cannot**: a function that is not exported, `digit`, tested in its own file.
+- **The tests cost nothing to a production build**: each module with its tests builds into the module's bytes. A test build is larger: M1 6,518 bytes under v1 and 7,807 under v2, against 4,660.
+- **Notions**: v0 asks for Vitest's API and for how each Peras value looks in JavaScript (`{ kind, values }` for a result); v1 adds `test`, `assert` and `assertEqual`; v2 adds `test`, `expect` and four matchers, `toBe`, `toEqual`, `toBeOk`, `toBeErr`, the names Vitest uses.
+- **Non-regression**, `scripts/check-regression.mjs 343e454` under v1 and v2: 209 modules compared, none changed; compile time 0.981 and 1.021.
+- **The prototypes rewrite the source's tokens** before it is parsed, keeping every line: a test block of an imported file is not run, and a failure's text holds only what a template literal can write. A landing parses the block as the language's own.
+
+### Proposal
+
+**v2**, `expect(a).toBe(b)`: every bug found, a private function tested, the failure saying where in the Peras and both values, with the names a person who tests with Vitest already knows, at no cost to a production build. Its gap is the one M3 met: a value a template literal cannot write, an array or a structure, cannot be shown in a failure; a landing writes any value in a failure's text. v1 finds the same bugs with fewer words to learn, and says less. The owner decides.

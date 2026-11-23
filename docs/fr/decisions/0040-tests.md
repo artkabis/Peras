@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0040-tests.md](../../en/decisions/0040-tests.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet. Il ouvre la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23 : les tests, puis un formateur, puis un serveur de langage, puis `create-peras`. La [spécification](../spec.md#outillage-tests-et-sécurité) prévoit un bloc `test "nom" { … }` lancé par Vitest à travers un adaptateur. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `d47168a` ; proposition : v2. Il ouvre la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23 : les tests, puis un formateur, puis un serveur de langage, puis `create-peras`. La [spécification](../spec.md#outillage-tests-et-sécurité) prévoit un bloc `test "nom" { … }` lancé par Vitest à travers un adaptateur. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -37,3 +37,28 @@ Chaque option est prototypée derrière `PERAS_PROTO_TEST` ; le build sans elle 
 ## Registre
 
 _Chaque partie est consignée ici à son arrivée._
+
+### La mesure (2026-11-23)
+
+Deux exécutions au commit d47168a, l’une après l’autre, rien d’autre ne tournant ; chaque tableau dans [`bench/tests/RESULTS.md`](../../../bench/tests/RESULTS.md), avec la machine. Les deux exécutions s’accordent sur les points 1 à 3 au caractère près.
+
+| Mesure                                 | v0, aujourd’hui : TypeScript                                                                | v1, `assert`, `assertEqual`                                | v2, `expect(a).toBe(b)`                                                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Lignes des tests, M1, M2, M3           | 14, 10, 11                                                                                  | 16, 8, 8                                                   | 16, 8, 8                                                                                                                  |
+| Une fonction privée testée             | impossible : `digit` n’est pas exportée                                                     | oui                                                        | oui                                                                                                                       |
+| Bugs plantés trouvés, sur 9            | 9                                                                                           | 9                                                          | 9                                                                                                                         |
+| Ce que dit un échec                    | les valeurs telles que JavaScript les voit, `{ kind: 'Err', … }`, à une ligne du TypeScript | la ligne de la source Peras et l’assertion telle qu’écrite | la ligne de la source Peras et les deux valeurs, `expected 80, got 0`                                                     |
+| Erreurs rencontrées en écrivant        | aucune                                                                                      | aucune                                                     | une : un tableau ne peut pas s’écrire dans le texte d’un échec (E0239), si bien que M3 compare avec `==` et attend `true` |
+| Un build de production avec les tests  | —                                                                                           | les octets du module, octet pour octet                     | les octets du module, octet pour octet                                                                                    |
+| De la commande au résultat d’une suite | 0,47 à 0,54 s                                                                               | 0,48 à 0,51 s                                              | 0,45 à 0,50 s                                                                                                             |
+
+- **Chaque option trouve chaque bug.** Ce qui diffère est ce que dit l’échec. v0 dit les valeurs, mais telles que le chargeur les donne à JavaScript, et à une ligne du TypeScript ; v1 dit où dans le Peras et ce qui était affirmé ; v2 dit où et ce qui a été obtenu. Pour les tableaux de M3, v2 ne dit que `expected true, got false`, parce que le texte d’un échec ne peut pas tenir un tableau.
+- **v1 et v2 atteignent ce que v0 ne peut pas** : une fonction qui n’est pas exportée, `digit`, testée dans son propre fichier.
+- **Les tests ne coûtent rien à un build de production** : chaque module avec ses tests se construit dans les octets du module. Un build de test est plus grand : M1 6 518 octets sous v1 et 7 807 sous v2, contre 4 660.
+- **Notions** : v0 demande l’API de Vitest et la façon dont chaque valeur Peras se présente en JavaScript (`{ kind, values }` pour un résultat) ; v1 ajoute `test`, `assert` et `assertEqual` ; v2 ajoute `test`, `expect` et quatre vérificateurs, `toBe`, `toEqual`, `toBeOk`, `toBeErr`, les noms qu’emploie Vitest.
+- **Non-régression**, `scripts/check-regression.mjs 343e454` sous v1 et v2 : 209 modules comparés, aucun changé ; temps de compilation 0,981 et 1,021.
+- **Les prototypes réécrivent les jetons de la source** avant qu’elle soit analysée, en gardant chaque ligne : un bloc de test d’un fichier importé n’est pas lancé, et le texte d’un échec ne tient que ce qu’un gabarit peut écrire. Une installation analyse le bloc comme celui du langage.
+
+### Proposition
+
+**v2**, `expect(a).toBe(b)` : chaque bug trouvé, une fonction privée testée, l’échec disant où dans le Peras et les deux valeurs, avec les noms qu’une personne qui teste avec Vitest connaît déjà, sans coût pour un build de production. Son manque est celui que M3 a rencontré : une valeur qu’un gabarit ne peut pas écrire, un tableau ou une structure, ne peut pas être montrée dans un échec ; une installation écrit n’importe quelle valeur dans le texte d’un échec. v1 trouve les mêmes bugs avec moins de mots à apprendre, et en dit moins. Le propriétaire décide.
