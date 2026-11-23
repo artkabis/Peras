@@ -59,7 +59,11 @@ pub fn build(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> io::Result<u8> {
-    let Style { color, json, tests: test_build } = style;
+    let Style {
+        color,
+        json,
+        tests: test_build,
+    } = style;
     let text = match read(path, localizer, style, out, err)? {
         Ok(text) => text,
         Err(code) => return Ok(code),
