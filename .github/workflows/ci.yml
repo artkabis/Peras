@@ -173,6 +173,8 @@ jobs:
         run: node scripts/bench-index.mjs --check
       - name: JSON read and written by every option gives what JavaScript gives (decision 0038)
         run: node scripts/bench-json.mjs --check
+      - name: Durations and instants give what TypeScript gives, every option (decision 0039)
+        run: node scripts/bench-time.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

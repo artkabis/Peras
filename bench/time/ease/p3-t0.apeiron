@@ -1,0 +1,10 @@
+// P3 of decision 0039 (t0): a countdown, "2 h 05 min", from milliseconds.
+export fn countdown(left: f64): String {
+  const minutes = (left / 60000.0).floor().toI32();
+  const h = minutes / 60;
+  const m = minutes % 60;
+  if (m < 10) {
+    return `${h} h 0${m} min`;
+  }
+  return `${h} h ${m} min`;
+}

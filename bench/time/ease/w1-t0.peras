@@ -1,0 +1,13 @@
+// W1 of decision 0039 (t0): durations added and compared, as numbers.
+export fn spread(n: i32): f64 {
+  let total = 0.0;
+  let over = 0;
+  for (let i = 0; i < n; i++) {
+    const d = (i % 1000).toF64() * 1.5;
+    total += d;
+    if (d > 700.0) {
+      over += 1;
+    }
+  }
+  return total + over.toF64();
+}

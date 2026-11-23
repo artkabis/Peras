@@ -2069,6 +2069,10 @@ impl Lowering<'_> {
                     _ => return self.not_yet(span, "method", ty),
                 };
                 let value = self.expr(state, operand);
+                // Milliseconds are what a time is: nothing to compute.
+                if (by - 1.0).abs() < f64::EPSILON {
+                    return value;
+                }
                 Expr {
                     kind: ExprKind::Binary(
                         op,

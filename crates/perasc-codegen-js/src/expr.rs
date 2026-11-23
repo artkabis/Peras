@@ -735,7 +735,7 @@ impl Module<'_> {
                 perasc_check::TimeCall::Make(f) => {
                     let x = self.exprs(args).into_iter().next().unwrap_or_default();
                     if (f - 1.0).abs() < f64::EPSILON {
-                        format!("({x})")
+                        x
                     } else {
                         format!("({x} * {f:?})")
                     }
@@ -743,7 +743,7 @@ impl Module<'_> {
                 perasc_check::TimeCall::Read(d) => {
                     let x = self.expr(base);
                     if (d - 1.0).abs() < f64::EPSILON {
-                        format!("({x})")
+                        x
                     } else {
                         format!("({x} / {d:?})")
                     }

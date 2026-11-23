@@ -1,0 +1,11 @@
+// B6: an instant of one clock compared with one of another. A managed
+// module has one clock, now(): the bug cannot be written; the other clock
+// would come through extern, a number like any other.
+extern from "./clock.js" {
+  fn dateNow(): f64;
+}
+
+export fn expired(): bool {
+  const created = dateNow();
+  return now() - created > 60000.0;
+}

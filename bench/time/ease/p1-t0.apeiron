@@ -1,0 +1,13 @@
+// P1 of decision 0039 (t0): a search that waits 300 ms after the last key.
+fn search(text: String): void {
+  log(text);
+}
+
+export fn watch(field: InputElement): Group {
+  let group = Group.new();
+  const pending = group.slot();
+  group.add(field.on("input", (_e) => {
+    pending.set(setTimeout(300, () => search(field.value)));
+  }));
+  return group;
+}
