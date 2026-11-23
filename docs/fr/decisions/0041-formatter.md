@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0041-formatter.md](../../en/decisions/0041-formatter.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet. C’est le deuxième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23, après les tests de la [décision 0040](0040-tests.md) : « un formateur, pour que chaque fichier Peras se ressemble ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `878186e` ; proposition : f2. C’est le deuxième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23, après les tests de la [décision 0040](0040-tests.md) : « un formateur, pour que chaque fichier Peras se ressemble ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -38,3 +38,36 @@ f1 et f2 sont prototypées derrière `PERAS_PROTO_FMT`, dans `perasc fmt` (`--ch
 `node scripts/bench-fmt.mjs` exécute les points 1 à 5 ; `--check` vérifie les seuils sur le corpus et tourne avec chaque vérification du projet.
 
 ## Registre
+
+### La mesure (2026-11-23)
+
+`node scripts/bench-fmt.mjs` au commit `878186e`, perasc construit pour la production, la table complète dans [`bench/fmt/RESULTS.md`](../../../bench/fmt/RESULTS.md). Le corpus est les 372 fichiers Peras du dépôt à ce commit, les douze programmes du point 2 parmi eux.
+
+|                                                          | f0, comme aujourd’hui              | f1, jetons                                                                                         | f2, une largeur                                                                                        |
+| -------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Seuils : refusés pour une erreur de syntaxe              |                                    | 43, chacun un fichier écrit faux exprès (tests du lexer et de l’analyseur, bugs des bancs d’essai) | les mêmes 43                                                                                           |
+| Seuils : non idempotent, module changé, refus changé     |                                    | 0, 0, 0                                                                                            | 0, 0, 0                                                                                                |
+| Seuils : jetons et commentaires gardés (`format_corpus`) |                                    | chaque fichier                                                                                     | chaque fichier                                                                                         |
+| 2. Six programmes écrits deux fois : un seul texte       |                                    | aucun sur six, 6 à 16 lignes diffèrent                                                             | six sur six                                                                                            |
+| 2. Lignes de plus de 100 qui restent                     | 66                                 | 66                                                                                                 | 7 : cinq gabarits, jamais coupés ; une somme, que f2 ne coupe pas ; un fichier refusé, laissé tel quel |
+| 3. Ce qu’elle change dans le corpus                      |                                    | 16 fichiers, 52 lignes ajoutées, 53 retirées                                                       | 72 fichiers, 485 ajoutées, 290 retirées                                                                |
+| 4. Le corpus avec `--check`, médiane de 11 tours         |                                    | 28 ms                                                                                              | 56 ms, 1,93 fois le temps de f1 (1,29 à 2,78)                                                          |
+| 4. Temps CPU sur temps réel                              |                                    | 0,98                                                                                               | 0,96                                                                                                   |
+| 4. Le plus grand fichier seul (`pond-bands.peras`)       |                                    | 4 ms                                                                                               | 5 ms : toutes deux à la résolution de l’horloge et du démarrage d’un processus                         |
+| 5. Pic de mémoire, le plus grand fichier                 |                                    | 4,8 Mo                                                                                             | 5,7 Mo                                                                                                 |
+| 5. Octets ajoutés à `perasc` (4 576 144 sans formateur)  |                                    | 16 400                                                                                             | 41 528                                                                                                 |
+| 6. Notions qu’un utilisateur apprend                     | aucune, et aucun fichier semblable | `perasc fmt`, `--check` ; la mise en page reste à son choix                                        | `perasc fmt`, `--check` ; rien à choisir                                                               |
+| 6. Lignes du code du formateur, ses tests à part         |                                    | 98, et 183 partagées                                                                               | 629, et 183 partagées                                                                                  |
+
+Ce que disent les chiffres :
+
+- **Les deux sont sûres** sur chaque fichier du dépôt : les mêmes jetons, les mêmes commentaires, le même module construit pour la production, les mêmes refus, un second passage qui ne change rien.
+- **Seule f2 atteint le but de la feuille de route**, chaque fichier semblable : les six programmes écrits deux fois donnent chacun un seul texte avec f2 et aucun avec f1, qui garde ce que l’auteur a coupé. f1 change 16 fichiers du corpus, des espaces et de l’indentation ; f2 en change 72, surtout de longues listes de paramètres et d’arguments coupées à un élément par ligne, et des déclarations coupées comme Prettier coupe une interface.
+- **f2 coûte plus là où personne n’attend** : deux fois le temps de f1 sur tout le corpus, 56 ms pour 372 fichiers ; un fichier enregistré dans un éditeur attend environ 5 ms avec l’une ou l’autre. 0,9 Mo de mémoire en plus, 25 Ko de plus dans le compilateur, six fois le code.
+- **Ce que f2 ne fait pas encore** : elle ne coupe aucune arithmétique (`a * 100000 + b * 10000 + …` reste sur une ligne), et ne garde pas de ligne vide entre les champs d’une structure. Aucun des deux ne change un seuil ; les deux sont le travail d’une installation, mesuré par le même script.
+
+Écarts au protocole : le pic de mémoire est lu dans Linux (`VmHWM` de `/proc/self/status`, demandé par `PERAS_FMT_PEAK`), cette machine n’ayant pas `/usr/bin/time` ; les octets sont ceux de trois builds de `perasc` avec une option, l’autre ou aucune, faits hors du dépôt aux commits `878186e` et `2f5f460`. f2 a été corrigée quatre fois avant la mesure, chaque fois après avoir lu ce qu’elle faisait au corpus (un bloc sans `;` imprimé comme une liste, des déclarations repliées, un gabarit coupé dans son `${…}`, l’argument seul d’un appel sans sa virgule finale) ; la mesure est celle du prototype tel que commité.
+
+### Proposition
+
+**f2** : la seule option qui rend chaque fichier semblable, ce que la feuille de route demande d’un formateur, aussi sûre que f1 sur chaque fichier du dépôt, pour un coût qu’un utilisateur ne sent pas (5 ms par fichier enregistré) et 41 Ko dans le compilateur. f1 est moins chère et laisse la mise en page de l’auteur, ce qu’elle ne peut pas s’empêcher de faire : deux fichiers du même programme restent deux mises en page. Le propriétaire décide. Si f2 est retenue, l’installation retire f1 et `PERAS_PROTO_FMT`, coupe l’arithmétique, garde une ligne vide entre les champs, et donne au serveur de langage de l’éditeur (le pas suivant de la phase 7) son formateur.

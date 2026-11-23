@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0041-formatter.md](../../fr/decisions/0041-formatter.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks. It is the second step of phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23, after the tests of [decision 0040](0040-tests.md): "a formatter, so that every Peras file looks the same". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `878186e`; proposal: f2. It is the second step of phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23, after the tests of [decision 0040](0040-tests.md): "a formatter, so that every Peras file looks the same". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -38,3 +38,36 @@ f1 and f2 are prototyped behind `PERAS_PROTO_FMT`, in `perasc fmt` (`--check` to
 `node scripts/bench-fmt.mjs` runs points 1 to 5; `--check` checks the gates on the corpus and is run with every check of the project.
 
 ## Record
+
+### The measure (2026-11-23)
+
+`node scripts/bench-fmt.mjs` at `878186e`, perasc built for release, the full table in [`bench/fmt/RESULTS.md`](../../../bench/fmt/RESULTS.md). The corpus is the 372 Peras files of the repository at that commit, the twelve programs of point 2 among them.
+
+|                                                            | f0, as today            | f1, tokens                                                                                                | f2, a width                                                                                              |
+| ---------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gates: refused for a syntax error                          |                         | 43, every one a file written wrong on purpose (tests of the lexer and the parser, bugs of the benchmarks) | the same 43                                                                                              |
+| Gates: not idempotent, module changed, refusal changed     |                         | 0, 0, 0                                                                                                   | 0, 0, 0                                                                                                  |
+| Gates: tokens and comments kept (`format_corpus`)          |                         | every file                                                                                                | every file                                                                                               |
+| 2. Six programs written twice: one text                    |                         | none of six, 6 to 16 lines differ                                                                         | six of six                                                                                               |
+| 2. Lines longer than 100 left                              | 66                      | 66                                                                                                        | 7: five template literals, never broken; a sum, which f2 does not break; a file refused, left as written |
+| 3. What it changes in the corpus                           |                         | 16 files, 52 lines added, 53 removed                                                                      | 72 files, 485 added, 290 removed                                                                         |
+| 4. The corpus with `--check`, median of 11 rounds          |                         | 28 ms                                                                                                     | 56 ms, 1.93 times f1's (1.29 to 2.78)                                                                    |
+| 4. CPU time over wall time                                 |                         | 0.98                                                                                                      | 0.96                                                                                                     |
+| 4. The largest file alone (`pond-bands.peras`)             |                         | 4 ms                                                                                                      | 5 ms: both at the resolution of the clock and the start of a process                                     |
+| 5. Peak of memory, the largest file                        |                         | 4.8 MB                                                                                                    | 5.7 MB                                                                                                   |
+| 5. Bytes added to `perasc` (4,576,144 without a formatter) |                         | 16,400                                                                                                    | 41,528                                                                                                   |
+| 6. Notions a user learns                                   | none, and no file alike | `perasc fmt`, `--check`; the layout stays theirs to choose                                                | `perasc fmt`, `--check`; nothing to choose                                                               |
+| 6. Lines of the formatter's code, its tests apart          |                         | 98, and 183 shared                                                                                        | 629, and 183 shared                                                                                      |
+
+What the figures say:
+
+- **Both are safe** on every file of the repository: the same tokens, the same comments, the same module built for production, the same refusals, a second pass that changes nothing.
+- **Only f2 meets the roadmap's aim**, every file alike: the six programs written twice give one text each under f2 and none under f1, which keeps what the author broke. f1 changes 16 files of the corpus, spaces and indentation; f2 changes 72, mostly long parameter lists and calls broken one element a line, and declarations broken as Prettier breaks an interface.
+- **f2 costs more where nobody waits**: twice f1's time on the whole corpus, 56 ms for 372 files; a file saved in an editor waits about 5 ms with either. 0.9 MB more memory, 25 KB more in the compiler, six times the code.
+- **What f2 does not do yet**: it breaks no arithmetic (`a * 100000 + b * 10000 + …` stays on one line), and keeps no blank line between the fields of a structure. Neither changes a gate; both are a landing's work, measured by the same script.
+
+Departures from the protocol: the peak of memory is read from Linux (`VmHWM` of `/proc/self/status`, asked by `PERAS_FMT_PEAK`), since this machine has no `/usr/bin/time`; the bytes are those of three builds of `perasc` with one option, the other or none, made apart from the repository at `878186e` and `2f5f460`. f2 was fixed four times before the measure, each found by reading what it did to the corpus (a block without `;` printed as a list, declarations joined, a template literal broken inside `${…}`, a call's single argument without its trailing comma); the measure is of the prototype as committed.
+
+### Proposal
+
+**f2**: the only option that makes every file look the same, which is what the roadmap asks of a formatter, as safe as f1 on every file of the repository, at a cost a user does not feel (5 ms a file saved) and 41 KB in the compiler. f1 is cheaper and leaves the author's layout alone, which is what it cannot help doing: two files of the same program stay two layouts. The owner decides. If f2 is chosen, the landing removes f1 and `PERAS_PROTO_FMT`, breaks arithmetic, keeps a blank line between fields, and gives the editor's language server (the next step of phase 7) its formatter.
