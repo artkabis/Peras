@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0040-tests.md](../../fr/decisions/0040-tests.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `d47168a`; proposal: v2. It opens phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23: tests, then a formatter, then a language server, then `create-peras`. The [specification](../spec.md#tooling-tests-and-security) foresees a `test "name" { … }` block run by Vitest through an adapter. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `d47168a`; v2 chosen by the owner on 2026-11-23. It opens phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23: tests, then a formatter, then a language server, then `create-peras`. The [specification](../spec.md#tooling-tests-and-security) foresees a `test "name" { … }` block run by Vitest through an adapter. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -62,3 +62,11 @@ Two runs at commit d47168a, one after the other, nothing else running; every tab
 ### Proposal
 
 **v2**, `expect(a).toBe(b)`: every bug found, a private function tested, the failure saying where in the Peras and both values, with the names a person who tests with Vitest already knows, at no cost to a production build. Its gap is the one M3 met: a value a template literal cannot write, an array or a structure, cannot be shown in a failure; a landing writes any value in a failure's text. v1 finds the same bugs with fewer words to learn, and says less. The owner decides.
+
+### Decision and landing (2026-11-23)
+
+The owner chose **v2**. Every parse blanks out the `test` blocks of a source, byte for byte and line for line (`perasc_syntax::testing::strip`), so that a build, `perasc check` and every diagnostic read the file as if its tests were not there, at the same lines; `perasc build --tests` makes each block an exported function and writes the names of the tests next to the module, `<stem>.tests.json`. `vitest-peras` calls it, and its option for v1 is gone with v1, whose figures are above and whose code is in git at d47168a. The [guide](../guide/tests.md) shows a module and its tests.
+
+The gap the proposal named is not closed by this landing: a failure cannot show an array or a structure, which needs a value of any type written as text, a template literal's need too; it is finding F227, open. `scripts/bench-tests.mjs` measures the build of today against v0 into `bench/tests/CURRENT.md`, and its `--check` runs in the CI; [`RESULTS.md`](../../../bench/tests/RESULTS.md) keeps the options as measured.
+
+Non-regression, `scripts/check-regression.mjs e05338a`: 209 modules compared, none larger, smaller or changed; compile time 0.962 (0.897 to 1.051); the compiler 72 bytes larger, the search for `test` that every parse now makes.

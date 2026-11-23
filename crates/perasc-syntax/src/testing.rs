@@ -1,13 +1,14 @@
-//! Decision 0040, prototyped: `test "name" { … }` blocks, rewritten from the
-//! tokens of a source before it is parsed, so that every line keeps its
-//! number. A normal build blanks them out, a test build makes each an
-//! exported function giving `""` or the message of its first failure.
+//! Decision 0040, v2: `test "name" { … }` blocks, rewritten from the tokens
+//! of a source, so that every byte and every line keeps its place. Every
+//! parse blanks them out ([`strip`]); a test build (`perasc build --tests`)
+//! makes each an exported function giving `""` or the message of its first
+//! failure.
 //!
-//! - `assert(cond);` fails when `cond` is false (v1 and v2);
-//! - `assertEqual(a, b);` fails when `a != b` (v1 and v2);
+//! - `assert(cond);` fails when `cond` is false;
+//! - `assertEqual(a, b);` fails when `a != b`;
 //! - `expect(a).toBe(b);` and `expect(a).toEqual(b);` fail when `a != b`,
-//!   saying both values (v2); `expect(r).toBeOk();` and `.toBeErr();` test
-//!   a result (v2).
+//!   saying both values; `expect(r).toBeOk();` and `.toBeErr();` test a
+//!   result.
 
 use crate::lexer::{lex, string_value};
 use crate::token::{Token, TokenKind};
@@ -15,27 +16,27 @@ use crate::token::{Token, TokenKind};
 /// What to make of the `test` blocks of a source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tests {
-    /// Leave the source as it is: no option of decision 0040.
+    /// Leave the source as it is.
     Keep,
-    /// Blank them out: a normal build.
+    /// Blank them out, every byte but a line break a space.
     Strip,
-    /// Make each an exported function, under option v1 or v2.
-    Build(u8),
+    /// Make each an exported function.
+    Build,
 }
 
-/// The option of decision 0040 the environment names, and whether this is a
-/// test build: `PERAS_PROTO_TEST=v1|v2`, `PERAS_TEST_BUILD=1`.
+/// The source with its `test` blocks blanked out, every byte in its place:
+/// what every parse reads.
 #[must_use]
-pub fn tests_from_env() -> Tests {
-    let option = match std::env::var("PERAS_PROTO_TEST").as_deref() {
-        Ok("v1") => 1,
-        Ok("v2") => 2,
-        _ => return Tests::Keep,
-    };
-    if std::env::var("PERAS_TEST_BUILD").as_deref() == Ok("1") {
-        Tests::Build(option)
+pub fn strip(source: &str) -> std::borrow::Cow<'_, str> {
+    if !source.contains("test") {
+        return std::borrow::Cow::Borrowed(source);
+    }
+    let (out, names) = prepare(source, "", Tests::Strip);
+    let _ = names;
+    if out == source {
+        std::borrow::Cow::Borrowed(source)
     } else {
-        Tests::Strip
+        std::borrow::Cow::Owned(out)
     }
 }
 
@@ -89,11 +90,11 @@ pub fn prepare(source: &str, file: &str, how: Tests) -> (String, Vec<String>) {
         let end = tokens[close].span.end as usize;
         match how {
             Tests::Strip => edits.push((start, end, blank(source.get(start..end).unwrap_or("")))),
-            Tests::Build(option) => {
+            Tests::Build => {
                 let name = string_value(text(&tokens[i + 1]));
                 let head = format!("export fn {}(): String {{", test_function(names.len()));
                 edits.push((start, tokens[open].span.end as usize, head));
-                rewrite_body(source, file, &tokens, (open, close), option, &mut edits);
+                rewrite_body(source, file, &tokens, (open, close), &mut edits);
                 edits.push((
                     tokens[close].span.start as usize,
                     end,
@@ -126,7 +127,6 @@ fn rewrite_body(
     file: &str,
     tokens: &[Token],
     (open, close): (usize, usize),
-    option: u8,
     edits: &mut Vec<(usize, usize, String)>,
 ) {
     let text = |t: &Token| {
@@ -173,7 +173,7 @@ fn rewrite_body(
                 let what = quoted(&format!("{at}: assertEqual({a}, {b}) failed"));
                 (shut, format!("if (({a}) != ({b})) {{ return {what}; }}"))
             }
-            "expect" if option == 2 => {
+            "expect" => {
                 let value = slice(inner.0, inner.1);
                 let Some((method, call_end, wanted)) = matcher(source, tokens, shut) else {
                     k += 1;
@@ -273,10 +273,10 @@ fn split_args(tokens: &[Token], open: usize, shut: usize) -> Vec<(usize, usize)>
     out
 }
 
-/// Spaces where `text` has anything but a line break.
+/// Spaces where `text` has anything but a line break, byte for byte.
 fn blank(text: &str) -> String {
-    text.chars()
-        .map(|c| if c == '\n' { '\n' } else { ' ' })
+    text.bytes()
+        .map(|b| if b == b'\n' { '\n' } else { ' ' })
         .collect()
 }
 

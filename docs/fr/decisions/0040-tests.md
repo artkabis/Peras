@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0040-tests.md](../../en/decisions/0040-tests.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `d47168a` ; proposition : v2. Il ouvre la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23 : les tests, puis un formateur, puis un serveur de langage, puis `create-peras`. La [spécification](../spec.md#outillage-tests-et-sécurité) prévoit un bloc `test "nom" { … }` lancé par Vitest à travers un adaptateur. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `d47168a` ; v2 retenue par le propriétaire le 2026-11-23. Il ouvre la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23 : les tests, puis un formateur, puis un serveur de langage, puis `create-peras`. La [spécification](../spec.md#outillage-tests-et-sécurité) prévoit un bloc `test "nom" { … }` lancé par Vitest à travers un adaptateur. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -62,3 +62,11 @@ Deux exécutions au commit d47168a, l’une après l’autre, rien d’autre ne 
 ### Proposition
 
 **v2**, `expect(a).toBe(b)` : chaque bug trouvé, une fonction privée testée, l’échec disant où dans le Peras et les deux valeurs, avec les noms qu’une personne qui teste avec Vitest connaît déjà, sans coût pour un build de production. Son manque est celui que M3 a rencontré : une valeur qu’un gabarit ne peut pas écrire, un tableau ou une structure, ne peut pas être montrée dans un échec ; une installation écrit n’importe quelle valeur dans le texte d’un échec. v1 trouve les mêmes bugs avec moins de mots à apprendre, et en dit moins. Le propriétaire décide.
+
+### Décision et installation (2026-11-23)
+
+Le propriétaire a retenu **v2**. Chaque analyse efface les blocs `test` d’une source, octet pour octet et ligne pour ligne (`perasc_syntax::testing::strip`), si bien qu’un build, `perasc check` et chaque diagnostic lisent le fichier comme si ses tests n’y étaient pas, aux mêmes lignes ; `perasc build --tests` fait de chaque bloc une fonction exportée et écrit les noms des tests à côté du module, `<stem>.tests.json`. `vitest-peras` l’appelle, et son option pour v1 est partie avec v1, dont les chiffres sont plus haut et le code dans git au commit d47168a. Le [guide](../guide/tests.md) montre un module et ses tests.
+
+Le manque que nommait la proposition n’est pas comblé par cette installation : un échec ne peut pas montrer un tableau ni une structure, ce qui demande une valeur de tout type écrite en texte, un besoin des gabarits aussi ; c’est le constat F227, ouvert. `scripts/bench-tests.mjs` mesure le build d’aujourd’hui face à v0 dans `bench/tests/CURRENT.md`, et son `--check` tourne dans la CI ; [`RESULTS.md`](../../../bench/tests/RESULTS.md) garde les options telles que mesurées.
+
+Non-régression, `scripts/check-regression.mjs e05338a` : 209 modules comparés, aucun plus grand, plus petit ni changé ; temps de compilation 0,962 (0,897 à 1,051) ; le compilateur plus grand de 72 octets, la recherche de `test` que fait maintenant chaque analyse.

@@ -1,9 +1,0 @@
-
-test "a countdown is written" {
-  assertEqual(countdown(Duration.minutes(125)), "2 h 05 min");
-  assertEqual(countdown(Duration.ms(0)), "0 h 00 min");
-  assertEqual(countdown(Duration.minutes(59.9)), "0 h 59 min");
-  assertEqual(countdown(Duration.hours(1)), "1 h 00 min");
-  assertEqual(countdown(Duration.minutes(10)), "0 h 10 min");
-  assertEqual(countdown(Duration.hours(10)), "10 h 00 min");
-}

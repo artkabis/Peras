@@ -52,6 +52,8 @@ struct Options {
     /// `--imports source`: a managed module's imports of `.peras` files are
     /// kept for a bundler, and those files are not built.
     keep_imports: bool,
+    /// `--tests`: a build of the file's tests (decision 0040).
+    tests: bool,
 }
 
 /// A command-line mistake, as a message to show.
@@ -109,6 +111,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         direct: perasc_driver::DirectOptions::default(),
         out: None,
         keep_imports: false,
+        tests: false,
     };
     let mut positional = Vec::new();
     let mut iter = args.iter();
@@ -143,6 +146,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             "--backend" => options.backend = pick("--backend", value("--backend")?, &BACKENDS)?,
             "--out" => options.out = Some(value("--out")?),
             "--no-optimize" => options.direct.optimize = false,
+            "--tests" => options.tests = true,
             "--allocator" => {
                 options.direct.allocator = pick("--allocator", value("--allocator")?, &ALLOCATORS)?;
                 // A debug build stops on an integer overflow; a production
@@ -258,6 +262,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
                 build::Style {
                     color,
                     json: options.json,
+                    tests: options.tests,
                 },
                 out,
                 err,

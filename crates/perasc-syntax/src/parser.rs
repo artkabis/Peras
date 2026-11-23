@@ -42,6 +42,9 @@ pub struct Parsed {
 /// Lexes and parses a source file, gathering the errors of both stages.
 #[must_use]
 pub fn parse(source: &str) -> Parsed {
+    // `test` blocks are read by a test build only (decision 0040).
+    let stripped = crate::testing::strip(source);
+    let source = &*stripped;
     let lexed = lex(source);
     let mut parser = Parser::new(source, &lexed.tokens);
     // Where unterminated strings end: what they swallowed (`;`, `)`) is not reported again.

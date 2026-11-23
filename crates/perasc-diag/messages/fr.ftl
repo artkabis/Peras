@@ -16,6 +16,7 @@ cli-usage =
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
+      --tests            un build des blocs `test` du fichier, pour vitest-peras (décision 0040)
       --allocator <nom>  le build : debug (défaut, chaque bug mémoire et chaque débordement d’entier attrapés) ou tlsf (production, temps borné, les entiers bouclent)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on

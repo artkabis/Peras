@@ -104,7 +104,7 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 
 - Une extension d’éditeur et un serveur de langage : erreurs à la frappe, complétion, survol, aller à la définition, renommage.
 - Un formateur, pour que tous les fichiers Peras se ressemblent.
-- Un lanceur de tests : des tests écrits en Peras, lancés par Vitest.
+- Un lanceur de tests : des tests écrits en Peras, lancés par Vitest : fait, des blocs `test` et `expect(a).toBe(b)` ([décision 0040](../decisions/0040-tests.md)).
 - `create-peras`, pour démarrer un projet en une commande.
 - Un bac à sable dans cette documentation : le compilateur lui-même compilé en WebAssembly, qui tourne dans la page.
 - Deux outils à part du cœur ouvert, propriétaires ([décision 0006](../decisions/0006-licensing.md)) : l’extension VS Code et un analyseur de fuites mémoire, construits sur ce que Peras publie. Les contrôles de fuites de l’allocateur de débogage restent dans le cœur.

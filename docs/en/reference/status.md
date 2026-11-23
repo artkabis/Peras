@@ -67,6 +67,7 @@ Every built-in method, with its status, is in the [method reference](methods.md)
 | `extern` blocks: JavaScript and npm called with declared types, each value checked                                                                       | <span class="status compiled">compiled</span>, in managed mode           |
 | JSON, `T.fromJson(text)` and `x.toJson()`, an invalid text an error that names the field ([decision 0038](../decisions/0038-json.md))                    | <span class="status compiled">compiled</span>, in managed mode           |
 | `Duration` and `Instant`, numbers of milliseconds kept apart, timers waiting a `Duration` ([decision 0039](../decisions/0039-durations-and-instants.md)) | <span class="status compiled">compiled</span>, the clock in managed mode |
+| `test` blocks, `expect(a).toBe(b)`, run by Vitest through `vitest-peras`, a production build unchanged ([decision 0040](../decisions/0040-tests.md))     | <span class="status compiled">compiled</span>                            |
 | arrow functions with statements, capturing what they use, as values ([guide](../guide/managed.md#arrow-functions))                                       | <span class="status compiled">compiled</span>, in managed mode           |
 | editor support (LSP), formatter, test runner                                                                                                             | <span class="status planned">planned</span>                              |
 
