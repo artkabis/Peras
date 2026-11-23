@@ -1,0 +1,6 @@
+import { Summary, summarize } from "./stats.peras";
+
+export fn describe(xs: Array<f64>): String {
+  const s = summarize(xs);
+  return `${s.count} values, mean ${s.mean.toFixed(2)}`;
+}

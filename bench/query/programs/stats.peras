@@ -1,0 +1,19 @@
+// Statistics of a series.
+export struct Summary {
+  count: i32,
+  mean: f64,
+}
+
+fn total(xs: Array<f64>): f64 {
+  let sum = 0.0;
+  for (const x of xs) {
+    sum += x;
+  }
+  return sum;
+}
+
+export fn summarize(xs: Array<f64>): Summary {
+  const n = xs.length;
+  const mean = total(xs) / n.toF64();
+  return Summary(n, mean);
+}

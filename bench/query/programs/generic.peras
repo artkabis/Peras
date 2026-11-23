@@ -1,0 +1,14 @@
+fn larger<T: Ord>(a: T, b: T): T {
+  if (a > b) {
+    return a;
+  }
+  return b;
+}
+
+export fn best(xs: Array<i32>): i32 {
+  let top = xs[0];
+  for (const x of xs) {
+    top = larger(top, x);
+  }
+  return top;
+}

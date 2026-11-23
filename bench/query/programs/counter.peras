@@ -1,0 +1,15 @@
+let calls = 0;
+
+struct Point {
+  x: f64,
+  y: f64,
+}
+
+export fn step(p: Point, dx: f64): Point {
+  calls += 1;
+  return Point(p.x + dx, p.y);
+}
+
+export fn count(): i32 {
+  return calls;
+}
