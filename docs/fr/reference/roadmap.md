@@ -97,6 +97,7 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 - Des types et des opérations SIMD.
 - La règle `@frame` : une fonction qui dessine une image ne peut pas allouer, et le compilateur le prouve.
 - Les allocateurs `Arena` et `Pool<T>`.
+- Ensuite, une étude proposée par le propriétaire le 2026-11-23 : une mémoire chargée selon la proximité, un module géré disant à un module possédé quels blocs de taille fixe l’utilisateur va bientôt demander (la zone visible, la vitesse du pointeur, l’étape suivante d’une tâche), le module possédé en gardant un budget fixe. Bâtie sur `Pool<T>`, `@frame` et un canal typé entre les deux modes, jamais sur une adresse brute écrite depuis JavaScript ; sa politique, un score face à un simple LRU, mesurée dans une décision à elle, et ses sources vérifiées d’abord (constat M004).
 - Des liaisons WebGPU.
 
 ## Phase 7 : l’outillage

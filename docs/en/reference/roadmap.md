@@ -97,6 +97,7 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 - SIMD types and operations.
 - The `@frame` rule: a function that renders a frame may not allocate, and the compiler proves it.
 - `Arena` and `Pool<T>` allocators.
+- Then, a study proposed by the owner on 2026-11-23: memory streamed by proximity, a managed module telling an owned one which fixed-size chunks the user is about to need (the viewport, the pointer's speed, the next step of a task), the owned module keeping a fixed budget of them. Built on `Pool<T>`, `@frame` and a typed channel between the two modes, never on a raw address written from JavaScript; its policy, a score against a plain LRU, measured in a decision of its own, and its sources checked first (finding M004).
 - WebGPU bindings.
 
 ## Phase 7: tooling
