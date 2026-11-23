@@ -66,6 +66,21 @@ pub fn build(
         .and_then(|s| s.to_str())
         .unwrap_or("module")
         .to_owned();
+    // Decision 0040, prototyped: `test` blocks blanked out, or made functions.
+    let how = perasc_syntax::testing::tests_from_env();
+    let file = Path::new(path)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(path);
+    let (text, tests) = perasc_syntax::testing::prepare(&text, file, how);
+    if matches!(how, perasc_syntax::testing::Tests::Build(_)) {
+        let names: Vec<String> = tests.iter().map(|t| format!("{t:?}")).collect();
+        fs::create_dir_all(out_dir)?;
+        fs::write(
+            out_dir.join(format!("{stem}.tests.json")),
+            format!("[{}]", names.join(", ")),
+        )?;
+    }
     let started = Instant::now();
     let managed =
         perasc_driver::Mode::from_path(Path::new(path)) == Some(perasc_driver::Mode::Managed);

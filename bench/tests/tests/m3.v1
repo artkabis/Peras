@@ -1,0 +1,9 @@
+
+test "the first of each key is kept" {
+  assertEqual(firstOfEach([Row("a", 1), Row("b", 2), Row("a", 3)]), [1, 2]);
+  assertEqual(firstOfEach([]), []);
+  assertEqual(firstOfEach([Row("x", 5)]), [5]);
+  assertEqual(firstOfEach([Row("a", 1), Row("a", 2), Row("a", 3)]), [1]);
+  assertEqual(firstOfEach([Row("a", 1), Row("b", 2), Row("c", 3)]), [1, 2, 3]);
+  assertEqual(firstOfEach([Row("b", 1), Row("a", 2), Row("b", 3), Row("a", 4)]), [1, 2]);
+}

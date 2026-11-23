@@ -238,7 +238,15 @@ importers:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.6)
 
-  packages/vitest-peras: {}
+  packages/vitest-peras:
+    dependencies:
+      vitest:
+        specifier: '*'
+        version: 5.1.0(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6))
+    devDependencies:
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)
 
   website:
     devDependencies:

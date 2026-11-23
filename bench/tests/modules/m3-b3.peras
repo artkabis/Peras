@@ -1,0 +1,16 @@
+// M3 of decision 0040: the first of each key kept, an owned module.
+struct Row {
+  key: String,
+  value: i32,
+}
+
+export fn firstOfEach(rows: Array<Row>): Array<i32> {
+  let seen: Set<String> = Set.new();
+  let kept: Array<i32> = [];
+  for (const r of rows) {
+    if (!seen.has(r.key)) {
+      kept.push(r.value);
+    }
+  }
+  return kept;
+}

@@ -1,0 +1,9 @@
+
+test "a countdown is written" {
+  expect(countdown(Duration.minutes(125))).toBe("2 h 05 min");
+  expect(countdown(Duration.ms(0))).toBe("0 h 00 min");
+  expect(countdown(Duration.minutes(59.9))).toBe("0 h 59 min");
+  expect(countdown(Duration.hours(1))).toBe("1 h 00 min");
+  expect(countdown(Duration.minutes(10))).toBe("0 h 10 min");
+  expect(countdown(Duration.hours(10))).toBe("10 h 00 min");
+}

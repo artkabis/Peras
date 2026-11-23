@@ -1,0 +1,11 @@
+// M2 of decision 0040: a countdown, "2 h 05 min", from a duration, a
+// managed module.
+export fn countdown(left: Duration): String {
+  const minutes = left.toMinutes().round().toI32();
+  const h = minutes / 60;
+  const m = minutes % 60;
+  if (m < 10) {
+    return `${h} h 0${m} min`;
+  }
+  return `${h} h ${m} min`;
+}

@@ -32,6 +32,8 @@ export default defineConfig(
       "bench/json/**",
       // The programs of decision 0039, measured as written (scripts/bench-time.mjs).
       "bench/time/**",
+      // The modules and tests of decision 0040, measured as written (scripts/bench-tests.mjs).
+      "bench/tests/**",
       // The versions of decision 0015, measured as written (scripts/bench-stream.mjs).
       "bench/stream/**",
       "packages/*/e2e/fixtures/**",

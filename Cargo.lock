@@ -318,6 +318,7 @@ dependencies = [
  "insta",
  "perasc-diag",
  "perasc-driver",
+ "perasc-syntax",
  "serde_json",
 ]
 

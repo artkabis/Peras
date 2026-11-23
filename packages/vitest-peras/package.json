@@ -2,7 +2,17 @@
   "name": "vitest-peras",
   "version": "0.0.1",
   "private": true,
-  "description": "Runs `test` blocks from .peras and .apeiron files with Vitest. Arrives with the integration milestone.",
+  "description": "Runs the `test` blocks of .peras and .apeiron files with Vitest (decision 0040).",
   "license": "AGPL-3.0-or-later",
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.5",
+    "vitest": "*"
+  }
 }

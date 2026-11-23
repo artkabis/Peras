@@ -1,0 +1,19 @@
+
+test "ports are read" {
+  assertEqual(parsePort("80").unwrapOr(0), 80);
+  assertEqual(parsePort("0").unwrapOr(1), 0);
+  assertEqual(parsePort("1").unwrapOr(0), 1);
+  assertEqual(parsePort("08080").unwrapOr(0), 8080);
+  assert(parsePort("65535").isOk());
+}
+
+test "bad texts are refused" {
+  assert(parsePort("65536").isErr());
+  assert(parsePort("").isErr());
+  assert(parsePort("8a").isErr());
+}
+
+test "digits are found" {
+  assertEqual(digit("7"), 7);
+  assertEqual(digit("x"), -1);
+}

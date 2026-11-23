@@ -175,6 +175,8 @@ jobs:
         run: node scripts/bench-json.mjs --check
       - name: Durations and instants give what TypeScript gives, every option (decision 0039)
         run: node scripts/bench-time.mjs --check
+      - name: Tests written in Peras pass on their modules and fail on planted bugs, every option (decision 0040)
+        run: node scripts/bench-tests.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

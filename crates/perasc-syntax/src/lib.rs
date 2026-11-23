@@ -8,6 +8,7 @@ use std::path::Path;
 pub mod ast;
 pub mod lexer;
 pub mod parser;
+pub mod testing;
 pub mod token;
 
 pub use lexer::{Lexed, lex, source_too_large, string_value};
