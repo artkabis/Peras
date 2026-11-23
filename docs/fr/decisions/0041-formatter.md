@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0041-formatter.md](../../en/decisions/0041-formatter.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `878186e` ; proposition : f2. C’est le deuxième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23, après les tests de la [décision 0040](0040-tests.md) : « un formateur, pour que chaque fichier Peras se ressemble ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `878186e` ; f2 retenue par le propriétaire le 2026-11-23. C’est le deuxième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage, dans l’ordre que le propriétaire a choisi le 2026-11-23, après les tests de la [décision 0040](0040-tests.md) : « un formateur, pour que chaque fichier Peras se ressemble ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -71,3 +71,13 @@ Ce que disent les chiffres :
 ### Proposition
 
 **f2** : la seule option qui rend chaque fichier semblable, ce que la feuille de route demande d’un formateur, aussi sûre que f1 sur chaque fichier du dépôt, pour un coût qu’un utilisateur ne sent pas (5 ms par fichier enregistré) et 41 Ko dans le compilateur. f1 est moins chère et laisse la mise en page de l’auteur, ce qu’elle ne peut pas s’empêcher de faire : deux fichiers du même programme restent deux mises en page. Le propriétaire décide. Si f2 est retenue, l’installation retire f1 et `PERAS_PROTO_FMT`, coupe l’arithmétique, garde une ligne vide entre les champs, et donne au serveur de langage de l’éditeur (le pas suivant de la phase 7) son formateur.
+
+### Décision et installation (2026-11-23)
+
+Le propriétaire a retenu **f2**. `perasc fmt [--check] fichiers…` imprime chaque fichier à une largeur de 100, sans réglage ; f1 et `PERAS_PROTO_FMT` sont partis, leurs chiffres plus haut et leur code dans git au commit 878186e, et la lecture du pic de mémoire aussi (`PERAS_FMT_PEAK`), une aide à la mesure seulement. Les messages de la commande sont en anglais et en français, un fichier qu’elle laisse pour une erreur de syntaxe nommé avec le nombre de ses erreurs. Le [guide](../guide/formatting.md) montre un fichier avant et après.
+
+Les deux choses que la mesure a trouvé f2 ne pas faire sont faites : une longue somme se coupe après chaque `+` et `-` comme une longue condition après chaque `&&` et `||`, un signe jamais ; le corps d’une déclaration garde les lignes vides entre ses champs. Avec elles, 73 fichiers du corpus changent et 6 lignes restent plus longues que 100, les cinq gabarits et le fichier refusé. `scripts/bench-fmt.mjs` mesure le build d’aujourd’hui dans `bench/fmt/CURRENT.md`, son `--check`, dans la CI, tenant les seuils et le point 2 ; [`RESULTS.md`](../../../bench/fmt/RESULTS.md) garde les options telles que mesurées.
+
+Pas fait, et laissé à leurs propres pas : les fichiers du dépôt lui-même ne sont pas encore formatés, puisqu’un test du lexer ou de l’analyseur vérifie un diagnostic à une ligne et une colonne que donne sa mise en page ; le plugin Vite ne formate pas ; le serveur de langage, le pas suivant de la phase 7, formatera à travers `perasc_syntax::format`.
+
+Non-régression, `scripts/check-regression.mjs bea573e` : 231 modules comparés, aucun plus grand, plus petit ni changé ; temps de compilation 1,001 (0,979 à 1,081) ; le compilateur 1 568 octets plus petit qu’avec les deux prototypes, 45 288 octets plus grand que sans formateur (`2f5f460`), ce qu’apporte cette décision.

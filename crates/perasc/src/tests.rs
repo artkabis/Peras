@@ -349,3 +349,30 @@ fn build_reports_as_json_on_request() {
     assert!(dir.join("supported.wasm").is_file());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn fmt_prints_a_file_and_check_names_what_would_change() {
+    let dir = std::env::temp_dir().join(format!("perasc-fmt-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let file = dir.join("f.peras");
+    let path = file.to_string_lossy().into_owned();
+    let _ = std::fs::write(&file, "fn  f(a:i32):i32{return a+1;}\n");
+    let (code, out, _) = cli(&["fmt", "--check", &path]);
+    assert_eq!((code, out.trim()), (1, path.as_str()));
+    let (code, _, _) = cli(&["fmt", &path]);
+    assert_eq!(code, 0);
+    let written = std::fs::read_to_string(&file).unwrap_or_default();
+    assert_eq!(written, "fn f(a: i32): i32 {\n  return a + 1;\n}\n");
+    let (code, out, _) = cli(&["fmt", "--check", &path]);
+    assert_eq!((code, out.as_str()), (0, ""));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn fmt_leaves_a_file_with_a_syntax_error_as_it_is() {
+    let before = std::fs::read_to_string(DEMO).unwrap_or_default();
+    let (code, _, err) = cli(&["fmt", "--check", "--lang", "en", DEMO]);
+    assert_eq!(code, 1);
+    assert!(err.contains("is left as it is"), "{err}");
+    assert_eq!(std::fs::read_to_string(DEMO).unwrap_or_default(), before);
+}

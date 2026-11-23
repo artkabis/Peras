@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0041-formatter.md](../../fr/decisions/0041-formatter.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `878186e`; proposal: f2. It is the second step of phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23, after the tests of [decision 0040](0040-tests.md): "a formatter, so that every Peras file looks the same". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `878186e`; f2 chosen by the owner on 2026-11-23. It is the second step of phase 7 of the [roadmap](../reference/roadmap.md), tooling, in the order the owner chose on 2026-11-23, after the tests of [decision 0040](0040-tests.md): "a formatter, so that every Peras file looks the same". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -71,3 +71,13 @@ Departures from the protocol: the peak of memory is read from Linux (`VmHWM` of 
 ### Proposal
 
 **f2**: the only option that makes every file look the same, which is what the roadmap asks of a formatter, as safe as f1 on every file of the repository, at a cost a user does not feel (5 ms a file saved) and 41 KB in the compiler. f1 is cheaper and leaves the author's layout alone, which is what it cannot help doing: two files of the same program stay two layouts. The owner decides. If f2 is chosen, the landing removes f1 and `PERAS_PROTO_FMT`, breaks arithmetic, keeps a blank line between fields, and gives the editor's language server (the next step of phase 7) its formatter.
+
+### Decision and landing (2026-11-23)
+
+The owner chose **f2**. `perasc fmt [--check] files…` prints each file at a width of 100, with no setting; f1 and `PERAS_PROTO_FMT` are gone, their figures above and their code in git at 878186e, and so is the reading of the peak of memory (`PERAS_FMT_PEAK`), a help to the measure only. The command's messages are in English and French, a file it leaves for a syntax error named with the count of its errors. The [guide](../guide/formatting.md) shows a file before and after.
+
+The two things the measure found f2 not doing are done: a long sum breaks after each `+` and `-` as a long condition after each `&&` and `||`, a sign never; the body of a declaration keeps the blank lines between its fields. With them, 73 files of the corpus change and 6 lines stay longer than 100, the five template literals and the file refused. `scripts/bench-fmt.mjs` measures the build of today into `bench/fmt/CURRENT.md`, its `--check`, in the CI, holding the gates and point 2; [`RESULTS.md`](../../../bench/fmt/RESULTS.md) keeps the options as measured.
+
+Not done, and left to their own steps: the repository's own files are not formatted yet, since a test of the lexer or the parser checks a diagnostic at a line and a column its layout gives; the Vite plugin does not format; the language server, the next step of phase 7, will format through `perasc_syntax::format`.
+
+Non-regression, `scripts/check-regression.mjs bea573e`: 231 modules compared, none larger, smaller or changed; compile time 1.001 (0.979 to 1.081); the compiler 1,568 bytes smaller than with both prototypes, 45,288 bytes larger than without a formatter (`2f5f460`), what this decision brings.

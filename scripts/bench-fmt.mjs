@@ -1,27 +1,26 @@
-// Decision 0041: a formatter. f1 (tokens, the author's line breaks kept) and
-// f2 (a printer at a width of 100), both prototypes of `perasc fmt` behind
-// `PERAS_PROTO_FMT`, measured on the repository's Peras files. f0 is the
-// repository as it is; f3 (a plugin of Prettier) is not built (the decision
-// says why). Every figure is of the release build of perasc (finding M029).
+// Decision 0041: a formatter. f2, chosen, a printer at a width of 100, is
+// `perasc fmt`; f1 (tokens, the author's line breaks kept) was measured
+// against it at commit 878186e and removed once not chosen: its figures are
+// in the decision and in bench/fmt/RESULTS.md. perasc is built for release
+// (finding M029).
 //
-// 1. Gates: every file formatted, then formatted again, changes no more
-//    (idempotent); a file that builds for production builds into the same
-//    module, byte for byte; a file the checker refuses is refused with the
-//    same codes; a file with a syntax error is refused and left as it is.
-//    That its tokens and comments are kept is the Rust test
+// 1. Gates: every file of the repository formatted, then formatted again,
+//    changes no more (idempotent); a file that builds for production builds
+//    into the same module, byte for byte; a file the checker refuses is
+//    refused with the same codes; a file with a syntax error is refused and
+//    left as it is. That its tokens and comments are kept is the Rust test
 //    `format_corpus` of perasc-syntax.
-// 2. Every file looks the same: bench/fmt/same, six programs written twice;
-//    whether each option gives one text for both; the lines longer than 100
-//    left in the corpus.
-// 3. What each option changes in the corpus: lines and files.
-// 4. Speed and load on the processor: the corpus with `--check`, both
-//    options alternating, the median ratio round by round and its range,
-//    the CPU time over the wall time; the largest file alone.
-// 5. Memory: the peak of memory formatting the largest file.
+// 2. Every file looks the same: bench/fmt/same, six programs written twice,
+//    one text for both; the lines longer than 100 left in the corpus.
+// 3. What it changes in the corpus: lines and files.
+// 4. Speed and load on the processor: the corpus with `--check`, and the
+//    largest file alone, the median of the rounds, the CPU time over the
+//    wall time.
 //
 // Usage: node scripts/bench-fmt.mjs [--check] [--rounds N]
-//        --check: one round, the gates checked, nothing written.
-// Writes bench/fmt/RESULTS.md, unless --check.
+//        --check: one round, the gates and point 2 checked, nothing written.
+// Writes bench/fmt/CURRENT.md, unless --check: RESULTS.md keeps the options
+// as decision 0041 measured them.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
@@ -30,7 +29,7 @@ import { dirname, join } from "node:path";
 const check = process.argv.includes("--check");
 const at = process.argv.indexOf("--rounds");
 const ROUNDS = check ? 1 : Number(at > 0 ? process.argv[at + 1] : 11);
-const OPTIONS = ["f1", "f2"];
+const OPTIONS = ["fmt"];
 const root = join(import.meta.dirname, "..");
 const bench = join(root, "bench", "fmt");
 const work = join(root, "target", "bench-fmt");
@@ -65,7 +64,7 @@ function fmt(option, dir, files, extra = []) {
   return spawnSync(perasc, ["fmt", ...extra, ...files], {
     cwd: dir,
     encoding: "utf8",
-    env: { ...process.env, PERAS_PROTO_FMT: option },
+    env: process.env,
     maxBuffer: 1 << 26,
   });
 }
@@ -171,6 +170,7 @@ for (let p = 1; p <= 6; p++) {
     });
     const [a = [], b = []] = texts;
     if (a.join("\n") === b.join("\n")) return "one text";
+    if (check) throw new Error(`P${String(p)}, ${option}: two texts`);
     const inB = new Set(b);
     return `${String(a.filter((l) => !inB.has(l)).length + b.filter((l) => !new Set(a).has(l)).length)} lines differ`;
   });
@@ -224,7 +224,7 @@ function timed(option, files) {
       "_",
       ...files,
     ],
-    { cwd: original, encoding: "utf8", env: { ...process.env, PERAS_PROTO_FMT: option } },
+    { cwd: original, encoding: "utf8", env: process.env },
   );
   const [wall = 0, user = 0, sys = 0] = r.stderr.trim().split(/\s+/).slice(-3).map(Number);
   return { wall: wall * 1000, cpu: (user + sys) * 1000 };
@@ -250,41 +250,21 @@ for (const [label, files] of [
     "",
     `### 4. Speed: ${String(label)}`,
     "",
-    "| Option | Median | / f1, median (range) | CPU / wall |",
+    "| Option | Median | Range | CPU / wall |",
     "| --- | ---: | --- | ---: |",
   );
   for (const option of OPTIONS) {
     const s = t[option];
     if (s === undefined) continue;
-    const ratios = s.wall.map((w, k) => w / (t.f1?.wall[k] ?? Number.NaN));
     report.push(
-      `| ${option} | ${median(s.wall).toFixed(1)} ms | ${median(ratios).toFixed(3)} (${Math.min(...ratios).toFixed(3)} to ${Math.max(...ratios).toFixed(3)}) | ${(s.cpu / s.total).toFixed(2)} |`,
+      `| ${option} | ${median(s.wall).toFixed(1)} ms | ${Math.min(...s.wall).toFixed(1)} to ${Math.max(...s.wall).toFixed(1)} ms | ${(s.cpu / s.total).toFixed(2)} |`,
     );
   }
 }
-report.push(
-  "",
-  "### 5. Memory: the peak formatting the largest file",
-  "",
-  "| Option | Peak |",
-  "| --- | ---: |",
-);
-for (const option of OPTIONS) {
-  const r = spawnSync(perasc, ["fmt", "--check", largest], {
-    cwd: original,
-    encoding: "utf8",
-    env: { ...process.env, PERAS_PROTO_FMT: option, PERAS_FMT_PEAK: "1" },
-  });
-  const kb = Number(/VmHWM:\s+(\d+) kB/.exec(r.stderr)?.[1]);
-  report.push(
-    `| ${option} | ${Number.isFinite(kb) ? `${(kb / 1024).toFixed(1)} MB` : "not measured"} |`,
-  );
-}
-
 console.log(report.join("\n"));
 if (!check) {
   writeFileSync(
-    join(bench, "RESULTS.md"),
-    `# A formatter: f1 against f2\n\nGenerated by \`node scripts/bench-fmt.mjs\`, for [decision 0041](../../docs/en/decisions/0041-formatter.md).\n\n${report.join("\n")}\n`,
+    join(bench, "CURRENT.md"),
+    `# A formatter: the build of today\n\nGenerated by \`node scripts/bench-fmt.mjs\`, for [decision 0041](../../docs/en/decisions/0041-formatter.md).\n\n${report.join("\n")}\n`,
   );
 }

@@ -39,7 +39,7 @@ enum Command {
     Check(Vec<String>),
     Explain(String),
     Build(String),
-    /// `perasc fmt`, a prototype of decision 0041.
+    /// `perasc fmt` (decision 0041).
     Fmt {
         files: Vec<String>,
         check: bool,
@@ -203,7 +203,7 @@ fn command(positional: Vec<String>) -> Result<Command, UsageError> {
             let (flags, files): (Vec<String>, Vec<String>) =
                 positional.partition(|a| a == "--check");
             if files.is_empty() {
-                return Err(Message::new("cli-no-files"));
+                return Err(Message::new("cli-fmt-no-files"));
             }
             Command::Fmt {
                 files,
@@ -272,7 +272,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         )
         .map(|()| SUCCESS),
         Command::Explain(code) => explain(code, &localizer, out, err),
-        Command::Fmt { files, check } => fmt::fmt(files, *check, out, err),
+        Command::Fmt { files, check } => fmt::fmt(files, *check, &localizer, out, err),
         Command::Check(files) => check_files(files, &options, &localizer, color, out, err),
         Command::Build(file) => {
             let out_dir = std::path::PathBuf::from(options.out.as_deref().unwrap_or("dist"));

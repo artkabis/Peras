@@ -103,7 +103,7 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 ## Phase 7 : l’outillage
 
 - Une extension d’éditeur et un serveur de langage : erreurs à la frappe, complétion, survol, aller à la définition, renommage.
-- Un formateur, pour que tous les fichiers Peras se ressemblent.
+- Un formateur, pour que tous les fichiers Peras se ressemblent : fait, `perasc fmt` à une largeur de 100 ([décision 0041](../decisions/0041-formatter.md)).
 - Un lanceur de tests : des tests écrits en Peras, lancés par Vitest : fait, des blocs `test` et `expect(a).toBe(b)` ([décision 0040](../decisions/0040-tests.md)).
 - `create-peras`, pour démarrer un projet en une commande.
 - Un bac à sable dans cette documentation : le compilateur lui-même compilé en WebAssembly, qui tourne dans la page.

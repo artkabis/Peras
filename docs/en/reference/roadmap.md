@@ -103,7 +103,7 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 ## Phase 7: tooling
 
 - An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming.
-- A formatter, so that every Peras file looks the same.
+- A formatter, so that every Peras file looks the same: done, `perasc fmt` at a width of 100 ([decision 0041](../decisions/0041-formatter.md)).
 - A test runner: tests written in Peras, run by Vitest: done, `test` blocks and `expect(a).toBe(b)` ([decision 0040](../decisions/0040-tests.md)).
 - `create-peras`, to start a project in one command.
 - A playground in this documentation: the compiler itself compiled to WebAssembly, running in the page.

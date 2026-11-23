@@ -1,4 +1,4 @@
-//! f2: a printer at a width, as Prettier prints TypeScript.
+//! A printer at a width, as Prettier prints TypeScript.
 //!
 //! The tokens are read into a tree of their brackets; a block `{ …; … }`
 //! puts each statement on its line, a list (arguments, an array, the fields
@@ -200,8 +200,8 @@ impl Builder<'_, '_> {
         out
     }
 
-    /// One statement: a group whose `&&`, `||` and chain of calls break
-    /// together if it does not fit.
+    /// One statement: a group whose `&&`, `||`, `+`, `-` and chain of
+    /// calls break together if it does not fit.
     fn statement(&mut self, nodes: &[Node]) -> Doc {
         let calls = nodes
             .windows(3)
@@ -211,24 +211,25 @@ impl Builder<'_, '_> {
                     && matches!(w[2], Node::Group { open, .. } if self.kind(open) == K::LParen)
             })
             .count();
-        let logic = nodes
-            .iter()
-            .any(|n| matches!(n, Node::Tok(i) if matches!(self.kind(*i), K::AmpAmp | K::PipePipe)));
+        let mut breaks = false;
         let mut docs = Vec::new();
         for (j, node) in nodes.iter().enumerate() {
             let first = node.first();
             let kind = self.kind(first);
             if j > 0 {
-                let after_logic = matches!(self.prev, Some(K::AmpAmp | K::PipePipe));
+                let after_logic = matches!(self.prev, Some(K::AmpAmp | K::PipePipe))
+                    || (matches!(self.prev, Some(K::Plus | K::Minus)) && !self.prefix);
                 let breaks_chain = calls >= 3
                     && kind == K::Dot
                     && matches!(nodes.get(j + 2), Some(Node::Group { open, .. }) if self.kind(*open) == K::LParen);
                 if after_logic {
+                    breaks = true;
                     self.trailing(first, &mut docs);
                     docs.push(Doc::Line);
                     self.leading(first, &mut docs, true);
                     self.prev = None;
                 } else if breaks_chain {
+                    breaks = true;
                     self.trailing(first, &mut docs);
                     docs.push(Doc::Soft);
                     self.leading(first, &mut docs, true);
@@ -239,7 +240,7 @@ impl Builder<'_, '_> {
             }
             self.node(node, &mut docs);
         }
-        if logic || calls >= 3 {
+        if breaks {
             Doc::Group(vec![Doc::Indent(docs)])
         } else {
             Doc::Group(docs)
@@ -361,6 +362,7 @@ impl Builder<'_, '_> {
                     |n| !matches!(n, Node::Group { open, .. } if self.kind(*open) == K::LBrace),
                 )
             });
+        let declares = kind == K::LBrace && self.declares(open);
         let mut inner = Vec::new();
         for (j, element) in elements.iter().enumerate() {
             let Some(first) = element.first().map(Node::first) else {
@@ -373,6 +375,10 @@ impl Builder<'_, '_> {
                 } else {
                     Doc::Line
                 });
+                // A declaration keeps the blank lines between its fields.
+                if declares && self.blank_before(first) {
+                    inner.push(Doc::Blank);
+                }
             } else if !hug {
                 inner.push(edge.clone());
             } else if kind == K::LBrace {
@@ -401,7 +407,7 @@ impl Builder<'_, '_> {
             inner.push(Doc::IfBreak(","));
         }
         // The body of a declaration always breaks, as Prettier's interfaces.
-        if kind == K::LBrace && self.declares(open) {
+        if declares {
             inner.push(Doc::Hard);
         }
         comments_of(&self.items[close], &mut inner, false);

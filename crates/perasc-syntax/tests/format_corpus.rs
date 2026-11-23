@@ -1,11 +1,11 @@
-//! Decision 0041's first gate on every Peras file of the repository: a
+//! `perasc fmt` on every Peras file of the repository (decision 0041): a
 //! formatted file holds the same tokens and the same comments, in order, but
 //! for a trailing comma; formatting it again changes nothing.
 
 use std::path::Path;
 use std::process::Command;
 
-use perasc_syntax::format::{Style, format};
+use perasc_syntax::format::format;
 use perasc_syntax::{TokenKind, lex};
 
 /// The tokens' texts, a comma before a closing bracket left out, and the
@@ -61,16 +61,14 @@ fn every_file_keeps_its_tokens_and_comments() {
     let mut failures = Vec::new();
     for file in &files {
         let source = std::fs::read_to_string(root.join(file)).unwrap_or_default();
-        for style in [Style::Tokens, Style::Width] {
-            let Ok(once) = format(&source, style) else {
-                continue;
-            };
-            if kept(&once) != kept(&source) {
-                failures.push(format!("{file}, {style:?}: a token or a comment changed"));
-            }
-            if format(&once, style).ok().as_deref() != Some(once.as_str()) {
-                failures.push(format!("{file}, {style:?}: not idempotent"));
-            }
+        let Ok(once) = format(&source) else {
+            continue;
+        };
+        if kept(&once) != kept(&source) {
+            failures.push(format!("{file}: a token or a comment changed"));
+        }
+        if format(&once).ok().as_deref() != Some(once.as_str()) {
+            failures.push(format!("{file}: not idempotent"));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

@@ -1,16 +1,11 @@
-//! Decision 0041: the prototypes of a formatter, behind `PERAS_PROTO_FMT`.
+//! `perasc fmt` (decision 0041, f2): a printer at a width of 100, as
+//! Prettier prints TypeScript, the layout its own but for blank lines
+//! between statements and between the fields of a declaration.
 //!
-//! - f1 ([`Style::Tokens`]): the author's line breaks kept, indentation by the
-//!   brackets open, the spaces between two tokens by a table of their kinds;
-//! - f2 ([`Style::Width`]): a printer at a width of 100, the layout its own
-//!   but for blank lines between statements.
-//!
-//! Both read the same items: each token with the comments and the line breaks
-//! before it, read back from the source between two spans, since the lexer
-//! drops them. A file with a lexical or syntax error is refused, never half
-//! formatted.
+//! It reads each token with the comments and the line breaks before it,
+//! read back from the source between two spans, since the lexer drops them.
+//! A file with a lexical or syntax error is refused, never half formatted.
 
-mod tokens;
 mod width;
 
 use perasc_diag::Diagnostic;
@@ -19,24 +14,15 @@ use crate::lexer::lex;
 use crate::testing::{Tests, prepare};
 use crate::token::{Token, TokenKind};
 
-/// How to lay a file out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Style {
-    /// f1: the author's line breaks, indentation and spaces made regular.
-    Tokens,
-    /// f2: a printer at a width of 100.
-    Width,
-}
-
-/// The width f2 prints at, Prettier's for the repository (`.prettierrc`).
+/// The width a file is printed at, Prettier's for the repository (`.prettierrc`).
 pub const WIDTH: usize = 100;
 
-/// The source laid out as `style` says, or the errors that refuse it.
+/// The source laid out, or the errors that refuse it.
 ///
 /// # Errors
 ///
 /// The lexical and syntax errors of the source, or of its `test` blocks.
-pub fn format(source: &str, style: Style) -> Result<String, Vec<Diagnostic>> {
+pub fn format(source: &str) -> Result<String, Vec<Diagnostic>> {
     let parsed = crate::parse(source);
     if !parsed.diagnostics.is_empty() {
         return Err(parsed.diagnostics);
@@ -51,10 +37,7 @@ pub fn format(source: &str, style: Style) -> Result<String, Vec<Diagnostic>> {
     }
     let lexed = lex(source);
     let items = items(source, &lexed.tokens);
-    Ok(match style {
-        Style::Tokens => tokens::format(&items),
-        Style::Width => width::format(&items),
-    })
+    Ok(width::format(&items))
 }
 
 /// A comment, as the source wrote it.
@@ -208,30 +191,6 @@ fn space(a: TokenKind, b: TokenKind, prefix: bool, spaced: bool) -> bool {
         return !matches!(a, K::Ident | K::RParen | K::RBracket);
     }
     true
-}
-
-/// Whether a token opens a bracket, a `${` included.
-const fn opens(kind: TokenKind) -> bool {
-    matches!(
-        kind,
-        TokenKind::LParen
-            | TokenKind::LBracket
-            | TokenKind::LBrace
-            | TokenKind::TemplateHead
-            | TokenKind::TemplateMiddle
-    )
-}
-
-/// Whether a token closes a bracket, a `}` of `${` included.
-const fn closes(kind: TokenKind) -> bool {
-    matches!(
-        kind,
-        TokenKind::RParen
-            | TokenKind::RBracket
-            | TokenKind::RBrace
-            | TokenKind::TemplateMiddle
-            | TokenKind::TemplateTail
-    )
 }
 
 #[cfg(test)]

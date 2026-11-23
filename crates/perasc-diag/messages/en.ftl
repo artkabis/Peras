@@ -8,6 +8,7 @@ cli-usage =
     Commands:
       check <file>...    check .peras and .apeiron files and report every error
       build <file>       compile a .peras file to WebAssembly, or a .apeiron file to JavaScript
+      fmt <file>...      print each file at a width of 100, as Prettier prints TypeScript; with --check, name those it would change
       explain <code>     explain an error code, e.g. `perasc explain E0001`
 
     Options:
@@ -30,6 +31,13 @@ cli-unknown-command = unknown command `{ $command }`
 cli-missing-value = `{ $option }` needs a value
 cli-invalid-value = invalid value `{ $value }` for `{ $option }`
 cli-no-files = `check` needs at least one file
+cli-fmt-no-files = `fmt` needs at least one file
+cli-fmt-refused = `{ $path }` is left as it is: { $count ->
+    [one] a syntax error
+   *[other] { $count } syntax errors
+}, which `perasc check { $path }` shows
+cli-fmt-write-error = cannot write `{ $path }`: { $reason }
+cli-fmt-too-large = `{ $path }` is too large to format
 cli-no-build-file = `build` needs a .peras or .apeiron file
 cli-missing-code = `explain` needs an error code, e.g. E0001
 cli-unknown-code = unknown error code `{ $code }`
