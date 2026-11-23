@@ -9,6 +9,7 @@ cli-usage =
       check <file>...    check .peras and .apeiron files and report every error
       build <file>       compile a .peras file to WebAssembly, or a .apeiron file to JavaScript
       fmt <file>...      print each file at a width of 100, as Prettier prints TypeScript; with --check, name those it would change
+      serve              answer the queries of an editor or a tool, JSON a line on standard input and output
       explain <code>     explain an error code, e.g. `perasc explain E0001`
 
     Options:

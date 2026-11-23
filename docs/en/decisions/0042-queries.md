@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0042-queries.md](../../fr/decisions/0042-queries.md)._
 
-_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `ca5dd0e`; proposal: q2. It is the third step of phase 7 of the [roadmap](../reference/roadmap.md), tooling: "an editor extension and a language server". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-23, before any prototype and any measure, as the rule of the project asks; options measured at `ca5dd0e`; q2 chosen by the owner on 2026-11-23. It is the third step of phase 7 of the [roadmap](../reference/roadmap.md), tooling: "an editor extension and a language server". Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -80,3 +80,11 @@ Departures from the protocol: one position of `queries.json` written before any 
 ### Proposal
 
 **q2**, `perasc serve`: the language server of `peras-tools` keeps one process for an editor's session and gets its answers under a millisecond, where q1 spends a check on each and passes 50 ms on a large file. Its costs are those of a process that stays: 20 MB with a whole repository open, 42 KB in `perasc`. q1 is simpler for a script that asks once, which `perasc check --json` and `perasc fmt` already serve. The owner decides. If q2 is chosen, the landing removes q1 and `PERAS_PROTO_QUERY`, writes the protocol of `perasc serve` in the reference, a page the private repository builds on, and its answers to a file that imports another follow the changes to that other.
+
+### Decision and landing (2026-11-23)
+
+The owner chose **q2**. `perasc serve` is a command of `perasc`, with no setting; `perasc query`, q1, and `PERAS_PROTO_QUERY` are gone, their figures above and their code in git at ca5dd0e. Its protocol is [a page of the reference](../reference/serve.md), which the private repository builds on; the reference of the command lists it, and `perasc fmt`, which decision 0041's landing had left out of it.
+
+A file now follows the files it imports: the driver reads the text an editor holds open before the file on disk (`perasc_driver::set_open`), and a change, or a close, of a file analyses again every file opened that imports it. `scripts/bench-query.mjs` checks it, a function renamed in `stats.peras` and not saved giving `report.peras` its errors, named back giving none; broken on purpose, with the files that import not analysed again, the check fails, as it should. The script measures the build of today into `bench/query/CURRENT.md`, its `--check`, in the CI, holding the fifty answers, the ten on a file being typed and that one; [`RESULTS.md`](../../../bench/query/RESULTS.md) keeps the options as measured.
+
+Non-regression, `scripts/check-regression.mjs 8050bf7`: 242 modules compared, none larger, smaller or changed; compile time 1.017 (0.968 to 1.127); the compiler 8,528 bytes larger than with both prototypes, q1's removal giving back little of a code it shared with q2, the open texts and the files that import adding more; 180,504 bytes larger than without queries (`628ce00`), what this decision brings.

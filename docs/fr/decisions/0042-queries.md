@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0042-queries.md](../../en/decisions/0042-queries.md)._
 
-_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `ca5dd0e` ; proposition : q2. C’est le troisième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage : « une extension d’éditeur et un serveur de langage ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-23, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `ca5dd0e` ; q2 retenue par le propriétaire le 2026-11-23. C’est le troisième pas de la phase 7 de la [feuille de route](../reference/roadmap.md), l’outillage : « une extension d’éditeur et un serveur de langage ». Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -80,3 +80,11 @@ Ce que disent les chiffres :
 ### Proposition
 
 **q2**, `perasc serve` : le serveur de langage de `peras-tools` garde un processus pour la session d’un éditeur et obtient ses réponses en moins d’une milliseconde, là où q1 dépense une vérification pour chacune et dépasse 50 ms sur un grand fichier. Ses coûts sont ceux d’un processus qui reste : 20 Mo avec tout un dépôt ouvert, 42 Ko dans `perasc`. q1 est plus simple pour un script qui demande une fois, ce que servent déjà `perasc check --json` et `perasc fmt`. Le propriétaire décide. Si q2 est retenue, l’installation retire q1 et `PERAS_PROTO_QUERY`, écrit le protocole de `perasc serve` dans la référence, une page sur laquelle construit le dépôt privé, et ses réponses à un fichier qui en importe un autre suivent les changements de cet autre.
+
+### Décision et installation (2026-11-23)
+
+Le propriétaire a retenu **q2**. `perasc serve` est une commande de `perasc`, sans réglage ; `perasc query`, q1, et `PERAS_PROTO_QUERY` sont partis, leurs chiffres plus haut et leur code dans git au commit ca5dd0e. Son protocole est [une page de la référence](../reference/serve.md), sur laquelle construit le dépôt privé ; la référence de la commande la liste, ainsi que `perasc fmt`, que l’installation de la décision 0041 y avait oublié.
+
+Un fichier suit maintenant les fichiers qu’il importe : le pilote lit le texte qu’un éditeur tient ouvert avant le fichier sur disque (`perasc_driver::set_open`), et un changement, ou une fermeture, d’un fichier analyse de nouveau chaque fichier ouvert qui l’importe. `scripts/bench-query.mjs` le vérifie, une fonction renommée dans `stats.peras` sans être enregistrée donnant ses erreurs à `report.peras`, renommée comme avant n’en donnant plus ; cassé exprès, les fichiers qui importent n’étant plus analysés de nouveau, le contrôle échoue, comme il le doit. Le script mesure le build d’aujourd’hui dans `bench/query/CURRENT.md`, son `--check`, dans la CI, tenant les cinquante réponses, les dix sur un fichier en cours de frappe et celle-ci ; [`RESULTS.md`](../../../bench/query/RESULTS.md) garde les options telles que mesurées.
+
+Non-régression, `scripts/check-regression.mjs 8050bf7` : 242 modules comparés, aucun plus grand, plus petit ni changé ; temps de compilation 1,017 (0,968 à 1,127) ; le compilateur 8 528 octets plus grand qu’avec les deux prototypes, le retrait de q1 rendant peu d’un code qu’il partageait avec q2, les textes ouverts et les fichiers qui importent ajoutant davantage ; 180 504 octets plus grand que sans requêtes (`628ce00`), ce qu’apporte cette décision.

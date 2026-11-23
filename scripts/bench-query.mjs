@@ -1,32 +1,32 @@
-// Decision 0042: queries for the tools. q1 (`perasc query`, one process a
-// query) and q2 (`perasc serve`, one process for an editor's session), both
-// prototypes behind `PERAS_PROTO_QUERY`; perasc built for release (finding
-// M029).
+// Decision 0042: queries for the tools. q2, chosen, is `perasc serve`, one
+// process for an editor's session; q1 (`perasc query`, one process a query)
+// was measured against it at commit ca5dd0e and removed once not chosen: its
+// figures are in the decision and in bench/query/RESULTS.md. perasc is built
+// for release (finding M029).
 //
 // 1. Answers: bench/query/queries.json, fifty queries on six programs, each
-//    answered by both options as written by hand.
+//    answered as written by hand.
 // 2. A file being typed: ten queries on the same programs with a syntax error
-//    before the position; which still answer.
-// 3. Speed and load on the processor: each kind of query on three files, the
+//    before the position.
+// 3. A file follows the text of the file it imports, saved or not.
+// 4. Speed and load on the processor: each kind of query on three files, the
 //    median time from the request to the answer and its 95th percentile; a
 //    scenario of 100 edits, each followed by `diagnostics` and `hover`, its
-//    CPU time over its wall time; the options alternating in one process
-//    (finding M017).
-// 4. Memory: the peak of q2's process with every Peras file of the
-//    repository opened, and of a q1 process on the largest file, read from
-//    Linux (`VmHWM` of `/proc/<pid>/status`).
+//    CPU time over its wall time.
+// 5. Memory: the peak of the process with every Peras file of the
+//    repository opened, read from Linux (`VmHWM` of `/proc/<pid>/status`).
 //
 // Usage: node scripts/bench-query.mjs [--check] [--rounds N]
-//        --check: points 1 and 2 checked, one round of the rest, nothing
+//        --check: points 1 to 3 checked, one round of the rest, nothing
 //        written.
-// Writes bench/query/RESULTS.md, unless --check.
+// Writes bench/query/CURRENT.md, unless --check: RESULTS.md keeps the
+// options as decision 0042 measured them.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { basename, join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { createInterface } from "node:readline";
-import { clearInterval, setInterval } from "node:timers";
 
 const check = process.argv.includes("--check");
 const at = process.argv.indexOf("--rounds");
@@ -46,42 +46,11 @@ mkdirSync(work, { recursive: true });
  *   includes?: string[], names?: string[], codes?: string[], unchanged?: boolean }} Answer
  * @typedef {{ file: string, kind: string, at?: string, expect: Answer,
  *   replace?: { line: number, text: string } }} Entry
- * @typedef {{ ask: (q: Query) => Promise<unknown>, change: (file: string, text: string) => Promise<void>, close: () => void, pid?: number }} Client
  */
 
-/**
- * The client of q1: one process a query, the text on its standard input.
- * @returns {Client}
- */
-function q1() {
-  return {
-    ask(q) {
-      const args = ["query", q.kind, q.file];
-      if (q.at !== undefined) args.push("--at", q.at);
-      if (q.text !== undefined) args.push("--stdin");
-      const r = spawnSync(perasc, args, {
-        input: q.text,
-        encoding: "utf8",
-        env: { ...process.env, PERAS_PROTO_QUERY: "q1" },
-      });
-      /** @type {unknown} */
-      const answer = JSON.parse(r.stdout || "null");
-      return Promise.resolve(answer);
-    },
-    change: () => Promise.resolve(),
-    close: () => undefined,
-  };
-}
-
-/**
- * The client of q2: one process, a request a line, an answer a line.
- * @returns {Client}
- */
-function q2() {
-  const child = spawn(perasc, ["serve"], {
-    env: { ...process.env, PERAS_PROTO_QUERY: "q2" },
-    stdio: ["pipe", "pipe", "inherit"],
-  });
+/** The client of `perasc serve`: one process, a request a line, an answer a line. */
+function serve() {
+  const child = spawn(perasc, ["serve"], { stdio: ["pipe", "pipe", "inherit"] });
   let next = 0;
   /** @type {Map<number, (v: unknown) => void>} */
   const waiting = new Map();
@@ -102,20 +71,22 @@ function q2() {
   };
   return {
     pid: child.pid,
+    /** @param {Query} q */
     async ask(q) {
       if (q.text !== undefined) await send({ method: "change", file: q.file, text: q.text });
       return send({ method: "query", file: q.file, kind: q.kind, at: q.at });
     },
+    /** @param {string} file @param {string} text */
     async change(file, text) {
       await send({ method: "change", file, text });
     },
-    close: () => child.stdin.end(),
+    /** @param {string} file */
+    async close(file) {
+      await send({ method: "close", file });
+    },
+    end: () => child.stdin.end(),
   };
 }
-
-const OPTIONS = ["q1", "q2"];
-/** @param {string} option */
-const client = (option) => (option === "q1" ? q1() : q2());
 
 /**
  * Whether an answer is the one expected.
@@ -158,13 +129,11 @@ const program = (/** @type {string} */ f) => join(bench, "programs", f);
 const report = [
   `Machine: ${cpus()[0]?.model ?? "unknown"}, ${String(cpus().length)} cores; Node ${process.version}; ${String(ROUNDS)} rounds; perasc built for release.`,
   "",
-  "### 1. Answers and 2. a file being typed",
+  "### 1. Answers, 2. a file being typed, 3. a file follows the file it imports",
   "",
-  "| Option | Right answers, of 50 | Being typed, of 10 |",
-  "| --- | ---: | ---: |",
 ];
-for (const option of OPTIONS) {
-  const c = client(option);
+{
+  const c = serve();
   let good = 0;
   const wrong = [];
   for (const q of expected.queries) {
@@ -187,13 +156,32 @@ for (const option of OPTIONS) {
     // The file as it is again, for the queries after.
     await c.change(program(q.file), original);
   }
-  c.close();
-  report.push(`| ${option} | ${String(good)} | ${String(typed)} |`);
-  if (check && good !== expected.queries.length)
-    throw new Error(`${option}: wrong answers: ${wrong.join("; ")}`);
+  // 3. report.peras imports `summarize` from stats.peras: renamed there, not
+  // saved, report.peras has an error; named back, it has none.
+  const stats = readFileSync(program("stats.peras"), "utf8");
+  const report0 = /** @type {Answer} */ (
+    await c.ask({ kind: "diagnostics", file: program("report.peras") })
+  );
+  await c.change(program("stats.peras"), stats.replace("fn summarize(", "fn summary("));
+  const report1 = /** @type {Answer} */ (
+    await c.ask({ kind: "diagnostics", file: program("report.peras") })
+  );
+  await c.close(program("stats.peras"));
+  const report2 = /** @type {Answer} */ (
+    await c.ask({ kind: "diagnostics", file: program("report.peras") })
+  );
+  const follows =
+    report0.codes?.length === 0 && (report1.codes?.length ?? 0) > 0 && report2.codes?.length === 0;
+  c.end();
+  report.push(
+    `- ${String(good)} of ${String(expected.queries.length)} answers right; ${String(typed)} of ${String(expected.typing.length)} on a file being typed.`,
+    `- A file follows the text of the file it imports: ${follows ? "yes" : "no"} (its errors ${JSON.stringify(report0.codes)}, then ${JSON.stringify(report1.codes)} with the imported file changed and not saved, then ${JSON.stringify(report2.codes)} once it is closed).`,
+  );
+  if (check && (good !== expected.queries.length || typed !== expected.typing.length || !follows))
+    throw new Error(`wrong answers: ${wrong.join("; ")}\n${report.join("\n")}`);
 }
 
-// 3. Speed. Three files: 50 lines, the largest of the repository, 5,000.
+// 4. Speed. Three files: 50 lines, the largest of the repository, 5,000.
 const largestPath = join(root, "bench", "parallel", "as-written", "pond-bands.peras");
 const largest = readFileSync(largestPath, "utf8");
 /** The top-level items of a file, each with its text. @param {string} text */
@@ -244,45 +232,32 @@ const pct = (xs, p) =>
 
 report.push(
   "",
-  "### 3. Speed: each kind of query, median (95th percentile), ms",
+  "### 4. Speed: each kind of query, median (95th percentile), ms",
   "",
-  `| File | Option | ${KINDS.join(" | ")} |`,
-  `| --- | --- |${KINDS.map(() => " ---: |").join("")}`,
+  `| File | ${KINDS.join(" | ")} |`,
+  `| --- |${KINDS.map(() => " ---: |").join("")}`,
 );
 for (const f of files) {
   const pos = position(f.text);
-  /** @type {Record<string, Record<string, number[]>>} */
+  /** @type {Record<string, number[]>} */
   const t = {};
-  /** @type {Record<string, Client>} */
-  const clients = { q1: q1(), q2: q2() };
-  await clients.q2?.change(f.path, f.text);
+  const c = serve();
+  await c.change(f.path, f.text);
   for (let round = 0; round < ROUNDS; round++) {
-    for (const option of round % 2 === 0 ? OPTIONS : [...OPTIONS].reverse()) {
-      for (const kind of KINDS) {
-        const t0 = performance.now();
-        await clients[option]?.ask({ kind, file: f.path, at: pos });
-        ((t[option] ??= {})[kind] ??= []).push(performance.now() - t0);
-      }
+    for (const kind of KINDS) {
+      const t0 = performance.now();
+      await c.ask({ kind, file: f.path, at: pos });
+      (t[kind] ??= []).push(performance.now() - t0);
     }
   }
-  clients.q2?.close();
-  for (const option of OPTIONS) {
-    const cells = KINDS.map((k) => {
-      const xs = t[option]?.[k] ?? [];
-      return `${pct(xs, 0.5).toFixed(1)} (${pct(xs, 0.95).toFixed(1)})`;
-    });
-    report.push(`| ${f.name} | ${option} | ${cells.join(" | ")} |`);
-  }
+  c.end();
+  const cells = KINDS.map((k) => {
+    const xs = t[k] ?? [];
+    return `${pct(xs, 0.5).toFixed(1)} (${pct(xs, 0.95).toFixed(1)})`;
+  });
+  report.push(`| ${f.name} | ${cells.join(" | ")} |`);
 }
 
-/**
- * The CPU time of this process and of its children that ended, in ms, from
- * Linux: `utime`, `stime`, `cutime` and `cstime` of `/proc/self/stat`.
- */
-function ownCpu() {
-  const stat = readFileSync("/proc/self/stat", "utf8").split(") ")[1]?.split(" ") ?? [];
-  return ((Number(stat[11]) + Number(stat[12]) + Number(stat[13]) + Number(stat[14])) * 1000) / 100;
-}
 /** The CPU time of a running process, in ms, from Linux. @param {number | undefined} pid */
 function cpuOf(pid) {
   if (pid === undefined) return 0;
@@ -301,52 +276,43 @@ function cpuOf(pid) {
 // `diagnostics` and `hover`.
 report.push(
   "",
-  "### 3. Speed: 100 edits of the largest file, each followed by `diagnostics` and `hover`",
+  "### 4. Speed: 100 edits of the largest file, each followed by `diagnostics` and `hover`",
   "",
-  "| Option | Total, median | Range | CPU / wall |",
-  "| --- | ---: | --- | ---: |",
+  "| Total, median | Range | CPU / wall |",
+  "| ---: | --- | ---: |",
 );
 const edits = check ? 10 : 100;
 const scenario = files[1];
 if (scenario === undefined) throw new Error("no file");
 const pos = position(scenario.text);
-/** @type {Record<string, { wall: number[], cpu: number, total: number }>} */
-const s = {};
+const walls = [];
+let cpu = 0;
+let total = 0;
 for (let round = 0; round < ROUNDS; round++) {
-  for (const option of round % 2 === 0 ? OPTIONS : [...OPTIONS].reverse()) {
-    const c = client(option);
-    await c.change(scenario.path, scenario.text);
-    const own0 = ownCpu();
-    const child0 = cpuOf(c.pid);
-    const t0 = performance.now();
-    for (let e = 0; e < edits; e++) {
-      // A comment typed at the end of the file, then removed, and again.
-      const text = `${scenario.text}${e % 2 === 0 ? `// ${String(e)}` : ""}`;
-      const sent = option === "q1" ? text : undefined;
-      await c.change(scenario.path, text);
-      await c.ask({ kind: "diagnostics", file: scenario.path, text: sent });
-      await c.ask({ kind: "hover", file: scenario.path, at: pos, text: sent });
-    }
-    const wall = performance.now() - t0;
-    // Node's own time and its children's that ended (q1's processes), and
-    // q2's process, still running.
-    const used = ownCpu() - own0 + (cpuOf(c.pid) - child0);
-    c.close();
-    const r = (s[option] ??= { wall: [], cpu: 0, total: 0 });
-    r.wall.push(wall);
-    r.cpu += used;
-    r.total += wall;
+  const c = serve();
+  await c.change(scenario.path, scenario.text);
+  const own0 = process.cpuUsage();
+  const child0 = cpuOf(c.pid);
+  const t0 = performance.now();
+  for (let e = 0; e < edits; e++) {
+    // A comment typed at the end of the file, then removed, and again.
+    const text = `${scenario.text}${e % 2 === 0 ? `// ${String(e)}` : ""}`;
+    await c.change(scenario.path, text);
+    await c.ask({ kind: "diagnostics", file: scenario.path });
+    await c.ask({ kind: "hover", file: scenario.path, at: pos });
   }
+  const wall = performance.now() - t0;
+  const own = process.cpuUsage(own0);
+  cpu += (own.user + own.system) / 1000 + (cpuOf(c.pid) - child0);
+  total += wall;
+  walls.push(wall);
+  c.end();
 }
-for (const option of OPTIONS) {
-  const r = s[option];
-  if (r === undefined) continue;
-  report.push(
-    `| ${option} | ${pct(r.wall, 0.5).toFixed(0)} ms | ${Math.min(...r.wall).toFixed(0)} to ${Math.max(...r.wall).toFixed(0)} ms | ${(r.cpu / r.total).toFixed(2)} |`,
-  );
-}
+report.push(
+  `| ${pct(walls, 0.5).toFixed(0)} ms | ${Math.min(...walls).toFixed(0)} to ${Math.max(...walls).toFixed(0)} ms | ${(cpu / total).toFixed(2)} |`,
+);
 
-// 4. Memory.
+// 5. Memory.
 const corpus = spawnSync("git", ["ls-files", "*.peras", "*.apeiron"], {
   cwd: root,
   encoding: "utf8",
@@ -362,38 +328,22 @@ function peak(pid) {
     return Number.NaN;
   }
 }
-const server = q2();
+const server = serve();
 for (const f of corpus) await server.change(join(root, f), readFileSync(join(root, f), "utf8"));
 await server.ask({ kind: "hover", file: largestPath, at: pos });
-const q2Peak = peak(server.pid);
-server.close();
-let q1Peak = 0;
-{
-  const child = spawn(perasc, ["query", "diagnostics", largestPath], {
-    env: { ...process.env, PERAS_PROTO_QUERY: "q1" },
-    stdio: ["ignore", "ignore", "ignore"],
-  });
-  const timer = setInterval(() => {
-    const m = peak(child.pid);
-    if (Number.isFinite(m)) q1Peak = Math.max(q1Peak, m);
-  }, 1);
-  await new Promise((resolve) => child.on("exit", resolve));
-  clearInterval(timer);
-}
+const top = peak(server.pid);
+server.end();
 report.push(
   "",
-  "### 4. Memory",
+  "### 5. Memory",
   "",
-  "| Option | Peak |",
-  "| --- | ---: |",
-  `| q1, one process on the largest file (sampled every millisecond) | ${q1Peak.toFixed(1)} MB |`,
-  `| q2, the ${String(corpus.length)} Peras files of the repository opened | ${q2Peak.toFixed(1)} MB |`,
+  `The peak of the process with the ${String(corpus.length)} Peras files of the repository opened: ${top.toFixed(1)} MB.`,
 );
 
 console.log(report.join("\n"));
 if (!check) {
   writeFileSync(
-    join(bench, "RESULTS.md"),
-    `# Queries for the tools: q1 against q2\n\nGenerated by \`node scripts/bench-query.mjs\`, for [decision 0042](../../docs/en/decisions/0042-queries.md).\n\n${report.join("\n")}\n`,
+    join(bench, "CURRENT.md"),
+    `# Queries for the tools: the build of today\n\nGenerated by \`node scripts/bench-query.mjs\`, for [decision 0042](../../docs/en/decisions/0042-queries.md).\n\n${report.join("\n")}\n`,
   );
 }

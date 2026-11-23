@@ -1,14 +1,11 @@
-//! Decision 0042: queries for the tools, the prototypes behind
-//! `PERAS_PROTO_QUERY`.
+//! `perasc serve` (decision 0042, q2): queries for the tools, one process
+//! for an editor's session, a JSON request a line on standard input and an
+//! answer a line on standard output. Each file opened is kept with its
+//! analysis, and analysed again when its text changes, or the text of a file
+//! it imports; the protocol is in `docs/en/reference/serve.md`.
 //!
-//! - q1, `perasc query <kind> <file> [--at line:column] [--stdin]`: one
-//!   process a query, the text read from the file, or from standard input;
-//! - q2, `perasc serve`: one process for an editor's session, a JSON
-//!   request a line on standard input, an answer a line on standard output,
-//!   each file opened kept with its analysis.
-//!
-//! Both answer through [`Opened::answer`], from the file's tree, its tokens
-//! and what the checker learned of it (`perasc_check::Analysis`).
+//! Every answer comes from the file's tree, its tokens and what the checker
+//! learned of it (`perasc_check::Analysis`).
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
@@ -101,6 +98,19 @@ impl Opened {
         };
         opened.decls = opened.declarations();
         opened
+    }
+
+    /// The files its imports name, by canonical path.
+    fn imports(&self) -> Vec<PathBuf> {
+        self.ast
+            .items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::Import(i) => perasc_driver::import_path(&self.path, &i.from),
+                _ => None,
+            })
+            .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+            .collect()
     }
 
     /// Every name the file declares.
@@ -332,7 +342,7 @@ impl Opened {
         if d.what == What::Import
             && let Some(from) = &d.from
             && let Some(file) = perasc_driver::import_path(&self.path, from)
-            && let Ok(text) = std::fs::read_to_string(&file)
+            && let Ok(text) = perasc_driver::read_source(&file)
         {
             let other = Self::new(&file, text);
             if let Some(j) = other
@@ -524,70 +534,13 @@ fn hover(opened: &Opened, i: usize) -> Value {
     json!({ "name": d.name, "what": d.what.name(), "type": ty })
 }
 
-/// Which prototype `PERAS_PROTO_QUERY` names.
-fn option() -> Option<String> {
-    std::env::var("PERAS_PROTO_QUERY").ok()
-}
-
-/// `perasc query <kind> <file> [--at line:column] [--stdin]` (q1).
+/// `perasc serve`: a request a line, an answer a line, every file opened
+/// kept with its analysis until it, or a file it imports, changes.
 ///
 /// # Errors
 ///
 /// When standard input or output fails.
-pub fn query(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> io::Result<u8> {
-    if option().as_deref() != Some("q1") {
-        writeln!(
-            err,
-            "perasc query is a prototype of decision 0042: set PERAS_PROTO_QUERY=q1"
-        )?;
-        return Ok(2);
-    }
-    let mut positional = Vec::new();
-    let mut at = None;
-    let mut stdin = false;
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--at" => {
-                at = args.get(i + 1).cloned();
-                i += 1;
-            }
-            "--stdin" => stdin = true,
-            other => positional.push(other.to_owned()),
-        }
-        i += 1;
-    }
-    let (Some(kind), Some(file)) = (positional.first(), positional.get(1)) else {
-        writeln!(
-            err,
-            "usage: perasc query <kind> <file> [--at line:column] [--stdin]"
-        )?;
-        return Ok(2);
-    };
-    let text = if stdin {
-        io::read_to_string(io::stdin())?
-    } else {
-        std::fs::read_to_string(file).unwrap_or_default()
-    };
-    let opened = Opened::new(Path::new(file), text);
-    writeln!(out, "{}", answer_in(&opened, kind, at.as_deref()))?;
-    Ok(0)
-}
-
-/// `perasc serve` (q2): a request a line, an answer a line, every file
-/// opened kept with its analysis until it changes.
-///
-/// # Errors
-///
-/// When standard input or output fails.
-pub fn serve(out: &mut dyn Write, err: &mut dyn Write) -> io::Result<u8> {
-    if option().as_deref() != Some("q2") {
-        writeln!(
-            err,
-            "perasc serve is a prototype of decision 0042: set PERAS_PROTO_QUERY=q2"
-        )?;
-        return Ok(2);
-    }
+pub fn serve(out: &mut dyn Write) -> io::Result<u8> {
     let mut files: HashMap<String, Opened> = HashMap::new();
     for line in io::stdin().lock().lines() {
         let line = line?;
@@ -602,11 +555,15 @@ pub fn serve(out: &mut dyn Write, err: &mut dyn Write) -> io::Result<u8> {
             Some("open" | "change") => {
                 let text = field("text")
                     .unwrap_or_else(|| std::fs::read_to_string(&file).unwrap_or_default());
+                perasc_driver::set_open(Path::new(&file), Some(text.clone()));
                 files.insert(file.clone(), Opened::new(Path::new(&file), text));
+                reanalyse_importers(&mut files, &file);
                 json!({ "ok": true })
             }
             Some("close") => {
                 files.remove(&file);
+                perasc_driver::set_open(Path::new(&file), None);
+                reanalyse_importers(&mut files, &file);
                 json!({ "ok": true })
             }
             Some("query") => {
@@ -626,4 +583,20 @@ pub fn serve(out: &mut dyn Write, err: &mut dyn Write) -> io::Result<u8> {
         out.flush()?;
     }
     Ok(0)
+}
+
+/// Analyses again each file opened that imports `changed`.
+fn reanalyse_importers(files: &mut HashMap<String, Opened>, changed: &str) {
+    let changed = std::fs::canonicalize(changed).unwrap_or_else(|_| PathBuf::from(changed));
+    let importers: Vec<String> = files
+        .iter()
+        .filter(|(_, o)| o.imports().contains(&changed))
+        .map(|(f, _)| f.clone())
+        .collect();
+    for f in importers {
+        if let Some(o) = files.remove(&f) {
+            let source = o.source;
+            files.insert(f.clone(), Opened::new(Path::new(&f), source));
+        }
+    }
 }

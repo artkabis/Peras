@@ -9,6 +9,7 @@ cli-usage =
       check <fichier>... vérifie des fichiers .peras et .apeiron et signale toutes les erreurs
       build <fichier>    compile un fichier .peras en WebAssembly, ou un fichier .apeiron en JavaScript
       fmt <fichier>...   imprime chaque fichier à une largeur de 100, comme Prettier imprime TypeScript ; avec --check, nomme ceux qu’il changerait
+      serve              répond aux requêtes d’un éditeur ou d’un outil, en JSON ligne à ligne sur l’entrée et la sortie standard
       explain <code>     explique un code d’erreur, par exemple `perasc explain E0001`
 
     Options :

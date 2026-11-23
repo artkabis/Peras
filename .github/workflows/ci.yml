@@ -179,7 +179,7 @@ jobs:
         run: node scripts/bench-tests.mjs --check
       - name: perasc fmt keeps every file's module and refusals, idempotent, one text for a program laid out twice (decision 0041)
         run: node scripts/bench-fmt.mjs --check
-      - name: Both query interfaces give the fifty answers written by hand (decision 0042)
+      - name: perasc serve gives the fifty answers written by hand, and follows an imported file (decision 0042)
         run: node scripts/bench-query.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check

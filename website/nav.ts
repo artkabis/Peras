@@ -42,6 +42,7 @@ export const sections: Section[] = [
       "reference/browser",
       "reference/keywords",
       "reference/cli",
+      "reference/serve",
       "reference/roadmap",
     ],
   },
