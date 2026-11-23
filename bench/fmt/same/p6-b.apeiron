@@ -1,0 +1,8 @@
+export fn ready(name: String, count: i32, enabled: bool, limit: i32): bool {
+  return enabled
+    && count > 0
+    && count < limit
+    && name.length > 0
+    && name != "none"
+    && limit > 10;
+}

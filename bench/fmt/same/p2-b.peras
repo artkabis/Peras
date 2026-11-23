@@ -1,0 +1,11 @@
+struct Point {
+  x: f64,
+  y: f64,
+}
+
+export fn distance(a: Point, b: Point): f64
+{
+  const dx = a.x-b.x;
+  const dy = a.y-b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}

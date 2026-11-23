@@ -1,0 +1,5 @@
+enum Shape { Circle(f64), Square(f64), Rect(f64, f64) }
+
+export fn area(s: Shape): f64 {
+  return match (s) { Circle(r) => Math.PI * r * r, Square(a) => a * a, Rect(w, h) => w * h };
+}

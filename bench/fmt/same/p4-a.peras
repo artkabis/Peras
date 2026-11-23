@@ -1,0 +1,6 @@
+export fn total(xs: Array<i32>): i32 {
+  // The sum of the positive ones.
+  let sum = 0;
+  for (const x of xs) { if (x > 0) { sum += x; } } // skip the rest
+  return sum;
+}
