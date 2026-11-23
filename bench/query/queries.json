@@ -193,7 +193,7 @@
     {
       "file": "report.peras",
       "kind": "hover",
-      "at": "5:30",
+      "at": "5:39",
       "expect": {
         "name": "mean",
         "what": "field",

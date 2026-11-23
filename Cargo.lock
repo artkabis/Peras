@@ -316,6 +316,7 @@ name = "perasc"
 version = "0.0.1"
 dependencies = [
  "insta",
+ "perasc-check",
  "perasc-diag",
  "perasc-driver",
  "perasc-syntax",

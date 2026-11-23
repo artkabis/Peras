@@ -134,6 +134,18 @@ fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::
     imports_context(path, ast)
 }
 
+/// What the checker needs to analyse the module at `path` as its extension
+/// says, with the files it imports (decision 0042's queries).
+#[must_use]
+pub fn analysis_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
+    let mut context = imports_context(path, ast);
+    if Mode::from_path(path) == Some(Mode::Owned) {
+        context.managed = false;
+        context.path = canonical(path).display().to_string();
+    }
+    context
+}
+
 /// The modules the imports of the module at `path` name, each checked with
 /// the files it imports in turn.
 fn imports_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {

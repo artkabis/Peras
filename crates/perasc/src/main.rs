@@ -7,6 +7,7 @@
 
 mod build;
 mod fmt;
+mod query;
 
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
@@ -246,6 +247,12 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         .find(|pair| pair.first().is_some_and(|a| a == "--lang"))
         .and_then(|pair| pair.get(1))
         .and_then(|tag| Language::from_tag(tag));
+    // Decision 0042's prototypes, which read their own arguments.
+    match args.first().map(String::as_str) {
+        Some("query") => return query::query(&args[1..], out, err).unwrap_or(USAGE_OR_IO),
+        Some("serve") => return query::serve(out, err).unwrap_or(USAGE_OR_IO),
+        _ => {}
+    }
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(problem) => {
