@@ -43,7 +43,7 @@ mkdirSync(work, { recursive: true });
  * @typedef {{ kind: string, file: string, at?: string, text?: string }} Query
  * @typedef {{ name?: string, what?: string, type?: string, file?: string,
  *   at?: string | string[], symbols?: { name: string, what: string, line: number }[],
- *   includes?: string[], names?: string[], codes?: string[], unchanged?: boolean }} Answer
+ *   includes?: string[], names?: string[], codes?: string[], items?: unknown[], unchanged?: boolean }} Answer
  * @typedef {{ file: string, kind: string, at?: string, expect: Answer,
  *   replace?: { line: number, text: string } }} Entry
  */
@@ -171,7 +171,11 @@ const report = [
     await c.ask({ kind: "diagnostics", file: program("report.peras") })
   );
   const follows =
-    report0.codes?.length === 0 && (report1.codes?.length ?? 0) > 0 && report2.codes?.length === 0;
+    report0.codes?.length === 0 &&
+    (report1.codes?.length ?? 0) > 0 &&
+    // Each error also as `perasc check --json` writes it, for an editor.
+    report1.items?.length === report1.codes?.length &&
+    report2.codes?.length === 0;
   c.end();
   report.push(
     `- ${String(good)} of ${String(expected.queries.length)} answers right; ${String(typed)} of ${String(expected.typing.length)} on a file being typed.`,

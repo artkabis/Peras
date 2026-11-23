@@ -74,7 +74,7 @@ pub struct Opened {
     decls: Vec<Decl>,
     managed: bool,
     /// The codes of its errors, found once for its text.
-    diagnostics: std::cell::OnceCell<Vec<String>>,
+    diagnostics: std::cell::OnceCell<Value>,
 }
 
 impl Opened {
@@ -361,17 +361,29 @@ impl Opened {
     pub fn answer(&self, kind: &str, at: Option<&str>) -> Value {
         let offset = at.and_then(|a| self.offset(a));
         match kind {
-            "diagnostics" => {
-                let codes = self.diagnostics.get_or_init(|| {
+            "diagnostics" => self
+                .diagnostics
+                .get_or_init(|| {
                     let checked = perasc_driver::check_file(&self.path, &self.source);
-                    checked
+                    let file = perasc_diag::source::SourceFile::new("", &self.source);
+                    let localizer = perasc_diag::i18n::Localizer::new(
+                        perasc_diag::messages::Language::from_env(),
+                    );
+                    let codes: Vec<String> = checked
                         .diagnostics
                         .iter()
                         .map(|d| d.code.to_string())
-                        .collect()
-                });
-                json!({ "codes": codes })
-            }
+                        .collect();
+                    // Each as `perasc check --json` writes it: its message,
+                    // its ranges, its cause and its fix.
+                    let items: Vec<perasc_diag::json::JsonDiagnostic> = checked
+                        .diagnostics
+                        .iter()
+                        .map(|d| perasc_diag::json::diagnostic(d, &file, &localizer))
+                        .collect();
+                    json!({ "codes": codes, "items": items })
+                })
+                .clone(),
             "format" => match perasc_syntax::format::format(&self.source) {
                 Ok(text) => json!({ "unchanged": text == self.source, "text": text }),
                 Err(_) => json!({ "refused": true }),
