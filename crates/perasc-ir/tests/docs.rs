@@ -362,7 +362,12 @@ fn the_browser_reference_lists_exactly_the_browser_api() {
                 known.push("on".to_owned());
             }
         }
-        known.extend(["Group.new".to_owned(), "new".to_owned()]);
+        // `Instant.now()`, the clock of decision 0039, is listed with the globals.
+        known.extend([
+            "Group.new".to_owned(),
+            "Instant.now".to_owned(),
+            "new".to_owned(),
+        ]);
         // Every name written in the first cell of a table is known.
         for line in page
             .lines()

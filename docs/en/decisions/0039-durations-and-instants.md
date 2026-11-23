@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0039-durations-and-instants.md](../../fr/decisions/0039-durations-and-instants.md)._
 
-_Status: protocol registered on 2026-11-18, before any prototype and any measure, as the rule of the project asks; options measured at `370b4ce`; proposal: t1. It answers the "time" line of phase 3 of the [roadmap](../reference/roadmap.md), durations and instants; dates of the calendar and time zones are left to a later decision. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
+_Status: protocol registered on 2026-11-18, before any prototype and any measure, as the rule of the project asks; options measured at `370b4ce`; t1 chosen by the owner on 2026-11-23. It answers the "time" line of phase 3 of the [roadmap](../reference/roadmap.md), durations and instants; dates of the calendar and time zones are left to a later decision. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression._
 
 ## Context
 
@@ -67,3 +67,9 @@ Two runs at commit 370b4ce, one after the other, nothing else running, every mod
 ### Proposal
 
 **t1**, `Duration` and `Instant`: four of the six bugs caught, at no cost in time or bytes, every program as long as today's. t2 catches the same bugs at the same cost and writes a duration in fewer characters, `300ms`, for four more notions and a change of the lexer; it can be added later on t1 without changing anything t1 writes, which t1 could not be after t2. Its price, in either case, is the migration of every timer that waits a bare number: three programs and six examples here, and each user's. The owner decides.
+
+### Decision and landing (2026-11-23)
+
+The owner chose **t1**. `Duration` and `Instant` are always there; `PERAS_PROTO_TIME` is gone, and with it t2's literals, their figures above and their code in git at 370b4ce. Every timer of the repository that waited a bare number now says its unit, `setTimeout(Duration.ms(300), …)`: the case study's two versions, the end-to-end fixture, two web bugs, six tests of the checker and of the generator, and the examples of the guide and of the browser's reference. A number taken from an `Instant` is now `check-time-either`, whose fix names both readings and edits nothing (finding F225). A test of the checker holds the four errors, one of the generator durations and instants computed in milliseconds. `scripts/bench-time.mjs` measures the build of today against TypeScript into `bench/time/CURRENT.md`; [`RESULTS.md`](../../../bench/time/RESULTS.md) keeps the options as measured.
+
+Non-regression, `scripts/check-regression.mjs d964ca4`: no module larger, smaller or changed; compile time 0.976. The three programs migrated build into the JavaScript they built into before, byte for byte (checked against d964ca4's compiler on their old sources: a whole literal waited is written `50`, not `50.0`); the other modules that build in one compiler only are this decision's programs, and `b1-t1.apeiron`, bug B1, refused as it should be.

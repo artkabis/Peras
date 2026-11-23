@@ -1337,3 +1337,18 @@ pub fn time_operator(span: Span, op: &str, left: &Ty, right: &Ty) -> Diagnostic 
         },
     )
 }
+
+/// `E0210` for a number taken from an `Instant`: an elapsed time or an
+/// instant of another clock, which only the program knows; the fix names
+/// both and edits nothing (decision 0039, finding F225).
+pub fn time_either(span: Span) -> Diagnostic {
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-time-either"),
+        vec![primary(span, Message::new("check-time-number-label"))],
+        Fix {
+            message: Message::new("check-time-either-fix"),
+            edits: Vec::new(),
+        },
+    )
+}

@@ -1,4 +1,0 @@
-// B5: a timeout of some minutes, a zero missing.
-export fn remind(minutes: i32): Timer {
-  return setTimeout(minutes * 60 * 100, () => log("time"));
-}

@@ -1,5 +1,0 @@
-// B2: thirty seconds added to milliseconds.
-export fn deadline(): f64 {
-  const start = now();
-  return start + 30.0;
-}

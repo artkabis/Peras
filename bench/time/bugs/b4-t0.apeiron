@@ -1,5 +1,0 @@
-// B4: milliseconds read as seconds: minutes are the elapsed time over 60.
-export fn late(start: f64): bool {
-  const minutes = (now() - start) / 60.0;
-  return minutes > 5.0;
-}

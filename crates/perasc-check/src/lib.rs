@@ -136,8 +136,7 @@ pub struct Analysis {
     /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
     /// read or written (decision 0038, option j1).
     pub json_calls: HashMap<ExprId, JsonCall>,
-    /// The calls of decision 0039's `Duration` and `Instant`, by call
-    /// (prototype).
+    /// The calls of decision 0039's `Duration` and `Instant`, by call.
     pub time_calls: HashMap<ExprId, TimeCall>,
 }
 
@@ -356,17 +355,6 @@ pub fn proto_math() -> String {
     match std::env::var("PERAS_PROTO_MATH").as_deref() {
         Ok("a0") => "a0".to_owned(),
         _ => "a2".to_owned(),
-    }
-}
-
-/// Decision 0039's option, for `scripts/bench-time.mjs`: t0 (today), t1
-/// (`Duration` and `Instant`), t2 (t1 and literals with a unit).
-#[must_use]
-pub fn proto_time() -> String {
-    match std::env::var("PERAS_PROTO_TIME").as_deref() {
-        Ok("t1") => "t1".to_owned(),
-        Ok("t2") => "t2".to_owned(),
-        _ => "t0".to_owned(),
     }
 }
 
@@ -825,10 +813,9 @@ impl<'a> Checker<'a> {
         for float in [FloatTy::F32, FloatTy::F64] {
             types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
         }
-        if proto_time() != "t0" {
-            for float in [FloatTy::Duration, FloatTy::Instant] {
-                types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
-            }
+        // Decision 0039: a duration and an instant, numbers of milliseconds.
+        for float in [FloatTy::Duration, FloatTy::Instant] {
+            types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
         }
         types.insert("bool".to_owned(), TypeDef::Plain(Ty::Bool));
         types.insert("String".to_owned(), TypeDef::Plain(Ty::String));

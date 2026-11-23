@@ -191,7 +191,7 @@ fn tick(): void {
 
 export fn start(root: Element): Group {
   let group = Group.new();
-  const timer = setInterval(1000, () => tick());
+  const timer = setInterval(Duration.ms(1000), () => tick());
   group.add(timer);
   const listener = root.on("click", (e) => e.stopPropagation());
   group.add(listener);
@@ -258,6 +258,21 @@ export async fn show(canvas: CanvasElement): Promise<i32> {
 Peras vérifie chaque valeur que JavaScript rend contre le type déclaré, en production aussi : ce que rend une fonction, ce que donne sa promesse, ce que JavaScript passe à un rappel. Une bibliothèque qui donne une chaîne là où `i32` est déclaré lève une `TypeError` qui nomme la fonction, `peras: Chart.plot(…) returned the string "3" where its declaration says i32`, avant qu’aucun code Peras ne voie la valeur. Une déclaration fausse est trouvée là où elle est fausse. Une ressource ne peut pas être donnée à JavaScript, qui ne la libérerait jamais ([E0247](../errors/E0247.md)).
 
 Le chemin est un fichier, `"./chart.js"`, ou un paquet npm, `"date-fns"`, importé comme JavaScript l’importe : Vite le résout, et `perasc build` le garde tel qu’il est écrit.
+
+## Le temps
+
+Une durée et un instant sont des nombres de millisecondes que le vérificateur garde séparés ([décision 0039](../decisions/0039-durations-and-instants.md)) :
+
+```apeiron build
+export fn plan(): String {
+  const start = Instant.now();
+  const wait = Duration.seconds(1.5) + Duration.ms(250);
+  const later = start + wait;
+  return `${(later - start).toMs()} ms, ${Duration.minutes(90).toHours()} h`;
+}
+```
+
+`Duration.ms(x)`, `Duration.seconds(x)`, `Duration.minutes(x)` et `Duration.hours(x)` font une durée, `d.toMs()`, `d.toSeconds()`, `d.toMinutes()` et `d.toHours()` la lisent ; deux durées s’additionnent, une durée fois ou divisée par un nombre en est une, deux durées divisées donnent un nombre. `Instant.now()` lit l’horloge de la page ; deux instants se soustraient en une durée, un instant avance d’une durée. Un nombre là où une durée est attendue est une erreur dont le correctif dit l’unité, `setTimeout(Duration.ms(300), …)` ; deux instants additionnés sont refusés. Un temps coûte un nombre : compilé, `Duration.ms(x)` est `x`. Un module owned a des durées mais pas d’horloge.
 
 ## JSON
 

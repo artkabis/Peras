@@ -669,10 +669,10 @@ fn replacing_a_resource_releases_the_one_before() {
     gives(
         "export async fn main(): Promise<String> {
            let ticks = 0;
-           let timer = setInterval(5, () => {
+           let timer = setInterval(Duration.ms(5), () => {
              ticks += 1;
            });
-           timer = setInterval(5, () => {
+           timer = setInterval(Duration.ms(5), () => {
              ticks += 100;
            });
            await sleep(23);
@@ -683,7 +683,7 @@ fn replacing_a_resource_releases_the_one_before() {
            const pending = group.slot();
            let fired = 0;
            const later = () => {
-             pending.set(setTimeout(10, () => {
+             pending.set(setTimeout(Duration.ms(10), () => {
                fired += 1;
              }));
            };
@@ -691,7 +691,7 @@ fn replacing_a_resource_releases_the_one_before() {
            later();
            later();
            await sleep(30);
-           pending.set(setTimeout(10, () => {
+           pending.set(setTimeout(Duration.ms(10), () => {
              fired += 10;
            }));
            group.release();
@@ -862,5 +862,20 @@ fn json_is_read_into_a_value_and_written_from_one() {
     gives(
         source,
         r#"["{\"items\":[{\"name\":\"a\",\"count\":2,\"shape\":{\"Circle\":[1.5]},\"note\":null},{\"name\":\"b\",\"count\":3,\"shape\":\"Dot\",\"note\":\"n\"}]}","2 a 2","items[0].count: expected an integer from -2147483648 to 2147483647, found 2.5","the text: not JSON, Expected ',' or ']' after array element in JSON at position 2 (line 1 column 3)"]"#,
+    );
+}
+
+/// A duration and an instant are numbers of milliseconds: made, added,
+/// moved and read (decision 0039).
+#[test]
+fn durations_and_instants_compute_in_milliseconds() {
+    gives(
+        "export fn main(): Array<number> {\n  \
+           const start = Instant.now();\n  \
+           const wait = Duration.seconds(1.5) + Duration.ms(250) * 2;\n  \
+           const later = start + wait;\n  \
+           return [wait.toMs(), (later - start).toMs().round(), Duration.hours(2).toMinutes(), Duration.minutes(90) / Duration.hours(1)];\n\
+         }\n",
+        "[2000,2000,120,1.5]",
     );
 }

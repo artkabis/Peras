@@ -734,6 +734,13 @@ impl Module<'_> {
             return Some(match call {
                 perasc_check::TimeCall::Make(f) => {
                     let x = self.exprs(args).into_iter().next().unwrap_or_default();
+                    // `Duration.ms(50)` is the `50` a timer waited before.
+                    let x = match x.strip_suffix(".0") {
+                        Some(whole) if whole.bytes().all(|b| b.is_ascii_digit()) => {
+                            whole.to_owned()
+                        }
+                        _ => x,
+                    };
                     if (f - 1.0).abs() < f64::EPSILON {
                         x
                     } else {

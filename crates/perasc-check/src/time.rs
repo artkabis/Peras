@@ -1,4 +1,4 @@
-//! Decision 0039, prototyped: `Duration` and `Instant`, numbers of
+//! Decision 0039, t1: `Duration` and `Instant`, numbers of
 //! milliseconds the checker keeps apart, compiled as `f64`.
 
 use perasc_syntax::ast::{BinaryOp, ExprId, ExprKind, Ident};
@@ -46,7 +46,12 @@ impl Checker<'_> {
             (op, a, b) if op.is_comparison() && a == b => Ty::Bool,
             (op, a, b) if op.is_comparison() || matches!(op, BinaryOp::Add | BinaryOp::Sub) => {
                 // A number against a time: its unit is missing.
-                if time(a) && number(b) {
+                if *a == INSTANT && op == BinaryOp::Sub && number(b) {
+                    // An elapsed time, or an instant of another clock: the
+                    // program knows which (finding F225).
+                    let r = self.ast.expr(rhs).span;
+                    self.report(errors::time_either(r));
+                } else if time(a) && number(b) {
                     let r = self.ast.expr(rhs).span;
                     let written = self.slice(r).to_owned();
                     let name = if *a == INSTANT {
@@ -85,9 +90,6 @@ impl Checker<'_> {
         base: ExprId,
         name: &Ident,
     ) -> Option<Ty> {
-        if crate::proto_time() == "t0" {
-            return None;
-        }
         let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
             return None;
         };

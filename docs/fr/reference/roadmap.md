@@ -48,7 +48,7 @@ Les outils de tous les jours, avec les mêmes règles : types explicites, aucune
 | tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles         |
 | collections | ~~`Map<K, V>`, `Set<T>`~~ (fait, [décision 0005](../decisions/0005-maps-and-sets.md) ; clés structures et flottants plus tard), `Deque<T>`                                                                                 |
 | nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                        |
-| temps       | durées et instants                                                                                                                                                                                                         |
+| temps       | ~~durées et instants~~ (fait, [décision 0039](../decisions/0039-durations-and-instants.md) ; dates et fuseaux horaires ensuite)                                                                                            |
 | données     | ~~JSON~~ (fait dans les modules gérés, [décision 0038](../decisions/0038-json.md) ; les modules possédés ensuite), encodage de texte, octets                                                                               |
 
 ```peras build

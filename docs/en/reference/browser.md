@@ -6,16 +6,17 @@ Where the DOM gives `null`, Peras gives `None`. A property marked _read only_ is
 
 ## Globals
 
-| Global                     | Type or result      | Does                                                        |
-| -------------------------- | ------------------- | ----------------------------------------------------------- |
-| `document`                 | `Document`          | the page                                                    |
-| `storage`                  | `Storage`           | the page's `localStorage`                                   |
-| `fetch(url)`               | `Promise<Response>` | asks the server for `url`                                   |
-| `sleep(ms)`                | `Promise<void>`     | waits `ms` milliseconds                                     |
-| `now()`                    | `f64`               | milliseconds since the page started, as `performance.now()` |
-| `log(text)`                | `void`              | writes to the console                                       |
-| `setTimeout(ms, () => …)`  | `Timer`, a resource | runs the arrow function once, after `ms` milliseconds       |
-| `setInterval(ms, () => …)` | `Timer`, a resource | runs the arrow function every `ms` milliseconds             |
+| Global                       | Type or result      | Does                                                                                                    |
+| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `document`                   | `Document`          | the page                                                                                                |
+| `storage`                    | `Storage`           | the page's `localStorage`                                                                               |
+| `fetch(url)`                 | `Promise<Response>` | asks the server for `url`                                                                               |
+| `sleep(ms)`                  | `Promise<void>`     | waits `ms` milliseconds                                                                                 |
+| `now()`                      | `f64`               | milliseconds since the page started, as `performance.now()`                                             |
+| `log(text)`                  | `void`              | writes to the console                                                                                   |
+| `Instant.now()`              | `Instant`           | the page's clock, as `performance.now()` ([decision 0039](../decisions/0039-durations-and-instants.md)) |
+| `setTimeout(wait, () => …)`  | `Timer`, a resource | runs the arrow function once, after `wait`, a `Duration`: `Duration.ms(300)`                            |
+| `setInterval(wait, () => …)` | `Timer`, a resource | runs the arrow function every `wait`, a `Duration`                                                      |
 
 ```apeiron build
 export async fn status(url: String): Promise<String> {
@@ -135,7 +136,7 @@ export fn watch(field: InputElement): Group {
   let group = Group.new();
   const pending = group.slot();
   group.add(field.on("input", (_e) => {
-    pending.set(setTimeout(300, () => search(field.value)));
+    pending.set(setTimeout(Duration.ms(300), () => search(field.value)));
   }));
   return group;
 }

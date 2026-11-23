@@ -1,4 +1,0 @@
-// B1: five seconds written setTimeout(5, …).
-export fn start(): Timer {
-  return setTimeout(5, () => log("five seconds later"));
-}

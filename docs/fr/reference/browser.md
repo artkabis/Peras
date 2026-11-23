@@ -6,16 +6,17 @@ Là où le DOM donne `null`, Peras donne `None`. Une propriété marquée _lectu
 
 ## Globales
 
-| Globale                    | Type ou résultat       | Fait                                                                    |
-| -------------------------- | ---------------------- | ----------------------------------------------------------------------- |
-| `document`                 | `Document`             | la page                                                                 |
-| `storage`                  | `Storage`              | le `localStorage` de la page                                            |
-| `fetch(url)`               | `Promise<Response>`    | demande `url` au serveur                                                |
-| `sleep(ms)`                | `Promise<void>`        | attend `ms` millisecondes                                               |
-| `now()`                    | `f64`                  | les millisecondes depuis le début de la page, comme `performance.now()` |
-| `log(text)`                | `void`                 | écrit dans la console                                                   |
-| `setTimeout(ms, () => …)`  | `Timer`, une ressource | exécute la fonction fléchée une fois, après `ms` millisecondes          |
-| `setInterval(ms, () => …)` | `Timer`, une ressource | exécute la fonction fléchée toutes les `ms` millisecondes               |
+| Globale                      | Type ou résultat       | Fait                                                                                                           |
+| ---------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `document`                   | `Document`             | la page                                                                                                        |
+| `storage`                    | `Storage`              | le `localStorage` de la page                                                                                   |
+| `fetch(url)`                 | `Promise<Response>`    | demande `url` au serveur                                                                                       |
+| `sleep(ms)`                  | `Promise<void>`        | attend `ms` millisecondes                                                                                      |
+| `now()`                      | `f64`                  | les millisecondes depuis le début de la page, comme `performance.now()`                                        |
+| `log(text)`                  | `void`                 | écrit dans la console                                                                                          |
+| `Instant.now()`              | `Instant`              | l’horloge de la page, comme `performance.now()` ([décision 0039](../decisions/0039-durations-and-instants.md)) |
+| `setTimeout(wait, () => …)`  | `Timer`, une ressource | exécute la fonction fléchée une fois, après `wait`, une `Duration` : `Duration.ms(300)`                        |
+| `setInterval(wait, () => …)` | `Timer`, une ressource | exécute la fonction fléchée toutes les `wait`, une `Duration`                                                  |
 
 ```apeiron build
 export async fn status(url: String): Promise<String> {
@@ -135,7 +136,7 @@ export fn watch(field: InputElement): Group {
   let group = Group.new();
   const pending = group.slot();
   group.add(field.on("input", (_e) => {
-    pending.set(setTimeout(300, () => search(field.value)));
+    pending.set(setTimeout(Duration.ms(300), () => search(field.value)));
   }));
   return group;
 }

@@ -936,12 +936,7 @@ fn classify_decimal(text: &str) -> Result<TokenKind, NumberProblem> {
         }
     }
 
-    // Decision 0039's option t2, prototyped: a literal that carries its
-    // unit, `300ms`, `5s`, `2min`, `1h`.
-    let unit = text
-        .get(pos..)
-        .is_some_and(|s| crate::unit_suffix(s).is_some());
-    if let Some(suffix) = text.get(pos..).filter(|s| !s.is_empty() && !unit) {
+    if let Some(suffix) = text.get(pos..).filter(|s| !s.is_empty()) {
         return Err(problem(
             NumberReason::Suffix {
                 suffix: suffix.to_owned(),

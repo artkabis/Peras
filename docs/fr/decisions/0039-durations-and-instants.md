@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0039-durations-and-instants.md](../../en/decisions/0039-durations-and-instants.md)._
 
-_État : protocole enregistré le 2026-11-18, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `370b4ce` ; proposition : t1. Il répond à la ligne « temps » de la phase 3 de la [feuille de route](../reference/roadmap.md), durées et instants ; les dates du calendrier et les fuseaux horaires sont laissés à une décision suivante. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
+_État : protocole enregistré le 2026-11-18, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `370b4ce` ; t1 retenue par le propriétaire le 2026-11-23. Il répond à la ligne « temps » de la phase 3 de la [feuille de route](../reference/roadmap.md), durées et instants ; les dates du calendrier et les fuseaux horaires sont laissés à une décision suivante. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression._
 
 ## Contexte
 
@@ -67,3 +67,9 @@ Deux exécutions au commit 370b4ce, l’une après l’autre, rien d’autre ne 
 ### Proposition
 
 **t1**, `Duration` et `Instant` : quatre des six bugs attrapés, sans coût en temps ni en octets, chaque programme aussi long qu’aujourd’hui. t2 attrape les mêmes bugs au même coût et écrit une durée en moins de caractères, `300ms`, pour quatre notions de plus et un changement de l’analyseur lexical ; elle peut s’ajouter plus tard à t1 sans rien changer de ce que t1 écrit, ce que t1 ne pourrait pas être après t2. Son prix, dans les deux cas, est la migration de chaque minuterie qui attend un nombre nu : trois programmes et six exemples ici, et ceux de chaque utilisateur. Le propriétaire décide.
+
+### Décision et installation (2026-11-23)
+
+Le propriétaire a retenu **t1**. `Duration` et `Instant` sont toujours là ; `PERAS_PROTO_TIME` a disparu, et avec elle les littéraux de t2, leurs chiffres ci-dessus et leur code dans git au commit 370b4ce. Chaque minuterie du dépôt qui attendait un nombre nu dit désormais son unité, `setTimeout(Duration.ms(300), …)` : les deux versions de l’étude de cas, la fixture de bout en bout, deux bugs web, six tests du vérificateur et du générateur, et les exemples du guide et de la référence du navigateur. Un nombre ôté d’un `Instant` est désormais `check-time-either`, dont le correctif nomme les deux lectures et ne modifie rien (constat F225). Un test du vérificateur tient les quatre erreurs, un du générateur les durées et instants calculés en millisecondes. `scripts/bench-time.mjs` mesure le build d’aujourd’hui face au TypeScript dans `bench/time/CURRENT.md` ; [`RESULTS.md`](../../../bench/time/RESULTS.md) garde les options telles que mesurées.
+
+Non-régression, `scripts/check-regression.mjs d964ca4` : aucun module plus grand, plus petit ni changé ; temps de compilation 0,976. Les trois programmes migrés se construisent dans le JavaScript qu’ils donnaient avant, octet pour octet (vérifié contre le compilateur de d964ca4 sur leurs anciennes sources : un littéral entier attendu s’écrit `50`, non `50.0`) ; les autres modules qui ne se construisent que d’un côté sont les programmes de cette décision, et `b1-t1.apeiron`, le bug B1, refusé comme il doit l’être.

@@ -63,7 +63,7 @@ export fn mount(root: Element): Group {
     },
     None => {}
   }
-  const timer = setInterval(5, () => ticked());
+  const timer = setInterval(Duration.ms(5), () => ticked());
   group.add(timer);
   return group;
 }

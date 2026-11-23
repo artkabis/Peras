@@ -5,7 +5,7 @@ use perasc_diag::Span;
 use perasc_syntax::ast::{ExprId, ExprKind, Ident};
 
 use crate::browser::{self, Global, Host, Member};
-use crate::ty::{IntTy, Ty};
+use crate::ty::Ty;
 use crate::{Checker, errors};
 
 impl Checker<'_> {
@@ -44,12 +44,7 @@ impl Checker<'_> {
                 self.arity(span, name, 2, args.len(), None);
                 if let Some(&delay) = args.first() {
                     // Decision 0039: a timer waits a `Duration`.
-                    let wait = if crate::proto_time() == "t0" {
-                        Ty::Int(IntTy::I32)
-                    } else {
-                        Ty::Float(crate::ty::FloatTy::Duration)
-                    };
-                    self.expect(delay, &wait);
+                    self.expect(delay, &Ty::Float(crate::ty::FloatTy::Duration));
                 }
                 if let Some(&f) = args.get(1) {
                     self.arrow(f, &[], None);

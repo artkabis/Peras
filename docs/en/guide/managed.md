@@ -191,7 +191,7 @@ fn tick(): void {
 
 export fn start(root: Element): Group {
   let group = Group.new();
-  const timer = setInterval(1000, () => tick());
+  const timer = setInterval(Duration.ms(1000), () => tick());
   group.add(timer);
   const listener = root.on("click", (e) => e.stopPropagation());
   group.add(listener);
@@ -258,6 +258,21 @@ export async fn show(canvas: CanvasElement): Promise<i32> {
 Peras checks every value JavaScript gives back against the type declared, in production too: what a function returns, what its promise gives, what JavaScript passes to a callback. A library that gives a string where `i32` is declared throws a `TypeError` that names the function, `peras: Chart.plot(…) returned the string "3" where its declaration says i32`, before any Peras code sees the value. A declaration that is wrong is found where it is wrong. A resource cannot be given to JavaScript, which would never release it ([E0247](../errors/E0247.md)).
 
 The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as JavaScript imports it: Vite resolves it, and `perasc build` keeps it as written.
+
+## Time
+
+A duration and an instant are numbers of milliseconds the checker keeps apart ([decision 0039](../decisions/0039-durations-and-instants.md)):
+
+```apeiron build
+export fn plan(): String {
+  const start = Instant.now();
+  const wait = Duration.seconds(1.5) + Duration.ms(250);
+  const later = start + wait;
+  return `${(later - start).toMs()} ms, ${Duration.minutes(90).toHours()} h`;
+}
+```
+
+`Duration.ms(x)`, `Duration.seconds(x)`, `Duration.minutes(x)` and `Duration.hours(x)` make a duration, `d.toMs()`, `d.toSeconds()`, `d.toMinutes()` and `d.toHours()` read one; two durations add, a duration times or over a number is one, two durations divided give a number. `Instant.now()` reads the page's clock; two instants subtract into a duration, an instant moves by one. A number where a duration is meant is an error whose fix says the unit, `setTimeout(Duration.ms(300), …)`; two instants added are refused. A time costs a number: compiled, `Duration.ms(x)` is `x`. An owned module has durations but no clock.
 
 ## JSON
 

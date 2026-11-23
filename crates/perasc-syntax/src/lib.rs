@@ -40,22 +40,6 @@ impl Mode {
     }
 }
 
-/// Decision 0039's option t2, prototyped: the method of `Duration` a unit
-/// suffix of a number names, under `PERAS_PROTO_TIME=t2`.
-#[must_use]
-pub fn unit_suffix(suffix: &str) -> Option<&'static str> {
-    if std::env::var("PERAS_PROTO_TIME").as_deref() != Ok("t2") {
-        return None;
-    }
-    match suffix {
-        "ms" => Some("ms"),
-        "s" => Some("seconds"),
-        "min" => Some("minutes"),
-        "h" => Some("hours"),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Mode;

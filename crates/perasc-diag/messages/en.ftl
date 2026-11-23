@@ -911,3 +911,5 @@ check-time-number-fix = say its unit: `Duration.ms({ $written })`, or `Duration.
 check-time-operator = `{ $op }` cannot take `{ $left }` and `{ $right }`
 check-time-operator-label = these two times do not combine so
 check-time-operator-fix = two instants give the time between them, `b - a`; an instant moves by a duration, `start + Duration.seconds(30)`
+check-time-either = a number taken from an `Instant`: it is no duration and no instant
+check-time-either-fix = an elapsed time says its unit, `Duration.seconds(30)`; an instant comes from `Instant.now()`, a number of another clock, such as `Date.now()`, is not one

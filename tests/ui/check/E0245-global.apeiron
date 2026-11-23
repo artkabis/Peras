@@ -3,8 +3,8 @@ fn tick(): void {
   log("tick");
 }
 
-let timer = setInterval(1000, () => tick());
+let timer = setInterval(Duration.ms(1000), () => tick());
 
 export fn restart(): void {
-  timer = setInterval(1000, () => tick());
+  timer = setInterval(Duration.ms(1000), () => tick());
 }

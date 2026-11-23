@@ -101,10 +101,10 @@ pub enum FloatTy {
     F32,
     /// `f64`, the default for a float literal.
     F64,
-    /// `Duration`, milliseconds underneath (decision 0039, prototype).
+    /// `Duration`, milliseconds underneath (decision 0039).
     Duration,
     /// `Instant`, milliseconds since the page started underneath (decision
-    /// 0039, prototype).
+    /// 0039).
     Instant,
 }
 

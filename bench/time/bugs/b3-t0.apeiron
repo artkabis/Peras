@@ -1,4 +1,0 @@
-// B3: two instants added.
-export fn middle(start: f64): f64 {
-  return (now() + start) / 2.0;
-}

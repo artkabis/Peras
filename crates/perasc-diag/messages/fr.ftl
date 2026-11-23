@@ -911,3 +911,5 @@ check-time-number-fix = dites son unité : `Duration.ms({ $written })`, ou `Dura
 check-time-operator = `{ $op }` ne peut pas prendre `{ $left }` et `{ $right }`
 check-time-operator-label = ces deux temps ne se combinent pas ainsi
 check-time-operator-fix = deux instants donnent le temps entre eux, `b - a` ; un instant avance d’une durée, `start + Duration.seconds(30)`
+check-time-either = un nombre ôté d’un `Instant` : il n’est ni une durée ni un instant
+check-time-either-fix = un temps écoulé dit son unité, `Duration.seconds(30)` ; un instant vient de `Instant.now()`, un nombre d’une autre horloge, comme `Date.now()`, n’en est pas un
