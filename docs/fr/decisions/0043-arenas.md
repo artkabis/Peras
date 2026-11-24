@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0043-arenas.md](../../en/decisions/0043-arenas.md)._
 
-_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `d59e034` ; proposition : a0 reste, au propriétaire de décider. C’est le premier pas de la phase 6 de la [feuille de route](../reference/roadmap.md), « les allocateurs `Arena` et `Pool<T>` », dans l’ordre fixé par le propriétaire le 2026-11-24 : les arènes, puis `Pool<T>` (une décision à elle), puis `@frame`, puis l’étude de la mémoire chargée selon la proximité, qui a besoin des deux. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
+_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `d59e034` ; proposition : a0 reste, au propriétaire de décider ; option a1b ajoutée à la demande du propriétaire, enregistrée avant son prototype. C’est le premier pas de la phase 6 de la [feuille de route](../reference/roadmap.md), « les allocateurs `Arena` et `Pool<T>` », dans l’ordre fixé par le propriétaire le 2026-11-24 : les arènes, puis `Pool<T>` (une décision à elle), puis `@frame`, puis l’étude de la mémoire chargée selon la proximité, qui a besoin des deux. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
 
 ## Contexte
 
@@ -132,3 +132,14 @@ Face aux critères enregistrés :
 **a0 reste** : aucune option n’est une amélioration selon les critères enregistrés avant la mesure. Comme le dit le protocole, les prototypes sont retirés, leurs chiffres gardés ici et leur code dans git au commit `d59e034`, et `Arena` quitte la feuille de route jusqu’à ce qu’une charge en montre un coût à retirer.
 
 Ce que la mesure apprend, pour une décision ultérieure plutôt que celle-ci : le gain d’une arène écrite est réel, environ 6 % sur les valeurs temporaires, et ce qui l’a fait échouer est la taille de son bloc, pas sa règle ; une arène qui commence petite et grandit, ou une arène dimensionnée d’après les allocations du programme lui-même, serait une autre option, mesurée face aux mêmes critères. Les drapeaux de a2 autour de chaque instruction lui coûtent plus que ce que l’arène économise là où les instructions sont nombreuses et petites (W2). Le propriétaire décide.
+
+### Amendement : l’option a1b (2026-11-24, après la mesure de a1, a2 et a3, avant tout prototype et toute mesure de a1b)
+
+Le propriétaire a demandé si a1 pouvait être rendue conforme. a1b est définie ici d’après ce qu’a montré la mesure de a1, c’est pourquoi elle est enregistrée comme une option à part, après cette mesure et avant la sienne : sa définition est fixée maintenant, et **les critères sont ceux enregistrés plus haut, inchangés**.
+
+- **a1b** est a1, sa syntaxe, sa règle et son erreur, avec trois changements, chacun répondant à un coût mesuré :
+  1. **Une arène qui commence petite et grandit** (la mémoire, W3 à cinq fois celle de a0 sous a1) : son premier bloc fait 4 Kio ; une allocation qui n’y tient pas est servie par TLSF, et marque l’arène comme trop petite ; la prochaine fois que l’arène est marquée vide, elle rend son bloc à TLSF et en prend un deux fois plus grand, jusqu’à 1 Mio.
+  2. **L’arène allumée pour tout un bloc** (les octets et le temps de `arena_flag` autour de chaque instruction, la perte de a2 sur W2) : allumée du début du bloc à sa fin, éteinte seulement autour d’une instruction ou d’une condition qui appelle une fonction, fait une valeur fonction, fait grandir un bloc non pris, ou se trouve sous une arène imbriquée qui rend sa place ; éteinte avant chaque `break`, `continue` et `return`.
+  3. **L’analyse lancée seulement sur les fonctions qui contiennent un bloc écrit** (le temps du compilateur, 1,040 sous a1).
+- Elle est prototypée derrière `PERAS_PROTO_ARENA=a1b`, et passe les mêmes contrôles de justesse que les autres : `cargo test --workspace`, le test différentiel avec `PERAS_DIFFERENTIAL_SEEDS=2000` et ses arènes imbriquées, et une fois cassée exprès pour la voir échouer.
+- Elle est mesurée comme les autres : `scripts/bench-arena.mjs`, 21 tours, dans un seul processus avec a0, a1, a2 et a3, ses versions de W2 et W3 celles de a1 (`bench/arena/a1`) ; puis `check-regression` contre le commit du protocole.

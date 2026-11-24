@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0043-arenas.md](../../fr/decisions/0043-arenas.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `d59e034`; proposal: a0 stays, for the owner to decide. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `d59e034`; proposal: a0 stays, for the owner to decide; option a1b added on the owner's request, registered before its prototype. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -132,3 +132,14 @@ Against the criteria registered:
 **a0 stays**: no option is an improvement by the criteria registered before the measure. As the protocol says, the prototypes are removed, their figures kept here and their code in git at `d59e034`, and `Arena` leaves the roadmap until a workload shows a cost to remove.
 
 What the measure teaches, for a later decision rather than this one: the gain of a written arena is real, about 6 % on temporaries, and what made it fail is the size of its block, not its rule; an arena that starts small and grows, or one sized from the program's own allocations, would be another option, measured against the same criteria. a2's flags around every statement cost it more than the arena saves where the statements are many and small (W2). The owner decides.
+
+### Amendment: option a1b (2026-11-24, after the measure of a1, a2 and a3, before any prototype or measure of a1b)
+
+The owner asked whether a1 could be made to pass. a1b is defined here from what the measure of a1 showed, which is why it is registered as an option of its own, after that measure and before its own: its definition is fixed now, and **the criteria are the ones registered above, unchanged**.
+
+- **a1b** is a1, its syntax, its rule and its error, with three changes, each answering a cost measured:
+  1. **An arena that starts small and grows** (memory, W3 five times a0's under a1): its first block is 4 KiB; an allocation that does not fit is served by TLSF, and marks the arena as too small; the next time the arena is marked while empty, it gives its block back to TLSF and takes one twice as large, up to 1 MiB.
+  2. **The arena on for a whole block** (bytes and time of `arena_flag` around each statement, a2's loss on W2): on from the block's start to its end, turned off only around a statement or a condition that calls a function, makes a function value, grows a block not taken, or sits below a nested arena that gives its room back; off before every `break`, `continue` and `return`.
+  3. **The analysis run only on the functions that hold a block written** (the compiler's time, 1.040 under a1).
+- It is prototyped behind `PERAS_PROTO_ARENA=a1b`, and passes the same checks of correctness as the others: `cargo test --workspace`, the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000` and its nested arenas, and once broken on purpose to see it fail.
+- It is measured as the others were: `scripts/bench-arena.mjs`, 21 rounds, in one process with a0, a1, a2 and a3, its versions of W2 and W3 those of a1 (`bench/arena/a1`); then `check-regression` against the commit of the protocol.
