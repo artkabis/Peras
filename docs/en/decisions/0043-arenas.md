@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0043-arenas.md](../../fr/decisions/0043-arenas.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `d59e034`; proposal: a0 stays, for the owner to decide. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -86,3 +86,49 @@ Two amendments follow, made before any measure:
 
 1. **W4 measured nothing it was meant to.** Its strings are kept in an array until the function returns, then dropped: they die within the call, and a2 takes them. W4 is now two functions, `make(n)` returning the array of strings and `run(n)` summing what `make` gives: a value returned leaves its call, and nothing is taken. The registered W4 is kept as W4b, a value kept for a whole call, which a2 takes.
 2. **W3 cannot sum a row's bytes**: Peras has no `charCodeAt` yet (finding F309, `E0215` on `byteAt`). It sums each row's length and the place of its first comma instead, which reads the row without allocating.
+
+### The prototypes (2026-11-24)
+
+- **a2** (`crates/perasc-ir/src/arena.rs`, `PERAS_PROTO_ARENA=a2`): the analysis above, then a rewrite of the IR: a mark where each home begins, the arena's room given back at the end of each turn of a home that is a loop, after the loop, and at each return; `arena_flag(1)` and `arena_flag(0)` around each statement the arena takes. TLSF with an arena (`alloc_tlsf.wat`, between `;; @proto a2` and `;; @endproto`): one block of 256 KiB taken from TLSF the first time, allocation by moving a pointer while the flag is on, a release inside it doing nothing. It is linked only into a module that uses an arena.
+- **a1** (`PERAS_PROTO_ARENA=a1`): `arena` before a block, parsed only under the variable; the lowering puts the block between two marks; the same pass, with the blocks written as the only homes; a value made in one that outlives it is refused at the block. **Departure**: the prototype refuses it with `E0900`, whose message does not name the value; a code of its own would come with its landing.
+- **a3** (`PERAS_PROTO_ARENA=a3`): blocks of 257 bytes to 4 KiB rounded up to 256 and kept, as decision 0016 keeps the small ones, in 15 more lists.
+
+Each passes `cargo test --workspace` with its variable set, and the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000`. The differential test first missed the arena: it linked every module to TLSF as it is, so the arena's calls did nothing. It now links the prototype's runtime, and it gained a grid grown inside a loop whose turns have values of their own, written in two nested arenas under a1. Broken on purpose (a statement under a loop that gives its room back taken all the same), a2 and a1 each fail it (finding M015).
+
+### The measure (2026-11-24)
+
+At `d59e034`, `node scripts/bench-arena.mjs`, 21 rounds, every option in one process, the order alternating ([results](../../../bench/arena/RESULTS.md)); then `node scripts/check-regression.mjs 1ff4de1 PERAS_PROTO_ARENA=…`, the commit of the protocol, for each option. Machine: Intel Xeon @ 2.10 GHz, 4 cores; Node 24.22.1.
+
+The time of each workload, the median of its ratios to a0 round by round:
+
+|     | W1    | W2, the fireflies | W3        | W4    | W4b   |
+| --- | ----- | ----------------- | --------- | ----- | ----- |
+| a1  | 1.004 | **0.937**         | **0.940** | 1.008 | 1.011 |
+| a2  | 0.971 | 1.163             | **0.935** | 1.001 | 0.983 |
+| a3  | 1.046 | 1.017             | 1.035     | 1.019 | 1.027 |
+
+The CPU load follows the time: CPU over wall is 0.99 to 1.01 everywhere, one thread.
+
+Memory at the end of each workload, against a0's: a1 and a2 add the arena's 256 KiB where it is used: W3 goes from 64 KiB to 320 KiB, five times; W2 from 832 KiB to 768 KiB under a1 (less), 960 KiB under a2; W1 within 1 %. a3 adds up to 8 % (W2).
+
+Bytes and the compiler, by `check-regression`:
+
+|     | modules larger                                          | compile time, median ratio | module of W3                      |
+| --- | ------------------------------------------------------- | -------------------------- | --------------------------------- |
+| a1  | 0 of 250 (no program of the repository writes an arena) | 1.040                      | 4,434 to 4,774 bytes when it does |
+| a2  | 61 of 250                                               | 0.998                      | 4,778 bytes                       |
+| a3  | 91 of 250                                               | 1.027                      | 4,495 bytes                       |
+
+Ease of writing, W2 and W3 written as from JavaScript: today's language meets 10 `E0210` on W2 (an `i32` in a float, three rounds of fixes) and one `E0215` on W3 (`byteAt`, F309), the same under every option; a1 asks for one more notion, a block and what may leave it, and two lines per program, and met no error of its own.
+
+Against the criteria registered:
+
+- **a2 is out**: 1.163 on W2, above 1.02; and 61 modules larger.
+- **a3 is out**: 1.046 on W1; no workload at 0.95; and 91 modules larger.
+- **a1 is out**: it is the only option with a gain, 0.937 on W2 and 0.940 on W3, and it makes no module of the repository larger, but its memory on W3 is five times a0's, above 1.10. Its arena's 256 KiB are a fixed cost that a small program pays whole.
+
+### Proposal
+
+**a0 stays**: no option is an improvement by the criteria registered before the measure. As the protocol says, the prototypes are removed, their figures kept here and their code in git at `d59e034`, and `Arena` leaves the roadmap until a workload shows a cost to remove.
+
+What the measure teaches, for a later decision rather than this one: the gain of a written arena is real, about 6 % on temporaries, and what made it fail is the size of its block, not its rule; an arena that starts small and grows, or one sized from the program's own allocations, would be another option, measured against the same criteria. a2's flags around every statement cost it more than the arena saves where the statements are many and small (W2). The owner decides.
