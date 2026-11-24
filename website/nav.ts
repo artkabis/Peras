@@ -28,6 +28,7 @@ export const sections: Section[] = [
       "guide/diagnostics",
       "guide/tests",
       "guide/formatting",
+      "guide/editors",
       "guide/javascript",
       "guide/managed",
     ],
