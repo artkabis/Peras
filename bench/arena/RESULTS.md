@@ -6,45 +6,50 @@ Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores; Node v24.22.1; 21 rounds
 
 ### W1, the dashboard, 1,000,000 rows
 
-| Option                     |   Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
-| -------------------------- | -------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
-| a0, today                  | 395.1 ms | 1.000 (1.000 to 1.000) |       1.00 | 62336 KiB |          0 | 15857 (7308) |
-| a1, `arena { … }` written  | 398.0 ms | 1.004 (0.910 to 1.137) |       1.00 | 62336 KiB |          0 | 15857 (7308) |
-| a2, chosen by the compiler | 383.7 ms | 0.971 (0.885 to 1.028) |       1.00 | 62656 KiB |          0 | 16736 (7625) |
-| a3, more sizes kept        | 413.4 ms | 1.046 (0.959 to 1.225) |       0.99 | 62528 KiB |          0 | 15918 (7352) |
+| Option                                  |   Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
+| --------------------------------------- | -------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
+| a0, today                               | 371.8 ms | 1.000 (1.000 to 1.000) |       1.00 | 62336 KiB |          0 | 15857 (7308) |
+| a1, `arena { … }` written               | 377.3 ms | 1.002 (0.928 to 1.647) |       1.00 | 62336 KiB |          0 | 15857 (7308) |
+| a1b, a1 grown as needed, on for a block | 382.2 ms | 1.025 (0.863 to 1.172) |       1.00 | 62336 KiB |          0 | 15857 (7308) |
+| a2, chosen by the compiler              | 365.1 ms | 0.972 (0.843 to 1.296) |       0.99 | 62656 KiB |          0 | 16736 (7627) |
+| a3, more sizes kept                     | 393.7 ms | 1.066 (0.922 to 1.415) |       0.99 | 62528 KiB |          0 | 15918 (7352) |
 
 ### W2, the fireflies, a frame's temporaries: 10,000 fireflies, 100 frames
 
-| Option                     |   Median | / a0, median (range)   | CPU / wall |  Memory | Left alive | Bytes (gzip) |
-| -------------------------- | -------: | ---------------------- | ---------: | ------: | ---------: | -----------: |
-| a0, today                  | 467.6 ms | 1.000 (1.000 to 1.000) |       0.99 | 832 KiB |          0 |  5865 (2723) |
-| a1, `arena { … }` written  | 438.8 ms | 0.937 (0.873 to 1.078) |       1.00 | 768 KiB |          0 |  6162 (2869) |
-| a2, chosen by the compiler | 539.5 ms | 1.163 (1.078 to 1.309) |       1.00 | 960 KiB |          0 |  6214 (2887) |
-| a3, more sizes kept        | 471.4 ms | 1.017 (0.923 to 1.098) |       0.99 | 896 KiB |          0 |  5926 (2765) |
+| Option                                  |   Median | / a0, median (range)   | CPU / wall |   Memory | Left alive | Bytes (gzip) |
+| --------------------------------------- | -------: | ---------------------- | ---------: | -------: | ---------: | -----------: |
+| a0, today                               | 466.6 ms | 1.000 (1.000 to 1.000) |       1.00 |  832 KiB |          0 |  5865 (2723) |
+| a1, `arena { … }` written               | 430.1 ms | 0.938 (0.803 to 1.042) |       1.00 |  768 KiB |          0 |  6162 (2872) |
+| a1b, a1 grown as needed, on for a block | 438.8 ms | 0.929 (0.856 to 1.031) |       0.99 | 1856 KiB |          0 |  6220 (2917) |
+| a2, chosen by the compiler              | 551.5 ms | 1.192 (1.024 to 1.326) |       0.99 |  960 KiB |          0 |  6214 (2889) |
+| a3, more sizes kept                     | 501.7 ms | 1.078 (0.913 to 1.199) |       0.99 |  896 KiB |          0 |  5926 (2765) |
 
 ### W3, a line of text a row, 1,000,000 rows
 
-| Option                     |   Median | / a0, median (range)   | CPU / wall |  Memory | Left alive | Bytes (gzip) |
-| -------------------------- | -------: | ---------------------- | ---------: | ------: | ---------: | -----------: |
-| a0, today                  | 117.7 ms | 1.000 (1.000 to 1.000) |       0.99 |  64 KiB |          0 |  4434 (2250) |
-| a1, `arena { … }` written  | 112.0 ms | 0.940 (0.869 to 1.310) |       0.99 | 320 KiB |          0 |  4774 (2393) |
-| a2, chosen by the compiler | 110.3 ms | 0.935 (0.866 to 1.605) |       0.99 | 320 KiB |          0 |  4778 (2395) |
-| a3, more sizes kept        | 124.6 ms | 1.035 (0.972 to 1.270) |       0.99 |  64 KiB |          0 |  4495 (2291) |
+| Option                                  |   Median | / a0, median (range)   | CPU / wall |  Memory | Left alive | Bytes (gzip) |
+| --------------------------------------- | -------: | ---------------------- | ---------: | ------: | ---------: | -----------: |
+| a0, today                               | 119.0 ms | 1.000 (1.000 to 1.000) |       0.99 |  64 KiB |          0 |  4434 (2250) |
+| a1, `arena { … }` written               | 112.7 ms | 0.957 (0.694 to 1.094) |       0.99 | 320 KiB |          0 |  4774 (2394) |
+| a1b, a1 grown as needed, on for a block | 113.8 ms | 0.960 (0.715 to 1.346) |       0.99 |  64 KiB |          0 |  4784 (2441) |
+| a2, chosen by the compiler              | 112.3 ms | 0.929 (0.668 to 1.305) |       1.00 | 320 KiB |          0 |  4778 (2395) |
+| a3, more sizes kept                     | 126.1 ms | 1.047 (0.743 to 1.322) |       1.00 |  64 KiB |          0 |  4495 (2291) |
 
 ### W4, values that leave their call, 1,000,000 strings
 
-| Option                     |  Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
-| -------------------------- | ------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
-| a0, today                  | 60.4 ms | 1.000 (1.000 to 1.000) |       0.99 | 51008 KiB |          0 |  3847 (2005) |
-| a1, `arena { … }` written  | 61.0 ms | 1.008 (0.884 to 1.211) |       0.99 | 51008 KiB |          0 |  3847 (2005) |
-| a2, chosen by the compiler | 60.8 ms | 1.001 (0.707 to 1.236) |       1.01 | 51008 KiB |          0 |  3847 (2005) |
-| a3, more sizes kept        | 62.1 ms | 1.019 (0.783 to 1.059) |       1.00 | 51008 KiB |          0 |  3908 (2048) |
+| Option                                  |  Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
+| --------------------------------------- | ------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
+| a0, today                               | 57.3 ms | 1.000 (1.000 to 1.000) |       1.00 | 51008 KiB |          0 |  3847 (2005) |
+| a1, `arena { … }` written               | 57.1 ms | 1.002 (0.921 to 1.082) |       1.00 | 51008 KiB |          0 |  3847 (2005) |
+| a1b, a1 grown as needed, on for a block | 57.2 ms | 0.996 (0.928 to 1.074) |       1.00 | 51008 KiB |          0 |  3847 (2005) |
+| a2, chosen by the compiler              | 55.7 ms | 0.970 (0.893 to 1.115) |       1.00 | 51008 KiB |          0 |  3847 (2005) |
+| a3, more sizes kept                     | 58.5 ms | 1.020 (0.923 to 1.181) |       1.00 | 51008 KiB |          0 |  3908 (2048) |
 
 ### W4b, values kept for a whole call, 1,000,000 strings
 
-| Option                     |  Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
-| -------------------------- | ------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
-| a0, today                  | 60.7 ms | 1.000 (1.000 to 1.000) |       1.00 | 51008 KiB |          0 |  3804 (1994) |
-| a1, `arena { … }` written  | 61.0 ms | 1.011 (0.953 to 1.063) |       0.99 | 51008 KiB |          0 |  3804 (1994) |
-| a2, chosen by the compiler | 59.9 ms | 0.983 (0.961 to 1.051) |       0.99 | 50944 KiB |          0 |  4081 (2129) |
-| a3, more sizes kept        | 62.1 ms | 1.027 (0.983 to 1.570) |       0.99 | 51008 KiB |          0 |  3865 (2035) |
+| Option                                  |  Median | / a0, median (range)   | CPU / wall |    Memory | Left alive | Bytes (gzip) |
+| --------------------------------------- | ------: | ---------------------- | ---------: | --------: | ---------: | -----------: |
+| a0, today                               | 57.6 ms | 1.000 (1.000 to 1.000) |       1.00 | 51008 KiB |          0 |  3804 (1994) |
+| a1, `arena { … }` written               | 58.5 ms | 1.020 (0.909 to 1.091) |       1.00 | 51008 KiB |          0 |  3804 (1994) |
+| a1b, a1 grown as needed, on for a block | 58.2 ms | 1.001 (0.871 to 1.083) |       1.00 | 51008 KiB |          0 |  3804 (1994) |
+| a2, chosen by the compiler              | 56.9 ms | 0.989 (0.844 to 1.046) |       1.00 | 50944 KiB |          0 |  4081 (2130) |
+| a3, more sizes kept                     | 58.8 ms | 1.023 (0.946 to 1.150) |       1.00 | 51008 KiB |          0 |  3865 (2035) |

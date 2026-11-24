@@ -143,3 +143,26 @@ Le propriétaire a demandé si a1 pouvait être rendue conforme. a1b est défini
   3. **L’analyse lancée seulement sur les fonctions qui contiennent un bloc écrit** (le temps du compilateur, 1,040 sous a1).
 - Elle est prototypée derrière `PERAS_PROTO_ARENA=a1b`, et passe les mêmes contrôles de justesse que les autres : `cargo test --workspace`, le test différentiel avec `PERAS_DIFFERENTIAL_SEEDS=2000` et ses arènes imbriquées, et une fois cassée exprès pour la voir échouer.
 - Elle est mesurée comme les autres : `scripts/bench-arena.mjs`, 21 tours, dans un seul processus avec a0, a1, a2 et a3, ses versions de W2 et W3 celles de a1 (`bench/arena/a1`) ; puis `check-regression` contre le commit du protocole.
+
+### Le prototype de a1b, et la mesure (2026-11-24)
+
+a1b est prototypée comme l’amendement la définit (`PERAS_PROTO_ARENA=a1b`, `apply_blocks_on` dans `crates/perasc-ir/src/arena.rs`, entre `;; @proto a1b` et `;; @endproto` dans `alloc_tlsf.wat`). Ses contrôles ont trouvé un bogue à elle avant toute mesure : une arène agrandie pendant un appel laissait la marque prise au début de l’appel dans son ancien bloc, rendu à TLSF ; au retour, l’arène y était remise, et l’appel suivant écrivait dans une mémoire que TLSF avait de nouveau distribuée. `bench-arena --check`, qui appelle chaque module plus d’une fois, l’a trouvé ; le test différentiel non, puisqu’il appelait chaque module une fois et qu’aucun de ses programmes ne remplissait une arène. Une marque prise avant que l’arène ne grandisse est désormais ramenée au début du nouveau bloc (elle a été prise vide, puisque l’arène ne grandit que vide), et le test différentiel appelle chaque module deux fois sur une même instance, avec l’arène du prototype et sans, et remplit une arène au-delà de 4 Kio sous a1 et a1b : le bogue remis le fait échouer (constats M015, M027).
+
+Au commit `0dba084`, les cinq options mesurées de nouveau dans un seul processus, 21 tours ([résultats](../../../bench/arena/RESULTS.md)), puis `check-regression` contre `1ff4de1` pour chacune :
+
+|     | W1    | W2, les lucioles | W3    | W4    | W4b   | mémoire, W2 et W3     | modules plus grands | temps de compilation |
+| --- | ----- | ---------------- | ----- | ----- | ----- | --------------------- | ------------------- | -------------------- |
+| a1  | 1,002 | **0,938**        | 0,957 | 1,002 | 1,020 | 768 Kio, 320 Kio      | 0                   | 0,982                |
+| a1b | 1,025 | **0,929**        | 0,960 | 0,996 | 1,001 | **1 856 Kio**, 64 Kio | 0                   | 0,973                |
+| a2  | 0,972 | 1,192            | 0,929 | 0,970 | 0,989 | 960 Kio, 320 Kio      | 61                  | 0,969                |
+| a3  | 1,066 | 1,078            | 1,047 | 1,020 | 1,023 | 896 Kio, 64 Kio       | 91                  | 0,962                |
+
+La mémoire de a0 est de 832 Kio sur W2 et de 64 Kio sur W3.
+
+- **a1b rend à W3 sa mémoire** (64 Kio, celle de a0), et garde le gain de a1 sur les lucioles (0,929) ; mais une arène agrandie pour tenir une image entière la garde : la mémoire de W2 vaut 2,23 fois celle de a0, au-dessus de 1,10. **a1b est écartée**, sur la mémoire.
+- Son 1,025 sur W1, et le 1,020 de a1 sur W4b, sont mesurés sur des modules identiques octet pour octet à ceux de a0 (W1 et W4b n’écrivent aucune arène) : le même module, chronométré deux fois, diffère ici jusqu’à cet écart. À la lettre des critères, a1b échoue aussi à W1 ; selon la règle de `check-regression` elle-même, un module identique tourne à la même vitesse. De toute façon, c’est sa mémoire sur W2 qui décide.
+- a1, a2 et a3 restent là où la première mesure les avait mises.
+
+### Proposition, après a1b
+
+**a0 reste** : aucune option, a1b comprise, ne remplit les critères enregistrés. Les prototypes sont retirés, leurs chiffres gardés ici et leur code dans git au commit `0dba084`, et `Arena` quitte la feuille de route jusqu’à ce qu’une charge en montre un coût à retirer. Ce que les deux mesures apprennent : une arène écrite gagne de 6 à 7 % sur les valeurs temporaires d’une image ; un bloc fixe coûte sa mémoire à un petit programme, et un bloc qui grandit pour tenir une image coûte sa mémoire au programme d’une image ; le gain ne paie ni l’un ni l’autre, selon les règles que le projet s’est données. Le propriétaire décide.

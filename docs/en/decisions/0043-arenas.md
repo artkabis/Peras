@@ -143,3 +143,26 @@ The owner asked whether a1 could be made to pass. a1b is defined here from what 
   3. **The analysis run only on the functions that hold a block written** (the compiler's time, 1.040 under a1).
 - It is prototyped behind `PERAS_PROTO_ARENA=a1b`, and passes the same checks of correctness as the others: `cargo test --workspace`, the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000` and its nested arenas, and once broken on purpose to see it fail.
 - It is measured as the others were: `scripts/bench-arena.mjs`, 21 rounds, in one process with a0, a1, a2 and a3, its versions of W2 and W3 those of a1 (`bench/arena/a1`); then `check-regression` against the commit of the protocol.
+
+### The prototype of a1b, and the measure (2026-11-24)
+
+a1b is prototyped as the amendment defines it (`PERAS_PROTO_ARENA=a1b`, `apply_blocks_on` in `crates/perasc-ir/src/arena.rs`, between `;; @proto a1b` and `;; @endproto` in `alloc_tlsf.wat`). Its checks found a bug of its own before any measure: an arena grown during a call left the mark taken at the call's start in its old block, given back to TLSF; at the return the arena was set back there, and the next call wrote into memory TLSF had given out again. `bench-arena --check`, which calls each module more than once, found it; the differential test did not, since it called each module once and no program of it filled an arena. A mark taken before the arena grew is now brought back to the new block's start (it was taken empty, since the arena grows only when empty), and the differential test calls each module twice on one instance, with the prototype's arena and without, and fills an arena past 4 KiB under a1 and a1b: the bug put back fails it (findings M015, M027).
+
+At `0dba084`, the five options measured again in one process, 21 rounds ([results](../../../bench/arena/RESULTS.md)), then `check-regression` against `1ff4de1` for each:
+
+|     | W1    | W2, the fireflies | W3    | W4    | W4b   | memory, W2 and W3     | modules larger | compile time |
+| --- | ----- | ----------------- | ----- | ----- | ----- | --------------------- | -------------- | ------------ |
+| a1  | 1.002 | **0.938**         | 0.957 | 1.002 | 1.020 | 768 KiB, 320 KiB      | 0              | 0.982        |
+| a1b | 1.025 | **0.929**         | 0.960 | 0.996 | 1.001 | **1,856 KiB**, 64 KiB | 0              | 0.973        |
+| a2  | 0.972 | 1.192             | 0.929 | 0.970 | 0.989 | 960 KiB, 320 KiB      | 61             | 0.969        |
+| a3  | 1.066 | 1.078             | 1.047 | 1.020 | 1.023 | 896 KiB, 64 KiB       | 91             | 0.962        |
+
+a0's memory is 832 KiB on W2 and 64 KiB on W3.
+
+- **a1b gives W3 its memory back** (64 KiB, a0's), and keeps a1's gain on the fireflies (0.929); but an arena grown to hold a whole frame holds it: W2's memory is 2.23 times a0's, above 1.10. **a1b is out**, on memory.
+- Its 1.025 on W1, and a1's 1.020 on W4b, are measured on modules identical byte for byte to a0's (W1 and W4b write no arena): the same module, timed twice, differs by up to that much here. By the letter of the criteria a1b fails W1 too; by `check-regression`'s own rule an identical module runs at the same speed. Either way, its memory on W2 decides.
+- a1, a2 and a3 are where the first measure put them.
+
+### Proposal, after a1b
+
+**a0 stays**: no option, a1b included, meets the criteria registered. The prototypes are removed, their figures kept here and their code in git at `0dba084`, and `Arena` leaves the roadmap until a workload shows a cost to remove. What the two measures teach: a written arena gains 6 to 7 % on the temporaries of a frame; a fixed block costs a small program its memory, and a block that grows to fit a frame costs a frame's program its memory; the gain does not pay for either, by the rules the project set. The owner decides.
