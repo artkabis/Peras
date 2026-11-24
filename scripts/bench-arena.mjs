@@ -33,6 +33,7 @@ const perasc = join(root, "target", "release", "perasc");
 const OPTIONS = {
   a0: "a0, today",
   a1: "a1, `arena { … }` written",
+  a1b: "a1b, a1 grown as needed, on for a block",
   a2: "a2, chosen by the compiler",
   a3: "a3, more sizes kept",
 };
@@ -137,7 +138,7 @@ for (const [label, source, fn, args] of workloads) {
   const modules = {};
   for (const o of options) {
     const own = join(bench, "a1", basename(source));
-    const built = build(o === "a1" && existsSync(own) ? own : source, o);
+    const built = build(o.startsWith("a1") && existsSync(own) ? own : source, o);
     modules[o] = { m: await load(built.js), bytes: built.bytes };
   }
   const want = same(modules.a0?.m[fn]?.(...args));

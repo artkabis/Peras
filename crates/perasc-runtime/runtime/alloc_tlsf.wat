@@ -53,15 +53,24 @@
   (global $serial (mut i32) (i32.const 0))
   (global $live_count (mut i32) (i32.const 0))
   (global $live_bytes (mut i32) (i32.const 0))
-  ;; @proto a2
-  ;; Decision 0043, prototype a2: an arena, one block of TLSF, from `$ar_lo`
-  ;; to `$ar_end`, taken by moving `$ar_cur`, while `$ar_on`. Releasing a
-  ;; block of it does nothing; `arena_reset` gives its room back at once.
+  ;; @proto a2 a1b
+  ;; Decision 0043, prototypes a2 and a1b: an arena, one block of TLSF, from
+  ;; `$ar_lo` to `$ar_end`, taken by moving `$ar_cur`, while `$ar_on`.
+  ;; Releasing a block of it does nothing; `arena_reset` gives its room back
+  ;; at once.
   (global $ar_lo (mut i32) (i32.const 0))
   (global $ar_end (mut i32) (i32.const 0))
   (global $ar_cur (mut i32) (i32.const 0))
   (global $ar_on (mut i32) (i32.const 0))
-  (global $AR_SIZE i32 (i32.const 262144))
+  ;; @endproto
+  ;; @proto a2
+  (global $ar_size (mut i32) (i32.const 262144))
+  ;; @endproto
+  ;; @proto a1b
+  ;; a1b: the arena starts at 4 KiB; an allocation that does not fit sets
+  ;; `$ar_over`, and the next mark of the arena empty doubles it, to 1 MiB.
+  (global $ar_size (mut i32) (i32.const 4096))
+  (global $ar_over (mut i32) (i32.const 0))
   ;; @endproto
 
   ;; A small block released is kept for the next allocation of its size, the
@@ -206,7 +215,7 @@
     (local $need i32) (local $block i32) (local $have i32) (local $rest i32) (local $kept i32)
     (if (i32.gt_u (local.get $size) (i32.const 0x40000000))
       (then (call $raise (global.get $TOO_LARGE) (local.get $size) (local.get $site) (i32.const 0))))
-    ;; @proto a2
+    ;; @proto a2 a1b
     (if (global.get $ar_on)
       (then
         (local.set $need (i32.and (i32.add (local.get $size) (i32.const 15)) (i32.const -16)))
@@ -214,7 +223,13 @@
           (then
             (local.set $block (global.get $ar_cur))
             (global.set $ar_cur (i32.add (global.get $ar_cur) (local.get $need)))
-            (return (local.get $block))))))
+            (return (local.get $block))))
+    ;; @endproto
+    ;; @proto a1b
+        (global.set $ar_over (i32.const 1))
+    ;; @endproto
+    ;; @proto a2 a1b
+        ))
     ;; @endproto
     ;; The user's bytes rounded up to 16, and the header; 32 bytes at least,
     ;; so that a free block holds its links.
@@ -280,7 +295,7 @@
   ;; Releases the block at `ptr`, merged at once with its free neighbours.
   (func $release (export "release") (param $ptr i32) (param $site i32)
     (local $block i32) (local $size i32) (local $kept i32)
-    ;; @proto a2
+    ;; @proto a2 a1b
     (if (i32.lt_u (i32.sub (local.get $ptr) (global.get $ar_lo))
           (i32.sub (global.get $ar_end) (global.get $ar_lo)))
       (then (return)))
@@ -334,19 +349,53 @@
       (i32.shl (i32.sub (i32.shr_u (local.get $size) (i32.const 8)) (i32.const 2)) (i32.const 2))))
   ;; @endproto
 
-  ;; @proto a2
+  ;; @proto a2 a1b
   ;; Where the arena is now, its block taken from TLSF the first time.
   (func (export "arena_mark") (param $unused i32) (result i32)
+    ;; @endproto
+    ;; @proto a1b
+    (local $old i32)
+    ;; Too small last time, and empty now: its block given back, and one
+    ;; twice as large taken below.
+    (if (i32.and (global.get $ar_over) (i32.eq (global.get $ar_cur) (global.get $ar_lo)))
+      (then
+        (global.set $ar_over (i32.const 0))
+        (if (i32.and (i32.ne (global.get $ar_lo) (i32.const 0))
+              (i32.lt_u (global.get $ar_size) (i32.const 1048576)))
+          (then
+            (local.set $old (global.get $ar_lo))
+            (global.set $ar_lo (i32.const 0))
+            (global.set $ar_end (i32.const 0))
+            (global.set $live_count (i32.add (global.get $live_count) (i32.const 1)))
+            (global.set $live_bytes (i32.add (global.get $live_bytes) (global.get $ar_size)))
+            (call $release (local.get $old) (i32.const 0))
+            (global.set $ar_size (i32.shl (global.get $ar_size) (i32.const 1)))))))
+    ;; @endproto
+    ;; @proto a2 a1b
     (if (i32.eqz (global.get $ar_lo))
       (then
-        (global.set $ar_lo (call $alloc (global.get $AR_SIZE) (i32.const 0)))
+        (global.set $ar_lo (call $alloc (global.get $ar_size) (i32.const 0)))
         ;; The runtime's own block, never released: not a block of the program.
         (global.set $live_count (i32.sub (global.get $live_count) (i32.const 1)))
-        (global.set $live_bytes (i32.sub (global.get $live_bytes) (global.get $AR_SIZE)))
+        (global.set $live_bytes (i32.sub (global.get $live_bytes) (global.get $ar_size)))
         (global.set $ar_cur (global.get $ar_lo))
-        (global.set $ar_end (i32.add (global.get $ar_lo) (global.get $AR_SIZE)))))
+        (global.set $ar_end (i32.add (global.get $ar_lo) (global.get $ar_size)))))
     (global.get $ar_cur))
+  ;; @endproto
+  ;; @proto a2
   (func (export "arena_reset") (param $mark i32) (global.set $ar_cur (local.get $mark)))
+  ;; @endproto
+  ;; @proto a1b
+  ;; A mark taken before the arena grew points into its old block; it was
+  ;; taken empty, since the arena grows only when empty: its start now.
+  (func (export "arena_reset") (param $mark i32)
+    (global.set $ar_cur
+      (if (result i32) (i32.lt_u (i32.sub (local.get $mark) (global.get $ar_lo))
+            (i32.sub (global.get $ar_end) (global.get $ar_lo)))
+        (then (local.get $mark))
+        (else (global.get $ar_lo)))))
+  ;; @endproto
+  ;; @proto a2 a1b
   (func (export "arena_flag") (param $on i32) (global.set $ar_on (local.get $on)))
   ;; @else
   ;; No arena: what a module built by prototype a2 calls does nothing.

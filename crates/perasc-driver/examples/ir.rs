@@ -6,6 +6,9 @@ fn main() {
     match perasc_driver::compile_ir(&source) {
         Ok(mut m) => {
             perasc_ir::optimize(&mut m);
+            if std::env::var_os("A1B").is_some() {
+                perasc_ir::arena::apply_blocks_on(&mut m);
+            }
             if std::env::var_os("ARENA").is_some() {
                 for (name, t) in perasc_ir::arena::analyse(&m) {
                     println!(

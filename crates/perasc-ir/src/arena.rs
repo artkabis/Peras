@@ -637,6 +637,7 @@ impl Touch {
                     t.expr(a);
                 }
             }
+            Stmt::Release(_) => {}
             _ => t.calls = true,
         }
         t
@@ -930,5 +931,252 @@ impl Writer<'_> {
                 }
             }
         }
+    }
+}
+
+/// Prototype a1b: [`apply_blocks`], with the arena on for each block written
+/// instead of around each statement it takes: turned off only around a
+/// statement or a condition it cannot take, and before every jump out.
+/// Only the functions that hold a block are analysed.
+pub fn apply_blocks_on(module: &mut Module) -> Vec<(u32, String)> {
+    let mut escapes = Vec::new();
+    for f in module.functions.iter_mut().filter(|f| !f.job) {
+        if !holds_marker(&f.body) {
+            continue;
+        }
+        let plan = Plan::of(f, true);
+        for &(at, l) in &plan.escapes {
+            let name = f
+                .locals
+                .get(l.0 as usize)
+                .map_or_else(String::new, |x| x.name.clone());
+            escapes.push((at, name));
+        }
+        plan.rewrite_on(f);
+    }
+    escapes
+}
+
+/// Whether a body holds the mark of an `arena { … }` block.
+fn holds_marker(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        Stmt::If {
+            then, otherwise, ..
+        } => holds_marker(then) || holds_marker(otherwise),
+        Stmt::Loop { body, step, .. } => holds_marker(body) || holds_marker(step),
+        Stmt::Block(b) => holds_marker(b),
+        other => marker(other).is_some(),
+    })
+}
+
+impl Plan {
+    /// Whether a statement may run with the arena on, in this region: it
+    /// calls nothing, and every block it allocates or grows is taken, with
+    /// no arena below its home giving its room back around it.
+    fn safe(&self, s: &Stmt, at: Region) -> bool {
+        let touch = Touch::stmt(s);
+        !touch.calls && self.blocks_safe(&touch, at)
+    }
+
+    fn safe_expr(&self, e: &Expr, at: Region) -> bool {
+        let mut touch = Touch::default();
+        touch.expr(e);
+        !touch.calls && self.blocks_safe(&touch, at)
+    }
+
+    fn blocks_safe(&self, touch: &Touch, at: Region) -> bool {
+        touch.blocks.iter().all(|l| {
+            self.homes
+                .get(l.0 as usize)
+                .copied()
+                .flatten()
+                .is_some_and(|home| {
+                    !self.resetting.iter().any(|&reset| {
+                        reset != home
+                            && self.facts.within(reset, home)
+                            && self.facts.within(at, reset)
+                    })
+                })
+        })
+    }
+
+    fn rewrite_on(&self, f: &mut Function) {
+        let add = |locals: &mut Vec<Local>, name: &str, ty: Ty| {
+            locals.push(Local {
+                name: name.to_owned(),
+                ty,
+            });
+            local(locals.len() - 1)
+        };
+        let call = add(&mut f.locals, "arena", Ty::I32);
+        let mut marks = BTreeMap::new();
+        for &r in &self.resetting {
+            marks.insert(r, add(&mut f.locals, "arena", Ty::I32));
+        }
+        let mut results = Vec::new();
+        let ret = f.ret;
+        if ret != Ty::Void {
+            results.push(add(&mut f.locals, "result", ret));
+        }
+        for &ty in &f.more.clone() {
+            results.push(add(&mut f.locals, "result", ty));
+        }
+        let mut w = OnWriter {
+            plan: self,
+            marks,
+            call,
+            results,
+            loops: 0,
+            depth: 0,
+            on: false,
+        };
+        let body = std::mem::take(&mut f.body);
+        let mut out = vec![Stmt::Set(call, runtime(RuntimeFn::ArenaMark, vec![int(0)]))];
+        out.extend(w.block(body, 0));
+        if ret == Ty::Void && !matches!(out.last(), Some(Stmt::Return(_))) {
+            w.set(false, &mut out);
+            out.push(reset(call));
+        }
+        f.body = out;
+    }
+}
+
+/// The writer of a1b: it knows whether the arena is on where it writes.
+/// Where two paths meet, each leaves it as it was where they parted; a jump
+/// turns it off, which is always safe: a statement run with the arena off
+/// takes its blocks from TLSF.
+struct OnWriter<'a> {
+    plan: &'a Plan,
+    marks: BTreeMap<Region, LocalId>,
+    call: LocalId,
+    results: Vec<LocalId>,
+    loops: usize,
+    /// How many blocks written hold the place written.
+    depth: usize,
+    /// Whether the arena is on there.
+    on: bool,
+}
+
+impl OnWriter<'_> {
+    fn set(&mut self, on: bool, out: &mut Vec<Stmt>) {
+        if self.on != on {
+            out.push(flag(i64::from(on)));
+            self.on = on;
+        }
+    }
+
+    fn block(&mut self, stmts: Vec<Stmt>, region: Region) -> Vec<Stmt> {
+        let mut out = Vec::with_capacity(stmts.len());
+        let mut open: Vec<Region> = Vec::new();
+        for s in stmts {
+            let here = open.last().copied().unwrap_or(region);
+            match marker(&s) {
+                Some((_, true)) => {
+                    self.loops += 1;
+                    let r = self.loops;
+                    open.push(r);
+                    self.depth += 1;
+                    if let Some(&mark) = self.marks.get(&r) {
+                        out.push(Stmt::Set(mark, runtime(RuntimeFn::ArenaMark, vec![int(0)])));
+                    }
+                }
+                Some((_, false)) => {
+                    self.depth = self.depth.saturating_sub(1);
+                    if self.depth == 0 {
+                        self.set(false, &mut out);
+                    }
+                    if let Some(mark) = open.pop().and_then(|r| self.marks.get(&r).copied()) {
+                        out.push(reset(mark));
+                    }
+                }
+                None => self.stmt(s, here, &mut out),
+            }
+        }
+        out
+    }
+
+    fn stmt(&mut self, s: Stmt, region: Region, out: &mut Vec<Stmt>) {
+        let inside = self.depth > 0;
+        match s {
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                let wanted = inside && self.plan.safe_expr(&cond, region);
+                self.set(wanted, out);
+                let then = self.branch(then, region, wanted);
+                let otherwise = self.branch(otherwise, region, wanted);
+                out.push(Stmt::If {
+                    cond,
+                    then,
+                    otherwise,
+                });
+            }
+            Stmt::Loop { cond, body, step } => {
+                self.loops += 1;
+                let turn = self.loops;
+                let wanted = inside && cond.as_ref().is_none_or(|c| self.plan.safe_expr(c, turn));
+                self.set(wanted, out);
+                let body = self.block(body, turn);
+                let mut step = self.block(step, turn);
+                if self.on != wanted {
+                    step.push(flag(i64::from(wanted)));
+                }
+                self.on = wanted;
+                out.push(Stmt::Loop { cond, body, step });
+            }
+            Stmt::Block(b) => {
+                let b = self.block(b, region);
+                out.push(Stmt::Block(b));
+            }
+            Stmt::Break | Stmt::Continue | Stmt::Leave(_) => {
+                let was = self.on;
+                self.set(false, out);
+                out.push(s);
+                self.on = was;
+            }
+            Stmt::Return(None) => {
+                self.set(false, out);
+                out.push(reset(self.call));
+                out.push(Stmt::Return(None));
+            }
+            Stmt::Return(Some(e)) => {
+                // A result is computed with the arena off: it leaves.
+                self.set(false, out);
+                let Some(&tmp) = self.results.first() else {
+                    out.push(Stmt::Return(Some(e)));
+                    return;
+                };
+                let ty = e.ty;
+                out.push(Stmt::Set(tmp, e));
+                out.push(reset(self.call));
+                out.push(Stmt::Return(Some(Writer::take(tmp, ty))));
+            }
+            Stmt::ReturnMany(es) => {
+                self.set(false, out);
+                let mut values = Vec::with_capacity(es.len());
+                for (e, &tmp) in es.into_iter().zip(self.results.clone().iter()) {
+                    let ty = e.ty;
+                    out.push(Stmt::Set(tmp, e));
+                    values.push(Writer::take(tmp, ty));
+                }
+                out.push(reset(self.call));
+                out.push(Stmt::ReturnMany(values));
+            }
+            other => {
+                let wanted = inside && self.plan.safe(&other, region);
+                self.set(wanted, out);
+                out.push(other);
+            }
+        }
+    }
+
+    /// A branch, which leaves the arena as it found it.
+    fn branch(&mut self, stmts: Vec<Stmt>, region: Region, at_start: bool) -> Vec<Stmt> {
+        self.on = at_start;
+        let mut out = self.block(stmts, region);
+        self.set(at_start, &mut out);
+        out
     }
 }

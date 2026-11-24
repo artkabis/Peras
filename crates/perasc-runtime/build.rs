@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("alloc_tlsf", "alloc_tlsf", ""),
         ("alloc_tlsf_a2", "alloc_tlsf", "a2"),
         ("alloc_tlsf_a3", "alloc_tlsf", "a3"),
+        ("alloc_tlsf_a1b", "alloc_tlsf", "a1b"),
     ] {
         let source = format!("runtime/{file}.wat");
         println!("cargo::rerun-if-changed={source}");
@@ -68,8 +69,9 @@ fn variant(buffers: &str, simd: bool) -> Result<String, Box<dyn std::error::Erro
     Ok(out)
 }
 
-/// The text with each `;; @proto NAME … [;; @else …] ;; @endproto` kept as
-/// its first part when `NAME` is `proto`, as its `@else` part otherwise.
+/// The text with each `;; @proto NAMES … [;; @else …] ;; @endproto` kept
+/// as its first part when `proto` is one of the `NAMES`, as its `@else`
+/// part otherwise.
 fn prototype(text: &str, proto: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut out = String::new();
     // None outside a block; Some(keep) inside, `keep` the part being read.
@@ -81,7 +83,7 @@ fn prototype(text: &str, proto: &str) -> Result<String, Box<dyn std::error::Erro
             if inside.is_some() {
                 return Err("`;; @proto` inside another".into());
             }
-            name_matches = name.trim() == proto;
+            name_matches = name.split_whitespace().any(|n| n == proto);
             inside = Some(name_matches);
         } else if marker == ";; @else" {
             if inside.is_none() {

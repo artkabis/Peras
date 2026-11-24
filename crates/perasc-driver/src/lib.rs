@@ -552,7 +552,7 @@ pub use perasc_runtime::Allocator;
 /// Decision 0043, prototype a1: a value made in an `arena { … }` block that
 /// outlives it is refused, at the block (`E0900` in the prototype).
 fn arena_escapes(module: &perasc_ir::Module) -> Result<(), ToolError> {
-    if std::env::var("PERAS_PROTO_ARENA").map_or(true, |v| v != "a1") {
+    if std::env::var("PERAS_PROTO_ARENA").map_or(true, |v| v != "a1" && v != "a1b") {
         return Ok(());
     }
     let mut copy = module.clone();
@@ -665,10 +665,12 @@ pub fn emit_direct_for(
     let proto = std::env::var("PERAS_PROTO_ARENA").unwrap_or_default();
     let tlsf = options.allocator == perasc_runtime::Allocator::Tlsf;
     let with_arena;
-    let module = if tlsf && (proto == "a2" || proto == "a1") {
+    let module = if tlsf && (proto == "a2" || proto == "a1" || proto == "a1b") {
         let mut m = module.clone();
         if proto == "a1" {
             perasc_ir::arena::apply_blocks(&mut m);
+        } else if proto == "a1b" {
+            perasc_ir::arena::apply_blocks_on(&mut m);
         } else {
             perasc_ir::arena::apply(&mut m);
         }
@@ -698,6 +700,7 @@ pub fn emit_direct_for(
     let full = match proto.as_str() {
         "a1" | "a2" if tlsf && uses_arena => perasc_runtime::tlsf_prototype("a2", options.simd),
         "a3" if tlsf => perasc_runtime::tlsf_prototype("a3", options.simd),
+        "a1b" if tlsf && uses_arena => perasc_runtime::tlsf_prototype("a1b", options.simd),
         _ => None,
     }
     .unwrap_or_else(|| options.allocator.runtime(options.simd));

@@ -1184,7 +1184,8 @@ impl<'src> Parser<'src> {
             TokenKind::Ident
                 if self.at_word("arena")
                     && self.nth(1).kind == TokenKind::LBrace
-                    && std::env::var("PERAS_PROTO_ARENA").is_ok_and(|v| v == "a1") =>
+                    && std::env::var("PERAS_PROTO_ARENA")
+                        .is_ok_and(|v| v == "a1" || v == "a1b") =>
             {
                 self.bump();
                 let kind = self.block_stmt();

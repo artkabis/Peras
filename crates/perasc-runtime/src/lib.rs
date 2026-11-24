@@ -71,6 +71,14 @@ pub fn tlsf_prototype(name: &str, simd: bool) -> Option<&'static [u8]> {
             env!("OUT_DIR"),
             "/alloc_tlsf_a3_scalar.wasm"
         ))),
+        ("a1b", true) => Some(include_bytes!(concat!(
+            env!("OUT_DIR"),
+            "/alloc_tlsf_a1b.wasm"
+        ))),
+        ("a1b", false) => Some(include_bytes!(concat!(
+            env!("OUT_DIR"),
+            "/alloc_tlsf_a1b_scalar.wasm"
+        ))),
         _ => None,
     }
 }
