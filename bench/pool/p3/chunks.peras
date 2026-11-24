@@ -1,0 +1,65 @@
+// Decision 0044, W3, a budget of chunks, written for p3.
+import { Pool, Handle } from "peras:pool";
+
+struct Chunk {
+  key: i32;
+  used: i32;
+  bytes: Array<u8>;
+}
+
+fn load(key: i32): Array<u8> {
+  let bytes: Array<u8> = [];
+  for (let i = 0; i < 4096; i++) {
+    bytes.push(((key * 31 + i) & 255).toU8());
+  }
+  return bytes;
+}
+
+export fn run(steps: i32): i32 {
+  let chunks: Pool<Chunk> = Pool.new();
+  let where: Map<i32, Handle> = Map.new();
+  let x = 0;
+  let y = 0;
+  let seed = 3;
+  let sum = 0;
+  let misses = 0;
+  for (let t = 0; t < steps; t++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    const dir = (seed >> 16) & 3;
+    if (dir == 0) {
+      x += 1;
+    } else if (dir == 1) {
+      x -= 1;
+    } else if (dir == 2) {
+      y += 1;
+    } else {
+      y -= 1;
+    }
+    const key = (x >> 3) * 4096 + (y >> 3);
+    let h = where.get(key);
+    if (h.isNone()) {
+      misses += 1;
+      if (chunks.size() >= 256) {
+        const all = chunks.handles();
+        let oldest = all[0];
+        let oldestSlot = chunks.slot(oldest).unwrapOr(0);
+        for (const c of all) {
+          const cs = chunks.slot(c).unwrapOr(0);
+          if (chunks.values[cs].used < chunks.values[oldestSlot].used) {
+            oldest = c;
+            oldestSlot = cs;
+          }
+        }
+        where.delete(chunks.values[oldestSlot].key);
+        chunks.remove(oldest);
+      }
+      const fresh = chunks.insert(Chunk(key, t, load(key)));
+      where.set(key, fresh);
+      h = Some(fresh);
+    }
+    const s = chunks.slot(h.unwrapOr(Handle(0, 0))).unwrapOr(0);
+    chunks.values[s].used = t;
+    sum += chunks.values[s].bytes[t & 4095].toI32();
+  }
+  return sum + misses;
+}

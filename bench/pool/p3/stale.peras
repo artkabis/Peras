@@ -1,0 +1,12 @@
+// Decision 0044, safety, written for p3.
+import { Pool, Handle } from "peras:pool";
+
+export fn run(): i32 {
+  let values: Pool<i32> = Pool.new();
+  values.insert(10);
+  const kept = values.insert(20);
+  values.insert(30);
+  values.remove(kept);
+  values.insert(99);
+  return values.get(kept).unwrapOr(-1);
+}

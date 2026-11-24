@@ -12,6 +12,7 @@ fn prelude() -> Option<&'static str> {
     match std::env::var("PERAS_PROTO_POOL").as_deref() {
         Ok("p1") => Some(include_str!("pool/p1.peras")),
         Ok("p2") => Some(include_str!("pool/p2.peras")),
+        Ok("p3") => Some(include_str!("pool/p3.peras")),
         _ => None,
     }
 }
@@ -38,7 +39,20 @@ pub fn prepare(source: &str) -> Cow<'_, str> {
     if !source.contains("Pool") {
         return Cow::Borrowed(source);
     }
-    let mut text = format!("{source}\n{pool}");
+    // p3 is imported: its import becomes blanks of the same length, so that
+    // every place of the program stays where it was.
+    let import = "import { Pool, Handle } from \"peras:pool\";";
+    let mut text = if std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p3") {
+        if !source.contains(import) {
+            return Cow::Borrowed(source);
+        }
+        format!(
+            "{}\n{pool}",
+            source.replace(import, &" ".repeat(import.len()))
+        )
+    } else {
+        format!("{source}\n{pool}")
+    };
     // One at a time, the last first, so that one inside another's index is
     // written before it; each pass analyses the text again.
     for _ in 0..10_000 {

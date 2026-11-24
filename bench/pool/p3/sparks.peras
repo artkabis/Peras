@@ -1,0 +1,49 @@
+// Decision 0044, W1, the sparks, written for p3: the pool imported, each
+// value reached through its slot.
+import { Pool, Handle } from "peras:pool";
+
+struct Spark {
+  x: f64;
+  y: f64;
+  vx: f64;
+  vy: f64;
+  age: i32;
+  parent: Option<Handle>;
+}
+
+export fn run(frames: i32): f64 {
+  let sparks: Pool<Spark> = Pool.new();
+  let last: Option<Handle> = None;
+  let serial = 0;
+  let seed = 7;
+  let sum = 0.0;
+  for (let f = 0; f < frames; f++) {
+    for (let k = 0; k < 1000; k++) {
+      seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+      const vx = ((seed >> 4) & 255).toF64() / 256.0 - 0.5;
+      const vy = ((seed >> 12) & 255).toF64() / 256.0;
+      last = Some(sparks.insert(Spark(0.0, 0.0, vx, vy, 0, last)));
+      serial += 1;
+    }
+    for (const h of sparks.handles()) {
+      const s = sparks.slot(h);
+      if (s.isNone()) {
+        continue;
+      }
+      sparks.values[s].x += sparks.values[s].vx;
+      sparks.values[s].y += sparks.values[s].vy;
+      const p = sparks.values[s].parent;
+      if (p.isSome()) {
+        const ps = sparks.slot(p);
+        if (ps.isSome()) {
+          sum += sparks.values[ps].x - sparks.values[s].x;
+        }
+      }
+      sparks.values[s].age += 1;
+      if (sparks.values[s].age > 30) {
+        sparks.remove(h);
+      }
+    }
+  }
+  return sum + serial.toF64();
+}
