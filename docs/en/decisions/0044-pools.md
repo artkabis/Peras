@@ -64,4 +64,10 @@ Memory is bounded as a ratio and in bytes, and a module identical to p0's counts
 
 ## Record
 
-_To come: the definitions tested, the prototypes, the measure, the proposal._
+### The definitions tested, and an amendment (2026-11-24, before any prototype)
+
+The four workloads and the program of point 5 are written for p0 (`bench/pool/`), as a user would from JavaScript: W1 met six `E0210` (an integer divided as a float, `pop()` giving an `Option<i32>`, an `i32` added to a float), and every workload stopped on an overflow in a development build, the random numbers `seed * 1103515245 + 12345` overflowing on purpose, fixed with `wrappingMul` and `wrappingAdd`; W2, W3 and the program of point 5 were written after W1 and met no error. Built for production, each gives the same twice on one instance, the same as built for development, and the same as its managed module (W1 433595.05078125, W2 487013, W3 12797022). Under p0, the program of point 5 reads 99, the value given to the slot after the one kept was removed: in silence, as expected.
+
+One definition is amended: W1 moves each spark in place (`sparks[i].x += sparks[i].vx`), and the operations registered for p1 and p2 offer only `set(h, v)`, a whole value. **p1 and p2 also index by a handle, `pool[h]`, to read and write a field**: under p1 a handle whose value was removed stops the program, as an index out of bounds does, `get(h)` staying the read that gives `None`; under p2 it reads the slot as it is. **p3**, a structure written in Peras, cannot define `[]`: it offers `pool.slot(h)`, an `Option<i32>`, and the program indexes `pool.values` with it, which counts in its lines.
+
+_To come: the prototypes, the measure, the proposal._

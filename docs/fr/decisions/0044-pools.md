@@ -64,4 +64,10 @@ La mémoire est bornée en rapport et en octets, et un module identique à celui
 
 ## Journal
 
-_À venir : les définitions testées, les prototypes, la mesure, la proposition._
+### Les définitions testées, et un amendement (2026-11-24, avant tout prototype)
+
+Les quatre charges et le programme du point 5 sont écrits pour p0 (`bench/pool/`), comme un utilisateur le ferait depuis JavaScript : W1 a rencontré six `E0210` (un entier divisé comme un flottant, `pop()` donnant une `Option<i32>`, un `i32` ajouté à un flottant), et chaque charge s’est arrêtée sur un dépassement dans une construction de développement, les nombres aléatoires `seed * 1103515245 + 12345` dépassant exprès, corrigés avec `wrappingMul` et `wrappingAdd` ; W2, W3 et le programme du point 5 ont été écrits après W1 et n’ont rencontré aucune erreur. Construite pour la production, chacune donne la même chose deux fois sur une même instance, la même chose construite pour le développement, et la même chose que son module géré (W1 433595.05078125, W2 487013, W3 12797022). Sous p0, le programme du point 5 lit 99, la valeur donnée à la place après que celle gardée a été retirée : en silence, comme attendu.
+
+Une définition est amendée : W1 déplace chaque étincelle sur place (`sparks[i].x += sparks[i].vx`), et les opérations enregistrées pour p1 et p2 n’offrent que `set(h, v)`, une valeur entière. **p1 et p2 indexent aussi par une poignée, `pool[h]`, pour lire et écrire un champ** : sous p1, une poignée dont la valeur a été retirée arrête le programme, comme le fait un indice hors limites, `get(h)` restant la lecture qui donne `None` ; sous p2, elle lit la place telle qu’elle est. **p3**, une structure écrite en Peras, ne peut pas définir `[]` : elle offre `pool.slot(h)`, une `Option<i32>`, et le programme indexe `pool.values` avec, ce qui compte dans ses lignes.
+
+_À venir : les prototypes, la mesure, la proposition._

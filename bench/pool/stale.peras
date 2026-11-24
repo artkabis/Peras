@@ -1,0 +1,16 @@
+// Decision 0044, safety, written for p0: a slot kept after its value was
+// removed and given to another; the read through the old slot gives the
+// new value, in silence.
+
+export fn run(): i32 {
+  let values: Array<i32> = [];
+  let free: Array<i32> = [];
+  values.push(10);
+  values.push(20);
+  values.push(30);
+  const kept = 1;
+  free.push(kept);
+  const slot = free.pop().unwrapOr(0);
+  values[slot] = 99;
+  return values[kept];
+}

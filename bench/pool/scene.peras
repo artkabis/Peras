@@ -1,0 +1,70 @@
+// Decision 0044, W2, a scene graph with removals, written for p0: each node
+// keeps its parent's slot and the number the parent was born with; a third
+// of the nodes are removed, as many inserted under nodes still alive, then
+// the depth of each living node summed, a chain stopping at a parent gone.
+
+struct Node {
+  parent: i32;
+  parentBorn: i32;
+  weight: i32;
+}
+
+fn depth(nodes: Array<Node>, born: Array<i32>, alive: Array<bool>, at: i32): i32 {
+  let d = 0;
+  let i = at;
+  while (nodes[i].parent >= 0) {
+    const p = nodes[i].parent;
+    if (!alive[p] || born[p] != nodes[i].parentBorn) {
+      break;
+    }
+    d += 1;
+    i = p;
+  }
+  return d;
+}
+
+export fn run(n: i32): i32 {
+  let nodes: Array<Node> = [];
+  let born: Array<i32> = [];
+  let alive: Array<bool> = [];
+  let free: Array<i32> = [];
+  let serial = 0;
+  let seed = 11;
+  for (let i = 0; i < n; i++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    let parent = -1;
+    let parentBorn = -1;
+    if (i > 0) {
+      parent = ((seed >> 8) & 2147483647) % i;
+      parentBorn = born[parent];
+    }
+    serial += 1;
+    nodes.push(Node(parent, parentBorn, i % 7));
+    born.push(serial);
+    alive.push(true);
+  }
+  for (let i = 1; i < n; i += 3) {
+    alive[i] = false;
+    free.push(i);
+  }
+  const removed = free.length;
+  for (let k = 0; k < removed; k++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    let parent = ((seed >> 8) & 2147483647) % nodes.length;
+    if (!alive[parent]) {
+      parent = 0;
+    }
+    serial += 1;
+    const slot = free.pop().unwrapOr(0);
+    nodes[slot] = Node(parent, born[parent], k % 5);
+    born[slot] = serial;
+    alive[slot] = true;
+  }
+  let total = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    if (alive[i]) {
+      total += depth(nodes, born, alive, i) + nodes[i].weight;
+    }
+  }
+  return total;
+}
