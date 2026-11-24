@@ -72,9 +72,8 @@ impl Checker<'_> {
 
     /// What an `if` whose block leaves narrows after it, and the type of
     /// each value: a `const` or a parameter not `inout`, or a field of one
-    /// (decision 0028, option 2e). Under decision 0045's n1, each option of
-    /// a chain of `||` tested `isNone()`; under n2, the facts of its
-    /// condition when false, or when true after an `else` that leaves.
+    /// (decision 0028, option 2e): the facts of its condition when false,
+    /// or when true after an `else` that leaves (decision 0045).
     fn narrowing(&self, stmt: &Stmt) -> Vec<Narrow> {
         if crate::proto("PERAS_PROTO_TAKE") != "e" {
             return Vec::new();
@@ -90,7 +89,7 @@ impl Checker<'_> {
         let leaves = |s: &Stmt| crate::never_ends(self.ast, std::slice::from_ref(s));
         match otherwise {
             None if leaves(then) => self.facts(*cond).when_false,
-            Some(otherwise) if crate::narrow_proto() == "n2" => {
+            Some(otherwise) if crate::narrows_through_conditions() => {
                 if leaves(then) {
                     self.facts(*cond).when_false
                 } else if leaves(otherwise) {
@@ -103,28 +102,23 @@ impl Checker<'_> {
         }
     }
 
-    /// What a condition proves, under the option of decision 0045 a build
-    /// follows: under n0, `x.isSome()` its value when true, `x.isNone()`
-    /// when false; under n1, each such test of a chain of `&&` when true,
-    /// of `||` when false; under n2, through `!`, `&&` and `||`.
+    /// What a condition proves when true and when false (decision 0045,
+    /// n2, chosen): `x.isSome()` its value when true, `x.isNone()` when false,
+    /// through `!`, `&&` and `||`; before it, the test alone.
     pub(crate) fn facts(&self, cond: ExprId) -> Facts {
-        match crate::narrow_proto() {
-            "n2" => self.facts_n2(cond),
-            "n1" => Facts {
-                when_true: self.chain(cond, BinaryOp::And, "isSome"),
-                when_false: self.chain(cond, BinaryOp::Or, "isNone"),
-            },
-            _ => Facts {
-                when_true: self.option_test(cond, "isSome").into_iter().collect(),
-                when_false: self.option_test(cond, "isNone").into_iter().collect(),
-            },
+        if crate::narrows_through_conditions() {
+            return self.condition_facts(cond);
+        }
+        Facts {
+            when_true: self.option_test(cond, "isSome").into_iter().collect(),
+            when_false: self.option_test(cond, "isNone").into_iter().collect(),
         }
     }
 
     /// What the left operand of `&&` (`true`) or `||` (`false`) proves to
-    /// the right one, under decision 0045's prototypes; nothing under n0.
+    /// the right one (decision 0045).
     pub(crate) fn operand_facts(&self, lhs: ExprId, and: bool) -> Vec<Narrow> {
-        if crate::narrow_proto() == "n0" {
+        if !crate::narrows_through_conditions() {
             return Vec::new();
         }
         let facts = self.facts(lhs);
@@ -135,29 +129,16 @@ impl Checker<'_> {
         }
     }
 
-    /// Decision 0045's n1: the tests `x.<test>()` of a chain of `op`.
-    fn chain(&self, cond: ExprId, op: BinaryOp, test: &str) -> Vec<Narrow> {
+    /// The facts of a condition, through `!`, `&&` and `||`, as TypeScript
+    /// keeps them (decision 0045, n2).
+    fn condition_facts(&self, cond: ExprId) -> Facts {
         match &self.ast.expr(cond).kind {
-            ExprKind::Paren(inner) => self.chain(*inner, op, test),
-            ExprKind::Binary { op: o, lhs, rhs } if *o == op => {
-                let mut all = self.chain(*lhs, op, test);
-                all.extend(self.chain(*rhs, op, test));
-                all
-            }
-            _ => self.option_test(cond, test).into_iter().collect(),
-        }
-    }
-
-    /// Decision 0045's n2: the facts of a condition, through `!`, `&&` and
-    /// `||`, as TypeScript keeps them.
-    fn facts_n2(&self, cond: ExprId) -> Facts {
-        match &self.ast.expr(cond).kind {
-            ExprKind::Paren(inner) => self.facts_n2(*inner),
+            ExprKind::Paren(inner) => self.condition_facts(*inner),
             ExprKind::Unary {
                 op: UnaryOp::Not,
                 operand,
             } => {
-                let inner = self.facts_n2(*operand);
+                let inner = self.condition_facts(*operand);
                 Facts {
                     when_true: inner.when_false,
                     when_false: inner.when_true,
@@ -168,7 +149,7 @@ impl Checker<'_> {
                 lhs,
                 rhs,
             } => {
-                let (a, b) = (self.facts_n2(*lhs), self.facts_n2(*rhs));
+                let (a, b) = (self.condition_facts(*lhs), self.condition_facts(*rhs));
                 if *op == BinaryOp::And {
                     Facts {
                         when_true: union(a.when_true, b.when_true),
@@ -413,9 +394,8 @@ impl Checker<'_> {
         }
     }
 
-    /// An `if`: `if (x.isSome()) { … }`, `x` is its value in the block;
-    /// under decision 0045's n2, `if (x.isNone()) … else { … }` in the
-    /// `else`.
+    /// An `if`: `if (x.isSome()) { … }`, `x` is its value in the block,
+    /// and `if (x.isNone()) … else { … }` in the `else` (decision 0045).
     fn if_stmt(&mut self, cond: ExprId, then: &Stmt, otherwise: Option<&Stmt>) {
         self.condition(cond);
         let facts = self.facts(cond);
@@ -423,7 +403,7 @@ impl Checker<'_> {
         self.scoped(then);
         self.undo_all(narrowed);
         if let Some(otherwise) = otherwise {
-            let narrowed = if crate::narrow_proto() == "n2" {
+            let narrowed = if crate::narrows_through_conditions() {
                 self.narrow_all(facts.when_false)
             } else {
                 Vec::new()
@@ -433,11 +413,10 @@ impl Checker<'_> {
         }
     }
 
-    /// A `while`; under decision 0045's n2, its body with what its condition
-    /// proves.
+    /// A `while`, its body with what its condition proves (decision 0045).
     fn while_stmt(&mut self, cond: ExprId, body: &Stmt) {
         self.condition(cond);
-        let narrowed = if crate::narrow_proto() == "n2" {
+        let narrowed = if crate::narrows_through_conditions() {
             let facts = self.facts(cond);
             self.narrow_all(facts.when_true)
         } else {

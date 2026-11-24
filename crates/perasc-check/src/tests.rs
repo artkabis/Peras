@@ -312,8 +312,8 @@ fn a_match_on_a_type_that_contains_itself_ends() {
 }
 
 /// Decision 0045: an option read as its value where no test proves it there
-/// is refused under every option; where `&&`, `||`, `!` or an `else` proves
-/// it, accepted by the option that narrows through it.
+/// is refused, before decision 0045 and since; where `&&`, `||`, `!`, an
+/// `else` or a `while` proves it, accepted since.
 #[test]
 fn narrowing_through_conditions_is_sound() {
     let wrap = |stmts: &str| {
@@ -340,28 +340,19 @@ fn narrowing_through_conditions_is_sound() {
         let codes = codes_of(&wrap(refused));
         assert!(!codes.is_empty(), "accepted, and must not be: {refused}");
     }
-    let option = crate::narrow_proto();
-    for (accepted, from) in [
-        ("if (x.isSome() && x > 3) { t += x; }", "n1"),
-        ("if (x.isNone() || x > 3) { return 0; } t += x;", "n1"),
-        ("if (c && x.isSome()) { t += x; }", "n1"),
-        ("if (x.isSome()) { t += x; } else { t += 1; }", "n0"),
-        ("if (x.isNone()) { t += 1; } else { t += x; }", "n2"),
-        ("if (!x.isSome()) { return 0; } t += x;", "n2"),
-        ("if (!(x.isSome() && c)) { return 0; } t += x;", "n2"),
-        ("if (x.isNone() || c) { t += 1; } else { t += x; }", "n2"),
-        ("while (x.isSome() && t < 5) { t += x; }", "n2"),
+    let through = crate::narrows_through_conditions();
+    for (accepted, before) in [
+        ("if (x.isSome() && x > 3) { t += x; }", false),
+        ("if (x.isNone() || x > 3) { return 0; } t += x;", false),
+        ("if (c && x.isSome()) { t += x; }", false),
+        ("if (x.isSome()) { t += x; } else { t += 1; }", true),
+        ("if (x.isNone()) { t += 1; } else { t += x; }", false),
+        ("if (!x.isSome()) { return 0; } t += x;", false),
+        ("if (!(x.isSome() && c)) { return 0; } t += x;", false),
+        ("if (x.isNone() || c) { t += 1; } else { t += x; }", false),
+        ("while (x.isSome() && t < 5) { t += x; }", false),
     ] {
         let codes = codes_of(&wrap(accepted));
-        let narrows = match from {
-            "n0" => true,
-            "n1" => option != "n0",
-            _ => option == "n2",
-        };
-        assert_eq!(
-            codes.is_empty(),
-            narrows,
-            "{accepted} under {option}: {codes:?}"
-        );
+        assert_eq!(codes.is_empty(), through || before, "{accepted}: {codes:?}");
     }
 }

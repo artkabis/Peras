@@ -143,6 +143,29 @@ export fn total(text: String): i32 {
 
 Dans le bloc de `if (x.isSome()) { … }`, `x` est aussi sa valeur. Un champ d’un `const` ou d’un paramètre est rétréci comme une variable, par l’un ou l’autre test : `if (child.parent.isSome()) { … child.parent.name … }`.
 
+Les tests se combinent comme en TypeScript ([décision 0045](../decisions/0045-narrowing.md)) : `x` est sa valeur dans l’opérande droit de `&&` après `x.isSome()`, de `||` après `x.isNone()`, dans le `else` de `if (x.isNone())`, à travers `!`, après un `if` qui sort partout où sa condition, fausse, le prouve, et dans le corps d’un `while` :
+
+```peras build
+export fn add(a: Option<i32>, b: Option<i32>): i32 {
+  if (a.isNone() || b.isNone()) {
+    return -1;
+  }
+  return a + b;
+}
+
+export fn pick(a: Option<i32>, limit: i32): i32 {
+  if (a.isSome() && a < limit) {
+    return a;
+  }
+  if (!a.isSome()) {
+    return 0;
+  }
+  return limit;
+}
+```
+
+Une condition qui ne le prouve pas ne rétrécit rien : dans le bloc de `if (x.isSome() || ready)`, `x` reste une option, puisque `ready` seul rend la condition vraie.
+
 Les méthodes d’`Option`, `isSome()`, `isNone()` et `unwrapOr`, lisent toujours l’option entière : un programme écrit avec elles continue de se construire ; de même un nom rétréci là où son option est attendue, `return node;` dans une fonction qui rend `Option<Node>`. Un `let` n’est pas rétréci : il pourrait recevoir `None` plus tard. Copiez-le d’abord dans une `const`, `const found = best;`, puis testez-la.
 
 ## Les résultats : des erreurs qui sont des valeurs

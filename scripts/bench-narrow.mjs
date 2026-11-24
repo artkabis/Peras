@@ -1,13 +1,14 @@
 // Decision 0045's protocol: narrowing an option through `&&`, `||` and `!`.
-// Each option is a prototype the compiler builds when PERAS_PROTO_NARROW is
-// `n1` (chains) or `n2` (facts); without it, n0, as today. The programs of
-// bench/narrow are written as in TypeScript, those of bench/narrow/n0 as n0
-// asks.
+// n2 (facts) was chosen and is the compiler; PERAS_PROTO_NARROW=n0 builds
+// it as before, n0. n1 (chains) was removed once the decision landed, its
+// figures kept in decision 0045 and its code in git at e1e5ed8.
+// The programs of bench/narrow are written as in TypeScript, those of
+// bench/narrow/n0 as n0 asks.
 //
 // 1. Ease: the errors `perasc check --json` reports for each TypeScript form
 //    under each option, and the lines of the form that builds.
-// 2. Each program built for production: under n0 its n0 form, under n1 and
-//    n2 its TypeScript form where it builds; each run first in a child
+// 2. Each program built for production: under n0 its n0 form, under n2 its
+//    TypeScript form where it builds; each run first in a child
 //    process with a time limit, twice on one instance, its result compared
 //    with n0's.
 // 3. The modules that compute n0's result, in one process, the order
@@ -36,9 +37,8 @@ const work = join(root, "target", "bench-narrow");
 const perasc = join(root, "target", "release", "perasc");
 /** @type {Record<string, string>} */
 const OPTIONS = {
-  n0: "n0, as today",
-  n1: "n1, chains",
-  n2: "n2, facts",
+  n0: "n0, before",
+  n2: "n2, facts, chosen",
 };
 const options = Object.keys(OPTIONS);
 
@@ -46,7 +46,7 @@ rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
 
 /** @param {string} option */
-const envOf = (option) => ({ ...process.env, PERAS_PROTO_NARROW: option === "n0" ? "" : option });
+const envOf = (option) => ({ ...process.env, PERAS_PROTO_NARROW: option === "n0" ? "n0" : "" });
 
 /** The errors the compiler reports for a file under an option. @param {string} file @param {string} option */
 function errors(file, option) {
@@ -128,13 +128,13 @@ const lines0 = [
   "",
   "### Ease: the errors met by the TypeScript form, and the lines of the form that builds",
   "",
-  "| Program | n0 | n1 | n2 |",
-  "| --- | --- | --- | --- |",
+  "| Program | n0 | n2 |",
+  "| --- | --- | --- |",
 ];
 /** @type {Record<string, Record<string, number>>} */
 const met = {};
 /** @type {Record<string, number>} */
-const total = { n0: 0, n1: 0, n2: 0 };
+const total = { n0: 0, n2: 0 };
 for (const [label, name] of programs) {
   const ts = join(bench, `${name}.peras`);
   const n0 = join(bench, "n0", `${name}.peras`);
@@ -154,7 +154,7 @@ for (const [label, name, n] of programs) {
   /** @type {Record<string, ReturnType<typeof build>>} */
   const built = {};
   built.n0 = build(join(bench, "n0", `${name}.peras`), name, "n0");
-  for (const o of ["n1", "n2"]) if (met[name]?.[o] === 0) built[o] = build(ts, name, o);
+  if (met[name]?.n2 === 0) built.n2 = build(ts, name, "n2");
   const present = options.filter((o) => built[o] !== undefined);
   /** @type {Record<string, { value?: string, error?: string }>} */
   const probes = Object.fromEntries(present.map((o) => [o, probe(built[o]?.js ?? "", n)]));
@@ -224,8 +224,8 @@ for (const [label, name, n] of programs) {
 
 console.log(lines0.join("\n"));
 if (check) {
-  // n2 takes every program of the protocol; n1 fewer errors than n0.
-  if (total.n2 !== 0 || (total.n1 ?? 0) >= (total.n0 ?? 0))
+  // n2 takes every program of the protocol, n0 refuses them.
+  if (total.n2 !== 0 || (total.n0 ?? 0) === 0)
     throw new Error(`the errors met: ${JSON.stringify(met)}`);
 } else {
   writeFileSync(

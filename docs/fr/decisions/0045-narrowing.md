@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0045-narrowing.md](../../en/decisions/0045-narrowing.md)._
 
-_Statut : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `e1e5ed8` ; proposition : n0 reste selon les critères enregistrés, au propriétaire de décider. Demandée par le propriétaire le 2026-11-24, après que la [décision 0044](0044-pools.md) a rencontré le constat F118 ; elle vient avant un amendement de la 0044 qui mesure un pool abaissé par le compilateur lui-même. Selon la règle du propriétaire du 2026-11-17, l’option choisie doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est intégré._
+_Statut : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `e1e5ed8` ; proposition : n0 reste selon les critères enregistrés ; le propriétaire a choisi n2 et tranché M038 ; intégrée. Demandée par le propriétaire le 2026-11-24, après que la [décision 0044](0044-pools.md) a rencontré le constat F118 ; elle vient avant un amendement de la 0044 qui mesure un pool abaissé par le compilateur lui-même. Selon la règle du propriétaire du 2026-11-17, l’option choisie doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est intégré._
 
 ## Contexte
 
@@ -89,3 +89,7 @@ Selon les critères enregistrés, **aucune option n’est une amélioration, et 
 - Les octets qu’elles ajoutent sont le coût de la forme qu’écrit l’utilisateur, `&&` contre des `if` imbriqués, plus que de la restriction ; le constat M038, ouvert, demande déjà si le module d’un programme qui choisit une nouvelle construction peut grandir de ce que la décision mesure.
 
 Deux voies, au choix du propriétaire : garder n0, F118 restant ouvert ; ou décider M038 d’abord, ou abaisser `if (a && b)` en branches imbriquées par une décision à part, mesurée sur chaque programme, et mesurer de nouveau ce protocole.
+
+### Décision et intégration (2026-11-24)
+
+Le propriétaire a choisi **n2**, et tranché avec elle le constat M038 : un programme qui n’utilise pas ce qu’apporte une décision garde son module identique ; un programme qui le choisit peut grandir de ce que la décision mesure et consigne, ici de 0 à 18 octets sur les programmes qui écrivent `&&`, 0,4 % au plus. n2 est le compilateur : une option est restreinte à travers `&&`, `||`, `!`, `else` et `while` (`Checker::facts`, `condition_facts`, `operand_facts`). n1 est retirée, ses chiffres gardés ci-dessus et son code dans git au commit `e1e5ed8` ; `PERAS_PROTO_NARROW=n0` construit le compilateur d’avant cette décision, pour `scripts/bench-narrow.mjs` seulement, qui compare désormais n0 à n2 et vérifie que n2 prend chaque programme du protocole. Le test de sûreté et le test différentiel tournent avec n2 par défaut. `check-regression` contre `a687330` : sur 270 modules, aucun plus grand, aucun plus petit, aucun changé ; les cinq formes TypeScript ne se construisent que maintenant ; le compilateur à 1,006 fois son temps, 1 240 octets de moins que les prototypes, 12 536 octets de plus qu’avant la décision. Le guide (`guide/enums.md`), le statut et le constat F118, fermé, disent ce qu’un programme peut désormais écrire.

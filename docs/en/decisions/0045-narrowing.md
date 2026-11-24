@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0045-narrowing.md](../../fr/decisions/0045-narrowing.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `e1e5ed8`; proposal: n0 stays by the criteria registered, for the owner to decide. Asked by the owner on 2026-11-24, after [decision 0044](0044-pools.md) met finding F118; it comes before an amendment of 0044 that measures a pool lowered by the compiler itself. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `e1e5ed8`; proposal: n0 stays by the criteria registered; the owner chose n2 and decided M038; landed. Asked by the owner on 2026-11-24, after [decision 0044](0044-pools.md) met finding F118; it comes before an amendment of 0044 that measures a pool lowered by the compiler itself. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -89,3 +89,7 @@ By the criteria registered, **no option is an improvement, and n0 stays**: both 
 - The bytes they add are the cost of the form a user writes, `&&` against nested `if`, more than of the narrowing; finding M038, open, already asks whether a module of a program that chooses a new construct may grow by what the decision measures.
 
 Two ways forward, the owner's to choose: keep n0, F118 staying open; or decide M038 first, or lower `if (a && b)` as nested branches by a decision of its own, measured on every program, and measure this protocol again.
+
+### Decision and landing (2026-11-24)
+
+The owner chose **n2**, and decided finding M038 with it: a program that does not use what a decision brings keeps its module identical; one that chooses it may grow by what the decision measures and records, here 0 to 18 bytes on the programs that write `&&`, 0.4 % at most. n2 is the compiler: an option is narrowed through `&&`, `||`, `!`, `else` and `while` (`Checker::facts`, `condition_facts`, `operand_facts`). n1 is removed, its figures kept above and its code in git at `e1e5ed8`; `PERAS_PROTO_NARROW=n0` builds the compiler before this decision, for `scripts/bench-narrow.mjs` only, which now compares n0 with n2 and checks that n2 takes every program of the protocol. The soundness test and the differential test run with n2 by default. `check-regression` against `a687330`: of 270 modules, none larger, none smaller, none changed; the five TypeScript forms build now only; the compiler 1.006 times its time, 1,240 bytes smaller than the prototypes, 12,536 bytes larger than before the decision. The guide (`guide/enums.md`), the status and finding F118, closed, say what a program can now write.
