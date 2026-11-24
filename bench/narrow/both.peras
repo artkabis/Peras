@@ -1,0 +1,25 @@
+// Decision 0045, N3: two values that must both be there, written as in
+// TypeScript.
+
+fn add(a: Option<i32>, b: Option<i32>): i32 {
+  if (a.isNone() || b.isNone()) {
+    return -1;
+  }
+  return a + b;
+}
+
+export fn run(n: i32): i32 {
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    let a: Option<i32> = None;
+    let b: Option<i32> = None;
+    if (i % 3 != 0) {
+      a = Some(i & 1023);
+    }
+    if (i % 5 != 0) {
+      b = Some(i & 511);
+    }
+    total = total.wrappingAdd(add(a, b));
+  }
+  return total;
+}
