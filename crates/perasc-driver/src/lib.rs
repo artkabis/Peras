@@ -134,6 +134,37 @@ fn managed_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::
     imports_context(path, ast)
 }
 
+thread_local! {
+    /// The texts an editor holds open, by canonical path, read in place of
+    /// the files on disk (decision 0042, `perasc serve`).
+    static OPEN: std::cell::RefCell<std::collections::HashMap<std::path::PathBuf, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Holds `text` as the file at `path` for every read of this thread, or,
+/// with `None`, reads the file on disk again.
+pub fn set_open(path: &Path, text: Option<String>) {
+    OPEN.with(|open| {
+        let mut open = open.borrow_mut();
+        match text {
+            Some(text) => open.insert(canonical(path), text),
+            None => open.remove(&canonical(path)),
+        };
+    });
+}
+
+/// What the checker needs to analyse the module at `path` as its extension
+/// says, with the files it imports (decision 0042's queries).
+#[must_use]
+pub fn analysis_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
+    let mut context = imports_context(path, ast);
+    if Mode::from_path(path) == Some(Mode::Owned) {
+        context.managed = false;
+        context.path = canonical(path).display().to_string();
+    }
+    context
+}
+
 /// The modules the imports of the module at `path` name, each checked with
 /// the files it imports in turn.
 fn imports_context(path: &Path, ast: &perasc_syntax::ast::Ast) -> perasc_check::Context {
@@ -861,6 +892,9 @@ pub enum ReadError {
 pub fn read_source(path: &Path) -> Result<String, ReadError> {
     if Mode::from_path(path).is_none() {
         return Err(ReadError::NotASource);
+    }
+    if let Some(text) = OPEN.with(|open| open.borrow().get(&canonical(path)).cloned()) {
+        return Ok(text);
     }
     let not_found = |e: io::Error| match e.kind() {
         io::ErrorKind::NotFound => ReadError::NotFound,

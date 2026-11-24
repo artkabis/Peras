@@ -32,6 +32,9 @@ pub struct Style {
     pub color: bool,
     /// Diagnostics as JSON on standard output.
     pub json: bool,
+    /// `--tests`: the `test` blocks of the file made exported functions, and
+    /// their names written next to the module (decision 0040).
+    pub tests: bool,
 }
 
 /// The code generator to use.
@@ -56,7 +59,11 @@ pub fn build(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> io::Result<u8> {
-    let Style { color, json } = style;
+    let Style {
+        color,
+        json,
+        tests: test_build,
+    } = style;
     let text = match read(path, localizer, style, out, err)? {
         Ok(text) => text,
         Err(code) => return Ok(code),
@@ -66,6 +73,25 @@ pub fn build(
         .and_then(|s| s.to_str())
         .unwrap_or("module")
         .to_owned();
+    // Decision 0040: with `--tests`, each `test` block a function.
+    let file = Path::new(path)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(path);
+    let how = if test_build {
+        perasc_syntax::testing::Tests::Build
+    } else {
+        perasc_syntax::testing::Tests::Keep
+    };
+    let (text, tests) = perasc_syntax::testing::prepare(&text, file, how);
+    if test_build {
+        let names: Vec<String> = tests.iter().map(|t| format!("{t:?}")).collect();
+        fs::create_dir_all(out_dir)?;
+        fs::write(
+            out_dir.join(format!("{stem}.tests.json")),
+            format!("[{}]", names.join(", ")),
+        )?;
+    }
     let started = Instant::now();
     let managed =
         perasc_driver::Mode::from_path(Path::new(path)) == Some(perasc_driver::Mode::Managed);
@@ -180,7 +206,7 @@ fn failure(error: ToolError, localizer: &Localizer, err: &mut dyn Write) -> io::
 fn read(
     path: &str,
     localizer: &Localizer,
-    Style { color, json }: Style,
+    Style { color, json, .. }: Style,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> io::Result<Result<String, u8>> {

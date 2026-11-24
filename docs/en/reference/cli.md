@@ -6,13 +6,15 @@ perasc <command> [options]
 
 ## Commands
 
-| Command                  | Does                                                                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `perasc check <files…>`  | checks every file and reports every error, without building                                                                                                                      |
-| `perasc build <file>`    | checks, then compiles one `.peras` file to WebAssembly, or one `.apeiron` file to JavaScript with the owned modules it imports ([managed modules](../guide/managed.md#building)) |
-| `perasc explain <code>`  | shows the page of an error code, such as `E0006`                                                                                                                                 |
-| `perasc --version`, `-V` | shows the version                                                                                                                                                                |
-| `perasc --help`, `-h`    | shows the help, in your language                                                                                                                                                 |
+| Command                         | Does                                                                                                                                                                             |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `perasc check <files…>`         | checks every file and reports every error, without building                                                                                                                      |
+| `perasc build <file>`           | checks, then compiles one `.peras` file to WebAssembly, or one `.apeiron` file to JavaScript with the owned modules it imports ([managed modules](../guide/managed.md#building)) |
+| `perasc fmt [--check] <files…>` | prints each file at a width of 100, in place; `--check` names those it would change ([formatting](../guide/formatting.md))                                                       |
+| `perasc serve`                  | answers the queries of an editor or a tool, JSON on its standard streams ([its protocol](serve.md))                                                                              |
+| `perasc explain <code>`         | shows the page of an error code, such as `E0006`                                                                                                                                 |
+| `perasc --version`, `-V`        | shows the version                                                                                                                                                                |
+| `perasc --help`, `-h`           | shows the help, in your language                                                                                                                                                 |
 
 ## Options
 

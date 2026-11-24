@@ -8,6 +8,8 @@ cli-usage =
     Commands:
       check <file>...    check .peras and .apeiron files and report every error
       build <file>       compile a .peras file to WebAssembly, or a .apeiron file to JavaScript
+      fmt <file>...      print each file at a width of 100, as Prettier prints TypeScript; with --check, name those it would change
+      serve              answer the queries of an editor or a tool, JSON a line on standard input and output
       explain <code>     explain an error code, e.g. `perasc explain E0001`
 
     Options:
@@ -16,6 +18,7 @@ cli-usage =
       --backend <name>   code generator of `build`: direct (default, no other tool) or rust (cargo, wasm-bindgen)
       --out <dir>        output folder of `build` (default: dist)
       --no-optimize      skip the IR optimizations of `build` (direct backend)
+      --tests            a build of the `test` blocks of the file, for vitest-peras (decision 0040)
       --allocator <name> the build: debug (default, every memory bug and integer overflow caught) or tlsf (production, bounded time, integers wrap)
       --simd <on|off>    WebAssembly SIMD in loops and the runtime: on (default, faster) or off (loads in engines without it, as Safari before 16.4)
       --threads <on|off> `parallel for` loops on several threads, where the page is cross-origin isolated: off (default) or on
@@ -29,6 +32,13 @@ cli-unknown-command = unknown command `{ $command }`
 cli-missing-value = `{ $option }` needs a value
 cli-invalid-value = invalid value `{ $value }` for `{ $option }`
 cli-no-files = `check` needs at least one file
+cli-fmt-no-files = `fmt` needs at least one file
+cli-fmt-refused = `{ $path }` is left as it is: { $count ->
+    [one] a syntax error
+   *[other] { $count } syntax errors
+}, which `perasc check { $path }` shows
+cli-fmt-write-error = cannot write `{ $path }`: { $reason }
+cli-fmt-too-large = `{ $path }` is too large to format
 cli-no-build-file = `build` needs a .peras or .apeiron file
 cli-missing-code = `explain` needs an error code, e.g. E0001
 cli-unknown-code = unknown error code `{ $code }`
@@ -905,3 +915,11 @@ runtime-leak = { $count } block(s) still alive at the end; the first was allocat
 runtime-index = index { $index } is out of bounds: the length is { $length }
 runtime-integer-overflow = an integer overflowed: its type cannot hold the result. To wrap on purpose, use `wrappingAdd`, `wrappingSub` or `wrappingMul`; a production build wraps
 runtime-simd = this module uses WebAssembly SIMD, which this browser does not have: Chrome or Edge 91, Firefox 89 and Safari 16.4 do. Build it with `--simd off` to load it everywhere.
+check-time-number = a number is not a `{ $ty }`: it says no unit
+check-time-number-label = a number, in no unit
+check-time-number-fix = say its unit: `Duration.ms({ $written })`, or `Duration.seconds`, `Duration.minutes`, `Duration.hours`
+check-time-operator = `{ $op }` cannot take `{ $left }` and `{ $right }`
+check-time-operator-label = these two times do not combine so
+check-time-operator-fix = two instants give the time between them, `b - a`; an instant moves by a duration, `start + Duration.seconds(30)`
+check-time-either = a number taken from an `Instant`: it is no duration and no instant
+check-time-either-fix = an elapsed time says its unit, `Duration.seconds(30)`; an instant comes from `Instant.now()`, a number of another clock, such as `Date.now()`, is not one

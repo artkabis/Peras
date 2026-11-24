@@ -1,0 +1,22 @@
+// M1 of decision 0040: a port read from a text, an owned module.
+fn digit(c: String): i32 {
+  return "123456789".indexOf(c);
+}
+
+export fn parsePort(text: String): Result<u16, String> {
+  if (text.length == 0) {
+    return Err("empty");
+  }
+  let n = 0;
+  for (const c of text.split("")) {
+    const d = digit(c);
+    if (d < 0) {
+      return Err(`not a digit: ${c}`);
+    }
+    n = n * 10 + d;
+    if (n > 65535) {
+      return Err("too large");
+    }
+  }
+  return Ok(n.toU16());
+}

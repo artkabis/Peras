@@ -1,0 +1,24 @@
+---
+source: crates/perasc-check/tests/ui.rs
+expression: out
+input_file: tests/ui/check/E0210-time.apeiron
+---
+diagnostics:
+  error[E0210] check-time-number { ty: "Duration" }
+    primary 8:21-8:22: check-time-number-label
+    cause: check-mismatch-why
+    fix: check-time-number-fix { written: "5" }
+      8:21-8:22 -> "Duration.ms(5)"
+  error[E0210] check-time-number { ty: "Duration" }
+    primary 12:26-12:28: check-time-number-label
+    cause: check-mismatch-why
+    fix: check-time-number-fix { written: "30" }
+      12:26-12:28 -> "Duration.ms(30)"
+  error[E0221] check-time-operator { op: "+", left: "Instant", right: "Instant" }
+    primary 16:10-16:31: check-time-operator-label
+    cause: check-operator-why
+    fix: check-time-operator-fix
+  error[E0210] check-time-either
+    primary 20:26-20:35: check-time-number-label
+    cause: check-mismatch-why
+    fix: check-time-either-fix

@@ -1,0 +1,8 @@
+export fn scaled(xs: Array<i32>, k: i32): Array<i32> {
+  const by = (x: i32): i32 => x * k;
+  return xs.map(by);
+}
+
+export fn evens(xs: Array<i32>): i32 {
+  return xs.filter((x) => x % 2 == 0).length;
+}

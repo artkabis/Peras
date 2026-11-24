@@ -1,0 +1,23 @@
+// P3 of decision 0038, as Peras writes JSON today (j0): a summary written
+// as JSON, through `extern` and JavaScript's `JSON.stringify`.
+struct Pair {
+  country: String,
+  category: String,
+  count: i32,
+}
+
+struct Summary {
+  rows: i32,
+  total: number,
+  pairs: Array<Pair>,
+  countries: Array<String>,
+}
+
+extern from "./json.js" {
+  fn stringifySummary(s: Summary): String;
+}
+
+export fn summary(rows: i32): String {
+  const pairs = [Pair("FR", "books", rows / 2), Pair("JP", "games", rows - rows / 2)];
+  return stringifySummary(Summary(rows, rows.toF64() * 1.5, pairs, ["FR", "JP"]));
+}

@@ -6,6 +6,8 @@
 //! `cargo` or `wasm-bindgen` rejects code perasc generated: a bug in perasc.
 
 mod build;
+mod fmt;
+mod query;
 
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
@@ -38,6 +40,11 @@ enum Command {
     Check(Vec<String>),
     Explain(String),
     Build(String),
+    /// `perasc fmt` (decision 0041).
+    Fmt {
+        files: Vec<String>,
+        check: bool,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -52,6 +59,8 @@ struct Options {
     /// `--imports source`: a managed module's imports of `.peras` files are
     /// kept for a bundler, and those files are not built.
     keep_imports: bool,
+    /// `--tests`: a build of the file's tests (decision 0040).
+    tests: bool,
 }
 
 /// A command-line mistake, as a message to show.
@@ -109,6 +118,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         direct: perasc_driver::DirectOptions::default(),
         out: None,
         keep_imports: false,
+        tests: false,
     };
     let mut positional = Vec::new();
     let mut iter = args.iter();
@@ -143,6 +153,8 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             "--backend" => options.backend = pick("--backend", value("--backend")?, &BACKENDS)?,
             "--out" => options.out = Some(value("--out")?),
             "--no-optimize" => options.direct.optimize = false,
+            "--tests" => options.tests = true,
+            "--check" => positional.push("--check".to_owned()),
             "--allocator" => {
                 options.direct.allocator = pick("--allocator", value("--allocator")?, &ALLOCATORS)?;
                 // A debug build stops on an integer overflow; a production
@@ -163,8 +175,14 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             other => positional.push(other.to_owned()),
         }
     }
+    options.command = command(positional)?;
+    Ok(options)
+}
+
+/// The command the positional arguments name.
+fn command(positional: Vec<String>) -> Result<Command, UsageError> {
     let mut positional = positional.into_iter();
-    options.command = match positional.next().as_deref() {
+    Ok(match positional.next().as_deref() {
         None => Command::Help,
         Some("check") => {
             let files: Vec<String> = positional.collect();
@@ -182,6 +200,17 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
             }
             Command::Build(file)
         }
+        Some("fmt") => {
+            let (flags, files): (Vec<String>, Vec<String>) =
+                positional.partition(|a| a == "--check");
+            if files.is_empty() {
+                return Err(Message::new("cli-fmt-no-files"));
+            }
+            Command::Fmt {
+                files,
+                check: !flags.is_empty(),
+            }
+        }
         Some("explain") => {
             let code = positional
                 .next()
@@ -194,8 +223,7 @@ fn parse_args(args: &[String]) -> Result<Options, UsageError> {
         Some(other) => {
             return Err(Message::new("cli-unknown-command").text("command", other));
         }
-    };
-    Ok(options)
+    })
 }
 
 fn main() -> ExitCode {
@@ -219,6 +247,10 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         .find(|pair| pair.first().is_some_and(|a| a == "--lang"))
         .and_then(|pair| pair.get(1))
         .and_then(|tag| Language::from_tag(tag));
+    // `perasc serve` (decision 0042) speaks JSON on its standard streams.
+    if args.first().map(String::as_str) == Some("serve") {
+        return query::serve(out).unwrap_or(USAGE_OR_IO);
+    }
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(problem) => {
@@ -245,6 +277,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
         )
         .map(|()| SUCCESS),
         Command::Explain(code) => explain(code, &localizer, out, err),
+        Command::Fmt { files, check } => fmt::fmt(files, *check, &localizer, out, err),
         Command::Check(files) => check_files(files, &options, &localizer, color, out, err),
         Command::Build(file) => {
             let out_dir = std::path::PathBuf::from(options.out.as_deref().unwrap_or("dist"));
@@ -258,6 +291,7 @@ fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write, err_is_termina
                 build::Style {
                     color,
                     json: options.json,
+                    tests: options.tests,
                 },
                 out,
                 err,

@@ -866,4 +866,95 @@ impl<'a> Checker<'a> {
             .map(|(_, n)| n.clone())
             .collect()
     }
+
+    /// `T.fromJson(text)`, `T` a structure or an enumeration of the program
+    /// without a method of that name (decision 0038, option j1):
+    /// a `Result<T, String>`, the error naming where and what.
+    pub(crate) fn json_from(
+        &mut self,
+        at: &CallSite<'_>,
+        base: ExprId,
+        name: &Ident,
+    ) -> Option<Ty> {
+        if self.name(name.symbol) != "fromJson" {
+            return None;
+        }
+        let ExprKind::Name(symbol) = self.ast.expr(base).kind else {
+            return None;
+        };
+        let index = self.scopes.lookup(symbol)?;
+        let key = match self.scopes.bindings.get(index)?.kind {
+            Kind::Struct(id) => TypeKey::Struct(id),
+            Kind::Enum(id) => TypeKey::Enum(id),
+            _ => return None,
+        };
+        if self.methods.contains_key(&(key, "fromJson".to_owned())) {
+            return None;
+        }
+        if let Some(binding) = self.scopes.bindings.get_mut(index) {
+            binding.used = true;
+        }
+        self.resolved.insert(base, index);
+        let ty = self
+            .scopes
+            .bindings
+            .get(index)
+            .map_or(Ty::Error, |b| b.ty.clone());
+        self.check_args(at.args, &[Ty::String]);
+        if at.args.len() != 1 {
+            self.report(errors::argument_count(
+                at.span,
+                "fromJson",
+                1,
+                at.args.len(),
+                None,
+            ));
+        }
+        self.json_calls
+            .insert(at.call, crate::JsonCall::From(ty.clone()));
+        Some(Ty::Result(Box::new(ty), Box::new(Ty::String)))
+    }
+
+    /// `x.toJson()`, `x` a structure or an enumeration of the program without
+    /// a method of that name (decision 0038, option j1).
+    pub(crate) fn json_to(&mut self, at: &CallSite<'_>, receiver: &Ty, name: &Ident) -> Option<Ty> {
+        if self.name(name.symbol) != "toJson"
+            || !matches!(receiver, Ty::Struct(..) | Ty::Enum(..) | Ty::Array(_))
+        {
+            return None;
+        }
+        self.check_args(at.args, &[]);
+        if !at.args.is_empty() {
+            self.report(errors::argument_count(
+                at.span,
+                "toJson",
+                0,
+                at.args.len(),
+                None,
+            ));
+        }
+        self.json_calls
+            .insert(at.call, crate::JsonCall::To(receiver.clone()));
+        Some(Ty::String)
+    }
+
+    /// `T.fromJson(text)` (decision 0038, j1).
+    pub(crate) fn json_static(
+        &mut self,
+        at: &CallSite<'_>,
+        base: ExprId,
+        name: &Ident,
+    ) -> Option<Ty> {
+        self.json_from(at, base, name)
+    }
+
+    /// `x.toJson()` (decision 0038, j1).
+    pub(crate) fn json_method(
+        &mut self,
+        at: &CallSite<'_>,
+        receiver: &Ty,
+        name: &Ident,
+    ) -> Option<Ty> {
+        self.json_to(at, receiver, name)
+    }
 }

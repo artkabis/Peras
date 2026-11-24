@@ -24,7 +24,7 @@ export fn mount(root: Element): Group {
   root.append(button);
   const listener = button.on("click", (e) => clicked(e));
   group.add(listener);
-  const tick = setInterval(1000, () => log(`clicks: ${clicks}`));
+  const tick = setInterval(Duration.ms(1000), () => log(`clicks: ${clicks}`));
   group.add(tick);
   match (root.querySelector("canvas")) {
     Some(el) => match (el.asCanvas()) {

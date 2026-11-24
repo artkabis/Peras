@@ -3,7 +3,7 @@ export fn mount(button: Element): Group {
   let group = Group.new();
   const listener = button.on("click", (_e) => {
     // Its own: released when it returns.
-    const timer = setTimeout(10, () => log("tick"));
+    const timer = setTimeout(Duration.ms(10), () => log("tick"));
     timer.release();
     // Around it: captured, refused.
     group.release();

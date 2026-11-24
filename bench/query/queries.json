@@ -1,0 +1,637 @@
+{
+  "queries": [
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "10:5",
+      "expect": {
+        "name": "sum",
+        "what": "local",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "10:12",
+      "expect": {
+        "name": "x",
+        "what": "local",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "9:19",
+      "expect": {
+        "name": "xs",
+        "what": "parameter",
+        "type": "Array<f64>"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "16:9",
+      "expect": {
+        "name": "n",
+        "what": "local",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "17:16",
+      "expect": {
+        "name": "total",
+        "what": "function",
+        "type": "fn total(xs: Array<f64>): f64"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "18:21",
+      "expect": {
+        "name": "mean",
+        "what": "local",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "hover",
+      "at": "18:10",
+      "expect": {
+        "name": "Summary",
+        "what": "structure",
+        "type": "Summary"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "definition",
+      "at": "17:16",
+      "expect": {
+        "file": "stats.peras",
+        "at": "7:4"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "definition",
+      "at": "12:10",
+      "expect": {
+        "file": "stats.peras",
+        "at": "8:7"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "definition",
+      "at": "15:38",
+      "expect": {
+        "file": "stats.peras",
+        "at": "2:15"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "references",
+      "at": "8:7",
+      "expect": {
+        "at": ["8:7", "10:5", "12:10"]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "references",
+      "at": "15:21",
+      "expect": {
+        "at": ["15:21", "16:13", "17:22"]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "symbols",
+      "expect": {
+        "symbols": [
+          {
+            "name": "Summary",
+            "what": "structure",
+            "line": 2
+          },
+          {
+            "name": "total",
+            "what": "function",
+            "line": 7
+          },
+          {
+            "name": "summarize",
+            "what": "function",
+            "line": 15
+          }
+        ]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "completion",
+      "at": "16:16",
+      "expect": {
+        "includes": ["length"]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "diagnostics",
+      "expect": {
+        "codes": []
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "definition",
+      "at": "4:13",
+      "expect": {
+        "file": "stats.peras",
+        "at": "15:11"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "hover",
+      "at": "4:13",
+      "expect": {
+        "name": "summarize",
+        "what": "function",
+        "type": "fn summarize(xs: Array<f64>): Summary"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "hover",
+      "at": "4:9",
+      "expect": {
+        "name": "s",
+        "what": "local",
+        "type": "Summary"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "hover",
+      "at": "5:15",
+      "expect": {
+        "name": "count",
+        "what": "field",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "hover",
+      "at": "5:39",
+      "expect": {
+        "name": "mean",
+        "what": "field",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "completion",
+      "at": "5:15",
+      "expect": {
+        "includes": ["count", "mean"]
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "definition",
+      "at": "1:10",
+      "expect": {
+        "file": "stats.peras",
+        "at": "2:15"
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "references",
+      "at": "4:9",
+      "expect": {
+        "at": ["4:9", "5:13", "5:37"]
+      }
+    },
+    {
+      "file": "report.peras",
+      "kind": "diagnostics",
+      "expect": {
+        "codes": []
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "hover",
+      "at": "8:28",
+      "expect": {
+        "name": "r",
+        "what": "local",
+        "type": "number"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "hover",
+      "at": "7:17",
+      "expect": {
+        "name": "s",
+        "what": "parameter",
+        "type": "Shape"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "hover",
+      "at": "16:12",
+      "expect": {
+        "name": "area",
+        "what": "function",
+        "type": "fn area(s: Shape): number"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "definition",
+      "at": "8:5",
+      "expect": {
+        "file": "shapes.apeiron",
+        "at": "2:3"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "definition",
+      "at": "16:12",
+      "expect": {
+        "file": "shapes.apeiron",
+        "at": "6:11"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "references",
+      "at": "15:14",
+      "expect": {
+        "at": ["15:14", "16:17"]
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "symbols",
+      "expect": {
+        "symbols": [
+          {
+            "name": "Shape",
+            "what": "enumeration",
+            "line": 1
+          },
+          {
+            "name": "area",
+            "what": "function",
+            "line": 6
+          },
+          {
+            "name": "total",
+            "what": "function",
+            "line": 13
+          }
+        ]
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "diagnostics",
+      "expect": {
+        "codes": []
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "kind": "hover",
+      "at": "18:10",
+      "expect": {
+        "name": "sum",
+        "what": "local",
+        "type": "number"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "hover",
+      "at": "2:7",
+      "expect": {
+        "name": "a",
+        "what": "parameter",
+        "type": "T"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "hover",
+      "at": "9:7",
+      "expect": {
+        "name": "top",
+        "what": "local",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "hover",
+      "at": "11:11",
+      "expect": {
+        "name": "larger",
+        "what": "function",
+        "type": "fn larger<T: Ord>(a: T, b: T): T"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "definition",
+      "at": "11:11",
+      "expect": {
+        "file": "generic.peras",
+        "at": "1:4"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "references",
+      "at": "9:7",
+      "expect": {
+        "at": ["9:7", "11:5", "11:18", "13:10"]
+      }
+    },
+    {
+      "file": "generic.peras",
+      "kind": "completion",
+      "at": "13:10",
+      "expect": {
+        "includes": ["top", "xs", "larger", "best"]
+      }
+    },
+    {
+      "file": "closures.peras",
+      "kind": "hover",
+      "at": "3:17",
+      "expect": {
+        "name": "by",
+        "what": "local",
+        "type": "(i32) => i32"
+      }
+    },
+    {
+      "file": "closures.peras",
+      "kind": "hover",
+      "at": "2:35",
+      "expect": {
+        "name": "k",
+        "what": "parameter",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "closures.peras",
+      "kind": "definition",
+      "at": "2:35",
+      "expect": {
+        "file": "closures.peras",
+        "at": "1:34"
+      }
+    },
+    {
+      "file": "closures.peras",
+      "kind": "hover",
+      "at": "7:27",
+      "expect": {
+        "name": "x",
+        "what": "parameter",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "closures.peras",
+      "kind": "references",
+      "at": "2:9",
+      "expect": {
+        "at": ["2:9", "3:17"]
+      }
+    },
+    {
+      "file": "counter.peras",
+      "kind": "hover",
+      "at": "14:10",
+      "expect": {
+        "name": "calls",
+        "what": "module variable",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "counter.peras",
+      "kind": "definition",
+      "at": "9:3",
+      "expect": {
+        "file": "counter.peras",
+        "at": "1:5"
+      }
+    },
+    {
+      "file": "counter.peras",
+      "kind": "references",
+      "at": "1:5",
+      "expect": {
+        "at": ["1:5", "9:3", "14:10"]
+      }
+    },
+    {
+      "file": "counter.peras",
+      "kind": "hover",
+      "at": "10:18",
+      "expect": {
+        "name": "x",
+        "what": "field",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "counter.peras",
+      "kind": "symbols",
+      "expect": {
+        "symbols": [
+          {
+            "name": "calls",
+            "what": "module variable",
+            "line": 1
+          },
+          {
+            "name": "Point",
+            "what": "structure",
+            "line": 3
+          },
+          {
+            "name": "step",
+            "what": "function",
+            "line": 8
+          },
+          {
+            "name": "count",
+            "what": "function",
+            "line": 13
+          }
+        ]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "kind": "format",
+      "expect": {
+        "unchanged": true
+      }
+    }
+  ],
+  "typing": [
+    {
+      "file": "report.peras",
+      "replace": {
+        "line": 5,
+        "text": "  return s."
+      },
+      "kind": "completion",
+      "at": "5:12",
+      "expect": {
+        "includes": ["count", "mean"]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "replace": {
+        "line": 17,
+        "text": "  const mean = total(xs) / n."
+      },
+      "kind": "completion",
+      "at": "17:30",
+      "expect": {
+        "includes": ["toF64"]
+      }
+    },
+    {
+      "file": "stats.peras",
+      "replace": {
+        "line": 16,
+        "text": "  const n = xs.length"
+      },
+      "kind": "hover",
+      "at": "16:13",
+      "expect": {
+        "name": "xs",
+        "what": "parameter",
+        "type": "Array<f64>"
+      }
+    },
+    {
+      "file": "shapes.apeiron",
+      "replace": {
+        "line": 16,
+        "text": "    sum += area("
+      },
+      "kind": "hover",
+      "at": "16:5",
+      "expect": {
+        "name": "sum",
+        "what": "local",
+        "type": "number"
+      }
+    },
+    {
+      "file": "generic.peras",
+      "replace": {
+        "line": 11,
+        "text": "    top = larger(top, "
+      },
+      "kind": "hover",
+      "at": "11:5",
+      "expect": {
+        "name": "top",
+        "what": "local",
+        "type": "i32"
+      }
+    },
+    {
+      "file": "closures.peras",
+      "replace": {
+        "line": 3,
+        "text": "  return xs."
+      },
+      "kind": "completion",
+      "at": "3:13",
+      "expect": {
+        "includes": ["map", "filter", "length"]
+      }
+    },
+    {
+      "file": "counter.peras",
+      "replace": {
+        "line": 10,
+        "text": "  return Point(p."
+      },
+      "kind": "completion",
+      "at": "10:18",
+      "expect": {
+        "includes": ["x", "y"]
+      }
+    },
+    {
+      "file": "counter.peras",
+      "replace": {
+        "line": 9,
+        "text": "  calls +="
+      },
+      "kind": "definition",
+      "at": "9:3",
+      "expect": {
+        "file": "counter.peras",
+        "at": "1:5"
+      }
+    },
+    {
+      "file": "stats.peras",
+      "replace": {
+        "line": 18,
+        "text": "  return Summary(n, mean"
+      },
+      "kind": "hover",
+      "at": "18:21",
+      "expect": {
+        "name": "mean",
+        "what": "local",
+        "type": "f64"
+      }
+    },
+    {
+      "file": "report.peras",
+      "replace": {
+        "line": 4,
+        "text": "  const s = summarize(xs)."
+      },
+      "kind": "completion",
+      "at": "4:27",
+      "expect": {
+        "includes": ["count", "mean"]
+      }
+    }
+  ]
+}

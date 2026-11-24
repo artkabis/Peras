@@ -20,6 +20,7 @@ mod resources;
 mod scope;
 mod stdlib;
 mod stmt;
+mod time;
 pub mod ty;
 
 use std::collections::{HashMap, HashSet};
@@ -132,6 +133,32 @@ pub struct Analysis {
     /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
     /// option a2).
     pub math_calls: HashSet<ExprId>,
+    /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
+    /// read or written (decision 0038, option j1).
+    pub json_calls: HashMap<ExprId, JsonCall>,
+    /// The calls of decision 0039's `Duration` and `Instant`, by call.
+    pub time_calls: HashMap<ExprId, TimeCall>,
+}
+
+/// A call of decision 0039: each is arithmetic on a number of milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TimeCall {
+    /// `Duration.seconds(x)` and its kin: `x` times this many milliseconds.
+    Make(f64),
+    /// `d.toSeconds()` and its kin: the milliseconds divided by this.
+    Read(f64),
+    /// `Instant.now()`, in a managed module.
+    Now,
+}
+
+/// A call of decision 0038's option j1: JSON read into or written from a
+/// value of the program.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JsonCall {
+    /// `T.fromJson(text)`: a `Result<T, String>`.
+    From(Ty),
+    /// `x.toJson()`: a `String`.
+    To(Ty),
 }
 
 /// A declared name, for code generation.
@@ -574,6 +601,8 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         changed: checker.changed,
         mutations: checker.mutations,
         math_calls: checker.math_calls,
+        json_calls: checker.json_calls,
+        time_calls: checker.time_calls,
         moves: checker.moves,
         enums: checker
             .enums
@@ -725,6 +754,10 @@ struct Checker<'a> {
     mutations: Vec<(usize, Span)>,
     /// See [`Analysis::math_calls`].
     math_calls: HashSet<ExprId>,
+    /// See [`Analysis::json_calls`].
+    json_calls: HashMap<ExprId, JsonCall>,
+    /// See [`Analysis::time_calls`].
+    time_calls: HashMap<ExprId, TimeCall>,
     /// The `const`s an integer division initialised, by binding: that
     /// division (decision 0034, option d1, prototype).
     int_divisions: HashMap<usize, ExprId>,
@@ -778,6 +811,10 @@ impl<'a> Checker<'a> {
             types.insert(int.name().to_owned(), TypeDef::Plain(Ty::Int(int)));
         }
         for float in [FloatTy::F32, FloatTy::F64] {
+            types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
+        }
+        // Decision 0039: a duration and an instant, numbers of milliseconds.
+        for float in [FloatTy::Duration, FloatTy::Instant] {
             types.insert(float.name().to_owned(), TypeDef::Plain(Ty::Float(float)));
         }
         types.insert("bool".to_owned(), TypeDef::Plain(Ty::Bool));
@@ -835,6 +872,8 @@ impl<'a> Checker<'a> {
             changed: HashSet::new(),
             mutations: Vec::new(),
             math_calls: HashSet::new(),
+            json_calls: HashMap::new(),
+            time_calls: HashMap::new(),
             int_divisions: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),

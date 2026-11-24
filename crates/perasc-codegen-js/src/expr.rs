@@ -663,6 +663,9 @@ impl Module<'_> {
         if let Some(js) = self.group_new(id, base, name) {
             return js;
         }
+        if let Some(js) = self.library_call(id, base, args) {
+            return js;
+        }
         // `Math.f(x, …)`, the method `f` of `x` (decision 0035, a2).
         if self.analysis.math_calls.contains(&id)
             && let Some((&first, rest)) = args.split_first()
@@ -720,5 +723,64 @@ impl Module<'_> {
             return format!("{function}({})", values.join(", "));
         }
         self.builtin(id, base, text, args)
+    }
+
+    /// A call of the standard library that the checker resolved: JSON
+    /// (decision 0038) and times (decision 0039).
+    fn library_call(&mut self, id: ExprId, base: ExprId, args: &[ExprId]) -> Option<String> {
+        // `Duration` and `Instant` (decision 0039, prototype): numbers of
+        // milliseconds.
+        if let Some(&call) = self.analysis.time_calls.get(&id) {
+            return Some(match call {
+                perasc_check::TimeCall::Make(f) => {
+                    let x = self.exprs(args).into_iter().next().unwrap_or_default();
+                    // `Duration.ms(50)` is the `50` a timer waited before.
+                    let x = match x.strip_suffix(".0") {
+                        Some(whole) if whole.bytes().all(|b| b.is_ascii_digit()) => {
+                            whole.to_owned()
+                        }
+                        _ => x,
+                    };
+                    if (f - 1.0).abs() < f64::EPSILON {
+                        x
+                    } else {
+                        format!("({x} * {f:?})")
+                    }
+                }
+                perasc_check::TimeCall::Read(d) => {
+                    let x = self.expr(base);
+                    if (d - 1.0).abs() < f64::EPSILON {
+                        x
+                    } else {
+                        format!("({x} / {d:?})")
+                    }
+                }
+                perasc_check::TimeCall::Now => "performance.now()".to_owned(),
+            });
+        }
+        // `T.fromJson(text)` and `x.toJson()` (decision 0038, j1).
+        if let Some(call) = self.analysis.json_calls.get(&id).cloned() {
+            return Some(match call {
+                perasc_check::JsonCall::From(ty) => {
+                    let text = self.exprs(args).into_iter().next().unwrap_or_default();
+                    let helper = self.helper("$fromJson");
+                    let shape = self.shape(&ty, 0);
+                    format!(
+                        "{helper}({text}, {}, () => {shape})",
+                        string_literal(&shape)
+                    )
+                }
+                perasc_check::JsonCall::To(ty) => {
+                    let value = self.lent(base);
+                    let helper = self.helper("$toJson");
+                    let shape = self.shape(&ty, 0);
+                    format!(
+                        "{helper}({value}, {}, () => {shape})",
+                        string_literal(&shape)
+                    )
+                }
+            });
+        }
+        None
     }
 }

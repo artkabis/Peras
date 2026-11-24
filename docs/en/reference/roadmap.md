@@ -48,8 +48,8 @@ The everyday tools, with the same rules: explicit types, no hidden allocation, e
 | arrays      | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (done, with arrow functions), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (done), iterators and ranges      |
 | collections | ~~`Map<K, V>`, `Set<T>`~~ (done, [decision 0005](../decisions/0005-maps-and-sets.md); keys of structures and floats later), `Deque<T>`                                                                      |
 | numbers     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (done), constants, seeded random numbers                                                                                                   |
-| time        | durations and instants                                                                                                                                                                                      |
-| data        | JSON, text encoding, bytes                                                                                                                                                                                  |
+| time        | ~~durations and instants~~ (done, [decision 0039](../decisions/0039-durations-and-instants.md); dates and time zones next)                                                                                  |
+| data        | ~~JSON~~ (done in managed modules, [decision 0038](../decisions/0038-json.md); owned modules next), text encoding, bytes                                                                                    |
 
 ```peras build
 export fn words(text: String): i32 {
@@ -97,13 +97,14 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 - SIMD types and operations.
 - The `@frame` rule: a function that renders a frame may not allocate, and the compiler proves it.
 - `Arena` and `Pool<T>` allocators.
+- Then, a study proposed by the owner on 2026-11-23: memory streamed by proximity, a managed module telling an owned one which fixed-size chunks the user is about to need (the viewport, the pointer's speed, the next step of a task), the owned module keeping a fixed budget of them. Built on `Pool<T>`, `@frame` and a typed channel between the two modes, never on a raw address written from JavaScript; its policy, a score against a plain LRU, measured in a decision of its own, and its sources checked first (finding M004).
 - WebGPU bindings.
 
 ## Phase 7: tooling
 
-- An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming.
-- A formatter, so that every Peras file looks the same.
-- A test runner: tests written in Peras, run by Vitest.
+- An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming. Both proprietary (owner, 2026-11-23); the open core publishes the queries they need: done, `perasc serve` ([decision 0042](../decisions/0042-queries.md)).
+- A formatter, so that every Peras file looks the same: done, `perasc fmt` at a width of 100 ([decision 0041](../decisions/0041-formatter.md)).
+- A test runner: tests written in Peras, run by Vitest: done, `test` blocks and `expect(a).toBe(b)` ([decision 0040](../decisions/0040-tests.md)).
 - `create-peras`, to start a project in one command.
 - A playground in this documentation: the compiler itself compiled to WebAssembly, running in the page.
 - Two tools apart from the open core, proprietary ([decision 0006](../decisions/0006-licensing.md)): the VS Code extension and a memory leak analyzer, built on what Peras publishes. The leak checks of the debug allocator stay in the core.

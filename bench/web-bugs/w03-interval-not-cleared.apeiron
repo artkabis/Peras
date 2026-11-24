@@ -6,7 +6,7 @@ fn tick(): void {
 }
 
 fn start(): void {
-  setInterval(5, () => tick());
+  setInterval(Duration.ms(5), () => tick());
 }
 
 export async fn main(): Promise<String> {

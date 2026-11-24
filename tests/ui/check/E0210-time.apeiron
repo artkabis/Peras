@@ -1,0 +1,21 @@
+// Decision 0039: a number is no duration, two instants do not add, and a
+// number taken from an instant may be either (finding F225).
+extern from "./clock.js" {
+  fn dateNow(): f64;
+}
+
+export fn wait(): Timer {
+  return setTimeout(5, () => log("later"));
+}
+
+export fn deadline(): Instant {
+  return Instant.now() + 30;
+}
+
+export fn middle(start: Instant): Instant {
+  return Instant.now() + start;
+}
+
+export fn expired(): bool {
+  return Instant.now() - dateNow() > Duration.minutes(1);
+}

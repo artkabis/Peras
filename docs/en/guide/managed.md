@@ -191,7 +191,7 @@ fn tick(): void {
 
 export fn start(root: Element): Group {
   let group = Group.new();
-  const timer = setInterval(1000, () => tick());
+  const timer = setInterval(Duration.ms(1000), () => tick());
   group.add(timer);
   const listener = root.on("click", (e) => e.stopPropagation());
   group.add(listener);
@@ -258,6 +258,63 @@ export async fn show(canvas: CanvasElement): Promise<i32> {
 Peras checks every value JavaScript gives back against the type declared, in production too: what a function returns, what its promise gives, what JavaScript passes to a callback. A library that gives a string where `i32` is declared throws a `TypeError` that names the function, `peras: Chart.plot(…) returned the string "3" where its declaration says i32`, before any Peras code sees the value. A declaration that is wrong is found where it is wrong. A resource cannot be given to JavaScript, which would never release it ([E0247](../errors/E0247.md)).
 
 The path is a file, `"./chart.js"`, or an npm package, `"date-fns"`, imported as JavaScript imports it: Vite resolves it, and `perasc build` keeps it as written.
+
+## Time
+
+A duration and an instant are numbers of milliseconds the checker keeps apart ([decision 0039](../decisions/0039-durations-and-instants.md)):
+
+```apeiron build
+export fn plan(): String {
+  const start = Instant.now();
+  const wait = Duration.seconds(1.5) + Duration.ms(250);
+  const later = start + wait;
+  return `${(later - start).toMs()} ms, ${Duration.minutes(90).toHours()} h`;
+}
+```
+
+`Duration.ms(x)`, `Duration.seconds(x)`, `Duration.minutes(x)` and `Duration.hours(x)` make a duration, `d.toMs()`, `d.toSeconds()`, `d.toMinutes()` and `d.toHours()` read one; two durations add, a duration times or over a number is one, two durations divided give a number. `Instant.now()` reads the page's clock; two instants subtract into a duration, an instant moves by one. A number where a duration is meant is an error whose fix says the unit, `setTimeout(Duration.ms(300), …)`; two instants added are refused. A time costs a number: compiled, `Duration.ms(x)` is `x`. An owned module has durations but no clock.
+
+## JSON
+
+A structure or an enumeration of the module reads itself from a JSON text, and any value of one writes itself as one ([decision 0038](../decisions/0038-json.md)):
+
+```apeiron build
+struct Server {
+  host: String,
+  port: i32,
+}
+
+enum Theme {
+  Light,
+  Dark,
+}
+
+struct Settings {
+  title: String,
+  theme: Theme,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+export fn describe(text: String): String {
+  match (Settings.fromJson(text)) {
+    Ok(s) => {
+      return `${s.title}: ${s.servers.length} servers`;
+    }
+    Err(e) => {
+      return `invalid: ${e}`;
+    }
+  }
+}
+
+export fn save(s: Settings): String {
+  return s.toJson();
+}
+```
+
+`T.fromJson(text)` gives a `Result<T, String>`. A text that is not JSON, or whose value is not a `T`, is an `Err` the program tests, which names where and what: `servers[0].port: expected an integer from -2147483648 to 2147483647, found "80"`. A missing field is an error unless it is an option; a number that does not fit its integer type is refused, never rounded. An enumeration is written as JSON writes one: a variant without data as its name, `"Dark"`; one with data as an object of one key, `{ "Circle": [2.5] }`. A map takes its keys as an object's; a 64-bit integer is read only when a JSON number holds it exactly.
+
+The reader of each type is made once, the first time it is used: reading 100,000 records takes the time of `JSON.parse` followed by the fields checked by hand, `extern` or not. An owned module cannot read JSON yet ([E0900](../errors/E0900.md)): its application parses the text and passes the object, which the loader checks.
 
 ## Not yet
 

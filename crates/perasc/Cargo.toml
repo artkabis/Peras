@@ -9,8 +9,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+perasc-check.workspace = true
 perasc-diag.workspace = true
 perasc-driver.workspace = true
+perasc-syntax.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

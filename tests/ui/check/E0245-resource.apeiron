@@ -36,7 +36,7 @@ export fn lent(listener: Listener): Listener {
 
 export fn captured(button: Element): Group {
   let group = Group.new();
-  const timer = setTimeout(10, () => log("late"));
+  const timer = setTimeout(Duration.ms(10), () => log("late"));
   const listener = button.on("click", (e) => stop(timer, e));
   group.add(listener);
   return group;

@@ -1,0 +1,19 @@
+enum Shape {
+  Circle(number),
+  Square(number),
+}
+
+export fn area(s: Shape): number {
+  return match (s) {
+    Circle(r) => Math.PI * r * r,
+    Square(a) => a * a,
+  };
+}
+
+export fn total(shapes: Array<Shape>): number {
+  let sum = 0.0;
+  for (const s of shapes) {
+    sum += area(s);
+  }
+  return sum;
+}

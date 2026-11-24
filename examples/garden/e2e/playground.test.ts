@@ -64,31 +64,39 @@ describe("the garden playground", { timeout: 120_000 }, () => {
     await server.close();
   });
 
-  /** Waits for the full frame of a view `accept` takes, then checks its pixels. */
+  /**
+   * Waits for the full frame of a view `accept` takes, its pixels those the
+   * reference draws for it. The view and the pixels are read in one go: a
+   * drag paints newer views in between, and two reads apart could see two
+   * frames (finding F226).
+   */
   async function same(accept: (shown: Shown) => boolean): Promise<Shown> {
     let shown: Shown | undefined;
     await expect
       .poll(
         async () => {
-          const data = await page.evaluate(() => document.body.dataset.frame ?? "{}");
-          const parsed = JSON.parse(data) as Shown;
+          const read = await page.evaluate(() => {
+            const canvas = document.getElementById("drawn") as HTMLCanvasElement;
+            const ctx = canvas.getContext("2d");
+            const data = document.body.dataset.frame ?? "{}";
+            const meta = JSON.parse(data) as { side?: number };
+            const n = meta.side ?? 0;
+            return {
+              data,
+              pixels: ctx === null || n === 0 ? [] : Array.from(ctx.getImageData(0, 0, n, n).data),
+            };
+          });
+          const parsed = JSON.parse(read.data) as Shown;
+          if (!(parsed.side > 0 && accept(parsed))) return false;
+          const reference = new Uint32Array(parsed.side * parsed.side);
+          render(reference, parsed.side, parsed.side, parsed.zoom, parsed.cx, parsed.cy);
           shown = parsed;
-          return parsed.side > 0 && accept(parsed);
+          return Buffer.from(Uint8Array.from(read.pixels)).equals(Buffer.from(reference.buffer));
         },
         { timeout: 90_000 },
       )
       .toBe(true);
     if (shown === undefined) throw new Error("no frame");
-    const { side, zoom, cx, cy } = shown;
-    const drawn = await page.evaluate((n) => {
-      const canvas = document.getElementById("drawn") as HTMLCanvasElement;
-      const ctx = canvas.getContext("2d");
-      if (ctx === null) return [];
-      return Array.from(ctx.getImageData(0, 0, n, n).data);
-    }, side);
-    const reference = new Uint32Array(side * side);
-    render(reference, side, side, zoom, cx, cy);
-    expect(Buffer.from(Uint8Array.from(drawn)).equals(Buffer.from(reference.buffer))).toBe(true);
     return shown;
   }
 

@@ -6,13 +6,15 @@ perasc <commande> [options]
 
 ## Commandes
 
-| Commande                   | Fait                                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `perasc check <fichiers…>` | vérifie chaque fichier et signale chaque erreur, sans compiler                                                                                                                             |
-| `perasc build <fichier>`   | vérifie, puis compile un fichier `.peras` en WebAssembly, ou un fichier `.apeiron` en JavaScript avec les modules possédés qu’il importe ([modules managed](../guide/managed.md#compiler)) |
-| `perasc explain <code>`    | affiche la page d’un code d’erreur, comme `E0006`                                                                                                                                          |
-| `perasc --version`, `-V`   | affiche la version                                                                                                                                                                         |
-| `perasc --help`, `-h`      | affiche l’aide, dans votre langue                                                                                                                                                          |
+| Commande                           | Fait                                                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `perasc check <fichiers…>`         | vérifie chaque fichier et signale chaque erreur, sans compiler                                                                                                                             |
+| `perasc build <fichier>`           | vérifie, puis compile un fichier `.peras` en WebAssembly, ou un fichier `.apeiron` en JavaScript avec les modules possédés qu’il importe ([modules managed](../guide/managed.md#compiler)) |
+| `perasc fmt [--check] <fichiers…>` | imprime chaque fichier à une largeur de 100, sur place ; `--check` nomme ceux qu’il changerait ([formatage](../guide/formatting.md))                                                       |
+| `perasc serve`                     | répond aux requêtes d’un éditeur ou d’un outil, en JSON sur ses flux standard ([son protocole](serve.md))                                                                                  |
+| `perasc explain <code>`            | affiche la page d’un code d’erreur, comme `E0006`                                                                                                                                          |
+| `perasc --version`, `-V`           | affiche la version                                                                                                                                                                         |
+| `perasc --help`, `-h`              | affiche l’aide, dans votre langue                                                                                                                                                          |
 
 ## Options
 

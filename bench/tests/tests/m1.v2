@@ -1,0 +1,19 @@
+
+test "ports are read" {
+  expect(parsePort("80").unwrapOr(0)).toBe(80);
+  expect(parsePort("0").unwrapOr(1)).toBe(0);
+  expect(parsePort("1").unwrapOr(0)).toBe(1);
+  expect(parsePort("08080").unwrapOr(0)).toBe(8080);
+  expect(parsePort("65535")).toBeOk();
+}
+
+test "bad texts are refused" {
+  expect(parsePort("65536")).toBeErr();
+  expect(parsePort("")).toBeErr();
+  expect(parsePort("8a")).toBeErr();
+}
+
+test "digits are found" {
+  expect(digit("7")).toBe(7);
+  expect(digit("x")).toBe(-1);
+}

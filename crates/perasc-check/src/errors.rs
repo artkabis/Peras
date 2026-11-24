@@ -1306,3 +1306,49 @@ pub fn floating_promise(span: Span) -> Diagnostic {
         Message::new("check-floating-promise-fix"),
     )
 }
+
+/// `E0210` for a number where a `Duration` or an `Instant` is meant: its
+/// unit is not said (decision 0039, prototype).
+pub fn time_number(span: Span, ty: &str, written: &str) -> Diagnostic {
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-time-number").text("ty", ty),
+        vec![primary(span, Message::new("check-time-number-label"))],
+        Fix {
+            message: Message::new("check-time-number-fix").text("written", written),
+            edits: vec![replace(span, format!("Duration.ms({written})"))],
+        },
+    )
+}
+
+/// `E0221` for an operator two times cannot take: two instants added, a
+/// duration and an instant compared (decision 0039, prototype).
+pub fn time_operator(span: Span, op: &str, left: &Ty, right: &Ty) -> Diagnostic {
+    diagnostic(
+        codes::INVALID_OPERATOR,
+        Message::new("check-time-operator")
+            .text("op", op)
+            .text("left", left.to_string())
+            .text("right", right.to_string()),
+        vec![primary(span, Message::new("check-time-operator-label"))],
+        Fix {
+            message: Message::new("check-time-operator-fix"),
+            edits: Vec::new(),
+        },
+    )
+}
+
+/// `E0210` for a number taken from an `Instant`: an elapsed time or an
+/// instant of another clock, which only the program knows; the fix names
+/// both and edits nothing (decision 0039, finding F225).
+pub fn time_either(span: Span) -> Diagnostic {
+    diagnostic(
+        codes::MISMATCHED_TYPES,
+        Message::new("check-time-either"),
+        vec![primary(span, Message::new("check-time-number-label"))],
+        Fix {
+            message: Message::new("check-time-either-fix"),
+            edits: Vec::new(),
+        },
+    )
+}

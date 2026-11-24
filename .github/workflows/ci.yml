@@ -171,6 +171,16 @@ jobs:
         run: node scripts/bench-math.mjs --check
       - name: Every way a managed module checks its indices gives the reference's results (decision 0037)
         run: node scripts/bench-index.mjs --check
+      - name: JSON read and written by every option gives what JavaScript gives (decision 0038)
+        run: node scripts/bench-json.mjs --check
+      - name: Durations and instants give what TypeScript gives, every option (decision 0039)
+        run: node scripts/bench-time.mjs --check
+      - name: Tests written in Peras pass on their modules and fail on planted bugs, every option (decision 0040)
+        run: node scripts/bench-tests.mjs --check
+      - name: perasc fmt keeps every file's module and refusals, idempotent, one text for a program laid out twice (decision 0041)
+        run: node scripts/bench-fmt.mjs --check
+      - name: perasc serve gives the fifty answers written by hand, and follows an imported file (decision 0042)
+        run: node scripts/bench-query.mjs --check
       - name: The dashboard gives the same summary in TypeScript and Peras (decision 0014)
         run: node scripts/bench-data.mjs --check
       - name: The stream's three digests agree (decision 0015)

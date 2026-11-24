@@ -48,8 +48,8 @@ Les outils de tous les jours, avec les mêmes règles : types explicites, aucune
 | tableaux    | ~~`map`, `filter`, `reduce`, `find`, `findIndex`, `some`, `every`~~ (fait, avec les fonctions fléchées), ~~`sort`, `slice`, `concat`, `join`, `reverse`, `includes`, `indexOf`~~ (fait), itérateurs et intervalles         |
 | collections | ~~`Map<K, V>`, `Set<T>`~~ (fait, [décision 0005](../decisions/0005-maps-and-sets.md) ; clés structures et flottants plus tard), `Deque<T>`                                                                                 |
 | nombres     | ~~`min`, `max`, `clamp`, `pow`, `exp`, `log`, `atan2`, `hypot`~~ (fait), constantes, nombres aléatoires avec graine                                                                                                        |
-| temps       | durées et instants                                                                                                                                                                                                         |
-| données     | JSON, encodage de texte, octets                                                                                                                                                                                            |
+| temps       | ~~durées et instants~~ (fait, [décision 0039](../decisions/0039-durations-and-instants.md) ; dates et fuseaux horaires ensuite)                                                                                            |
+| données     | ~~JSON~~ (fait dans les modules gérés, [décision 0038](../decisions/0038-json.md) ; les modules possédés ensuite), encodage de texte, octets                                                                               |
 
 ```peras build
 export fn words(text: String): i32 {
@@ -97,13 +97,14 @@ Ce que la spécification appelle la rastérisation ([spécification](../spec.md#
 - Des types et des opérations SIMD.
 - La règle `@frame` : une fonction qui dessine une image ne peut pas allouer, et le compilateur le prouve.
 - Les allocateurs `Arena` et `Pool<T>`.
+- Ensuite, une étude proposée par le propriétaire le 2026-11-23 : une mémoire chargée selon la proximité, un module géré disant à un module possédé quels blocs de taille fixe l’utilisateur va bientôt demander (la zone visible, la vitesse du pointeur, l’étape suivante d’une tâche), le module possédé en gardant un budget fixe. Bâtie sur `Pool<T>`, `@frame` et un canal typé entre les deux modes, jamais sur une adresse brute écrite depuis JavaScript ; sa politique, un score face à un simple LRU, mesurée dans une décision à elle, et ses sources vérifiées d’abord (constat M004).
 - Des liaisons WebGPU.
 
 ## Phase 7 : l’outillage
 
-- Une extension d’éditeur et un serveur de langage : erreurs à la frappe, complétion, survol, aller à la définition, renommage.
-- Un formateur, pour que tous les fichiers Peras se ressemblent.
-- Un lanceur de tests : des tests écrits en Peras, lancés par Vitest.
+- Une extension d’éditeur et un serveur de langage : erreurs à la frappe, complétion, survol, aller à la définition, renommage. Tous deux propriétaires (propriétaire, 2026-11-23) ; le cœur ouvert publie les requêtes dont ils ont besoin : fait, `perasc serve` ([décision 0042](../decisions/0042-queries.md)).
+- Un formateur, pour que tous les fichiers Peras se ressemblent : fait, `perasc fmt` à une largeur de 100 ([décision 0041](../decisions/0041-formatter.md)).
+- Un lanceur de tests : des tests écrits en Peras, lancés par Vitest : fait, des blocs `test` et `expect(a).toBe(b)` ([décision 0040](../decisions/0040-tests.md)).
 - `create-peras`, pour démarrer un projet en une commande.
 - Un bac à sable dans cette documentation : le compilateur lui-même compilé en WebAssembly, qui tourne dans la page.
 - Deux outils à part du cœur ouvert, propriétaires ([décision 0006](../decisions/0006-licensing.md)) : l’extension VS Code et un analyseur de fuites mémoire, construits sur ce que Peras publie. Les contrôles de fuites de l’allocateur de débogage restent dans le cœur.

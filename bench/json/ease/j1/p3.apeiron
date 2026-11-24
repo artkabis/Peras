@@ -1,0 +1,18 @@
+// P3 of decision 0038, option j1: a summary written as JSON, `toJson`.
+struct Pair {
+  country: String,
+  category: String,
+  count: i32,
+}
+
+struct Summary {
+  rows: i32,
+  total: number,
+  pairs: Array<Pair>,
+  countries: Array<String>,
+}
+
+export fn summary(rows: i32): String {
+  const pairs = [Pair("FR", "books", rows / 2), Pair("JP", "games", rows - rows / 2)];
+  return Summary(rows, rows.toF64() * 1.5, pairs, ["FR", "JP"]).toJson();
+}

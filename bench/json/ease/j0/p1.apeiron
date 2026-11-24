@@ -1,0 +1,60 @@
+// P1 of decision 0038, as Peras reads JSON today (j0): settings read from a
+// text into a structure, through `extern` and JavaScript's `JSON.parse`.
+struct Server {
+  host: String,
+  port: i32,
+}
+
+// The theme comes as a string: an enumeration crosses from JavaScript as
+// `{ kind, values }`, which no JSON file writes.
+struct Raw {
+  title: String,
+  retries: i32,
+  theme: String,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+enum Theme {
+  Light,
+  Dark,
+}
+
+struct Settings {
+  title: String,
+  retries: i32,
+  theme: Theme,
+  servers: Array<Server>,
+  proxy: Option<String>,
+}
+
+extern from "./json.js" {
+  fn parseSettings(text: String): Raw;
+}
+
+fn theme(name: String): Result<Theme, String> {
+  if (name == "Light") {
+    return Ok(Theme.Light);
+  }
+  if (name == "Dark") {
+    return Ok(Theme.Dark);
+  }
+  return Err(`theme: expected "Light" or "Dark", found "${name}"`);
+}
+
+export fn read(text: String): Result<Settings, String> {
+  const raw = parseSettings(text);
+  const t = theme(raw.theme)?;
+  return Ok(Settings(raw.title, raw.retries, t, raw.servers, raw.proxy));
+}
+
+export fn describe(text: String): String {
+  match (read(text)) {
+    Ok(s) => {
+      return `${s.title}: ${s.servers.length} servers, ${s.retries} retries`;
+    }
+    Err(e) => {
+      return `invalid: ${e}`;
+    }
+  }
+}

@@ -5,10 +5,10 @@ fn tick(): void {
   ticks += 1;
 }
 
-let timer = setInterval(5, () => tick());
+let timer = setInterval(Duration.ms(5), () => tick());
 
 fn start(): void {
-  timer = setInterval(5, () => tick());
+  timer = setInterval(Duration.ms(5), () => tick());
 }
 
 fn stop(): void {

@@ -1,0 +1,10 @@
+// B6: an instant of one clock compared with one of another. The other
+// clock comes through extern, as a number: it is no Instant.
+extern from "./clock.js" {
+  fn dateNow(): f64;
+}
+
+export fn expired(): bool {
+  const created = dateNow();
+  return Instant.now() - created > Duration.minutes(1);
+}

@@ -1,0 +1,5 @@
+// B2: thirty seconds added to milliseconds.
+export fn deadline(): Instant {
+  const start = Instant.now();
+  return start + 30;
+}

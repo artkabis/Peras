@@ -1,0 +1,4 @@
+// B3: two instants added.
+export fn middle(start: Instant): Instant {
+  return (Instant.now() + start) / 2;
+}

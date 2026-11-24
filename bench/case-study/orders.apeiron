@@ -86,7 +86,7 @@ export fn mount(root: Element, orders: Array<Order>): Group {
   match (input.asInput()) {
     Some(field) => {
       group.add(field.on("input", (_e) => {
-        pending.set(setTimeout(50, () => {
+        pending.set(setTimeout(Duration.ms(50), () => {
           query = field.value;
           render();
         }));

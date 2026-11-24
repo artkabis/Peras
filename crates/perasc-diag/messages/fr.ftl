@@ -8,6 +8,8 @@ cli-usage =
     Commandes :
       check <fichier>... vérifie des fichiers .peras et .apeiron et signale toutes les erreurs
       build <fichier>    compile un fichier .peras en WebAssembly, ou un fichier .apeiron en JavaScript
+      fmt <fichier>...   imprime chaque fichier à une largeur de 100, comme Prettier imprime TypeScript ; avec --check, nomme ceux qu’il changerait
+      serve              répond aux requêtes d’un éditeur ou d’un outil, en JSON ligne à ligne sur l’entrée et la sortie standard
       explain <code>     explique un code d’erreur, par exemple `perasc explain E0001`
 
     Options :
@@ -16,6 +18,7 @@ cli-usage =
       --backend <nom>    générateur de `build` : direct (par défaut, aucun autre outil) ou rust (cargo, wasm-bindgen)
       --out <dossier>    dossier de sortie de `build` (par défaut : dist)
       --no-optimize      saute les optimisations de l’IR dans `build` (backend direct)
+      --tests            un build des blocs `test` du fichier, pour vitest-peras (décision 0040)
       --allocator <nom>  le build : debug (défaut, chaque bug mémoire et chaque débordement d’entier attrapés) ou tlsf (production, temps borné, les entiers bouclent)
       --simd <on|off>    SIMD de WebAssembly dans les boucles et le runtime : on (par défaut, plus rapide) ou off (se charge sans lui, comme Safari avant 16.4)
       --threads <on|off> boucles `parallel for` sur plusieurs fils, là où la page est isolée entre origines : off (par défaut) ou on
@@ -29,6 +32,13 @@ cli-unknown-command = commande inconnue `{ $command }`
 cli-missing-value = `{ $option }` attend une valeur
 cli-invalid-value = valeur `{ $value }` invalide pour `{ $option }`
 cli-no-files = `check` attend au moins un fichier
+cli-fmt-no-files = `fmt` attend au moins un fichier
+cli-fmt-refused = `{ $path }` est laissé tel quel : { $count ->
+    [one] une erreur de syntaxe
+   *[other] { $count } erreurs de syntaxe
+}, que `perasc check { $path }` montre
+cli-fmt-write-error = impossible d’écrire `{ $path }` : { $reason }
+cli-fmt-too-large = `{ $path }` est trop grand pour être formaté
 cli-no-build-file = `build` attend un fichier .peras ou .apeiron
 cli-missing-code = `explain` attend un code d’erreur, par exemple E0001
 cli-unknown-code = code d’erreur inconnu `{ $code }`
@@ -905,3 +915,11 @@ runtime-leak = { $count } bloc(s) encore vivant(s) à la fin ; le premier a ét�
 runtime-index = l’indice { $index } est hors limites : la longueur est { $length }
 runtime-integer-overflow = un entier a débordé : son type ne peut pas contenir le résultat. Pour boucler exprès, utilisez `wrappingAdd`, `wrappingSub` ou `wrappingMul` ; un build de production boucle
 runtime-simd = ce module utilise le SIMD de WebAssembly, que ce navigateur n’a pas : Chrome ou Edge 91, Firefox 89 et Safari 16.4 l’ont. Compilez-le avec `--simd off` pour le charger partout.
+check-time-number = un nombre n’est pas une `{ $ty }` : il ne dit aucune unité
+check-time-number-label = un nombre, sans unité
+check-time-number-fix = dites son unité : `Duration.ms({ $written })`, ou `Duration.seconds`, `Duration.minutes`, `Duration.hours`
+check-time-operator = `{ $op }` ne peut pas prendre `{ $left }` et `{ $right }`
+check-time-operator-label = ces deux temps ne se combinent pas ainsi
+check-time-operator-fix = deux instants donnent le temps entre eux, `b - a` ; un instant avance d’une durée, `start + Duration.seconds(30)`
+check-time-either = un nombre ôté d’un `Instant` : il n’est ni une durée ni un instant
+check-time-either-fix = un temps écoulé dit son unité, `Duration.seconds(30)` ; un instant vient de `Instant.now()`, un nombre d’une autre horloge, comme `Date.now()`, n’en est pas un
