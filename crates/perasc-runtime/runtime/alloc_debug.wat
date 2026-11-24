@@ -265,9 +265,4 @@
       (then (call $raise (global.get $LEAK) (local.get $ptr)
         (i32.load offset=8 (i32.sub (local.get $ptr) (i32.const 32)))
         (global.get $live_count)))))
-  ;; Decision 0043, prototype a2: the debug allocator has no arena, and
-  ;; what a module built with one calls does nothing.
-  (func (export "arena_mark") (param $unused i32) (result i32) (i32.const 0))
-  (func (export "arena_reset") (param $mark i32))
-  (func (export "arena_flag") (param $on i32))
 )

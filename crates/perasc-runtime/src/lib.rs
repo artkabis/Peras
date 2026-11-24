@@ -49,40 +49,6 @@ pub const DEBUG_ALLOCATOR_SCALAR: &[u8] =
 pub const TLSF_ALLOCATOR_SCALAR: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/alloc_tlsf_scalar.wasm"));
 
-/// Decision 0043's prototypes of TLSF: `a2`, with an arena (`arena_mark`,
-/// `arena_reset`, `arena_flag`), and `a3`, with more sizes kept; with SIMD or
-/// without. For `PERAS_PROTO_ARENA` only.
-#[must_use]
-pub fn tlsf_prototype(name: &str, simd: bool) -> Option<&'static [u8]> {
-    match (name, simd) {
-        ("a2", true) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a2.wasm"
-        ))),
-        ("a2", false) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a2_scalar.wasm"
-        ))),
-        ("a3", true) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a3.wasm"
-        ))),
-        ("a3", false) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a3_scalar.wasm"
-        ))),
-        ("a1b", true) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a1b.wasm"
-        ))),
-        ("a1b", false) => Some(include_bytes!(concat!(
-            env!("OUT_DIR"),
-            "/alloc_tlsf_a1b_scalar.wasm"
-        ))),
-        _ => None,
-    }
-}
-
 /// Which allocator a module is linked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Allocator {

@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 51 } else { 52 };
+    let choices = if depth == 0 { 49 } else { 50 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -171,14 +171,6 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         47 => "acc += mixed(bumped(i), bumped(i + 1)) % 31 + twice(acc % 100); if (acc % 3 == 0 && mixed(bumped(i), i) > 3) { acc += 1; } acc += tally % 7 + twice(bumped(i));".to_owned(),
         // A small function in the condition of a loop, evaluated at each turn.
         48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
-        // Decision 0043: a grid of the turn, grown inside a loop whose turns
-        // have values of their own, which an arena gives back each turn;
-        // the grid's rows must not be in that room.
-        // Under prototype a1, the same in written arenas, one in the other.
-        49 if std::env::var("PERAS_PROTO_ARENA").is_ok_and(|v| v == "a1" || v == "a1b") => "arena { let grid: Array<Array<i32>> = []; for (let c = 0; c < 4; c++) { grid.push([]); } for (let t = 0; t < 6; t++) { arena { const tmp = `${t}${k}`; grid[t % 4].push(tmp.length + i); let near: Array<i32> = [t]; near.push(tmp.length); acc += near.length + near[1]; } } for (const row of grid) { acc += row.length; for (const x of row) { acc += x % 5; } } } arena { let many: Array<i32> = []; for (let t = 0; t < 2000; t++) { many.push(t + i); } acc += many.length + many[1999] % 7; }".to_owned(),
-        49 => "let grid: Array<Array<i32>> = []; for (let c = 0; c < 4; c++) { grid.push([]); } for (let t = 0; t < 6; t++) { const tmp = `${t}${k}`; grid[t % 4].push(tmp.length + i); let near: Array<i32> = [t]; near.push(tmp.length); acc += near.length + near[1]; } for (const row of grid) { acc += row.length; for (const x of row) { acc += x % 5; } }".to_owned(),
-        // A string built in a callee's loop and returned: it leaves the call.
-        50 => "const j = joined(i % 6); acc += j.length + joined(2).length;".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -237,15 +229,6 @@ fn spun(n: i32): i32 {{
 
 fn inc(x: i32): i32 {{
   return x + 1;
-}}
-
-fn joined(n: i32): String {{
-  let out = \"\";
-  for (let t = 0; t < n; t++) {{
-    const piece = `${{t}},`;
-    out += piece;
-  }}
-  return out;
 }}
 
 fn dbl(x: i32): i32 {{
@@ -351,25 +334,8 @@ fn run_wasm(
     .wasm;
     let runtime = match allocator {
         perasc_runtime::Allocator::Debug => perasc_runtime::DEBUG_ALLOCATOR,
-        // Decision 0043's prototypes: the runtime the build would link.
-        perasc_runtime::Allocator::Tlsf => {
-            // a1 links a2's runtime: the same arena, other homes.
-            let proto = match std::env::var("PERAS_PROTO_ARENA").unwrap_or_default() {
-                a if a == "a1" => "a2".to_owned(),
-                a => a,
-            };
-            perasc_runtime::tlsf_prototype(&proto, true).unwrap_or(perasc_runtime::TLSF_ALLOCATOR)
-        }
+        perasc_runtime::Allocator::Tlsf => perasc_runtime::TLSF_ALLOCATOR,
     };
-    // Decision 0043: an arena lives across calls, and grows between them;
-    // the same instance called twice computes what it computes without one.
-    if allocator == perasc_runtime::Allocator::Tlsf && runtime != perasc_runtime::TLSF_ALLOCATOR {
-        assert_eq!(
-            twice(&wasm, runtime, n),
-            twice(&wasm, perasc_runtime::TLSF_ALLOCATOR, n),
-            "n {n}: two calls on one instance, with the prototype's arena and without"
-        );
-    }
     let Ok(mut m) = link::instantiate_with(&wasm, runtime) else {
         return (None, -1);
     };
@@ -390,33 +356,6 @@ fn run_wasm(
         .and_then(|()| live.first().and_then(wasmi::Val::i32))
         .unwrap_or(-1);
     (value, alive)
-}
-
-/// What `f(n)` gives called twice on one instance, then the blocks alive.
-fn twice(wasm: &[u8], runtime: &[u8], n: i32) -> (Option<i32>, Option<i32>, i32) {
-    let Ok(mut m) = link::instantiate_with(wasm, runtime) else {
-        return (None, None, -1);
-    };
-    let call = |m: &mut link::Linked| {
-        let mut results = vec![wasmi::Val::I32(0)];
-        m.module
-            .get_func(&m.store, "f")
-            .and_then(|f| {
-                f.call(&mut m.store, &[wasmi::Val::I32(n)], &mut results)
-                    .ok()
-            })
-            .and_then(|()| results.first().and_then(wasmi::Val::i32))
-    };
-    let first = call(&mut m);
-    let second = call(&mut m);
-    let mut live = vec![wasmi::Val::I32(-1)];
-    let alive = m
-        .allocator
-        .get_func(&m.store, "live_count")
-        .and_then(|f| f.call(&mut m.store, &[], &mut live).ok())
-        .and_then(|()| live.first().and_then(wasmi::Val::i32))
-        .unwrap_or(-1);
-    (first, second, alive)
 }
 
 #[test]

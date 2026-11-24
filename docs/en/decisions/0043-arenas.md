@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0043-arenas.md](../../fr/decisions/0043-arenas.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `d59e034`; proposal: a0 stays, for the owner to decide; option a1b added on the owner's request, registered before its prototype. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `d59e034`; option a1b added on the owner's request, registered before its prototype, measured at `0dba084`; **a0 kept** by the owner on 2026-11-24, no option meeting the criteria. It is the first step of phase 6 of the [roadmap](../reference/roadmap.md), "`Arena` and `Pool<T>` allocators", in the order the owner set on 2026-11-24: arenas, then `Pool<T>` (a decision of its own), then `@frame`, then the study of memory streamed by proximity, which needs both. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -166,3 +166,7 @@ a0's memory is 832 KiB on W2 and 64 KiB on W3.
 ### Proposal, after a1b
 
 **a0 stays**: no option, a1b included, meets the criteria registered. The prototypes are removed, their figures kept here and their code in git at `0dba084`, and `Arena` leaves the roadmap until a workload shows a cost to remove. What the two measures teach: a written arena gains 6 to 7 % on the temporaries of a frame; a fixed block costs a small program its memory, and a block that grows to fit a frame costs a frame's program its memory; the gain does not pay for either, by the rules the project set. The owner decides.
+
+### Decision and landing (2026-11-24)
+
+The owner kept **a0**. The prototypes are removed: the code of the compiler is again the code of the protocol's commit, `1ff4de1`; `crates/perasc-ir/src/arena.rs`, the `;; @proto` blocks of the runtime, `arena { … }` in the parser, `PERAS_PROTO_ARENA` and `scripts/bench-arena.mjs` are in git at `0dba084`, where the measure can be run again. `bench/arena` keeps the workloads and the results; its `a1/` programs build only with that commit's compiler. `Arena` leaves the roadmap as a decision of its own; where it may come back is with `@frame`, as an arena whose size is a budget the program declares (the spec's budgets, `peras.config.ts`), measured by a decision of its own. The differential test's two calls on one instance went with the prototypes, which alone needed them; the lesson stays in the findings.

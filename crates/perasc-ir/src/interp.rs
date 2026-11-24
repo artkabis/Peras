@@ -1219,11 +1219,6 @@ impl Machine<'_> {
         operands: &[Value],
     ) -> Result<Option<Value>, Trap> {
         use crate::RuntimeFn as F;
-        // An arena changes where blocks are, not what a program computes:
-        // every release is still written (decision 0043, prototype a2).
-        if let Some(value) = arena_runtime(f) {
-            return Ok(Some(value));
-        }
         let first = *operands.first().ok_or(Trap::Unreachable)?;
         let int = |i: usize| match operands.get(i) {
             Some(Value::I32(n)) => Ok(*n),
@@ -1829,15 +1824,5 @@ fn float_mode(operand: Option<&Value>) -> Result<i32, Trap> {
         Ok(mode)
     } else {
         Err(Trap::Unreachable)
-    }
-}
-
-/// The arena's functions (decision 0043, prototype a2): a mark is 0, the
-/// others do nothing.
-const fn arena_runtime(f: crate::RuntimeFn) -> Option<Value> {
-    match f {
-        crate::RuntimeFn::ArenaMark => Some(Value::I32(0)),
-        crate::RuntimeFn::ArenaReset | crate::RuntimeFn::ArenaFlag => Some(Value::Void),
-        _ => None,
     }
 }

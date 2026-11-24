@@ -10,7 +10,6 @@
 
 use std::fmt::{self, Write as _};
 
-pub mod arena;
 mod bounds;
 mod inline;
 /// The interpreter of the IR, the oracle of the tests: what a module gives,
@@ -969,18 +968,11 @@ pub enum RuntimeFn {
     /// `(bytes, column, index)`: the shared value held at this element of a
     /// column of handles, [`Self::SharedUnique`] where it is held.
     SharedUniqueElem,
-    /// `(0) -> i32`: where the arena is now, a place to give its room back
-    /// to (decision 0043, prototype a2).
-    ArenaMark,
-    /// `(mark)`: gives back the arena's room above `mark`.
-    ArenaReset,
-    /// `(on)`: allocations come from the arena while `on` is 1.
-    ArenaFlag,
 }
 
 impl RuntimeFn {
     /// Every function, in the order a module imports them.
-    pub const ALL: [Self; 64] = [
+    pub const ALL: [Self; 61] = [
         Self::IndexOf,
         Self::StartsWith,
         Self::EndsWith,
@@ -1042,9 +1034,6 @@ impl RuntimeFn {
         Self::SharedUnique,
         Self::SharedUniqueSlot,
         Self::SharedUniqueElem,
-        Self::ArenaMark,
-        Self::ArenaReset,
-        Self::ArenaFlag,
     ];
 
     /// Its name, in the runtime's exports and in the text form.
@@ -1112,9 +1101,6 @@ impl RuntimeFn {
             Self::SharedUnique => "shared_unique",
             Self::SharedUniqueSlot => "shared_unique_slot",
             Self::SharedUniqueElem => "shared_unique_elem",
-            Self::ArenaMark => "arena_mark",
-            Self::ArenaReset => "arena_reset",
-            Self::ArenaFlag => "arena_flag",
         }
     }
 
@@ -1126,13 +1112,9 @@ impl RuntimeFn {
             Self::FmtInt | Self::FmtIntLen | Self::FmtUint | Self::FmtUintLen => Ty::I64,
             Self::FmtBool => Ty::Bool,
             Self::FmtFloat | Self::FloatRem => Ty::F64,
-            Self::MapNew
-            | Self::SharedUnique
-            | Self::SharedUniqueSlot
-            | Self::SharedUniqueElem
-            | Self::ArenaMark
-            | Self::ArenaReset
-            | Self::ArenaFlag => Ty::I32,
+            Self::MapNew | Self::SharedUnique | Self::SharedUniqueSlot | Self::SharedUniqueElem => {
+                Ty::I32
+            }
             _ => Ty::Borrowed,
         }
     }
@@ -1175,10 +1157,7 @@ impl RuntimeFn {
             | Self::FmtInt
             | Self::FmtBool
             | Self::ParseInt
-            | Self::MapClear
-            | Self::ArenaMark
-            | Self::ArenaReset
-            | Self::ArenaFlag => &[],
+            | Self::MapClear => &[],
             Self::Repeat
             | Self::ArrSort
             | Self::IsInt
@@ -1222,8 +1201,7 @@ impl RuntimeFn {
             | Self::MapPutAtS
             | Self::MapPutAtSLent
             | Self::FmtIntLen
-            | Self::FmtUintLen
-            | Self::ArenaMark => Ty::I32,
+            | Self::FmtUintLen => Ty::I32,
             Self::StartsWith
             | Self::EndsWith
             | Self::IsInt
@@ -1244,9 +1222,7 @@ impl RuntimeFn {
             | Self::FmtIntAppend
             | Self::FmtUintAppend
             | Self::SharedUniqueSlot
-            | Self::SharedUniqueElem
-            | Self::ArenaReset
-            | Self::ArenaFlag => Ty::Void,
+            | Self::SharedUniqueElem => Ty::Void,
             _ => Ty::Owned,
         }
     }

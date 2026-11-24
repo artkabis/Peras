@@ -1132,33 +1132,6 @@ impl Lowering<'_> {
         state.close(out);
     }
 
-    /// Decision 0043, prototype a1: an `arena { … }` block between two
-    /// marks, `arena_reset(-1 - start)` and `arena_flag(-1 - start)`, which
-    /// the arena's pass replaces.
-    fn arena_block(
-        &mut self,
-        state: &mut FnState,
-        block: &perasc_syntax::ast::Block,
-        out: &mut Vec<Stmt>,
-    ) {
-        let at = -1 - i64::from(block.span.start);
-        let mark = |f: crate::RuntimeFn| {
-            Stmt::Expr(Expr {
-                kind: ExprKind::Buf(
-                    crate::BufOp::Runtime(f),
-                    vec![Expr {
-                        kind: ExprKind::Const(Const::Int(at)),
-                        ty: Ty::I32,
-                    }],
-                ),
-                ty: Ty::Void,
-            })
-        };
-        out.push(mark(crate::RuntimeFn::ArenaReset));
-        self.block(state, &block.stmts, out);
-        out.push(mark(crate::RuntimeFn::ArenaFlag));
-    }
-
     /// A body: a block or a single statement, in its own scope.
     fn body(&mut self, state: &mut FnState, stmt: &AstStmt) -> Vec<Stmt> {
         let mut out = Vec::new();
@@ -1340,9 +1313,6 @@ impl Lowering<'_> {
                 let value = self.arith(state, op, current, one, kind);
                 state.flush(out);
                 out.push(Stmt::Set(local, value));
-            }
-            StmtKind::Block(block) if self.ast.arenas.contains(&block.span) => {
-                self.arena_block(state, block, out);
             }
             StmtKind::Block(block) => self.block(state, &block.stmts, out),
             StmtKind::If {

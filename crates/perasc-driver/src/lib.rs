@@ -518,7 +518,6 @@ pub fn build_direct(
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
-    arena_escapes(&module)?;
     Ok(emit_direct_for(&module, wasm_file, options, localizer))
 }
 
@@ -540,7 +539,6 @@ pub fn build_direct_file(
         perasc_ir::optimize(&mut module);
         perasc_ir::verify(&module).map_err(ToolError::Internal)?;
     }
-    arena_escapes(&module)?;
     Ok((
         emit_direct_for(&module, wasm_file, options, localizer),
         inputs,
@@ -548,46 +546,6 @@ pub fn build_direct_file(
 }
 
 pub use perasc_runtime::Allocator;
-
-/// Decision 0043, prototype a1: a value made in an `arena { … }` block that
-/// outlives it is refused, at the block (`E0900` in the prototype).
-fn arena_escapes(module: &perasc_ir::Module) -> Result<(), ToolError> {
-    if std::env::var("PERAS_PROTO_ARENA").map_or(true, |v| v != "a1" && v != "a1b") {
-        return Ok(());
-    }
-    let mut copy = module.clone();
-    let escapes = perasc_ir::arena::apply_blocks(&mut copy);
-    if escapes.is_empty() {
-        return Ok(());
-    }
-    let diagnostics = escapes
-        .into_iter()
-        .map(|(at, name)| {
-            let span = perasc_diag::Span {
-                start: at,
-                end: at + 5,
-            };
-            let feature = format!("`{name}`, made in this arena, outliving it");
-            Diagnostic {
-                code: perasc_diag::codes::NOT_SUPPORTED_YET,
-                message: perasc_diag::Message::new("gen-unsupported")
-                    .text("feature", feature.clone()),
-                labels: vec![perasc_diag::Label {
-                    span,
-                    message: perasc_diag::Message::new("gen-unsupported-label")
-                        .text("feature", feature),
-                    primary: true,
-                }],
-                cause: perasc_diag::Message::new("gen-unsupported-why"),
-                fix: perasc_diag::Fix {
-                    message: perasc_diag::Message::new("gen-unsupported-fix"),
-                    edits: Vec::new(),
-                },
-            }
-        })
-        .collect();
-    Err(ToolError::Diagnostics(Checked::capped(diagnostics)))
-}
 
 /// How the direct backend builds a module.
 // Independent switches of a build, each a flag of the command line.
@@ -660,25 +618,6 @@ pub fn emit_direct_for(
     options: DirectOptions,
     localizer: &Localizer,
 ) -> DirectOutput {
-    // Decision 0043, prototypes: `PERAS_PROTO_ARENA=a2` gives the functions
-    // an arena can serve one, `a3` keeps more sizes; TLSF builds only.
-    let proto = std::env::var("PERAS_PROTO_ARENA").unwrap_or_default();
-    let tlsf = options.allocator == perasc_runtime::Allocator::Tlsf;
-    let with_arena;
-    let module = if tlsf && (proto == "a2" || proto == "a1" || proto == "a1b") {
-        let mut m = module.clone();
-        if proto == "a1" {
-            perasc_ir::arena::apply_blocks(&mut m);
-        } else if proto == "a1b" {
-            perasc_ir::arena::apply_blocks_on(&mut m);
-        } else {
-            perasc_ir::arena::apply(&mut m);
-        }
-        with_arena = m;
-        &with_arena
-    } else {
-        module
-    };
     let threads = options.threads && module.uses_heap();
     let compiled = perasc_codegen_wasm::compile_with(module, options.simd, threads);
     // SIMD is needed by the runtime of a module that uses the heap, and by
@@ -694,16 +633,7 @@ pub fn emit_direct_for(
     let overflow = localizer.message(&perasc_diag::Message::new("runtime-integer-overflow"));
     // The runtime this module needs: what its loader calls, and the
     // functions on strings and arrays the module calls.
-    let uses_arena = module
-        .runtime_fns()
-        .contains(&perasc_ir::RuntimeFn::ArenaMark);
-    let full = match proto.as_str() {
-        "a1" | "a2" if tlsf && uses_arena => perasc_runtime::tlsf_prototype("a2", options.simd),
-        "a3" if tlsf => perasc_runtime::tlsf_prototype("a3", options.simd),
-        "a1b" if tlsf && uses_arena => perasc_runtime::tlsf_prototype("a1b", options.simd),
-        _ => None,
-    }
-    .unwrap_or_else(|| options.allocator.runtime(options.simd));
+    let full = options.allocator.runtime(options.simd);
     // With threads, the runtime imports the memory the loader may share.
     let imported = threads
         .then(|| perasc_runtime::import_memory(full, perasc_codegen_wasm::THREAD_PAGES).ok())
