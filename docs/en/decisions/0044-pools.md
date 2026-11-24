@@ -70,4 +70,10 @@ The four workloads and the program of point 5 are written for p0 (`bench/pool/`)
 
 One definition is amended: W1 moves each spark in place (`sparks[i].x += sparks[i].vx`), and the operations registered for p1 and p2 offer only `set(h, v)`, a whole value. **p1 and p2 also index by a handle, `pool[h]`, to read and write a field**: under p1 a handle whose value was removed stops the program, as an index out of bounds does, `get(h)` staying the read that gives `None`; under p2 it reads the slot as it is. **p3**, a structure written in Peras, cannot define `[]`: it offers `pool.slot(h)`, an `Option<i32>`, and the program indexes `pool.values` with it, which counts in its lines.
 
+### A second amendment, and what writing the workloads for p1 found (2026-11-24, before any measure)
+
+To compare times, every option must compute the same. In p0, a spark's parent and a node's new parent were drawn by slot; a pool never shows its slots, so a user of p1 draws among handles, and computes something else. **W1's parent is now the spark born just before; W2's new parent is drawn from the list of every node inserted, in order, the root when that one was removed.** p0 keeps that list by hand, with each node's number, which its lines count.
+
+Written for p1 (`bench/pool/p1/`), W1 and W2 met five errors, all from one friction that is not the pools': an option is not narrowed inside a condition joined by `&&` or `||` (`p.isSome() && sparks.has(p)`); split into two `if`, they build. W3 and the stale read built first time. Under p1, W1, W2 and W3 give what p0 gives, twice on one instance, and the stale read gives `-1`, caught; under p2 the stale read gives `99`, W1 and W2 give other numbers, and **W2 of 100,000 nodes never ends**: a handle of a removed parent names the new value of its slot, which can be one of its own descendants, and the walk up the parents turns in a circle.
+
 _To come: the prototypes, the measure, the proposal._

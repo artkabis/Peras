@@ -1,7 +1,9 @@
 // Decision 0044, W2, a scene graph with removals, written for p0: each node
-// keeps its parent's slot and the number the parent was born with; a third
-// of the nodes are removed, as many inserted under nodes still alive, then
-// the depth of each living node summed, a chain stopping at a parent gone.
+// keeps its parent's slot and the number the parent was born with; every
+// node inserted is listed in order, its slot and its number; a third are
+// removed, as many inserted under a node drawn from the list (the root when
+// that one is gone), then the depth of each living node summed, a chain
+// stopping at a parent gone.
 
 struct Node {
   parent: i32;
@@ -28,6 +30,8 @@ export fn run(n: i32): i32 {
   let born: Array<i32> = [];
   let alive: Array<bool> = [];
   let free: Array<i32> = [];
+  let order: Array<i32> = [];
+  let orderBorn: Array<i32> = [];
   let serial = 0;
   let seed = 11;
   for (let i = 0; i < n; i++) {
@@ -42,6 +46,8 @@ export fn run(n: i32): i32 {
     nodes.push(Node(parent, parentBorn, i % 7));
     born.push(serial);
     alive.push(true);
+    order.push(i);
+    orderBorn.push(serial);
   }
   for (let i = 1; i < n; i += 3) {
     alive[i] = false;
@@ -50,8 +56,9 @@ export fn run(n: i32): i32 {
   const removed = free.length;
   for (let k = 0; k < removed; k++) {
     seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
-    let parent = ((seed >> 8) & 2147483647) % nodes.length;
-    if (!alive[parent]) {
+    const drawn = ((seed >> 8) & 2147483647) % order.length;
+    let parent = order[drawn];
+    if (!alive[parent] || born[parent] != orderBorn[drawn]) {
       parent = 0;
     }
     serial += 1;
@@ -59,6 +66,8 @@ export fn run(n: i32): i32 {
     nodes[slot] = Node(parent, born[parent], k % 5);
     born[slot] = serial;
     alive[slot] = true;
+    order.push(slot);
+    orderBorn.push(serial);
   }
   let total = 0;
   for (let i = 0; i < nodes.length; i++) {

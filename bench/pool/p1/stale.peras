@@ -1,0 +1,12 @@
+// Decision 0044, safety, written for p1 and p2: a handle kept after its
+// value was removed and the slot given to another.
+
+export fn run(): i32 {
+  let values: Pool<i32> = Pool.new();
+  values.insert(10);
+  const kept = values.insert(20);
+  values.insert(30);
+  values.remove(kept);
+  values.insert(99);
+  return values.get(kept).unwrapOr(-1);
+}

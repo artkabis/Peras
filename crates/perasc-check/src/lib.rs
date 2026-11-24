@@ -133,6 +133,9 @@ pub struct Analysis {
     /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
     /// option a2).
     pub math_calls: HashSet<ExprId>,
+    /// Decision 0044, prototypes: each `pool[h]`, a pool indexed by a
+    /// handle, which the driver writes again as `pool.values[pool.slotOrFault(h)]`.
+    pub pool_indexes: Vec<ExprId>,
     /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
     /// read or written (decision 0038, option j1).
     pub json_calls: HashMap<ExprId, JsonCall>,
@@ -601,6 +604,7 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         changed: checker.changed,
         mutations: checker.mutations,
         math_calls: checker.math_calls,
+        pool_indexes: checker.pool_indexes,
         json_calls: checker.json_calls,
         time_calls: checker.time_calls,
         moves: checker.moves,
@@ -754,6 +758,8 @@ struct Checker<'a> {
     mutations: Vec<(usize, Span)>,
     /// See [`Analysis::math_calls`].
     math_calls: HashSet<ExprId>,
+    /// See [`Analysis::pool_indexes`].
+    pool_indexes: Vec<ExprId>,
     /// See [`Analysis::json_calls`].
     json_calls: HashMap<ExprId, JsonCall>,
     /// See [`Analysis::time_calls`].
@@ -872,6 +878,7 @@ impl<'a> Checker<'a> {
             changed: HashSet::new(),
             mutations: Vec::new(),
             math_calls: HashSet::new(),
+            pool_indexes: Vec::new(),
             json_calls: HashMap::new(),
             time_calls: HashMap::new(),
             int_divisions: HashMap::new(),

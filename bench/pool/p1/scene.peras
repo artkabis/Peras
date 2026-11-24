@@ -1,0 +1,55 @@
+// Decision 0044, W2, a scene graph with removals, written for p1 and p2.
+
+struct Node {
+  parent: Option<Handle>;
+  weight: i32;
+}
+
+fn depth(nodes: Pool<Node>, at: Handle): i32 {
+  let d = 0;
+  let h = at;
+  while (true) {
+    const p = nodes[h].parent;
+    if (p.isNone()) {
+      break;
+    }
+    if (!nodes.has(p)) {
+      break;
+    }
+    d += 1;
+    h = p;
+  }
+  return d;
+}
+
+export fn run(n: i32): i32 {
+  let nodes: Pool<Node> = Pool.new();
+  let order: Array<Handle> = [];
+  let seed = 11;
+  for (let i = 0; i < n; i++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    let parent: Option<Handle> = None;
+    if (i > 0) {
+      parent = Some(order[((seed >> 8) & 2147483647) % i]);
+    }
+    order.push(nodes.insert(Node(parent, i % 7)));
+  }
+  let removed = 0;
+  for (let i = 1; i < n; i += 3) {
+    nodes.remove(order[i]);
+    removed += 1;
+  }
+  for (let k = 0; k < removed; k++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    let parent = order[((seed >> 8) & 2147483647) % order.length];
+    if (!nodes.has(parent)) {
+      parent = order[0];
+    }
+    order.push(nodes.insert(Node(Some(parent), k % 5)));
+  }
+  let total = 0;
+  for (const h of nodes.handles()) {
+    total += depth(nodes, h) + nodes[h].weight;
+  }
+  return total;
+}

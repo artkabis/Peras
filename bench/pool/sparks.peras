@@ -1,8 +1,8 @@
 // Decision 0044, W1, the sparks, written for p0: indices by hand. Each
-// frame a thousand sparks are born, each keeping the slot of the spark it
-// came from and the number that spark was born with, so that a slot freed
-// and given to another is not taken for its parent; those older than
-// their life die, and their slots are given to the next born.
+// frame a thousand sparks are born, each coming from the spark born just
+// before it, whose slot it keeps with the number that spark was born with,
+// so that a slot freed and given to another is not taken for its parent;
+// those older than their life die, and their slots go to the next born.
 
 struct Spark {
   x: f64;
@@ -20,6 +20,7 @@ export fn run(frames: i32): f64 {
   let alive: Array<bool> = [];
   let free: Array<i32> = [];
   let serial = 0;
+  let last = -1;
   let seed = 7;
   let sum = 0.0;
   for (let f = 0; f < frames; f++) {
@@ -27,12 +28,9 @@ export fn run(frames: i32): f64 {
       seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
       let parent = -1;
       let parentBorn = -1;
-      if (sparks.length > 0) {
-        const p = ((seed >> 8) & 2147483647) % sparks.length;
-        if (alive[p]) {
-          parent = p;
-          parentBorn = born[p];
-        }
+      if (last >= 0) {
+        parent = last;
+        parentBorn = born[last];
       }
       const vx = ((seed >> 4) & 255).toF64() / 256.0 - 0.5;
       const vy = ((seed >> 12) & 255).toF64() / 256.0;
@@ -43,10 +41,12 @@ export fn run(frames: i32): f64 {
         sparks[slot] = spark;
         born[slot] = serial;
         alive[slot] = true;
+        last = slot;
       } else {
         sparks.push(spark);
         born.push(serial);
         alive.push(true);
+        last = sparks.length - 1;
       }
     }
     for (let i = 0; i < sparks.length; i++) {

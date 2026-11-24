@@ -1,0 +1,74 @@
+// Decision 0044, prototype p2: `Pool<T>` with plain handles, added by the
+// compiler to a program that names it. A handle is a slot; a handle kept
+// after its value was removed reads whatever the slot holds now.
+
+struct Handle {
+  slot: i32;
+}
+
+struct Pool<T> {
+  values: Array<T>;
+  live: Array<bool>;
+  free: Array<i32>;
+  count: i32;
+}
+
+impl<T> Pool<T> {
+  fn new(): Self {
+    return Pool([], [], [], 0);
+  }
+
+  fn insert(inout self, v: sink T): Handle {
+    self.count += 1;
+    if (self.free.length > 0) {
+      const s = self.free.pop().unwrapOr(0);
+      self.values[s] = v;
+      self.live[s] = true;
+      return Handle(s);
+    }
+    self.values.push(v);
+    self.live.push(true);
+    return Handle(self.values.length - 1);
+  }
+
+  fn has(self, h: Handle): bool {
+    return h.slot >= 0 && h.slot < self.live.length && self.live[h.slot];
+  }
+
+  fn remove(inout self, h: Handle): bool {
+    if (!self.has(h)) {
+      return false;
+    }
+    self.live[h.slot] = false;
+    self.free.push(h.slot);
+    self.count -= 1;
+    return true;
+  }
+
+  fn size(self): i32 {
+    return self.count;
+  }
+
+  fn handles(self): Array<Handle> {
+    let all: Array<Handle> = [];
+    for (let s = 0; s < self.live.length; s++) {
+      if (self.live[s]) {
+        all.push(Handle(s));
+      }
+    }
+    return all;
+  }
+
+  fn slotOrFault(self, h: Handle): i32 {
+    return h.slot;
+  }
+}
+
+impl<T: Copy> Pool<T> {
+  fn get(self, h: Handle): Option<T> {
+    if (self.has(h)) {
+      return Some(self.values[h.slot]);
+    }
+    return None;
+  }
+}
