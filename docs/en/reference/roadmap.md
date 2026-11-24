@@ -102,7 +102,7 @@ What the spec calls rasterization ([spec](../spec.md#rasterization)).
 
 ## Phase 7: tooling
 
-- An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming. Both proprietary (owner, 2026-11-23); the open core publishes the queries they need: done, `perasc serve` ([decision 0042](../decisions/0042-queries.md)). The language server and the VS Code extension are built, their state in [editors](../guide/editors.md); renaming next.
+- An editor extension and a language server: errors as you type, completion, hover, go to definition, renaming. Both proprietary (owner, 2026-11-23); the open core publishes the queries they need: done, `perasc serve` ([decision 0042](../decisions/0042-queries.md)). The language server and the VS Code extension are built, renaming included, their state in [editors](../guide/editors.md); a field is renamed once `perasc serve` resolves its reads (F313).
 - A formatter, so that every Peras file looks the same: done, `perasc fmt` at a width of 100 ([decision 0041](../decisions/0041-formatter.md)).
 - A test runner: tests written in Peras, run by Vitest: done, `test` blocks and `expect(a).toBe(b)` ([decision 0040](../decisions/0040-tests.md)).
 - `create-peras`, to start a project in one command.
