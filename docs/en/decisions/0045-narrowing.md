@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0045-narrowing.md](../../fr/decisions/0045-narrowing.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks. Asked by the owner on 2026-11-24, after [decision 0044](0044-pools.md) met finding F118; it comes before an amendment of 0044 that measures a pool lowered by the compiler itself. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; options measured at `e1e5ed8`; proposal: n0 stays by the criteria registered, for the owner to decide. Asked by the owner on 2026-11-24, after [decision 0044](0044-pools.md) met finding F118; it comes before an amendment of 0044 that measures a pool lowered by the compiler itself. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -60,4 +60,32 @@ Each option passes `cargo test --workspace` with its variable set, the end-to-en
 
 ## Record
 
-_To come: the prototypes, the measure, the proposal._
+### The prototypes (2026-11-24)
+
+At `e1e5ed8`, in the checker alone (`crates/perasc-check/src/stmt.rs`, `expr.rs`): `facts` gives what a condition proves when true and when false, under n0 as before, under n1 through chains, under n2 through `!`, `&&` and `||`; `binary` checks the right operand of `&&` or `||` with what the left one proves; `if`, `else`, `while` and what follows an `if` that leaves narrow with them. The lowering and the runtime are unchanged: a narrowed read keeps its mark. Each option passes `cargo test --workspace`, the end-to-end tests and the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000`, its generator writing two statements more that narrow through `&&` and `||`, and under n2 through `!` and `else`; given to n1 once, the statement of n2 failed the differential test, as a program refused must. The soundness test, `narrowing_through_conditions_is_sound`, refuses eleven programs under every option and accepts nine where each option narrows; with the right operand of `||` given the left one's true facts, it fails under n1 and under n2. Writing it found one of its own cases wrong: `if (x.isSome() || c) { … } else { return 0; }` does not prove `x` after it, since `c` alone makes the condition true; n2 refused it, and the case went to those refused.
+
+### The measure (2026-11-24)
+
+At `e1e5ed8`, `node scripts/bench-narrow.mjs`, 21 rounds ([results](../../../bench/narrow/RESULTS.md)); then `check-regression` against `cbb757c`. **Departure**: `check-regression` was first run with `PERAS_PROTO_NARROW` in its environment, which it unsets on purpose, an option being given as an argument (`PERAS_PROTO_NARROW=n2`); that run compared n0 with n0, is kept in the scratchpad of the session, and was run again as the script asks (finding M039).
+
+|     | errors met, N1 to N5 | lines, N1 to N5    | time / n0, median per program (range) | memory    | bytes, raw, against n0's      |
+| --- | -------------------- | ------------------ | ------------------------------------- | --------- | ----------------------------- |
+| n0  | 8                    | 31, 33, 24, 37, 34 | 1.000                                 |           |                               |
+| n1  | 2, N4 refused        | 28, 31, 21, 37, 32 | 0.931 to 0.979 (0.681 to 1.303)       | identical | +9, +18, 0, (N4 refused), +10 |
+| n2  | **0**                | 28, 31, 21, 37, 32 | 0.906 to 0.993 (0.427 to 1.495)       | identical | +9, +18, 0, +1, +10           |
+
+`check-regression`: of 270 modules, none larger, none smaller, none changed, under n1 and under n2; the TypeScript forms build now only, four under n1, five under n2; the compiler 1.014 and 1.005 times its time, 13,776 bytes larger, the same binary for both. Every range straddles 1; every median is below 1.
+
+Against the criteria registered:
+
+- **Both pass** the regression, correctness and soundness; report fewer errors than n0 (n1 2, n2 0, against 8); write no more lines (2 to 3 fewer, N4 the same); time at most 1.05 times n0's by the median, memory identical, the compiler 1.014 and 1.005 times its time.
+- **Both fail the bytes**: the module of the TypeScript form is 9 to 18 bytes larger than the n0 form's on N1, N2 and N5 (0.2 to 0.4 %), and n2's one byte larger on N4. Part of it is not the narrowing: with no option at all, `if (a && b) { … }` builds 130 bytes where the same written as two `if` builds 127, `&&` lowered as a value then tested; the rest was not traced, no disassembler being installed.
+
+### Proposal
+
+By the criteria registered, **no option is an improvement, and n0 stays**: both grow the bytes of the programs that use them, which the protocol forbids, as it registered. The criteria are not changed after the measure. What the measure shows, for the owner to decide:
+
+- n2 takes every program of the protocol, written as in TypeScript, where n0 refuses eight times; n1 takes the chains, not `else` nor `!`; their time is the same as n0's or below, and nothing else changes.
+- The bytes they add are the cost of the form a user writes, `&&` against nested `if`, more than of the narrowing; finding M038, open, already asks whether a module of a program that chooses a new construct may grow by what the decision measures.
+
+Two ways forward, the owner's to choose: keep n0, F118 staying open; or decide M038 first, or lower `if (a && b)` as nested branches by a decision of its own, measured on every program, and measure this protocol again.

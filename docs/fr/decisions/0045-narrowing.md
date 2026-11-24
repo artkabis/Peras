@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0045-narrowing.md](../../en/decisions/0045-narrowing.md)._
 
-_Statut : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet. Demandée par le propriétaire le 2026-11-24, après que la [décision 0044](0044-pools.md) a rencontré le constat F118 ; elle vient avant un amendement de la 0044 qui mesure un pool abaissé par le compilateur lui-même. Selon la règle du propriétaire du 2026-11-17, l’option choisie doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est intégré._
+_Statut : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; options mesurées au commit `e1e5ed8` ; proposition : n0 reste selon les critères enregistrés, au propriétaire de décider. Demandée par le propriétaire le 2026-11-24, après que la [décision 0044](0044-pools.md) a rencontré le constat F118 ; elle vient avant un amendement de la 0044 qui mesure un pool abaissé par le compilateur lui-même. Selon la règle du propriétaire du 2026-11-17, l’option choisie doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est intégré._
 
 ## Contexte
 
@@ -60,4 +60,32 @@ Chaque option passe `cargo test --workspace` avec sa variable posée, les tests 
 
 ## Journal
 
-_À venir : les prototypes, la mesure, la proposition._
+### Les prototypes (2026-11-24)
+
+Au commit `e1e5ed8`, dans le vérificateur seul (`crates/perasc-check/src/stmt.rs`, `expr.rs`) : `facts` donne ce qu’une condition prouve quand elle est vraie et quand elle est fausse, sous n0 comme avant, sous n1 à travers les chaînes, sous n2 à travers `!`, `&&` et `||` ; `binary` vérifie l’opérande droit de `&&` ou `||` avec ce que prouve le gauche ; `if`, `else`, `while` et ce qui suit un `if` qui sort restreignent avec eux. L’abaissement et le runtime sont inchangés : une lecture restreinte garde sa marque. Chaque option passe `cargo test --workspace`, les tests de bout en bout et le test différentiel avec `PERAS_DIFFERENTIAL_SEEDS=2000`, son générateur écrivant deux instructions de plus qui restreignent à travers `&&` et `||`, et sous n2 à travers `!` et `else` ; donnée une fois à n1, l’instruction de n2 a fait échouer le test différentiel, comme le doit un programme refusé. Le test de sûreté, `narrowing_through_conditions_is_sound`, refuse onze programmes sous toute option et en accepte neuf là où chaque option restreint ; avec l’opérande droit de `||` recevant les faits vrais du gauche, il échoue sous n1 et sous n2. L’écrire a trouvé faux l’un de ses propres cas : `if (x.isSome() || c) { … } else { return 0; }` ne prouve pas `x` après lui, puisque `c` seul rend la condition vraie ; n2 l’a refusé, et le cas est passé parmi les refusés.
+
+### La mesure (2026-11-24)
+
+Au commit `e1e5ed8`, `node scripts/bench-narrow.mjs`, 21 tours ([résultats](../../../bench/narrow/RESULTS.md)) ; puis `check-regression` contre `cbb757c`. **Écart** : `check-regression` a d’abord été lancé avec `PERAS_PROTO_NARROW` dans son environnement, qu’il retire exprès, une option se donnant en argument (`PERAS_PROTO_NARROW=n2`) ; ce passage a comparé n0 à n0, est gardé dans le bloc-notes de la session, et a été relancé comme le script le demande (constat M039).
+
+|     | erreurs rencontrées, N1 à N5 | lignes, N1 à N5    | temps / n0, médiane par programme (étendue) | mémoire   | octets, bruts, contre ceux de n0 |
+| --- | ---------------------------- | ------------------ | ------------------------------------------- | --------- | -------------------------------- |
+| n0  | 8                            | 31, 33, 24, 37, 34 | 1,000                                       |           |                                  |
+| n1  | 2, N4 refusé                 | 28, 31, 21, 37, 32 | 0,931 à 0,979 (0,681 à 1,303)               | identique | +9, +18, 0, (N4 refusé), +10     |
+| n2  | **0**                        | 28, 31, 21, 37, 32 | 0,906 à 0,993 (0,427 à 1,495)               | identique | +9, +18, 0, +1, +10              |
+
+`check-regression` : sur 270 modules, aucun plus grand, aucun plus petit, aucun changé, sous n1 et sous n2 ; les formes TypeScript ne se construisent que maintenant, quatre sous n1, cinq sous n2 ; le compilateur à 1,014 et 1,005 fois son temps, 13 776 octets de plus, le même binaire pour les deux. Chaque étendue chevauche 1 ; chaque médiane est sous 1.
+
+Face aux critères enregistrés :
+
+- **Les deux passent** la non-régression, la justesse et la sûreté ; rapportent moins d’erreurs que n0 (n1 2, n2 0, contre 8) ; n’écrivent pas plus de lignes (2 à 3 de moins, N4 pareil) ; le temps au plus à 1,05 fois celui de n0 par la médiane, la mémoire identique, le compilateur à 1,014 et 1,005 fois son temps.
+- **Les deux échouent aux octets** : le module de la forme TypeScript a 9 à 18 octets de plus que celui de la forme n0 sur N1, N2 et N5 (0,2 à 0,4 %), et celui de n2 un octet de plus sur N4. Une part n’est pas la restriction : sans aucune option, `if (a && b) { … }` construit 130 octets là où la même chose écrite en deux `if` en construit 127, `&&` étant abaissé en une valeur puis testé ; le reste n’a pas été tracé, aucun désassembleur n’étant installé.
+
+### Proposition
+
+Selon les critères enregistrés, **aucune option n’est une amélioration, et n0 reste** : les deux font grandir les octets des programmes qui les utilisent, ce que le protocole interdit, tel qu’il l’a enregistré. Les critères ne sont pas changés après la mesure. Ce que montre la mesure, pour que le propriétaire décide :
+
+- n2 prend chaque programme du protocole, écrit comme en TypeScript, là où n0 refuse huit fois ; n1 prend les chaînes, ni `else` ni `!` ; leur temps est celui de n0 ou en dessous, et rien d’autre ne change.
+- Les octets qu’elles ajoutent sont le coût de la forme qu’écrit l’utilisateur, `&&` contre des `if` imbriqués, plus que de la restriction ; le constat M038, ouvert, demande déjà si le module d’un programme qui choisit une nouvelle construction peut grandir de ce que la décision mesure.
+
+Deux voies, au choix du propriétaire : garder n0, F118 restant ouvert ; ou décider M038 d’abord, ou abaisser `if (a && b)` en branches imbriquées par une décision à part, mesurée sur chaque programme, et mesurer de nouveau ce protocole.
