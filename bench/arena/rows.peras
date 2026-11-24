@@ -1,0 +1,12 @@
+// Decision 0043, W3: a line of text a row. Each row is written as a
+// template string of five fields, its length and the place of its first comma summed (Peras has no
+// `charCodeAt` yet, finding F309), then dropped.
+
+export fn run(rows: i32): i32 {
+  let sum = 0;
+  for (let i = 0; i < rows; i++) {
+    const line = `${i},${i * 7 % 1000},${i % 24},${i % 3 == 0},${i * 13 % 97}\n`;
+    sum = sum + line.length + line.indexOf(",");
+  }
+  return sum;
+}

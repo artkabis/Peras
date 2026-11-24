@@ -1,0 +1,58 @@
+// Decision 0043, W2: the temporaries of a frame. Ten thousand fireflies on a
+// pond; each frame, the grid is built again, and each firefly gathers the
+// indices of its neighbours, reads them, then forgets them.
+
+export fn run(n: i32, frames: i32): f64 {
+  let xs: Array<f64> = [];
+  let ys: Array<f64> = [];
+  let seed = 12345;
+  for (let i = 0; i < n; i++) {
+    seed = seed * 1103515245 + 12345;
+    xs.push(((seed >> 8) & 65535).toF64() / 65536.0);
+    seed = seed * 1103515245 + 12345;
+    ys.push(((seed >> 8) & 65535).toF64() / 65536.0);
+  }
+  const side = 64;
+  let total = 0.0;
+  for (let f = 0; f < frames; f++) {
+    let cells: Array<Array<i32>> = [];
+    for (let c = 0; c < side * side; c++) {
+      cells.push([]);
+    }
+    for (let i = 0; i < n; i++) {
+      const cx = Math.min(Math.floor(xs[i] * side.toF64()).toI32(), side - 1);
+      const cy = Math.min(Math.floor(ys[i] * side.toF64()).toI32(), side - 1);
+      cells[cy * side + cx].push(i);
+    }
+    for (let i = 0; i < n; i++) {
+      const cx = Math.min(Math.floor(xs[i] * side.toF64()).toI32(), side - 1);
+      const cy = Math.min(Math.floor(ys[i] * side.toF64()).toI32(), side - 1);
+      let near: Array<i32> = [];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = cx + dx;
+          const y = cy + dy;
+          if (x >= 0 && x < side && y >= 0 && y < side) {
+            for (const j of cells[y * side + x]) {
+              if (j != i) {
+                near.push(j);
+              }
+            }
+          }
+        }
+      }
+      let px = 0.0;
+      let py = 0.0;
+      for (const j of near) {
+        px += xs[j] - xs[i];
+        py += ys[j] - ys[i];
+      }
+      total += px + py + near.length.toF64();
+    }
+    for (let i = 0; i < n; i++) {
+      xs[i] = (xs[i] + 0.0037) % 1;
+      ys[i] = (ys[i] + 0.0021) % 1;
+    }
+  }
+  return total;
+}

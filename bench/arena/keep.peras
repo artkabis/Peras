@@ -1,0 +1,19 @@
+// Decision 0043, W4: values that leave their call. `make` returns the
+// strings it makes, and `run` sums what it gets: no arena can take them.
+
+fn make(n: i32): Array<String> {
+  let kept: Array<String> = [];
+  for (let i = 0; i < n; i++) {
+    kept.push(`row ${i}`);
+  }
+  return kept;
+}
+
+export fn run(n: i32): i32 {
+  const kept = make(n);
+  let sum = 0;
+  for (const s of kept) {
+    sum = sum + s.length;
+  }
+  return sum;
+}

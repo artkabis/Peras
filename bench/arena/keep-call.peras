@@ -1,0 +1,14 @@
+// Decision 0043, W4b: values kept for a whole call. Strings made and kept in
+// an array, then summed: they die when the call returns.
+
+export fn run(n: i32): i32 {
+  let kept: Array<String> = [];
+  for (let i = 0; i < n; i++) {
+    kept.push(`row ${i}`);
+  }
+  let sum = 0;
+  for (const s of kept) {
+    sum = sum + s.length;
+  }
+  return sum;
+}

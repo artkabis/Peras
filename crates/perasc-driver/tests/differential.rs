@@ -59,7 +59,7 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    let choices = if depth == 0 { 49 } else { 50 };
+    let choices = if depth == 0 { 51 } else { 52 };
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -171,6 +171,12 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         47 => "acc += mixed(bumped(i), bumped(i + 1)) % 31 + twice(acc % 100); if (acc % 3 == 0 && mixed(bumped(i), i) > 3) { acc += 1; } acc += tally % 7 + twice(bumped(i));".to_owned(),
         // A small function in the condition of a loop, evaluated at each turn.
         48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
+        // Decision 0043: a grid of the turn, grown inside a loop whose turns
+        // have values of their own, which an arena gives back each turn;
+        // the grid's rows must not be in that room.
+        49 => "let grid: Array<Array<i32>> = []; for (let c = 0; c < 4; c++) { grid.push([]); } for (let t = 0; t < 6; t++) { const tmp = `${t}${k}`; grid[t % 4].push(tmp.length + i); let near: Array<i32> = [t]; near.push(tmp.length); acc += near.length + near[1]; } for (const row of grid) { acc += row.length; for (const x of row) { acc += x % 5; } }".to_owned(),
+        // A string built in a callee's loop and returned: it leaves the call.
+        50 => "const j = joined(i % 6); acc += j.length + joined(2).length;".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -229,6 +235,15 @@ fn spun(n: i32): i32 {{
 
 fn inc(x: i32): i32 {{
   return x + 1;
+}}
+
+fn joined(n: i32): String {{
+  let out = \"\";
+  for (let t = 0; t < n; t++) {{
+    const piece = `${{t}},`;
+    out += piece;
+  }}
+  return out;
 }}
 
 fn dbl(x: i32): i32 {{
@@ -334,7 +349,11 @@ fn run_wasm(
     .wasm;
     let runtime = match allocator {
         perasc_runtime::Allocator::Debug => perasc_runtime::DEBUG_ALLOCATOR,
-        perasc_runtime::Allocator::Tlsf => perasc_runtime::TLSF_ALLOCATOR,
+        // Decision 0043's prototypes: the runtime the build would link.
+        perasc_runtime::Allocator::Tlsf => {
+            let proto = std::env::var("PERAS_PROTO_ARENA").unwrap_or_default();
+            perasc_runtime::tlsf_prototype(&proto, true).unwrap_or(perasc_runtime::TLSF_ALLOCATOR)
+        }
     };
     let Ok(mut m) = link::instantiate_with(&wasm, runtime) else {
         return (None, -1);

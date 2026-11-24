@@ -68,4 +68,21 @@ Chaque option passe `cargo test --workspace` avec sa variable posée, les tests 
 
 ## Journal
 
-_À venir : les définitions testées, les prototypes, la mesure, la proposition._
+### Les définitions testées, et deux amendements (2026-11-24, avant toute mesure)
+
+La règle de a2 est écrite comme une analyse qui ne fait que rapporter (`crates/perasc-ir/src/arena.rs`) : elle groupe les variables `owned` dont les blocs sont ceux d’une même valeur (une variable déplacée dans une autre, un buffer poussé dans un tableau de buffers, une clé déplacée dans une table), garde un groupe dont les blocs sont alloués dans la fonction par le runtime et dont aucun ne sort, et lui donne le tour de boucle le plus intérieur, ou l’appel, qui contient toutes ses mentions. Une instruction qui alloue ou fait grandir un tel groupe s’exécute dans l’arène, sauf si elle appelle une fonction, fait grandir un bloc non pris, ou se trouve dans une boucle, sous le foyer du groupe, qui rend sa place à chaque tour : TLSF la sert alors, comme aujourd’hui, et puisque chaque libération est gardée, un bloc peut venir de l’un ou de l’autre. La règle de a1 est la même, sa région le bloc écrit.
+
+Lancée sur les 201 fichiers Peras des bancs, des exemples et de `bench/arena`, elle prendrait 603 de leurs 886 allocations. Sur les charges :
+
+| Charge                   | Allocations prises                                                                  | Où                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| W1, le tableau de bord   | `isCountry` 1 sur 1, `parse` 1 sur 3 (les champs du `split`), `summarize` 19 sur 34 | l’appel, et un tour de sa boucle sur les lignes                                                  |
+| W2, l’image              | 5 sur 5                                                                             | l’appel (les positions), le tour d’une image (la grille), le tour d’une particule (ses voisines) |
+| W3, les rangées          | 2 sur 2                                                                             | le tour d’une rangée                                                                             |
+| W4, telle qu’enregistrée | 2 sur 2                                                                             | l’appel                                                                                          |
+| W4, amendée (ci-dessous) | 0 sur 2                                                                             |                                                                                                  |
+
+Deux amendements suivent, faits avant toute mesure :
+
+1. **W4 ne mesurait rien de ce qu’elle devait.** Ses chaînes sont gardées dans un tableau jusqu’au retour de la fonction, puis abandonnées : elles meurent dans l’appel, et a2 les prend. W4 est désormais deux fonctions, `make(n)` qui renvoie le tableau de chaînes et `run(n)` qui somme ce que `make` donne : une valeur renvoyée sort de son appel, et rien n’est pris. La W4 enregistrée est gardée comme W4b, une valeur gardée tout un appel, que a2 prend.
+2. **W3 ne peut pas sommer les octets d’une rangée** : Peras n’a pas encore `charCodeAt` (constat F309, `E0215` sur `byteAt`). Elle somme à la place la longueur de chaque rangée et la place de sa première virgule, ce qui lit la rangée sans allouer.

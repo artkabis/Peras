@@ -618,6 +618,19 @@ pub fn emit_direct_for(
     options: DirectOptions,
     localizer: &Localizer,
 ) -> DirectOutput {
+    // Decision 0043, prototypes: `PERAS_PROTO_ARENA=a2` gives the functions
+    // an arena can serve one, `a3` keeps more sizes; TLSF builds only.
+    let proto = std::env::var("PERAS_PROTO_ARENA").unwrap_or_default();
+    let tlsf = options.allocator == perasc_runtime::Allocator::Tlsf;
+    let with_arena;
+    let module = if tlsf && proto == "a2" {
+        let mut m = module.clone();
+        perasc_ir::arena::apply(&mut m);
+        with_arena = m;
+        &with_arena
+    } else {
+        module
+    };
     let threads = options.threads && module.uses_heap();
     let compiled = perasc_codegen_wasm::compile_with(module, options.simd, threads);
     // SIMD is needed by the runtime of a module that uses the heap, and by
@@ -633,7 +646,15 @@ pub fn emit_direct_for(
     let overflow = localizer.message(&perasc_diag::Message::new("runtime-integer-overflow"));
     // The runtime this module needs: what its loader calls, and the
     // functions on strings and arrays the module calls.
-    let full = options.allocator.runtime(options.simd);
+    let uses_arena = module
+        .runtime_fns()
+        .contains(&perasc_ir::RuntimeFn::ArenaMark);
+    let full = match proto.as_str() {
+        "a2" if tlsf && uses_arena => perasc_runtime::tlsf_prototype("a2", options.simd),
+        "a3" if tlsf => perasc_runtime::tlsf_prototype("a3", options.simd),
+        _ => None,
+    }
+    .unwrap_or_else(|| options.allocator.runtime(options.simd));
     // With threads, the runtime imports the memory the loader may share.
     let imported = threads
         .then(|| perasc_runtime::import_memory(full, perasc_codegen_wasm::THREAD_PAGES).ok())

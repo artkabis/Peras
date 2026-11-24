@@ -18,10 +18,17 @@ const BUFFERS: &str = "runtime/buffers.wat";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed={BUFFERS}");
     let buffers = fs::read_to_string(BUFFERS)?;
-    for name in ["alloc_debug", "alloc_tlsf"] {
-        let source = format!("runtime/{name}.wat");
+    // Decision 0043's prototypes: TLSF with an arena (a2), or with more
+    // kept sizes (a3), each between `;; @proto NAME` and `;; @endproto`.
+    for (name, file, proto) in [
+        ("alloc_debug", "alloc_debug", ""),
+        ("alloc_tlsf", "alloc_tlsf", ""),
+        ("alloc_tlsf_a2", "alloc_tlsf", "a2"),
+        ("alloc_tlsf_a3", "alloc_tlsf", "a3"),
+    ] {
+        let source = format!("runtime/{file}.wat");
         println!("cargo::rerun-if-changed={source}");
-        let text = fs::read_to_string(&source)?;
+        let text = prototype(&fs::read_to_string(&source)?, proto)?;
         if !text.contains(";; @include buffers.wat") {
             return Err(format!("{source} does not include {BUFFERS}").into());
         }
@@ -58,5 +65,40 @@ fn variant(buffers: &str, simd: bool) -> Result<String, Box<dyn std::error::Erro
         rest = &rest[end + ";; @end".len()..];
     }
     out.push_str(rest);
+    Ok(out)
+}
+
+/// The text with each `;; @proto NAME … [;; @else …] ;; @endproto` kept as
+/// its first part when `NAME` is `proto`, as its `@else` part otherwise.
+fn prototype(text: &str, proto: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut out = String::new();
+    // None outside a block; Some(keep) inside, `keep` the part being read.
+    let mut inside: Option<bool> = None;
+    let mut name_matches = false;
+    for line in text.lines() {
+        let marker = line.trim();
+        if let Some(name) = marker.strip_prefix(";; @proto ") {
+            if inside.is_some() {
+                return Err("`;; @proto` inside another".into());
+            }
+            name_matches = name.trim() == proto;
+            inside = Some(name_matches);
+        } else if marker == ";; @else" {
+            if inside.is_none() {
+                return Err("`;; @else` outside `;; @proto`".into());
+            }
+            inside = Some(!name_matches);
+        } else if marker == ";; @endproto" {
+            if inside.take().is_none() {
+                return Err("`;; @endproto` without `;; @proto`".into());
+            }
+        } else if inside != Some(false) {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if inside.is_some() {
+        return Err("`;; @proto` without `;; @endproto`".into());
+    }
     Ok(out)
 }

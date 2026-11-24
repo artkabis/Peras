@@ -68,4 +68,21 @@ Each option passes `cargo test --workspace` with its variable set, the end-to-en
 
 ## Record
 
-_To come: the definitions tested, the prototypes, the measure, the proposal._
+### The definitions tested, and two amendments (2026-11-24, before any measure)
+
+The rule of a2 is written as an analysis that only reports (`crates/perasc-ir/src/arena.rs`): it groups the `owned` locals whose blocks are one value's (a local moved into another, a buffer pushed into an array of buffers, a key moved into a map), keeps a group whose blocks are allocated in the function by the runtime and none leaves, and gives it the innermost loop turn, or the call, that holds every mention of it. A statement that allocates or grows such a group runs in the arena, unless it calls a function, grows a block that is not taken, or sits inside a loop, below the group's home, that gives its room back each turn: then TLSF serves it, as today, and since every release is kept, a block may come from either. a1's rule is the same, its region the block written.
+
+Run on the 201 Peras files of the benchmarks, the examples and `bench/arena`, it would take 603 of their 886 allocations. On the workloads:
+
+| Workload            | Allocations taken                                                                | Where                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| W1, the dashboard   | `isCountry` 1 of 1, `parse` 1 of 3 (the fields of `split`), `summarize` 19 of 34 | the call, and a turn of its loop over lines                                             |
+| W2, the frame       | 5 of 5                                                                           | the call (the positions), a frame's turn (the grid), a particle's turn (its neighbours) |
+| W3, the rows        | 2 of 2                                                                           | a row's turn                                                                            |
+| W4, as registered   | 2 of 2                                                                           | the call                                                                                |
+| W4, amended (below) | 0 of 2                                                                           |                                                                                         |
+
+Two amendments follow, made before any measure:
+
+1. **W4 measured nothing it was meant to.** Its strings are kept in an array until the function returns, then dropped: they die within the call, and a2 takes them. W4 is now two functions, `make(n)` returning the array of strings and `run(n)` summing what `make` gives: a value returned leaves its call, and nothing is taken. The registered W4 is kept as W4b, a value kept for a whole call, which a2 takes.
+2. **W3 cannot sum a row's bytes**: Peras has no `charCodeAt` yet (finding F309, `E0215` on `byteAt`). It sums each row's length and the place of its first comma instead, which reads the row without allocating.

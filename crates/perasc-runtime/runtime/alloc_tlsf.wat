@@ -53,6 +53,16 @@
   (global $serial (mut i32) (i32.const 0))
   (global $live_count (mut i32) (i32.const 0))
   (global $live_bytes (mut i32) (i32.const 0))
+  ;; @proto a2
+  ;; Decision 0043, prototype a2: an arena, one block of TLSF, from `$ar_lo`
+  ;; to `$ar_end`, taken by moving `$ar_cur`, while `$ar_on`. Releasing a
+  ;; block of it does nothing; `arena_reset` gives its room back at once.
+  (global $ar_lo (mut i32) (i32.const 0))
+  (global $ar_end (mut i32) (i32.const 0))
+  (global $ar_cur (mut i32) (i32.const 0))
+  (global $ar_on (mut i32) (i32.const 0))
+  (global $AR_SIZE i32 (i32.const 262144))
+  ;; @endproto
 
   ;; A small block released is kept for the next allocation of its size, the
   ;; last kept the first given (decision 0016): a released block of 32 to 256
@@ -196,16 +206,38 @@
     (local $need i32) (local $block i32) (local $have i32) (local $rest i32) (local $kept i32)
     (if (i32.gt_u (local.get $size) (i32.const 0x40000000))
       (then (call $raise (global.get $TOO_LARGE) (local.get $size) (local.get $site) (i32.const 0))))
+    ;; @proto a2
+    (if (global.get $ar_on)
+      (then
+        (local.set $need (i32.and (i32.add (local.get $size) (i32.const 15)) (i32.const -16)))
+        (if (i32.le_u (i32.add (global.get $ar_cur) (local.get $need)) (global.get $ar_end))
+          (then
+            (local.set $block (global.get $ar_cur))
+            (global.set $ar_cur (i32.add (global.get $ar_cur) (local.get $need)))
+            (return (local.get $block))))))
+    ;; @endproto
     ;; The user's bytes rounded up to 16, and the header; 32 bytes at least,
     ;; so that a free block holds its links.
     (local.set $need (i32.add (i32.and (i32.add (local.get $size) (i32.const 15)) (i32.const -16)) (i32.const 16)))
     (if (i32.lt_u (local.get $need) (i32.const 32))
       (then (local.set $need (i32.const 32))))
+    ;; @proto a3
+    ;; Decision 0043, prototype a3: blocks of 257 bytes to 4 KiB rounded up
+    ;; to 256, and kept as the small ones are, in 15 more lists after theirs.
+    (if (i32.and (i32.gt_u (local.get $need) (i32.const 256)) (i32.le_u (local.get $need) (i32.const 4096)))
+      (then (local.set $need (i32.and (i32.add (local.get $need) (i32.const 255)) (i32.const -256)))))
+    (local.set $kept (call $kept_list (local.get $need)))
+    (if (local.get $kept)
+    ;; @else
     ;; A block of this size kept from a release: given at once.
     (if (i32.le_u (local.get $need) (i32.const 256))
+    ;; @endproto
       (then
+        ;; @proto a3
+        ;; @else
         (local.set $kept (i32.add (i32.const 3584)
           (i32.shl (i32.sub (i32.shr_u (local.get $need) (i32.const 4)) (i32.const 2)) (i32.const 2))))
+        ;; @endproto
         (local.set $block (i32.load (local.get $kept)))
         (if (local.get $block)
           (then
@@ -248,6 +280,11 @@
   ;; Releases the block at `ptr`, merged at once with its free neighbours.
   (func $release (export "release") (param $ptr i32) (param $site i32)
     (local $block i32) (local $size i32) (local $kept i32)
+    ;; @proto a2
+    (if (i32.lt_u (i32.sub (local.get $ptr) (global.get $ar_lo))
+          (i32.sub (global.get $ar_end) (global.get $ar_lo)))
+      (then (return)))
+    ;; @endproto
     (if (i32.or (i32.or
           (i32.lt_u (local.get $ptr) (i32.const 4112))
           (i32.ge_u (local.get $ptr) (global.get $top)))
@@ -263,10 +300,16 @@
     (global.set $live_count (i32.sub (global.get $live_count) (i32.const 1)))
     (global.set $live_bytes (i32.sub (global.get $live_bytes) (i32.sub (local.get $size) (i32.const 16))))
     ;; Small: kept for the next allocation of its size, while there is room.
+    ;; @proto a3
+    (local.set $kept (call $kept_list (local.get $size)))
+    (if (local.get $kept)
+      (then
+    ;; @else
     (if (i32.le_u (local.get $size) (i32.const 256))
       (then
         (local.set $kept (i32.add (i32.const 3584)
           (i32.shl (i32.sub (i32.shr_u (local.get $size) (i32.const 4)) (i32.const 2)) (i32.const 2))))
+    ;; @endproto
         (if (i32.lt_u (i32.load offset=64 (local.get $kept)) (global.get $KEEP_MAX))
           (then
             (i32.store (local.get $block) (i32.or (local.get $size) (global.get $KEPT)))
@@ -276,6 +319,41 @@
               (i32.add (i32.load offset=64 (local.get $kept)) (i32.const 1)))
             (return)))))
     (call $give_back (local.get $block) (local.get $size)))
+
+  ;; @proto a3
+  ;; Where the list of kept blocks of `size` bytes is, or 0: sizes of 32 to
+  ;; 256 by 16 from 3584, sizes of 512 to 4096 by 256 from 3712; how many
+  ;; each holds, 64 bytes after.
+  (func $kept_list (param $size i32) (result i32)
+    (if (i32.le_u (local.get $size) (i32.const 256))
+      (then (return (i32.add (i32.const 3584)
+        (i32.shl (i32.sub (i32.shr_u (local.get $size) (i32.const 4)) (i32.const 2)) (i32.const 2))))))
+    (if (i32.or (i32.gt_u (local.get $size) (i32.const 4096)) (i32.and (local.get $size) (i32.const 255)))
+      (then (return (i32.const 0))))
+    (i32.add (i32.const 3712)
+      (i32.shl (i32.sub (i32.shr_u (local.get $size) (i32.const 8)) (i32.const 2)) (i32.const 2))))
+  ;; @endproto
+
+  ;; @proto a2
+  ;; Where the arena is now, its block taken from TLSF the first time.
+  (func (export "arena_mark") (param $unused i32) (result i32)
+    (if (i32.eqz (global.get $ar_lo))
+      (then
+        (global.set $ar_lo (call $alloc (global.get $AR_SIZE) (i32.const 0)))
+        ;; The runtime's own block, never released: not a block of the program.
+        (global.set $live_count (i32.sub (global.get $live_count) (i32.const 1)))
+        (global.set $live_bytes (i32.sub (global.get $live_bytes) (global.get $AR_SIZE)))
+        (global.set $ar_cur (global.get $ar_lo))
+        (global.set $ar_end (i32.add (global.get $ar_lo) (global.get $AR_SIZE)))))
+    (global.get $ar_cur))
+  (func (export "arena_reset") (param $mark i32) (global.set $ar_cur (local.get $mark)))
+  (func (export "arena_flag") (param $on i32) (global.set $ar_on (local.get $on)))
+  ;; @else
+  ;; No arena: what a module built by prototype a2 calls does nothing.
+  (func (export "arena_mark") (param $unused i32) (result i32) (i32.const 0))
+  (func (export "arena_reset") (param $mark i32))
+  (func (export "arena_flag") (param $on i32))
+  ;; @endproto
 
   ;; The block at `block`, of `size` bytes, made free, merged at once with its
   ;; free neighbours.
