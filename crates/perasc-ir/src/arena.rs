@@ -54,7 +54,7 @@ pub fn analyse(module: &Module) -> Vec<(String, Taken)> {
         .iter()
         .filter(|f| !f.job && f.uses_heap())
         .map(|f| {
-            let plan = Plan::of(f);
+            let plan = Plan::of(f, false);
             let mut taken = Taken {
                 allocations: plan.facts.allocations,
                 taken: plan.wrapped_allocations,
@@ -80,15 +80,34 @@ pub fn analyse(module: &Module) -> Vec<(String, Taken)> {
 /// arena turned on around the statements it takes.
 pub fn apply(module: &mut Module) {
     for f in module.functions.iter_mut().filter(|f| !f.job) {
-        if !f.uses_heap() {
-            continue;
-        }
-        let plan = Plan::of(f);
-        if plan.wrapped_allocations == 0 {
+        let plan = Plan::of(f, false);
+        if !f.uses_heap() || plan.wrapped_allocations == 0 {
             continue;
         }
         plan.rewrite(f);
     }
+}
+
+/// Prototype a1: the blocks written `arena { … }` are the only homes; their
+/// marks become the arena's mark and reset. Each value made in one that
+/// outlives it, by the block's start and the local's name: an error.
+pub fn apply_blocks(module: &mut Module) -> Vec<(u32, String)> {
+    let mut escapes = Vec::new();
+    for f in module.functions.iter_mut().filter(|f| !f.job) {
+        let plan = Plan::of(f, true);
+        for &(at, l) in &plan.escapes {
+            let name = f
+                .locals
+                .get(l.0 as usize)
+                .map_or_else(String::new, |x| x.name.clone());
+            escapes.push((at, name));
+        }
+        if plan.facts.arenas.is_empty() {
+            continue;
+        }
+        plan.rewrite(f);
+    }
+    escapes
 }
 
 fn local(l: usize) -> LocalId {
@@ -136,6 +155,10 @@ struct Facts {
     leaves: Vec<bool>,
     /// Per local, the regions it is mentioned in.
     mentions: Vec<Vec<Region>>,
+    /// Per local, the regions a fresh block is assigned to it in.
+    fresh_at: Vec<Vec<Region>>,
+    /// The regions of `arena { … }` blocks (prototype a1), by their start.
+    arenas: BTreeMap<Region, u32>,
     allocations: usize,
 }
 
@@ -149,6 +172,8 @@ impl Facts {
             foreign: vec![false; n],
             leaves: vec![false; n],
             mentions: vec![Vec::new(); n],
+            fresh_at: vec![Vec::new(); n],
+            arenas: BTreeMap::new(),
             allocations: 0,
         };
         for p in 0..f.param_count as usize {
@@ -193,8 +218,21 @@ impl Facts {
     }
 
     fn block(&mut self, stmts: &[Stmt], region: Region) {
+        let mut open: Vec<Region> = Vec::new();
         for s in stmts {
-            self.stmt(s, region);
+            let here = open.last().copied().unwrap_or(region);
+            match marker(s) {
+                Some((start, true)) => {
+                    let r = self.parents.len();
+                    self.parents.push(Some(here));
+                    self.arenas.insert(r, start);
+                    open.push(r);
+                }
+                Some((_, false)) => {
+                    open.pop();
+                }
+                None => self.stmt(s, here),
+            }
         }
     }
 
@@ -222,6 +260,9 @@ impl Facts {
                     _ if e.ty == Ty::Owned => {
                         self.allocations += 1;
                         Self::mark(&mut self.fresh, *l);
+                        if let Some(at) = self.fresh_at.get_mut(l.0 as usize) {
+                            at.push(region);
+                        }
                     }
                     _ => {}
                 }
@@ -419,6 +460,106 @@ impl Facts {
     }
 }
 
+impl Facts {
+    /// The innermost `arena { … }` region holding `r`.
+    fn arena_of(&self, mut r: Region) -> Option<Region> {
+        loop {
+            if self.arenas.contains_key(&r) {
+                return Some(r);
+            }
+            r = self.parents.get(r).copied().flatten()?;
+        }
+    }
+
+    /// Prototype a1: the home of each local made in an `arena { … }` block,
+    /// that block; and each value made in one that outlives it, by the
+    /// block's start and one of its locals.
+    fn homes_a1(&mut self) -> (Vec<Option<Region>>, Vec<(u32, LocalId)>) {
+        let n = self.class.len();
+        let mut classes: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for l in 0..n {
+            let c = self.find(l);
+            classes.entry(c).or_default().push(l);
+        }
+        let mut homes = vec![None; n];
+        let mut escapes = Vec::new();
+        let flag = |v: &[bool], l: usize| v.get(l).copied().unwrap_or(true);
+        for locals in classes.values() {
+            let made: Vec<(usize, Region)> = locals
+                .iter()
+                .flat_map(|&l| {
+                    self.fresh_at
+                        .get(l)
+                        .into_iter()
+                        .flatten()
+                        .map(move |&r| (l, r))
+                })
+                .collect();
+            let Some(&(first, first_at)) = made.iter().find(|&&(_, r)| self.arena_of(r).is_some())
+            else {
+                continue;
+            };
+            let mut meet_made = first_at;
+            for &(_, r) in &made {
+                meet_made = self.meet(meet_made, r);
+            }
+            let mut all = meet_made;
+            for &l in locals {
+                for &m in self.mentions.get(l).map_or(&[][..], Vec::as_slice) {
+                    all = self.meet(all, m);
+                }
+            }
+            let block = self.arena_of(meet_made);
+            let leaves = locals
+                .iter()
+                .any(|&l| flag(&self.foreign, l) || flag(&self.leaves, l));
+            match block {
+                Some(b) if !leaves && self.within(all, b) => {
+                    for &l in locals {
+                        if let Some(slot) = homes.get_mut(l) {
+                            *slot = Some(b);
+                        }
+                    }
+                }
+                _ => {
+                    let at = self
+                        .arena_of(first_at)
+                        .and_then(|b| self.arenas.get(&b))
+                        .copied()
+                        .unwrap_or(0);
+                    escapes.push((at, local(first)));
+                }
+            }
+        }
+        (homes, escapes)
+    }
+}
+
+/// A mark of an `arena { … }` block (prototype a1): its start, and whether
+/// it opens the block.
+fn marker(s: &Stmt) -> Option<(u32, bool)> {
+    if let Stmt::Expr(Expr {
+        kind: ExprKind::Buf(BufOp::Runtime(f), args),
+        ..
+    }) = s
+        && let [
+            Expr {
+                kind: ExprKind::Const(Const::Int(at)),
+                ..
+            },
+        ] = args.as_slice()
+        && *at < 0
+    {
+        let start = u32::try_from(-1 - *at).ok()?;
+        return match f {
+            RuntimeFn::ArenaReset => Some((start, true)),
+            RuntimeFn::ArenaFlag => Some((start, false)),
+            _ => None,
+        };
+    }
+    None
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Use {
     /// Read, or consumed where it is.
@@ -540,13 +681,19 @@ struct Plan {
     homes: Vec<Option<Region>>,
     /// The homes that are a loop's turn, given their room back each turn.
     resetting: Vec<Region>,
+    /// Prototype a1: values made in a block that outlive it.
+    escapes: Vec<(u32, LocalId)>,
     wrapped_allocations: usize,
 }
 
 impl Plan {
-    fn of(f: &Function) -> Self {
+    fn of(f: &Function, blocks: bool) -> Self {
         let mut facts = Facts::of(f);
-        let homes = facts.homes();
+        let (homes, escapes) = if blocks {
+            facts.homes_a1()
+        } else {
+            (facts.homes(), Vec::new())
+        };
         let mut resetting: Vec<Region> = homes
             .iter()
             .flatten()
@@ -559,6 +706,7 @@ impl Plan {
             facts,
             homes,
             resetting,
+            escapes,
             wrapped_allocations: 0,
         };
         let mut counter = Counter::default();
@@ -568,7 +716,21 @@ impl Plan {
     }
 
     fn count(&self, stmts: &[Stmt], region: Region, c: &mut Counter) {
+        let mut open: Vec<Region> = Vec::new();
         for s in stmts {
+            let region = open.last().copied().unwrap_or(region);
+            match marker(s) {
+                Some((_, true)) => {
+                    c.loops += 1;
+                    open.push(c.loops);
+                    continue;
+                }
+                Some((_, false)) => {
+                    open.pop();
+                    continue;
+                }
+                None => {}
+            }
             match s {
                 Stmt::If {
                     then, otherwise, ..
@@ -668,8 +830,25 @@ struct Writer<'a> {
 impl Writer<'_> {
     fn block(&mut self, stmts: Vec<Stmt>, region: Region) -> Vec<Stmt> {
         let mut out = Vec::with_capacity(stmts.len());
+        let mut open: Vec<Region> = Vec::new();
         for s in stmts {
-            self.stmt(s, region, &mut out);
+            let here = open.last().copied().unwrap_or(region);
+            match marker(&s) {
+                Some((_, true)) => {
+                    self.loops += 1;
+                    let r = self.loops;
+                    open.push(r);
+                    if let Some(&mark) = self.marks.get(&r) {
+                        out.push(Stmt::Set(mark, runtime(RuntimeFn::ArenaMark, vec![int(0)])));
+                    }
+                }
+                Some((_, false)) => {
+                    if let Some(mark) = open.pop().and_then(|r| self.marks.get(&r).copied()) {
+                        out.push(reset(mark));
+                    }
+                }
+                None => self.stmt(s, here, &mut out),
+            }
         }
         out
     }

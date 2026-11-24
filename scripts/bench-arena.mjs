@@ -1,6 +1,7 @@
 // Decision 0043's protocol: arenas. Each option is a prototype the compiler
-// builds when PERAS_PROTO_ARENA is `a2` (arenas chosen by the compiler) or
-// `a3` (more sizes kept by TLSF); without it, a0, today.
+// builds when PERAS_PROTO_ARENA is `a1` (`arena { … }` blocks written, the
+// versions of bench/arena/a1), `a2` (arenas chosen by the compiler) or `a3`
+// (more sizes kept by TLSF); without it, a0, today.
 //
 // The workloads, owned modules built for production (`--allocator tlsf`),
 // each option's module and a0's loaded in one process and checked to give
@@ -13,7 +14,7 @@
 //        --check: one round, the results checked, nothing written.
 // Writes bench/arena/RESULTS.md, unless --check.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { basename, join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -31,6 +32,7 @@ const perasc = join(root, "target", "release", "perasc");
 /** @type {Record<string, string>} */
 const OPTIONS = {
   a0: "a0, today",
+  a1: "a1, `arena { … }` written",
   a2: "a2, chosen by the compiler",
   a3: "a3, more sizes kept",
 };
@@ -46,6 +48,7 @@ mkdirSync(join(work, "js"), { recursive: true });
  */
 function build(source, option) {
   const dir = join(work, `${basename(source, ".peras")}-${option}`);
+  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const env = { ...process.env, PERAS_PROTO_ARENA: option === "a0" ? "" : option };
   const args = ["build", source, "--out", dir, "--color", "never", "--allocator", "tlsf"];
@@ -133,7 +136,8 @@ for (const [label, source, fn, args] of workloads) {
   /** @type {Record<string, { m: Loaded, bytes: { raw: number, gzip: number } }>} */
   const modules = {};
   for (const o of options) {
-    const built = build(source, o);
+    const own = join(bench, "a1", basename(source));
+    const built = build(o === "a1" && existsSync(own) ? own : source, o);
     modules[o] = { m: await load(built.js), bytes: built.bytes };
   }
   const want = same(modules.a0?.m[fn]?.(...args));

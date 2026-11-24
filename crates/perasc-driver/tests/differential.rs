@@ -174,6 +174,8 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         // Decision 0043: a grid of the turn, grown inside a loop whose turns
         // have values of their own, which an arena gives back each turn;
         // the grid's rows must not be in that room.
+        // Under prototype a1, the same in written arenas, one in the other.
+        49 if std::env::var("PERAS_PROTO_ARENA").is_ok_and(|v| v == "a1") => "arena { let grid: Array<Array<i32>> = []; for (let c = 0; c < 4; c++) { grid.push([]); } for (let t = 0; t < 6; t++) { arena { const tmp = `${t}${k}`; grid[t % 4].push(tmp.length + i); let near: Array<i32> = [t]; near.push(tmp.length); acc += near.length + near[1]; } } for (const row of grid) { acc += row.length; for (const x of row) { acc += x % 5; } } }".to_owned(),
         49 => "let grid: Array<Array<i32>> = []; for (let c = 0; c < 4; c++) { grid.push([]); } for (let t = 0; t < 6; t++) { const tmp = `${t}${k}`; grid[t % 4].push(tmp.length + i); let near: Array<i32> = [t]; near.push(tmp.length); acc += near.length + near[1]; } for (const row of grid) { acc += row.length; for (const x of row) { acc += x % 5; } }".to_owned(),
         // A string built in a callee's loop and returned: it leaves the call.
         50 => "const j = joined(i % 6); acc += j.length + joined(2).length;".to_owned(),
@@ -351,7 +353,10 @@ fn run_wasm(
         perasc_runtime::Allocator::Debug => perasc_runtime::DEBUG_ALLOCATOR,
         // Decision 0043's prototypes: the runtime the build would link.
         perasc_runtime::Allocator::Tlsf => {
-            let proto = std::env::var("PERAS_PROTO_ARENA").unwrap_or_default();
+            // a1 links a2's runtime: the same arena, other homes.
+            let proto = std::env::var("PERAS_PROTO_ARENA")
+                .unwrap_or_default()
+                .replace("a1", "a2");
             perasc_runtime::tlsf_prototype(&proto, true).unwrap_or(perasc_runtime::TLSF_ALLOCATOR)
         }
     };

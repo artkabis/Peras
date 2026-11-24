@@ -1180,6 +1180,19 @@ impl<'src> Parser<'src> {
                     other => other,
                 }
             }
+            // `arena { … }` (decision 0043, prototype a1).
+            TokenKind::Ident
+                if self.at_word("arena")
+                    && self.nth(1).kind == TokenKind::LBrace
+                    && std::env::var("PERAS_PROTO_ARENA").is_ok_and(|v| v == "a1") =>
+            {
+                self.bump();
+                let kind = self.block_stmt();
+                if let StmtKind::Block(block) = &kind {
+                    self.ast.arenas.push(block.span);
+                }
+                kind
+            }
             TokenKind::Break | TokenKind::Continue => self.jump_stmt(),
             TokenKind::Ident if self.at_word("var") && self.nth(1).kind == TokenKind::Ident => {
                 let token = self.peek();

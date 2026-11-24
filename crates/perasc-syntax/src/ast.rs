@@ -70,6 +70,9 @@ pub struct Ast {
     pub exprs: Vec<Expr>,
     /// Every name of the module.
     pub interner: Interner,
+    /// The blocks written `arena { … }`, by their span (decision 0043,
+    /// prototype a1, parsed only under `PERAS_PROTO_ARENA=a1`).
+    pub arenas: Vec<Span>,
 }
 
 impl Ast {
