@@ -1,7 +1,9 @@
 //! Statements: declarations, assignments, control flow and returns.
 
 use perasc_diag::Span;
-use perasc_syntax::ast::{AssignOp, Convention, ExprId, ExprKind, Stmt, StmtKind, Symbol};
+use perasc_syntax::ast::{
+    AssignOp, BinaryOp, Convention, ExprId, ExprKind, Stmt, StmtKind, Symbol, UnaryOp,
+};
 
 use crate::errors::{self, ConditionFix, Immutable};
 use crate::scope::Kind;
@@ -17,13 +19,22 @@ impl Checker<'_> {
         let mut narrowed: Vec<Undo> = Vec::new();
         for stmt in stmts {
             self.stmt(stmt);
-            if let Some(narrow) = self.narrowing(stmt)
-                && let Some(undo) = self.narrow(narrow)
-            {
-                narrowed.push(undo);
-            }
+            let after = self.narrowing(stmt);
+            narrowed.extend(self.narrow_all(after));
         }
         for undo in narrowed.into_iter().rev() {
+            self.undo(undo);
+        }
+    }
+
+    /// Narrows each of them, in order: what gives them back, in order.
+    pub(crate) fn narrow_all(&mut self, narrows: Vec<Narrow>) -> Vec<Undo> {
+        narrows.into_iter().filter_map(|n| self.narrow(n)).collect()
+    }
+
+    /// Gives back what [`Self::narrow_all`] changed.
+    pub(crate) fn undo_all(&mut self, undos: Vec<Undo>) {
+        for undo in undos.into_iter().rev() {
             self.undo(undo);
         }
     }
@@ -59,40 +70,127 @@ impl Checker<'_> {
         }
     }
 
-    /// The variable an `if (x.isNone()) { … }` that leaves narrows, and the
-    /// type of its value: a `const` or a parameter not `inout` (decision
-    /// 0028, option 2e).
-    fn narrowing(&self, stmt: &Stmt) -> Option<Narrow> {
+    /// What an `if` whose block leaves narrows after it, and the type of
+    /// each value: a `const` or a parameter not `inout`, or a field of one
+    /// (decision 0028, option 2e). Under decision 0045's n1, each option of
+    /// a chain of `||` tested `isNone()`; under n2, the facts of its
+    /// condition when false, or when true after an `else` that leaves.
+    fn narrowing(&self, stmt: &Stmt) -> Vec<Narrow> {
         if crate::proto("PERAS_PROTO_TAKE") != "e" {
-            return None;
+            return Vec::new();
         }
         let StmtKind::If {
             cond,
             then,
-            otherwise: None,
+            otherwise,
         } = &stmt.kind
         else {
-            return None;
+            return Vec::new();
         };
-        if !crate::never_ends(self.ast, std::slice::from_ref(&**then)) {
-            return None;
+        let leaves = |s: &Stmt| crate::never_ends(self.ast, std::slice::from_ref(s));
+        match otherwise {
+            None if leaves(then) => self.facts(*cond).when_false,
+            Some(otherwise) if crate::narrow_proto() == "n2" => {
+                if leaves(then) {
+                    self.facts(*cond).when_false
+                } else if leaves(otherwise) {
+                    self.facts(*cond).when_true
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
         }
-        let ExprKind::Call { callee, args, .. } = &self.ast.expr(*cond).kind else {
-            return None;
-        };
-        let ExprKind::Field { base, name } = &self.ast.expr(*callee).kind else {
-            return None;
-        };
-        if !args.is_empty() || self.name(name.symbol) != "isNone" {
-            return None;
-        }
-        self.fixed_option(*base)
     }
 
-    /// `x.isSome()`, `x` an option that cannot change: its binding and the
-    /// type of its value, which `x` has in the block the test guards
-    /// (finding F115).
-    fn some_test(&self, cond: ExprId) -> Option<Narrow> {
+    /// What a condition proves, under the option of decision 0045 a build
+    /// follows: under n0, `x.isSome()` its value when true, `x.isNone()`
+    /// when false; under n1, each such test of a chain of `&&` when true,
+    /// of `||` when false; under n2, through `!`, `&&` and `||`.
+    pub(crate) fn facts(&self, cond: ExprId) -> Facts {
+        match crate::narrow_proto() {
+            "n2" => self.facts_n2(cond),
+            "n1" => Facts {
+                when_true: self.chain(cond, BinaryOp::And, "isSome"),
+                when_false: self.chain(cond, BinaryOp::Or, "isNone"),
+            },
+            _ => Facts {
+                when_true: self.option_test(cond, "isSome").into_iter().collect(),
+                when_false: self.option_test(cond, "isNone").into_iter().collect(),
+            },
+        }
+    }
+
+    /// What the left operand of `&&` (`true`) or `||` (`false`) proves to
+    /// the right one, under decision 0045's prototypes; nothing under n0.
+    pub(crate) fn operand_facts(&self, lhs: ExprId, and: bool) -> Vec<Narrow> {
+        if crate::narrow_proto() == "n0" {
+            return Vec::new();
+        }
+        let facts = self.facts(lhs);
+        if and {
+            facts.when_true
+        } else {
+            facts.when_false
+        }
+    }
+
+    /// Decision 0045's n1: the tests `x.<test>()` of a chain of `op`.
+    fn chain(&self, cond: ExprId, op: BinaryOp, test: &str) -> Vec<Narrow> {
+        match &self.ast.expr(cond).kind {
+            ExprKind::Paren(inner) => self.chain(*inner, op, test),
+            ExprKind::Binary { op: o, lhs, rhs } if *o == op => {
+                let mut all = self.chain(*lhs, op, test);
+                all.extend(self.chain(*rhs, op, test));
+                all
+            }
+            _ => self.option_test(cond, test).into_iter().collect(),
+        }
+    }
+
+    /// Decision 0045's n2: the facts of a condition, through `!`, `&&` and
+    /// `||`, as TypeScript keeps them.
+    fn facts_n2(&self, cond: ExprId) -> Facts {
+        match &self.ast.expr(cond).kind {
+            ExprKind::Paren(inner) => self.facts_n2(*inner),
+            ExprKind::Unary {
+                op: UnaryOp::Not,
+                operand,
+            } => {
+                let inner = self.facts_n2(*operand);
+                Facts {
+                    when_true: inner.when_false,
+                    when_false: inner.when_true,
+                }
+            }
+            ExprKind::Binary {
+                op: op @ (BinaryOp::And | BinaryOp::Or),
+                lhs,
+                rhs,
+            } => {
+                let (a, b) = (self.facts_n2(*lhs), self.facts_n2(*rhs));
+                if *op == BinaryOp::And {
+                    Facts {
+                        when_true: union(a.when_true, b.when_true),
+                        when_false: common(a.when_false, &b.when_false),
+                    }
+                } else {
+                    Facts {
+                        when_true: common(a.when_true, &b.when_true),
+                        when_false: union(a.when_false, b.when_false),
+                    }
+                }
+            }
+            _ => Facts {
+                when_true: self.option_test(cond, "isSome").into_iter().collect(),
+                when_false: self.option_test(cond, "isNone").into_iter().collect(),
+            },
+        }
+    }
+
+    /// `x.isSome()` or `x.isNone()`, `x` an option that cannot change: its
+    /// binding and the type of its value (finding F115).
+    fn option_test(&self, cond: ExprId, test: &str) -> Option<Narrow> {
         if crate::proto("PERAS_PROTO_TAKE") != "e" {
             return None;
         }
@@ -102,7 +200,7 @@ impl Checker<'_> {
         let ExprKind::Field { base, name } = &self.ast.expr(*callee).kind else {
             return None;
         };
-        if !args.is_empty() || self.name(name.symbol) != "isSome" {
+        if !args.is_empty() || self.name(name.symbol) != test {
             return None;
         }
         self.fixed_option(*base)
@@ -259,22 +357,8 @@ impl Checker<'_> {
                 cond,
                 then,
                 otherwise,
-            } => {
-                self.condition(*cond);
-                // `if (x.isSome()) { … }`: `x` is its value in the block.
-                let narrowed = self.some_test(*cond).and_then(|n| self.narrow(n));
-                self.scoped(then);
-                if let Some(undo) = narrowed {
-                    self.undo(undo);
-                }
-                if let Some(otherwise) = otherwise {
-                    self.scoped(otherwise);
-                }
-            }
-            StmtKind::While { cond, body } => {
-                self.condition(*cond);
-                self.scoped(body);
-            }
+            } => self.if_stmt(*cond, then, otherwise.as_deref()),
+            StmtKind::While { cond, body } => self.while_stmt(*cond, body),
             StmtKind::For {
                 parallel,
                 init,
@@ -327,6 +411,40 @@ impl Checker<'_> {
             }
             StmtKind::Break | StmtKind::Continue | StmtKind::Error => {}
         }
+    }
+
+    /// An `if`: `if (x.isSome()) { … }`, `x` is its value in the block;
+    /// under decision 0045's n2, `if (x.isNone()) … else { … }` in the
+    /// `else`.
+    fn if_stmt(&mut self, cond: ExprId, then: &Stmt, otherwise: Option<&Stmt>) {
+        self.condition(cond);
+        let facts = self.facts(cond);
+        let narrowed = self.narrow_all(facts.when_true);
+        self.scoped(then);
+        self.undo_all(narrowed);
+        if let Some(otherwise) = otherwise {
+            let narrowed = if crate::narrow_proto() == "n2" {
+                self.narrow_all(facts.when_false)
+            } else {
+                Vec::new()
+            };
+            self.scoped(otherwise);
+            self.undo_all(narrowed);
+        }
+    }
+
+    /// A `while`; under decision 0045's n2, its body with what its condition
+    /// proves.
+    fn while_stmt(&mut self, cond: ExprId, body: &Stmt) {
+        self.condition(cond);
+        let narrowed = if crate::narrow_proto() == "n2" {
+            let facts = self.facts(cond);
+            self.narrow_all(facts.when_true)
+        } else {
+            Vec::new()
+        };
+        self.scoped(body);
+        self.undo_all(narrowed);
     }
 
     /// The element type of what a `for…of` walks: an array's elements, a
@@ -571,6 +689,41 @@ impl Checker<'_> {
     }
 }
 
+/// What a condition proves when it is true, and when it is false (decision
+/// 0045).
+pub(crate) struct Facts {
+    pub(crate) when_true: Vec<Narrow>,
+    pub(crate) when_false: Vec<Narrow>,
+}
+
+/// The narrowings of both, each once.
+fn union(mut a: Vec<Narrow>, b: Vec<Narrow>) -> Vec<Narrow> {
+    for n in b {
+        if !a.iter().any(|m| m.same_place(&n)) {
+            a.push(n);
+        }
+    }
+    a
+}
+
+/// The narrowings of `a` that `b` has too.
+fn common(a: Vec<Narrow>, b: &[Narrow]) -> Vec<Narrow> {
+    a.into_iter()
+        .filter(|n| b.iter().any(|m| m.same_place(n)))
+        .collect()
+}
+
+impl Narrow {
+    /// Whether two narrowings are of one binding or one field.
+    fn same_place(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Name(a, _), Self::Name(b, _)) => a == b,
+            (Self::Field(a, p, _), Self::Field(b, q, _)) => a == b && p == q,
+            _ => false,
+        }
+    }
+}
+
 /// What a test narrows (decision 0028, finding F115): a binding, or a field
 /// path from one, to the type of its option's value.
 pub(crate) enum Narrow {
@@ -579,7 +732,7 @@ pub(crate) enum Narrow {
 }
 
 /// How to give back what a narrowing changed.
-enum Undo {
+pub(crate) enum Undo {
     Name(usize, Ty, Option<Ty>),
     Field(usize),
 }

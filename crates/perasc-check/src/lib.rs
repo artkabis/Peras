@@ -403,6 +403,18 @@ pub fn proto(variable: &str) -> String {
         .unwrap_or_else(|| chosen.to_owned())
 }
 
+/// Decision 0045's prototype a build follows: `n1` (chains of `&&` and
+/// `||`) or `n2` (facts, as TypeScript keeps them) under
+/// `PERAS_PROTO_NARROW`, n0 (as before) otherwise; read once.
+pub(crate) fn narrow_proto() -> &'static str {
+    static OPTION: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    OPTION.get_or_init(|| match std::env::var("PERAS_PROTO_NARROW").as_deref() {
+        Ok("n1") => "n1",
+        Ok("n2") => "n2",
+        _ => "n0",
+    })
+}
+
 /// Whether an integer literal takes the float type it is used as (decision
 /// 0030, option b, the default; c too); option a and `before`, today's
 /// refusal, for `scripts/bench-numbers.mjs` only.

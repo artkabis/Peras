@@ -61,10 +61,17 @@ fn value(r: &mut XorShift) -> &'static str {
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
     // Decision 0044, prototypes: one statement more, a pool, when one is set.
     let pool = std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| !v.is_empty());
-    let choices = if depth == 0 { 49 } else { 50 } + usize::from(pool);
+    // Decision 0045, prototypes: two statements more that narrow an option
+    // through `&&`, `||`, and under n2 `!` and `else`.
+    let narrow = std::env::var("PERAS_PROTO_NARROW").unwrap_or_default();
+    let narrows = matches!(narrow.as_str(), "n1" | "n2");
+    let choices = if depth == 0 { 49 } else { 50 } + usize::from(pool) + 2 * usize::from(narrows);
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
+        c if narrows && c == choices - 1 => "const o = nums.get(i % 7); if (o.isSome() && o % 3 == 1) { acc += o; } if (o.isNone() || o > 40) { acc += 1; continue; } acc += o * 2;".to_owned(),
+        c if narrows && c == choices - 2 && narrow == "n2" => "const o = nums.get(i % 5); if (o.isNone()) { acc += 3; } else { acc += o % 9; } const q = names.get(i % 6); if (!q.isSome()) { acc += 2; continue; } acc += q.length; if (!(o.isNone() || o < 5)) { acc += o; }".to_owned(),
+        c if narrows && c == choices - 2 => "const o = names.get(i % 6); if (acc % 2 == 0 && o.isSome() && o.length > 1) { acc += o.length; } const q = nums.get(i % 3); if (q.isNone() || q < 2 || acc % 5 == 0) { acc += 2; continue; } acc += q;".to_owned(),
         0 => format!("if (!m.has({k})) {{ m.set({}, {v}); }}", owned_key(&k)),
         1 => format!("acc += m.get({k}).unwrapOr({v});"),
         2 => format!("if (m.has({k})) {{ acc += {v}; }}"),

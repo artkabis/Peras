@@ -601,13 +601,21 @@ impl Checker<'_> {
         expected: Option<&Ty>,
     ) -> Ty {
         if matches!(op, BinaryOp::And | BinaryOp::Or) {
+            let mut narrowed = Vec::new();
             for side in [lhs, rhs] {
                 let ty = self.infer(side, Some(&Ty::Bool));
                 if !matches!(ty, Ty::Bool | Ty::Error) {
                     let side_span = self.ast.expr(side).span;
                     self.report(errors::invalid_operator(side_span, op.symbol(), &ty));
                 }
+                // Decision 0045: the right operand with what the left one
+                // proves, true for `&&`, false for `||`.
+                if side == lhs {
+                    let facts = self.operand_facts(lhs, op == BinaryOp::And);
+                    narrowed = self.narrow_all(facts);
+                }
             }
+            self.undo_all(narrowed);
             return Ty::Bool;
         }
         // Operands of a comparison are guided by each other, not by the `bool` result.
