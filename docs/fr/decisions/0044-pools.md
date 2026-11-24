@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0044-pools.md](../../en/decisions/0044-pools.md)._
 
-_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet. C’est le pas de la phase 6 de la [feuille de route](../reference/roadmap.md) qui suit les arènes ([décision 0043](0043-arenas.md)), « l’allocateur `Pool<T>` », et il vient avant `@frame` et l’étude de la mémoire chargée selon la proximité, qui a besoin d’un budget fixe de places. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
+_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; charges amendées deux fois avant toute mesure ; options mesurées au commit `5194fdb` ; proposition : p0 reste, au propriétaire de décider. C’est le pas de la phase 6 de la [feuille de route](../reference/roadmap.md) qui suit les arènes ([décision 0043](0043-arenas.md)), « l’allocateur `Pool<T>` », et il vient avant `@frame` et l’étude de la mémoire chargée selon la proximité, qui a besoin d’un budget fixe de places. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
 
 ## Contexte
 
@@ -76,4 +76,31 @@ Pour comparer des temps, chaque option doit calculer la même chose. Dans p0, le
 
 Écrites pour p1 (`bench/pool/p1/`), W1 et W2 ont rencontré cinq erreurs, toutes d’une même friction qui n’est pas celle des pools : une option n’est pas restreinte dans une condition jointe par `&&` ou `||` (`p.isSome() && sparks.has(p)`) ; séparées en deux `if`, elles se construisent. W3 et la lecture périmée se sont construites du premier coup. Sous p1, W1, W2 et W3 donnent ce que donne p0, deux fois sur une même instance, et la lecture périmée donne `-1`, attrapée ; sous p2, la lecture périmée donne `99`, W1 et W2 donnent d’autres nombres, et **W2 de 100 000 nœuds ne se termine jamais** : la poignée d’un parent retiré désigne la nouvelle valeur de sa place, qui peut être un de ses propres descendants, et la remontée des parents tourne en rond.
 
-_À venir : les prototypes, la mesure, la proposition._
+### Les prototypes (2026-11-24)
+
+- **p1 et p2** (`PERAS_PROTO_POOL=p1|p2`) : le compilateur ajoute `Pool<T>` à un programme qui le nomme, sa source écrite en Peras (`crates/perasc-driver/src/pool/p1.peras`, `p2.peras`) ; le vérificateur type `pool[h]`, un pool indexé par une poignée, comme son élément (`Analysis::pool_indexes`), et le pilote récrit chacun en `pool.values[pool.slotOrFault(h)]`, puis vérifie de nouveau le programme, pour que chaque chemin qui lit ou écrit une place le construise comme il construit l’élément d’un tableau. **Écart** : « intégré au compilateur » est construit comme une source que le compilateur ajoute et une réécriture, pas comme un nouveau type de l’abaissement avec son propre runtime ; un abaissement à lui, sa génération dans la même colonne que sa valeur, n’a pas été construit, et sa vitesse n’est pas mesurée ici.
+- **p3** (`PERAS_PROTO_POOL=p3`) : `import { Pool, Handle } from "peras:pool"` devient des blancs de sa longueur, et la source du pool (`pool/p3.peras`) est ajoutée après le programme ; une valeur est atteinte par `slot(h)`.
+- Chacune passe `cargo test --workspace` avec sa variable posée et le test différentiel avec `PERAS_DIFFERENTIAL_SEEDS=2000`, son générateur écrivant un pool dont les valeurs sont insérées, retirées et lues par des poignées gardées à travers les retraits. **Écart** : ce test compare l’IR telle qu’écrite à l’IR optimisée, la source du pool des deux côtés, donc il ne peut pas voir un pool mal écrit (constat M026) ; `scripts/bench-pool.mjs --check` le voit : p1 dont la génération n’est pas comparée lit la poignée périmée comme `99`, et le contrôle échoue.
+
+### La mesure (2026-11-24)
+
+Au commit `5194fdb`, `node scripts/bench-pool.mjs`, 21 tours ([résultats](../../../bench/pool/RESULTS.md)) ; puis `check-regression` contre `d7bf515` pour chaque option.
+
+|     | W1, les étincelles | W2, la scène             | W3, les blocs | W4               | mémoire, W1 et W2    | la lecture périmée |
+| --- | ------------------ | ------------------------ | ------------- | ---------------- | -------------------- | ------------------ |
+| p0  | 1,000              | 1,000                    | 1,000         | 1,000            | 1 856 Kio, 6 464 Kio | 99, en silence     |
+| p1  | 2,237              | 1,421                    | 1,215         | module identique | 2 496 Kio, 7 744 Kio | **-1, attrapée**   |
+| p2  | un autre résultat  | **ne se termine jamais** | 1,084         | module identique |                      | 99, en silence     |
+| p3  | 1,441              | 1,424                    | 1,126         | module identique | 2 496 Kio, 7 744 Kio | **-1, attrapée**   |
+
+Lignes de W1, W2 et W3, lignes vides et commentaires à part : p0 63, 70, 56 ; p1 et p2 39, 51, 57 ; p3 45, 59, 61. Erreurs rencontrées : p0, six `E0210` et un dépassement dans une construction de développement ; p1, cinq, toutes d’une friction qui n’est pas celle des pools (constat F118) ; p3, aucune, écrite après p1. `check-regression` : sur 260 modules, aucun plus grand ni changé sous aucune option ; le compilateur à 1,025, 1,025 et 0,991 fois son temps.
+
+Face aux critères enregistrés :
+
+- **p2 est écartée** : pas plus sûre que p0, et sur W2 elle ne se termine jamais : la poignée d’un parent retiré désigne la nouvelle valeur de sa place, qui peut être un de ses propres descendants.
+- **p1 est écartée** : plus sûre, et plus courte sur W1 et W2, mais de 1,215 à 2,237 fois le temps de p0, au-dessus de 1,05, sa mémoire 1,34 fois sur W1 et 1,20 sur W2, au-dessus de 1,10 et de plus d’une page, et une ligne de plus sur W3.
+- **p3 est écartée** : plus sûre, mais de 1,126 à 1,441 fois le temps de p0, la même mémoire que p1, et cinq lignes de plus sur W3.
+
+### Proposition
+
+**p0 reste** : aucune option ne remplit les critères enregistrés. Les prototypes sont retirés, leurs chiffres gardés ici et leur code dans git au commit `5194fdb`. Ce que la mesure apprend : une poignée qui porte sa génération attrape chaque lecture périmée, et un programme écrit avec elle est plus court là où les valeurs pointent les unes vers les autres (W1, W2) ; bâtie sur des tableaux en Peras, sa vérification payée à chaque accès coûte de 13 à 124 % de temps et de 20 à 34 % de mémoire sur ces charges. p1, récrite en `slotOrFault`, vérifie la génération de nouveau à chaque `pool[h]`, jusqu’à neuf par étincelle dans W1, là où p3 la vérifie avec `slot(h)` une fois par étincelle et une fois par parent ; que cela explique leur écart sur W1 n’a pas été mesuré. Un pool abaissé par le compilateur lui-même, sa génération gardée à côté de sa valeur et vérifiée une fois par accès, n’a pas été construit et n’est pas classé sur une supposition (constat M001) ; c’est l’option à mesurer si la sûreté des poignées est voulue de nouveau. `@frame` et l’étude de proximité, qui attendent un budget fixe de places, peuvent prendre des tableaux et des indices comme p0 les écrit, comme le fait W3. Le propriétaire décide.

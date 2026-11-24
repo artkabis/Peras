@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0044-pools.md](../../fr/decisions/0044-pools.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; workloads amended twice before any measure; options measured at `5194fdb`; proposal: p0 stays, for the owner to decide. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -76,4 +76,31 @@ To compare times, every option must compute the same. In p0, a spark's parent an
 
 Written for p1 (`bench/pool/p1/`), W1 and W2 met five errors, all from one friction that is not the pools': an option is not narrowed inside a condition joined by `&&` or `||` (`p.isSome() && sparks.has(p)`); split into two `if`, they build. W3 and the stale read built first time. Under p1, W1, W2 and W3 give what p0 gives, twice on one instance, and the stale read gives `-1`, caught; under p2 the stale read gives `99`, W1 and W2 give other numbers, and **W2 of 100,000 nodes never ends**: a handle of a removed parent names the new value of its slot, which can be one of its own descendants, and the walk up the parents turns in a circle.
 
-_To come: the prototypes, the measure, the proposal._
+### The prototypes (2026-11-24)
+
+- **p1 and p2** (`PERAS_PROTO_POOL=p1|p2`): the compiler adds `Pool<T>` to a program that names it, its source written in Peras (`crates/perasc-driver/src/pool/p1.peras`, `p2.peras`); the checker types `pool[h]`, a pool indexed by a handle, as its element (`Analysis::pool_indexes`), and the driver writes each one again as `pool.values[pool.slotOrFault(h)]`, then checks the program again, so that every path that reads or writes a place builds it as it builds an array's element. **Departure**: "built into the compiler" is built as a source the compiler adds and a rewriting, not as a new type of the lowering with its own runtime; a lowering of its own, its generation in the same column as its value, was not built, and its speed is not measured here.
+- **p3** (`PERAS_PROTO_POOL=p3`): `import { Pool, Handle } from "peras:pool"` becomes blanks of its length, and the pool's source (`pool/p3.peras`) is added after the program; a value is reached through `slot(h)`.
+- Each passes `cargo test --workspace` with its variable set and the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000`, its generator writing a pool whose values are inserted, removed and read through handles kept across removals. **Departure**: that test compares the IR as written with the IR optimized, the pool's source on both sides, so it cannot see a pool written wrong (finding M026); `scripts/bench-pool.mjs --check` sees it: p1 with its generation not compared reads the stale handle as `99`, and the check fails.
+
+### The measure (2026-11-24)
+
+At `5194fdb`, `node scripts/bench-pool.mjs`, 21 rounds ([results](../../../bench/pool/RESULTS.md)); then `check-regression` against `d7bf515` for each option.
+
+|     | W1, the sparks | W2, the scene  | W3, the chunks | W4               | memory, W1 and W2    | the stale read |
+| --- | -------------- | -------------- | -------------- | ---------------- | -------------------- | -------------- |
+| p0  | 1.000          | 1.000          | 1.000          | 1.000            | 1,856 KiB, 6,464 KiB | 99, in silence |
+| p1  | 2.237          | 1.421          | 1.215          | identical module | 2,496 KiB, 7,744 KiB | **-1, caught** |
+| p2  | another result | **never ends** | 1.084          | identical module |                      | 99, in silence |
+| p3  | 1.441          | 1.424          | 1.126          | identical module | 2,496 KiB, 7,744 KiB | **-1, caught** |
+
+Lines of W1, W2 and W3, blank lines and comments apart: p0 63, 70, 56; p1 and p2 39, 51, 57; p3 45, 59, 61. Errors met: p0, six `E0210` and an overflow in a development build; p1, five, all of one friction that is not the pools' (finding F118); p3, none, written after p1. `check-regression`: of 260 modules, none larger and none changed under any option; the compiler 1.025, 1.025 and 0.991 times its time.
+
+Against the criteria registered:
+
+- **p2 is out**: no safer than p0, and on W2 it never ends: a removed parent's handle names its slot's new value, which can be one of its own descendants.
+- **p1 is out**: safer, and shorter on W1 and W2, but 1.215 to 2.237 times p0's time, above 1.05, its memory 1.34 times on W1 and 1.20 on W2, above 1.10 and more than a page, and one line more on W3.
+- **p3 is out**: safer, but 1.126 to 1.441 times p0's time, the same memory as p1, and five lines more on W3.
+
+### Proposal
+
+**p0 stays**: no option meets the criteria registered. The prototypes are removed, their figures kept here and their code in git at `5194fdb`. What the measure teaches: a handle that carries its generation catches every stale read, and a program written with one is shorter where values point to one another (W1, W2); built over arrays in Peras, its check paid on every access costs 13 to 124 % of time and 20 to 34 % of memory on these workloads. p1, rewritten as `slotOrFault`, checks the generation again at each `pool[h]`, up to nine per spark in W1, where p3 checks it with `slot(h)` once per spark and once per parent; that this explains their difference on W1 was not measured. A pool lowered by the compiler itself, its generation kept beside its value and checked once per reach, was not built and is not ranked by a guess (finding M001); it is the option to measure if the safety of handles is wanted again. `@frame` and the study of proximity, which wait for a fixed budget of slots, can take arrays and indices as p0 writes them, as W3 does. The owner decides.
