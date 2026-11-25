@@ -1,0 +1,120 @@
+// Decision 0047, A3 with f3: f2's version, its `Framebuffer` imported from
+// framebuffer-f3.peras, whose channel rounds in one instruction.
+import { Framebuffer, framebuffer, rgba, setPixel, clear, byteAt } from "./framebuffer-f3.peras";
+
+struct Particle {
+  x: f64;
+  y: f64;
+  vx: f64;
+  vy: f64;
+  life: i32;
+  hue: f64;
+}
+
+struct Scene {
+  width: i32;
+  height: i32;
+  particles: Array<Particle>;
+  frame: Framebuffer;
+  seed: f64;
+}
+
+impl Scene {
+  fn new(width: i32, height: i32): Self {
+    return Scene(width, height, [], framebuffer(width, height), 1);
+  }
+
+  fn random(inout self): f64 {
+    self.seed = (self.seed * 1103515245 + 12345) % 2147483648;
+    return self.seed / 2147483648;
+  }
+
+  fn step(inout self) {
+    for (let i = 0; i < 40; i++) {
+      const vx = (self.random() - 0.5) * 4;
+      const vy = -2 - self.random() * 4;
+      const life = (60 + Math.floor(self.random() * 60)).toI32();
+      const hue = self.random();
+      self.particles.push(
+        Particle(self.width.toF64() / 2.0, (self.height - 1).toF64(), vx, vy, life, hue),
+      );
+    }
+    const cell = 8;
+    const cols = Math.ceil(self.width.toF64() / cell.toF64());
+    let grid: Map<i32, Array<i32>> = Map.new();
+    for (let i = 0; i < self.particles.length; i++) {
+      // `let p = self.particles[i]` would change a copy: E0205's fix, `let`,
+      // built a program whose particles never died (F122).
+      self.particles[i].vy += 0.08;
+      self.particles[i].x += self.particles[i].vx;
+      self.particles[i].y += self.particles[i].vy;
+      if (self.particles[i].x < 0 || self.particles[i].x >= self.width.toF64()) {
+        self.particles[i].vx = -self.particles[i].vx;
+      }
+      if (self.particles[i].y >= self.height.toF64()) {
+        self.particles[i].y = (self.height - 1).toF64();
+        self.particles[i].vy = -self.particles[i].vy * 0.6;
+      }
+      self.particles[i].life -= 1;
+      const key = Math.floor(self.particles[i].y / cell.toF64()) * cols +
+        Math.floor(self.particles[i].x / cell.toF64());
+      let list = grid.get(key.toI32()).unwrapOr([]);
+      list.push(i);
+      grid.set(key.toI32(), list);
+    }
+    for (const entry of grid) {
+      const list = entry.1.copy();
+      if (list.length < 2) {
+        continue;
+      }
+      for (const i of list) {
+        self.particles[i].vx *= 0.98;
+        self.particles[i].life -= 1;
+      }
+    }
+    // `self.particles = self.particles.filter(…)` is valid Peras, not
+    // compiled for a field of `inout self` (E0900 at build, F121): the
+    // array is compacted in place.
+    let kept = 0;
+    for (let i = 0; i < self.particles.length; i++) {
+      if (self.particles[i].life > 0) {
+        self.particles[kept] = self.particles[i];
+        kept += 1;
+      }
+    }
+    while (self.particles.length > kept) {
+      self.particles.pop();
+    }
+    self.draw();
+  }
+
+  fn draw(inout self) {
+    clear(& self.frame, rgba(0, 0, 0, 0));
+    for (const p of self.particles) {
+      const x = Math.floor(p.x);
+      const y = Math.floor(p.y);
+      if (x < 0 || y < 0 || x >= self.width.toF64() || y >= self.height.toF64()) {
+        continue;
+      }
+      const bright = Math.min(1.0, p.life.toF64() / 60.0);
+      setPixel(
+        & self.frame,
+        x.toI32(),
+        y.toI32(),
+        rgba(255 * bright, 160 * p.hue * bright, 60, 255),
+      );
+    }
+  }
+}
+
+export fn run(frames: i32): String {
+  let scene = Scene.new(320, 200);
+  for (let f = 0; f < frames; f++) {
+    scene.step();
+  }
+  let sum = 0.0;
+  for (let i = 0; i < scene.frame.pixels.length * 4; i++) {
+    sum = (sum * 31 + byteAt(scene.frame, i).toF64()) % 1000000007;
+  }
+  return `${scene.particles.length}|${sum}`;
+}

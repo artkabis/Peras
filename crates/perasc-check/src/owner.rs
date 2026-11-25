@@ -100,7 +100,7 @@ pub(crate) struct Owner<'c, 'a> {
     reported: HashSet<u32>,
     /// The variables `for…of` loops are going through, with the span of each
     /// loop's array: they cannot change during the loop.
-    iterated: Vec<(usize, Span)>,
+    iterated: Vec<(usize, Vec<String>, Span)>,
     /// One entry per statement being checked, innermost last.
     uses: Vec<Uses>,
     /// The variables a `for…of` gives: each element is lent, not owned.
@@ -318,7 +318,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 let root = self.root(*iterable);
                 let span = self.checker.ast.expr(*iterable).span;
                 if let Some(root) = root {
-                    self.iterated.push((root, span));
+                    let place = self.field_path(*iterable);
+                    self.iterated.push((root, place, span));
                 }
                 self.loop_(None, body, None, path);
                 if root.is_some() {
@@ -414,7 +415,7 @@ impl<'c, 'a> Owner<'c, 'a> {
         match &expr.kind {
             ExprKind::Name(_) if op == AssignOp::Assign => {
                 if let Some(&binding) = self.checker.resolved.get(&target) {
-                    self.not_iterated(binding, expr.span);
+                    self.not_iterated(binding, &[], expr.span);
                     give_back(&mut path.moved, binding, &[]);
                     path.given.insert(binding, expr.span);
                 }
@@ -631,7 +632,7 @@ impl<'c, 'a> Owner<'c, 'a> {
             // A name a pattern gives only lends a part of the value matched.
             Some(Kind::Pattern) => self.cannot_move(id, span, "binding"),
             _ => {
-                self.not_iterated(binding, span);
+                self.not_iterated(binding, &[], span);
                 path.moved.insert((binding, Vec::new()), span);
                 self.checker.moves.insert(id);
             }
@@ -886,9 +887,16 @@ impl<'c, 'a> Owner<'c, 'a> {
     }
 
     /// `E0207` when a variable that a `for…of` goes through changes size or
-    /// is replaced; changing its elements is allowed.
-    fn not_iterated(&mut self, binding: usize, span: Span) {
-        if let Some(&(_, loop_span)) = self.iterated.iter().find(|(b, _)| *b == binding) {
+    /// is replaced; changing its elements is allowed. `place` is the field
+    /// changed, `[]` the whole variable: a loop over `p.a` and a change of
+    /// `p.b` do not meet (finding F126), a change of `p` or of `p.a` does.
+    fn not_iterated(&mut self, binding: usize, place: &[String], span: Span) {
+        let meets = |looped: &[String]| looped.starts_with(place) || place.starts_with(looped);
+        if let Some(&(_, _, loop_span)) = self
+            .iterated
+            .iter()
+            .find(|(b, looped, _)| *b == binding && meets(looped))
+        {
             let name = self.binding_name(binding);
             self.report(errors::changed_while_iterated(span, &name, loop_span));
         }
@@ -1003,7 +1011,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 ) && let Some(root) = self.root(*base)
                 {
                     let span = self.checker.ast.expr(*base).span;
-                    self.not_iterated(root, span);
+                    let place = self.field_path(*base);
+                    self.not_iterated(root, &place, span);
                 }
                 // `set` and `add` take a map's or a set's key; `get`, `has` and
                 // `delete` only lend theirs.
@@ -1015,7 +1024,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 let root = self.root(*base).filter(|_| lambdas);
                 if let Some(root) = root {
                     let span = self.checker.ast.expr(*base).span;
-                    self.iterated.push((root, span));
+                    let place = self.field_path(*base);
+                    self.iterated.push((root, place, span));
                 }
                 let mode = if consume { Use::Consume } else { Use::Read };
                 let items: Vec<(ExprId, Use)> = args.iter().map(|&a| (a, mode)).collect();
@@ -1079,7 +1089,8 @@ impl<'c, 'a> Owner<'c, 'a> {
                 self.check_inout_place(inner);
                 if let Some(root) = self.root(inner) {
                     let span = self.checker.ast.expr(inner).span;
-                    self.not_iterated(root, span);
+                    let changed = self.field_path(inner);
+                    self.not_iterated(root, &changed, span);
                     let place = self.place_path(inner).map(|(_, p)| p).unwrap_or_default();
                     if let Some(uses) = self.uses.last_mut() {
                         uses.inouts.push((root, place, call, callee.to_owned()));
@@ -1202,6 +1213,25 @@ impl<'c, 'a> Owner<'c, 'a> {
             }
             ExprKind::Index { base, .. } => self.place_path(*base),
             _ => None,
+        }
+    }
+
+    /// The field names an access goes through, its indices passed over,
+    /// `["a", "b"]` for `p.a[i].b`: a loop over it, or a change of it, meets
+    /// another when one path begins the other, as conservative as the
+    /// variable was for a place under an index.
+    fn field_path(&self, id: ExprId) -> Vec<String> {
+        match &self.checker.ast.expr(id).kind {
+            ExprKind::Paren(inner) => self.field_path(*inner),
+            ExprKind::Field { base, name } => {
+                let mut path = self.field_path(*base);
+                path.push(self.checker.name(name.symbol).to_owned());
+                path
+            }
+            // Past an index, the access reaches an element of what the
+            // index reads: the whole of it, for a loop or a change.
+            ExprKind::Index { base, .. } => self.field_path(*base),
+            _ => Vec::new(),
         }
     }
 

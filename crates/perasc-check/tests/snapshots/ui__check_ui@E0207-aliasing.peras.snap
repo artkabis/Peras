@@ -1,5 +1,6 @@
 ---
 source: crates/perasc-check/tests/ui.rs
+assertion_line: 43
 expression: out
 input_file: tests/ui/check/E0207-aliasing.peras
 ---
@@ -36,3 +37,9 @@ diagnostics:
     secondary 44:14-44:22: check-alias-other-label
     cause: check-alias-why
     fix: check-alias-fix
+  error[E0207] check-alias-loop { name: "p" }
+    primary 72:13-72:16: check-alias-loop-label
+    secondary 71:19-71:22: check-alias-loop-iterated-label
+    cause: check-alias-why
+    fix: check-alias-loop-fix { name: "p" }
+      71:22-71:22 -> ".copy()"

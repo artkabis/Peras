@@ -1,0 +1,86 @@
+// Decision 0047, P2, a full frame, f0: translated from plasma.ts as a
+// developer from TypeScript would, with what Peras has today.
+
+struct Plasma {
+  width: i32;
+  height: i32;
+  pixels: Array<u8>;
+  palette: Array<u8>;
+  columns: Array<f64>;
+  rows: Array<f64>;
+}
+
+impl Plasma {
+  fn new(width: i32, height: i32): Self {
+    let pixels: Array<u8> = [];
+    for (let i = 0; i < width * height * 4; i++) {
+      pixels.push(0);
+    }
+    let palette: Array<u8> = [];
+    for (let i = 0; i < 256 * 3; i++) {
+      palette.push(0);
+    }
+    let columns: Array<f64> = [];
+    for (let i = 0; i < width; i++) {
+      columns.push(0);
+    }
+    let rows: Array<f64> = [];
+    for (let i = 0; i < height; i++) {
+      rows.push(0);
+    }
+    for (let i = 0; i < 256; i++) {
+      const a = (i.toF64() / 256.toF64()) * Math.PI * 2;
+      palette[i * 3] = clamp8(128 + 127 * Math.sin(a));
+      palette[i * 3 + 1] = clamp8(128 + 127 * Math.sin(a + 2.094));
+      palette[i * 3 + 2] = clamp8(128 + 127 * Math.sin(a + 4.188));
+    }
+    return Plasma(width, height, pixels, palette, columns, rows);
+  }
+
+  fn draw(inout self, t: f64) {
+    for (let x = 0; x < self.width; x++) {
+      self.columns[x] = Math.sin(x.toF64() * 0.031 + t) + Math.sin(x.toF64() * 0.013 - t * 0.5);
+    }
+    for (let y = 0; y < self.height; y++) {
+      self.rows[y] = Math.sin(y.toF64() * 0.047 - t * 0.7) + Math.cos(y.toF64() * 0.019 + t * 0.3);
+    }
+    for (let y = 0; y < self.height; y++) {
+      const row = self.rows[y];
+      const shade = 0.75 + 0.25 * Math.sin(y.toF64() * 0.1 + t);
+      for (let x = 0; x < self.width; x++) {
+        const v = self.columns[x] + row;
+        const c = Math.floor(v * 32 + 512).toI32() & 255;
+        const o = (y * self.width + x) * 4;
+        self.pixels[o] = clamp8(self.palette[c * 3].toF64() * shade);
+        self.pixels[o + 1] = clamp8(self.palette[c * 3 + 1].toF64() * shade);
+        self.pixels[o + 2] = clamp8(self.palette[c * 3 + 2].toF64() * shade);
+        self.pixels[o + 3] = 255;
+      }
+    }
+  }
+}
+
+// What a `Uint8ClampedArray` stores: clamped to 0 to 255, rounded to the
+// nearest, a half to the even.
+fn clamp8(v: f64): u8 {
+  const c = v.clamp(0.0, 255.0);
+  const f = Math.floor(c);
+  const d = c - f;
+  let r = f;
+  if (d > 0.5 || (d == 0.5 && f % 2 == 1)) {
+    r = f + 1;
+  }
+  return r.toU8();
+}
+
+export fn run(frames: i32): String {
+  let plasma = Plasma.new(640, 400);
+  for (let f = 0; f < frames; f++) {
+    plasma.draw(f.toF64() * 0.05);
+  }
+  let sum = 0.0;
+  for (let i = 0; i < plasma.pixels.length; i++) {
+    sum = (sum * 31 + plasma.pixels[i].toF64()) % 1000000007;
+  }
+  return `${frames}|${sum}`;
+}

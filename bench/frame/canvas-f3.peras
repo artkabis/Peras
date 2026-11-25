@@ -1,0 +1,48 @@
+// Decision 0047, P3, the frame to a canvas: P2's plasma with f3's channel,
+// drawn into an array the page gives, `draw`, which stays in the module's
+// memory and is shown through a view with no copy; or into an array the
+// module gives back, `frame`, which crosses to JavaScript as a copy.
+import { rgba, word } from "./framebuffer-f3.peras";
+
+fn paint(pixels: inout Array<u32>, width: i32, height: i32, t: f64): void {
+  let palette: Array<f64> = [];
+  for (let i = 0; i < 256; i++) {
+    const a = (i.toF64() / 256.0) * Math.PI * 2;
+    const c = rgba(
+      128 + 127 * Math.sin(a),
+      128 + 127 * Math.sin(a + 2.094),
+      128 + 127 * Math.sin(a + 4.188),
+      255,
+    );
+    palette.push(c.r.toF64());
+    palette.push(c.g.toF64());
+    palette.push(c.b.toF64());
+  }
+  let columns: Array<f64> = [];
+  for (let x = 0; x < width; x++) {
+    columns.push(Math.sin(x.toF64() * 0.031 + t) + Math.sin(x.toF64() * 0.013 - t * 0.5));
+  }
+  for (let y = 0; y < height; y++) {
+    const row = Math.sin(y.toF64() * 0.047 - t * 0.7) + Math.cos(y.toF64() * 0.019 + t * 0.3);
+    const shade = 0.75 + 0.25 * Math.sin(y.toF64() * 0.1 + t);
+    for (let x = 0; x < width; x++) {
+      const c = Math.floor((columns[x] + row) * 32 + 512).toI32() & 255;
+      pixels[y * width + x] = word(
+        rgba(palette[c * 3] * shade, palette[c * 3 + 1] * shade, palette[c * 3 + 2] * shade, 255),
+      );
+    }
+  }
+}
+
+export fn draw(pixels: inout Array<u32>, width: i32, height: i32, t: f64): void {
+  paint(& pixels, width, height, t);
+}
+
+export fn frame(width: i32, height: i32, t: f64): Array<u32> {
+  let pixels: Array<u32> = [];
+  for (let i = 0; i < width * height; i++) {
+    pixels.push(0);
+  }
+  paint(& pixels, width, height, t);
+  return pixels;
+}

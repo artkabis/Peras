@@ -129,6 +129,19 @@ fn a_copied_structure_is_its_own() {
     );
 }
 
+/// `roundEven()` takes a half to the even, as a `Uint8ClampedArray` stores a
+/// number, in a managed module as in an owned one (decision 0047, f3).
+#[test]
+fn round_even_takes_a_half_to_the_even() {
+    gives(
+        "export fn main(): Array<f64> {\n  \
+           const xs = [0.5, 1.5, 2.5, -0.5, -1.5, -2.5, 2.4, 2.6, 254.5, 255.5];\n  \
+           return xs.map((x) => x.roundEven());\n\
+         }\n",
+        "[0,2,2,0,-2,-2,2,3,254,256]",
+    );
+}
+
 /// A copy is written for its type, not serialized: `structuredClone` made
 /// decision 0046's notes 186 times TypeScript's time (finding F124). The copy
 /// is still its own, down to an array a structure of an element holds.

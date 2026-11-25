@@ -1,0 +1,57 @@
+// Decision 0047, f3: f2's framebuffer, its channel rounded by `roundEven`,
+// which the compiler lowers to one instruction.
+// One `u32` a pixel, `r | g << 8 | b << 16 | a << 24`: the bytes a canvas
+// reads, in that order, on a little-endian machine. Free functions, as the
+// methods of an imported structure cannot be called (decision 0022).
+
+export struct Rgba8 {
+  r: u8;
+  g: u8;
+  b: u8;
+  a: u8;
+}
+
+export struct Framebuffer {
+  width: i32;
+  height: i32;
+  pixels: Array<u32>;
+}
+
+export fn framebuffer(width: i32, height: i32): Framebuffer {
+  let pixels: Array<u32> = [];
+  for (let i = 0; i < width * height; i++) {
+    pixels.push(0);
+  }
+  return Framebuffer(width, height, pixels);
+}
+
+// A channel as a `Uint8ClampedArray` stores it: clamped to 0 to 255, rounded
+// to the nearest, a half to the even, one instruction (`roundEven`, f3).
+export fn channel(v: f64): u8 {
+  return v.clamp(0.0, 255.0).roundEven().toU8();
+}
+
+// A colour from four numbers, each clamped and rounded as `channel`.
+export fn rgba(r: f64, g: f64, b: f64, a: f64): Rgba8 {
+  return Rgba8(channel(r), channel(g), channel(b), channel(a));
+}
+
+export fn word(c: Rgba8): u32 {
+  return c.r.toU32() | (c.g.toU32() << 8) | (c.b.toU32() << 16) | (c.a.toU32() << 24);
+}
+
+export fn setPixel(fb: inout Framebuffer, x: i32, y: i32, c: Rgba8): void {
+  fb.pixels[y * fb.width + x] = word(c);
+}
+
+export fn clear(fb: inout Framebuffer, c: Rgba8): void {
+  const w = word(c);
+  for (let i = 0; i < fb.pixels.length; i++) {
+    fb.pixels[i] = w;
+  }
+}
+
+// The byte `i` of the frame, in a canvas's order.
+export fn byteAt(fb: Framebuffer, i: i32): u8 {
+  return ((fb.pixels[i / 4] >> ((i % 4) * 8).toU32()) & 255).toU8();
+}

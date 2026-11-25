@@ -27,8 +27,17 @@ const CONVERSIONS: [(&str, Ty); 10] = [
     ("toF64", Ty::Float(FloatTy::F64)),
 ];
 
-const FLOAT_METHODS: [&str; 9] = [
-    "sqrt", "sin", "cos", "tan", "floor", "ceil", "round", "exp", "log",
+const FLOAT_METHODS: [&str; 10] = [
+    "sqrt",
+    "sin",
+    "cos",
+    "tan",
+    "floor",
+    "ceil",
+    "round",
+    "roundEven",
+    "exp",
+    "log",
 ];
 /// The methods of floats with a second operand of the same type.
 const FLOAT_BINARY: [&str; 3] = ["pow", "atan2", "hypot"];
