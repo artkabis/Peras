@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0046-what-to-build-next-again.md](../../fr/decisions/0046-what-to-build-next-again.md)._
 
-_Status: protocol registered on 2026-11-25, before any program is written, as the rule of the project asks; programs, measure and ranking recorded the same day, the proposal awaiting the owner. Asked by the owner on 2026-11-25: decide what comes next by measure, as [decision 0011](0011-what-to-build-next.md) did, rather than by the order of the [roadmap](../reference/roadmap.md)._
+_Status: protocol registered on 2026-11-25, before any program is written, as the rule of the project asks; programs, measure and ranking recorded the same day, the owner's decision recorded the same day. Asked by the owner on 2026-11-25: decide what comes next by measure, as [decision 0011](0011-what-to-build-next.md) did, rather than by the order of the [roadmap](../reference/roadmap.md)._
 
 ## Context
 
@@ -106,3 +106,7 @@ The ranking, as registered, gives the order:
 3. Then the causes by their errors: the moves out of elements and fields (17), the syntax of TypeScript absent (14), the browser's names (14), an element read as a copy (10).
 
 Packages and `@frame`, which the owner asked to build with the framebuffer as one lot, are not ranked by this measure, as registered: no program met them. They stay the owner's to order; this record says only that four applications written from TypeScript did not need them.
+
+## The owner's decision (2026-11-25)
+
+The ranking's order, with one change: the copies a later read never sees come before packages, as the largest cost of the applications measured (A1's 5.8 times TypeScript's time, a quarter of A3's, finding F125). The lot, in order: [decision 0047](0047-framebuffer.md), the framebuffer; then the copies, measured on A1 and A3; then packages and `create-peras`; then `@frame`; then an application that validates the lot, with the comparison against Rust and AssemblyScript measured again. JSON in owned modules (F120) and a field of `inout self` given a whole value (F121) follow the lot.

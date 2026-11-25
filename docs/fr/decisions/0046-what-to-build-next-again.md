@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0046-what-to-build-next-again.md](../../en/decisions/0046-what-to-build-next-again.md)._
 
-_Statut : protocole enregistré le 2026-11-25, avant qu’aucun programme soit écrit, comme le demande la règle du projet ; programmes, mesure et classement consignés le même jour, la proposition attendant le propriétaire. Demandée par le propriétaire le 2026-11-25 : décider de la suite par la mesure, comme l’a fait la [décision 0011](0011-what-to-build-next.md), plutôt que par l’ordre de la [feuille de route](../reference/roadmap.md)._
+_Statut : protocole enregistré le 2026-11-25, avant qu’aucun programme soit écrit, comme le demande la règle du projet ; programmes, mesure et classement consignés le même jour, la décision du propriétaire consignée le même jour. Demandée par le propriétaire le 2026-11-25 : décider de la suite par la mesure, comme l’a fait la [décision 0011](0011-what-to-build-next.md), plutôt que par l’ordre de la [feuille de route](../reference/roadmap.md)._
 
 ## Contexte
 
@@ -106,3 +106,7 @@ Le classement, comme enregistré, donne l’ordre :
 3. Puis les causes par leurs erreurs : les déplacements hors des éléments et des champs (17), la syntaxe de TypeScript absente (14), les noms du navigateur (14), un élément lu comme une copie (10).
 
 Les paquets et `@frame`, que le propriétaire a demandé de construire avec le framebuffer en un lot, ne sont pas classés par cette mesure, comme enregistré : aucun programme ne les a rencontrés. Leur ordre reste au propriétaire ; cet enregistrement dit seulement que quatre applications écrites depuis TypeScript n’en ont pas eu besoin.
+
+## La décision du propriétaire (2026-11-25)
+
+L’ordre du classement, avec un changement : les copies qu’aucune lecture ne voit ensuite passent avant les paquets, comme le plus grand coût des applications mesurées (5,8 fois le temps de TypeScript pour A1, un quart de celui d’A3, constat F125). Le lot, dans l’ordre : la [décision 0047](0047-framebuffer.md), le framebuffer ; puis les copies, mesurées sur A1 et A3 ; puis les paquets et `create-peras` ; puis `@frame` ; puis une application qui valide le lot, avec la comparaison face à Rust et AssemblyScript mesurée de nouveau. Le JSON dans les modules possédés (F120) et un champ de `inout self` qui reçoit une valeur entière (F121) suivent le lot.

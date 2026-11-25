@@ -57,3 +57,18 @@ export fn fine(): i32 {
   n = bump(&n);
   return xs.length + ys.length + n;
 }
+
+// A loop over one field, another field changed: allowed (finding F126).
+export fn other_field(p: inout Pair): void {
+  for (const x of p.a) {
+    append(&p.b, [x]);
+    p.b.push(x);
+  }
+}
+
+// The field the loop goes through, changed: refused.
+export fn same_field(p: inout Pair): void {
+  for (const x of p.a) {
+    append(&p.a, [x]);
+  }
+}
