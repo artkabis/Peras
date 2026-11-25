@@ -62,7 +62,7 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
     // Decision 0045: two statements more that narrow an option through
     // `&&`, `||`, `!` and `else`, unless the compiler is built as before it.
     let narrows = std::env::var("PERAS_PROTO_NARROW").as_deref() != Ok("n0");
-    let choices = if depth == 0 { 49 } else { 50 } + 2 * usize::from(narrows);
+    let choices = if depth == 0 { 51 } else { 52 } + 2 * usize::from(narrows);
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -176,6 +176,11 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         47 => "acc += mixed(bumped(i), bumped(i + 1)) % 31 + twice(acc % 100); if (acc % 3 == 0 && mixed(bumped(i), i) > 3) { acc += 1; } acc += tally % 7 + twice(bumped(i));".to_owned(),
         // A small function in the condition of a loop, evaluated at each turn.
         48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
+        // Decision 0048: `min`, `max` and `clamp` on integers and floats,
+        // NaN and a zero's sign among them, and an `if` that sets a local to
+        // one of two values, one branch or two.
+        49 => "const lo = i % 9 - 4; const hi = acc % 11; acc += lo.min(hi) + lo.max(hi) + (acc % 50).clamp(lo, lo + 6); const fl = i.toF64() * 0.5 - 3.0; const g = fl.min(-0.0); const h = (0.0 * fl).max(-0.0); if (1.0 / h < 0.0) { acc += 2; } const nn = fl.max(0.0 / 0.0); if (nn != nn) { acc += 5; } acc += (fl.clamp(-1.5, 2.5) * 4.0).toI32() + (g * 2.0).toI32();".to_owned(),
+        50 => "let pick = i; if (acc % 3 == 1) { pick = acc % 17; } let other = 0; if (i > 5) { other = i * 2; } else { other = acc % 13 - 4; } acc += pick + other; const ff = i.toF64(); let fv = ff * 0.5; if (ff > 3.0) { fv = -0.0; } if (1.0 / fv < 0.0) { acc += 1; } let tiny = fv; if (fv > ff) { tiny = ff; } acc += (tiny * 3.0).toI32();".to_owned(),
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
