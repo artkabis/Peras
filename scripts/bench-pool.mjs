@@ -1,8 +1,10 @@
 // Decision 0044's protocol: pools. Each option is a prototype the compiler
 // builds when PERAS_PROTO_POOL is `p1` (Pool<T> built in, generational
-// handles), `p2` (plain handles) or `p3` (Pool<T> written in Peras,
-// imported); without it, p0, indices by hand. p1 and p2 run the programs of
-// bench/pool/p1, p3 those of bench/pool/p3, p0 those of bench/pool.
+// handles), `p2` (plain handles), `p3` (Pool<T> written in Peras, imported)
+// or `p4` (p1, walked in place, its check made once in a walk's body);
+// without it, p0, indices by hand. p1 and p2 run the programs of
+// bench/pool/p1, p3 those of bench/pool/p3, p4 those of bench/pool/p4 and
+// otherwise p1's, p0 those of bench/pool.
 //
 // 1. Each workload built for production by each option, run first in a
 //    child process with a time limit, twice on one instance; its result
@@ -39,6 +41,7 @@ const OPTIONS = {
   p1: "p1, built in, generational handles",
   p2: "p2, built in, plain handles",
   p3: "p3, written in Peras, imported",
+  p4: "p4, p1 walked in place, checked once",
 };
 const options = Object.keys(OPTIONS);
 
@@ -47,9 +50,12 @@ mkdirSync(work, { recursive: true });
 
 /** The source of a program for an option. @param {string} name @param {string} option */
 function source(name, option) {
-  const own =
-    option === "p3" ? join(bench, "p3", `${name}.peras`) : join(bench, "p1", `${name}.peras`);
-  return option !== "p0" && existsSync(own) ? own : join(bench, `${name}.peras`);
+  if (option === "p0") return join(bench, `${name}.peras`);
+  for (const dir of option === "p4" ? ["p4", "p1"] : option === "p3" ? ["p3"] : ["p1"]) {
+    const own = join(bench, dir, `${name}.peras`);
+    if (existsSync(own)) return own;
+  }
+  return join(bench, `${name}.peras`);
 }
 
 /**
@@ -93,7 +99,10 @@ function probe(js, args) {
   });
   if (r.status !== 0)
     return {
-      error: r.signal === "SIGTERM" ? "does not end" : `fails: ${r.stderr.split("\n")[0] ?? ""}`,
+      error:
+        r.signal === "SIGTERM"
+          ? "does not end"
+          : `fails: ${r.stderr.split("\n").find((l) => /^\w*Error: /.test(l)) ?? r.stderr.split("\n")[0] ?? ""}`,
     };
   /** @type {unknown} */
   const parsed = JSON.parse(r.stdout);
@@ -208,12 +217,23 @@ for (const o of options) {
     `| ${OPTIONS[o] ?? o} | ${read} | ${read === "-1" ? "yes" : "no, another value in silence"} |`,
   );
 }
-lines.push("");
+// p4's own: a handle removed in the body of a walk, its slot given to
+// another value, then read through; p4 must stop there.
+const walk = probe(build("stale-walk", "p4").js, []);
+const walkRead = "value" in walk ? `${walk.value}, in silence` : walk.error;
+const walkCaught = !("value" in walk) && walkRead.includes("out of bounds");
+lines.push(
+  `p4, a handle removed in the body of a walk, its slot given again, then read: ${walkRead} (${walkCaught ? "caught" : "not caught"}).`,
+  "",
+);
 
 console.log(lines.join("\n"));
 if (check) {
-  if (stale.p1 !== "-1" || stale.p3 !== "-1")
-    throw new Error(`the stale read is not caught: p1 ${String(stale.p1)}, p3 ${String(stale.p3)}`);
+  if (stale.p1 !== "-1" || stale.p3 !== "-1" || stale.p4 !== "-1")
+    throw new Error(
+      `the stale read is not caught: p1 ${String(stale.p1)}, p3 ${String(stale.p3)}, p4 ${String(stale.p4)}`,
+    );
+  if (!walkCaught) throw new Error(`p4's stale read in a walk is not caught: ${walkRead}`);
 } else {
   writeFileSync(
     join(bench, "RESULTS.md"),

@@ -399,7 +399,9 @@ impl Checker<'_> {
     /// Decision 0044, prototypes p1 and p2: a pool indexed by a handle,
     /// `pool[h]`, is the pool's element; the driver writes it again.
     fn pool_index(&mut self, e: ExprId, base: &Ty, index: ExprId) -> Option<Ty> {
-        if !std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p1" || v == "p2") {
+        if !std::env::var("PERAS_PROTO_POOL")
+            .is_ok_and(|v| matches!(v.as_str(), "p1" | "p2" | "p4"))
+        {
             return None;
         }
         let Ty::Struct(id, name) = base else {

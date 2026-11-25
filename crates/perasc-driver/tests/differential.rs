@@ -180,7 +180,15 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
         // Decision 0044: values inserted, some removed, slots given again,
         // and every handle read, those kept across a removal included.
-        49 if pool => "let pl: Pool<i32> = Pool.new(); let hs: Array<Handle> = []; for (let t = 0; t < 8; t++) { hs.push(pl.insert(t * i + acc % 7)); } for (let t = 0; t < 8; t += 3) { pl.remove(hs[t]); } hs.push(pl.insert(i + 100)); hs.push(pl.insert(acc % 50)); for (const h of hs) { acc += pl.get(h).unwrapOr(-3) % 97; if (pl.has(h)) { acc += 1; } } acc += pl.size();".to_owned(),
+        49 if pool => {
+            let fill = "let pl: Pool<i32> = Pool.new(); let hs: Array<Handle> = []; for (let t = 0; t < 8; t++) { hs.push(pl.insert(t * i + acc % 7)); } for (let t = 0; t < 8; t += 3) { pl.remove(hs[t]); } hs.push(pl.insert(i + 100)); hs.push(pl.insert(acc % 50)); for (const h of hs) { acc += pl.get(h).unwrapOr(-3) % 97; if (pl.has(h)) { acc += 1; } } acc += pl.size();";
+            // p4: a walk over the pool that reads, writes and removes.
+            if std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p4") {
+                format!("{fill} for (const h of pl) {{ acc += pl[h] % 89; pl[h] += 3; if (pl[h] % 5 == 0) {{ pl.remove(h); }} acc += pl.size(); }}")
+            } else {
+                fill.to_owned()
+            }
+        }
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",

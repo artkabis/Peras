@@ -372,7 +372,11 @@ impl Checker<'_> {
                 iterable,
                 body,
             } => {
-                let element = self.iterable(*iterable);
+                let walked = self.infer(*iterable, None);
+                let element = match self.pool_walk(stmt, body, *mutable, name.span, *iterable) {
+                    Some(handle) => handle,
+                    None => self.iterable(*iterable, walked),
+                };
                 let element = match ty {
                     Some(annotation) => {
                         let declared = self.resolve_type(annotation);
@@ -426,10 +430,54 @@ impl Checker<'_> {
         self.undo_all(narrowed);
     }
 
+    /// Decision 0044, prototype p4: a `for…of` over a pool gives its
+    /// handles; the loop is recorded for the driver to write again.
+    fn pool_walk(
+        &mut self,
+        stmt: &Stmt,
+        body: &Stmt,
+        mutable: bool,
+        name: Span,
+        iterable: ExprId,
+    ) -> Option<Ty> {
+        if !std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p4") {
+            return None;
+        }
+        let Some(Ty::Struct(_, pool)) = self.expr_types.get(&iterable) else {
+            return None;
+        };
+        if pool != "Pool" && !pool.starts_with("Pool<") {
+            return None;
+        }
+        let handle = self.structs.iter().position(|s| s.name == "Handle")?;
+        let stmts = match &body.kind {
+            StmtKind::Block(block) => block
+                .stmts
+                .iter()
+                .map(|s| {
+                    let cond = match &s.kind {
+                        StmtKind::If { cond, .. } => Some(self.ast.expr(*cond).span),
+                        _ => None,
+                    };
+                    (s.span, cond)
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        self.pool_loops.push(crate::PoolLoop {
+            stmt: stmt.span,
+            name,
+            mutable,
+            iterable,
+            body: body.span,
+            stmts,
+        });
+        Some(Ty::Struct(crate::ty::StructId(handle), "Handle".to_owned()))
+    }
+
     /// The element type of what a `for…of` walks: an array's elements, a
     /// set's keys, a map's entries as tuples.
-    fn iterable(&mut self, iterable: ExprId) -> Ty {
-        let ty = self.infer(iterable, None);
+    fn iterable(&mut self, iterable: ExprId, ty: Ty) -> Ty {
         match ty {
             Ty::Array(element) | Ty::Set(element) => *element,
             // A map's entries, in insertion order: `(key, value)`.
