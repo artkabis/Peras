@@ -72,6 +72,28 @@ export fn shift(points: inout Array<Point>, dx: f64): void {
 
 Un tableau a un seul propriétaire. `let ys = xs;`, un `return` ou un argument passé à un paramètre `sink` le **déplace** : `xs` ne peut plus servir ([E0204](../errors/E0204.md)) tant qu’il ne reçoit pas une nouvelle valeur. Pour garder les deux, déplace une copie, `xs.copy()`. Le compilateur libère chaque tableau quand la portée de son propriétaire se termine ; tu n’écris jamais `free`. Les règles sont sur la page [mémoire](memory.md).
 
+### Un élément est une valeur
+
+En TypeScript, `const p = points[i]` nomme l’objet que tient le tableau : modifier `p.x` modifie le tableau. En Peras, un élément est une valeur : `const p = points[i]` en lit une copie, et la modifier laisserait l’élément tel quel. Pour changer un élément, écris à travers lui, `points[i].x += 1.0` ; le compilateur refuse une modification d’une telle copie, et dit d’écrire dans l’élément ([E0205](../errors/E0205.md#une-copie-dun-élément)). Le `get` d’une table donne aussi une copie : lis, change, remets, `let list = m.get(k).unwrapOr([]); list.push(i); m.set(k, list);`.
+
+```peras build
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn shift(n: i32): f64 {
+  let points: Array<Point> = [];
+  for (let i = 0; i < n; i++) {
+    points.push(Point(i.toF64(), 0.0));
+  }
+  for (let i = 0; i < points.length; i++) {
+    points[i].x += 1.0;
+  }
+  return points[0].x;
+}
+```
+
 ```peras build
 fn total(xs: sink Array<i32>): i32 {
   let sum = 0;

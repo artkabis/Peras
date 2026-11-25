@@ -72,6 +72,28 @@ export fn shift(points: inout Array<Point>, dx: f64): void {
 
 An array has one owner. `let ys = xs;`, a `return`, or an argument to a `sink` parameter **moves** it: `xs` can no longer be used ([E0204](../errors/E0204.md)) until it is given a new value. To keep both, move a copy, `xs.copy()`. The compiler releases each array when its owner's scope ends; you never write `free`. The rules are on the [memory](memory.md) page.
 
+### An element is a value
+
+In TypeScript, `const p = points[i]` names the object the array holds: changing `p.x` changes the array. In Peras an element is a value: `const p = points[i]` reads a copy, and changing it would leave the element as it was. To change an element, write through it, `points[i].x += 1.0`; the compiler refuses a change to such a copy, and says to write to the element ([E0205](../errors/E0205.md#a-copy-of-an-element)). A map's `get` gives a copy too: read, change, set back, `let list = m.get(k).unwrapOr([]); list.push(i); m.set(k, list);`.
+
+```peras build
+struct Point {
+  x: f64;
+  y: f64;
+}
+
+export fn shift(n: i32): f64 {
+  let points: Array<Point> = [];
+  for (let i = 0; i < n; i++) {
+    points.push(Point(i.toF64(), 0.0));
+  }
+  for (let i = 0; i < points.length; i++) {
+    points[i].x += 1.0;
+  }
+  return points[0].x;
+}
+```
+
 ```peras build
 fn total(xs: sink Array<i32>): i32 {
   let sum = 0;
