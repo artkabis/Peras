@@ -240,6 +240,9 @@ impl Plan {
             }
             ExprKind::Unary(op, x) => vector_unary(*op, self.ty).is_some() && self.lanewise(x),
             ExprKind::Math(MathOp::Sqrt, x) => self.ty != Ty::I32 && self.lanewise(x),
+            // A choice of two lane values under a mask: `v128.bitselect`, as
+            // an `if` of the loop is (decision 0048, prototype s1).
+            ExprKind::Select(c, a, b) => self.mask(c) && self.lanewise(a) && self.lanewise(b),
             _ => false,
         }
     }
@@ -344,6 +347,9 @@ fn reads_any(e: &Expr, locals: &[LocalId]) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads_any(x, locals),
         ExprKind::Binary(_, a, b) => reads_any(a, locals) || reads_any(b, locals),
+        ExprKind::Select(c, a, b) => {
+            reads_any(c, locals) || reads_any(a, locals) || reads_any(b, locals)
+        }
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().any(|a| reads_any(a, locals))
         }
@@ -413,6 +419,9 @@ fn count_reads(e: &Expr, local: LocalId) -> usize {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => count_reads(x, local),
         ExprKind::Binary(_, a, b) => count_reads(a, local).saturating_add(count_reads(b, local)),
+        ExprKind::Select(c, a, b) => count_reads(c, local)
+            .saturating_add(count_reads(a, local))
+            .saturating_add(count_reads(b, local)),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             saturating_sum(args.iter().map(|a| count_reads(a, local)))
         }
@@ -738,6 +747,12 @@ impl FnEncoder<'_> {
                 } else {
                     &I::F64x2Sqrt
                 });
+            }
+            ExprKind::Select(c, a, b) => {
+                self.vector_expr(plan, a);
+                self.vector_expr(plan, b);
+                self.vector_mask(plan, c);
+                self.emit(&I::V128Bitselect);
             }
             _ => {}
         }

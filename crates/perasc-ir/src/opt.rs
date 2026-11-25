@@ -50,6 +50,16 @@ pub fn optimize(module: &mut Module) {
         // It only reuses the answer of a map lookup, an `i32`: it applies
         // to every function too.
         crate::lookups::reuse_lookups(function);
+        // Decision 0048, prototype s1: a choice of two simple values as a
+        // `select`, off by default. It sets numbers only, from what reads no
+        // memory: it applies to every function too.
+        if matches!(perasc_check::proto_choice().as_str(), "s1" | "s3") {
+            // `abs` first: `if (x < 0) x = -x` is better one instruction than
+            // a choice of two values.
+            function.body = branchless_abs(std::mem::take(&mut function.body));
+            function.body =
+                branchless_choices(std::mem::take(&mut function.body), &function.locals);
+        }
         // No other pass is proven yet to keep releases exact, nor written for several
         // results: such code is left as written, and the verifiers check it.
         if function.uses_heap() || function.uses_many() {
@@ -103,6 +113,7 @@ pub fn is_simple(e: &Expr) -> bool {
                 && is_simple(a)
                 && is_simple(b)
         }
+        ExprKind::Select(c, a, b) => is_simple(c) && is_simple(a) && is_simple(b),
         // A call, an allocation or a change of owner is never moved, nor a
         // read of a module variable, which a call may change (decision 0023).
         ExprKind::Global(_)
@@ -363,6 +374,7 @@ fn reads(e: &Expr, target: LocalId) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, target),
         ExprKind::Binary(_, a, b) => reads(a, target) || reads(b, target),
+        ExprKind::Select(c, a, b) => reads(c, target) || reads(a, target) || reads(b, target),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().any(|a| reads(a, target))
         }
@@ -498,6 +510,69 @@ pub fn branchless_abs(stmts: Vec<Stmt>) -> Vec<Stmt> {
                 step: branchless_abs(step),
             },
             Stmt::Block(body) => Stmt::Block(branchless_abs(body)),
+            other => other,
+        })
+        .collect()
+}
+
+/// `if (c) x = a` as `x = select(c, a, x)`, and `if (c) x = a else x = b` as
+/// `x = select(c, a, b)`, when `c`, `a` and `b` are simple (`is_simple`): no
+/// call, no division, no read of memory, so evaluating all of them changes
+/// nothing but the time; and `x` a number or a `bool` (decision 0048, s1).
+pub fn branchless_choices(stmts: Vec<Stmt>, locals: &[crate::Local]) -> Vec<Stmt> {
+    let scalar = |x: LocalId| {
+        usize::try_from(x.0)
+            .ok()
+            .and_then(|i| locals.get(i))
+            .is_some_and(|l| matches!(l.ty, Ty::I32 | Ty::I64 | Ty::F32 | Ty::F64 | Ty::Bool))
+    };
+    stmts
+        .into_iter()
+        .map(|stmt| match stmt {
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                let chosen = match (then.as_slice(), otherwise.as_slice()) {
+                    ([Stmt::Set(x, a)], []) if scalar(*x) && is_simple(&cond) && is_simple(a) => {
+                        Some((*x, a.clone(), local(*x, a.ty)))
+                    }
+                    ([Stmt::Set(x, a)], [Stmt::Set(y, b)])
+                        if x == y
+                            && scalar(*x)
+                            && is_simple(&cond)
+                            && is_simple(a)
+                            && is_simple(b) =>
+                    {
+                        Some((*x, a.clone(), b.clone()))
+                    }
+                    _ => None,
+                };
+                match chosen {
+                    Some((x, a, b)) => {
+                        let ty = a.ty;
+                        Stmt::Set(
+                            x,
+                            Expr {
+                                kind: ExprKind::Select(Box::new(cond), Box::new(a), Box::new(b)),
+                                ty,
+                            },
+                        )
+                    }
+                    None => Stmt::If {
+                        cond,
+                        then: branchless_choices(then, locals),
+                        otherwise: branchless_choices(otherwise, locals),
+                    },
+                }
+            }
+            Stmt::Loop { cond, body, step } => Stmt::Loop {
+                cond,
+                body: branchless_choices(body, locals),
+                step: branchless_choices(step, locals),
+            },
+            Stmt::Block(body) => Stmt::Block(branchless_choices(body, locals)),
             other => other,
         })
         .collect()

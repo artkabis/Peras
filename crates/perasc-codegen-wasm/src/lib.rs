@@ -897,6 +897,14 @@ impl<'a> FnEncoder<'a> {
             ExprKind::Buf(op, args) => self.buf_op(*op, args),
             ExprKind::Unary(op, operand) => self.unary(*op, operand, e.ty),
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
+            // `select`: the value if true, the value if false, then the
+            // condition, no branch taken (decision 0048, prototype s1).
+            ExprKind::Select(c, a, b) => {
+                self.expr(a);
+                self.expr(b);
+                self.expr(c);
+                self.emit(&I::Select);
+            }
             ExprKind::Call(id, args) => {
                 for arg in args {
                     self.expr(arg);

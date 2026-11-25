@@ -328,6 +328,11 @@ fn expr(e: &Expr, state: &mut State) -> Result<(), String> {
             expr(a, state)?;
             expr(b, state)?;
         }
+        ExprKind::Select(c, a, b) => {
+            expr(c, state)?;
+            expr(a, state)?;
+            expr(b, state)?;
+        }
         ExprKind::Unary(_, x)
         | ExprKind::Convert(x)
         | ExprKind::Math(_, x)

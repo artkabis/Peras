@@ -524,6 +524,15 @@ impl Machine<'_> {
                 let (a, b) = (self.expr(a, locals)?, self.expr(b, locals)?);
                 binary(*op, a, b)?
             }
+            // All three evaluated, as WebAssembly's `select` evaluates them.
+            ExprKind::Select(c, a, b) => {
+                let (c, a, b) = (
+                    self.expr(c, locals)?,
+                    self.expr(a, locals)?,
+                    self.expr(b, locals)?,
+                );
+                if matches!(c, Value::Bool(true)) { a } else { b }
+            }
             ExprKind::Call(id, args) => {
                 let mut values = Vec::with_capacity(args.len());
                 for arg in args {
