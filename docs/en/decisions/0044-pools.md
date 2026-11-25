@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0044-pools.md](../../fr/decisions/0044-pools.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; workloads amended twice before any measure; options measured at `5194fdb`; proposal: p0 stays; amended on 2026-11-25 with p4, before its prototype; p4 measured at `49c5842`; proposal: p0 stays, for the owner to decide. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; workloads amended twice before any measure; options measured at `5194fdb`; proposal: p0 stays; amended on 2026-11-25 with p4, before its prototype; p4 measured at `49c5842`; proposal: p0 stays; the owner kept p0; landed. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -141,3 +141,7 @@ Against the criteria registered:
 ### Proposal, after p4
 
 **p0 stays**: no option, p4 included, meets the criteria registered. What p4 teaches: of p1's extra time on the sparks, about four fifths went once the compiler checked the generation once per walk and built no array of handles, two changes made together and not measured apart (finding M013); what is left, 25 to 41 % of time and 12 to 21 % of memory, is the layout itself: a handle of two numbers in an option where p0 keeps one, and the columns of generations and of live slots. A pool as safe as p1 costs that much over indices by hand on these workloads. The prototypes are removed once the owner decides, their figures kept here and their code in git at `49c5842`.
+
+### Decision and landing (2026-11-25)
+
+The owner kept **p0**, and with this decision adopted three rules of method that it and decision 0043 taught: an option's floor measured before it is built, the noise of every protocol measured by an A/A control, and two changes an option combines measured apart (findings M041 to M043). The prototypes are removed: `crates/perasc-driver/src/pool.rs` and the pool's Peras sources, `Analysis::pool_indexes` and `pool_loops`, the checker's typing of `pool[h]` and of a walk over a pool, the differential test's pool statements, and `scripts/bench-pool.mjs`, all kept in git at `49c5842`, where the measure can be run again; `bench/pool` keeps the workloads and the results. `check-regression` against `94b0a39`: of 280 modules, none larger, none smaller, none changed; the compiler 1.016 times its time and 33,416 bytes smaller. A program keeps writing what W1 to W3 write for p0, indices by hand, which `@frame` and the study of proximity can take up as they are.

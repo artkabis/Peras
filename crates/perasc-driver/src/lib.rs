@@ -61,8 +61,6 @@ pub fn check(source: &str) -> Checked {
 /// the owned modules it imports, read from beside it.
 #[must_use]
 pub fn check_file(path: &Path, source: &str) -> Checked {
-    let prepared = pool::prepare(source);
-    let source = &*prepared;
     if Mode::from_path(path) == Some(Mode::Owned) {
         return check_owned(path, source);
     }
@@ -364,8 +362,7 @@ pub fn compile_graph_ir(
     source: &str,
     overflow_checks: bool,
 ) -> Result<(perasc_ir::Module, Vec<std::path::PathBuf>), ToolError> {
-    let prepared = pool::prepare(source);
-    let graph = owned_graph(path, &prepared)?;
+    let graph = owned_graph(path, source)?;
     let units: Vec<perasc_ir::Unit<'_>> = graph
         .units
         .iter()
@@ -477,8 +474,6 @@ pub fn compile_ir_with(
     source: &str,
     overflow_checks: bool,
 ) -> Result<perasc_ir::Module, ToolError> {
-    let prepared = pool::prepare(source);
-    let source = &*prepared;
     let parsed = perasc_syntax::parse(source);
     if !parsed.diagnostics.is_empty() {
         return Err(ToolError::Diagnostics(Checked::capped(parsed.diagnostics)));
@@ -551,8 +546,6 @@ pub fn build_direct_file(
 }
 
 pub use perasc_runtime::Allocator;
-
-pub mod pool;
 
 /// How the direct backend builds a module.
 // Independent switches of a build, each a flag of the command line.

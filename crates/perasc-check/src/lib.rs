@@ -133,12 +133,6 @@ pub struct Analysis {
     /// `Math.f(x, …)` calls, each the method `f` of `x` (decision 0035,
     /// option a2).
     pub math_calls: HashSet<ExprId>,
-    /// Decision 0044, prototypes: each `pool[h]`, a pool indexed by a
-    /// handle, which the driver writes again as `pool.values[pool.slotOrFault(h)]`.
-    pub pool_indexes: Vec<ExprId>,
-    /// Decision 0044, prototype p4: each `for (const h of pool)`, which the
-    /// driver writes again as a walk over the pool's slots.
-    pub pool_loops: Vec<PoolLoop>,
     /// `T.fromJson(text)` and `x.toJson()` calls, by call, with the type
     /// read or written (decision 0038, option j1).
     pub json_calls: HashMap<ExprId, JsonCall>,
@@ -615,8 +609,6 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
         changed: checker.changed,
         mutations: checker.mutations,
         math_calls: checker.math_calls,
-        pool_indexes: checker.pool_indexes,
-        pool_loops: checker.pool_loops,
         json_calls: checker.json_calls,
         time_calls: checker.time_calls,
         moves: checker.moves,
@@ -629,24 +621,6 @@ pub fn analyze_with(ast: &Ast, source: &str, context: &Context) -> Analysis {
 }
 
 /// A structure's fields, in order.
-/// Decision 0044, prototype p4: a `for…of` over a pool, as the driver needs
-/// it to write it again.
-#[derive(Debug, Clone)]
-pub struct PoolLoop {
-    /// The whole statement.
-    pub stmt: Span,
-    /// The loop variable.
-    pub name: Span,
-    /// Declared `let`.
-    pub mutable: bool,
-    /// The pool walked.
-    pub iterable: ExprId,
-    /// The body.
-    pub body: Span,
-    /// Each statement of the body, and the condition of an `if`.
-    pub stmts: Vec<(Span, Option<Span>)>,
-}
-
 struct StructDef {
     name: String,
     fields: Vec<(String, Ty)>,
@@ -788,10 +762,6 @@ struct Checker<'a> {
     mutations: Vec<(usize, Span)>,
     /// See [`Analysis::math_calls`].
     math_calls: HashSet<ExprId>,
-    /// See [`Analysis::pool_indexes`].
-    pool_indexes: Vec<ExprId>,
-    /// See [`Analysis::pool_loops`].
-    pool_loops: Vec<PoolLoop>,
     /// See [`Analysis::json_calls`].
     json_calls: HashMap<ExprId, JsonCall>,
     /// See [`Analysis::time_calls`].
@@ -910,8 +880,6 @@ impl<'a> Checker<'a> {
             changed: HashSet::new(),
             mutations: Vec::new(),
             math_calls: HashSet::new(),
-            pool_indexes: Vec::new(),
-            pool_loops: Vec::new(),
             json_calls: HashMap::new(),
             time_calls: HashMap::new(),
             int_divisions: HashMap::new(),

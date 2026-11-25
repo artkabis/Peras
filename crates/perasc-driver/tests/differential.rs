@@ -59,12 +59,10 @@ fn value(r: &mut XorShift) -> &'static str {
 
 /// One statement of the loop's body, at most `depth` branches deep.
 fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
-    // Decision 0044, prototypes: one statement more, a pool, when one is set.
-    let pool = std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| !v.is_empty());
     // Decision 0045: two statements more that narrow an option through
     // `&&`, `||`, `!` and `else`, unless the compiler is built as before it.
     let narrows = std::env::var("PERAS_PROTO_NARROW").as_deref() != Ok("n0");
-    let choices = if depth == 0 { 49 } else { 50 } + usize::from(pool) + 2 * usize::from(narrows);
+    let choices = if depth == 0 { 49 } else { 50 } + 2 * usize::from(narrows);
     let k = key(r);
     let v = value(r);
     let line = match r.below(choices) {
@@ -178,17 +176,6 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
         47 => "acc += mixed(bumped(i), bumped(i + 1)) % 31 + twice(acc % 100); if (acc % 3 == 0 && mixed(bumped(i), i) > 3) { acc += 1; } acc += tally % 7 + twice(bumped(i));".to_owned(),
         // A small function in the condition of a loop, evaluated at each turn.
         48 => "for (let j = 0; twice(j) < i % 9 + 2; j++) { acc += (unit(j * 31 + i) * 10.0).toI32() + 1; }".to_owned(),
-        // Decision 0044: values inserted, some removed, slots given again,
-        // and every handle read, those kept across a removal included.
-        49 if pool => {
-            let fill = "let pl: Pool<i32> = Pool.new(); let hs: Array<Handle> = []; for (let t = 0; t < 8; t++) { hs.push(pl.insert(t * i + acc % 7)); } for (let t = 0; t < 8; t += 3) { pl.remove(hs[t]); } hs.push(pl.insert(i + 100)); hs.push(pl.insert(acc % 50)); for (const h of hs) { acc += pl.get(h).unwrapOr(-3) % 97; if (pl.has(h)) { acc += 1; } } acc += pl.size();";
-            // p4: a walk over the pool that reads, writes and removes.
-            if std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p4") {
-                format!("{fill} for (const h of pl) {{ acc += pl[h] % 89; pl[h] += 3; if (pl[h] % 5 == 0) {{ pl.remove(h); }} acc += pl.size(); }}")
-            } else {
-                fill.to_owned()
-            }
-        }
         // The map changed between: looked up again.
         23 => format!(
             "let p = pairs.get({k}).unwrapOr(Pair(\"r\", 0)); pairs.delete(\"a\"); p.count += 3; pairs.set({}, p);",
@@ -208,17 +195,7 @@ fn statement(r: &mut XorShift, depth: u32, out: &mut String, indent: &str) {
     out.push('\n');
 }
 
-/// A program; under prototype p3 of decision 0044 it imports the pool.
 fn program(seed: u64) -> String {
-    let text = program_body(seed);
-    if std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p3") {
-        format!("import {{ Pool, Handle }} from \"peras:pool\";\n{text}")
-    } else {
-        text
-    }
-}
-
-fn program_body(seed: u64) -> String {
     let mut r = XorShift(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
     let mut body = String::new();
     for _ in 0..(3 + r.below(6)) {
@@ -446,7 +423,7 @@ fn optimized_programs_compute_what_they_did_as_written() {
 /// each file has a private `helper` of its own, which the one file names
 /// apart.
 fn split(seed: u64) -> (String, String, String) {
-    let whole = program_body(seed);
+    let whole = program(seed);
     let header = "struct Pair {\n  name: String;\n  count: i32;\n}\n\n\
                   fn made(i: i32): Pair {\n  return Pair(\"m\", i % 4);\n}\n\n";
     let end = "+ s.length + k.length;\n";
@@ -469,12 +446,6 @@ fn split(seed: u64) -> (String, String, String) {
         "import {{ Pair, made }} from \"./lib.peras\";\n\n\
          fn helper(n: i32): i32 {{\n  return n * 3;\n}}\n\n{main_fn}"
     );
-    // Under prototype p3 of decision 0044, each file that may use a pool
-    // imports it.
-    if std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p3") {
-        let import = "import { Pool, Handle } from \"peras:pool\";\n";
-        return (format!("{import}{one}"), format!("{import}{main}"), lib);
-    }
     (one, main, lib)
 }
 
