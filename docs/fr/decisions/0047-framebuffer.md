@@ -50,4 +50,12 @@ Les programmes sont ceux du projet, et ce que vaut un framebuffer dépend de ce 
 
 `bench/frame/plasma.ts`, vérifié au plus strict de TypeScript (`bench/frame/tsconfig.json`) : un plasma de 640 sur 400, un sinus par colonne et par ligne calculé à chaque image, une palette de 256 couleurs, une ombre par ligne dont les produits s’arrondissent comme ceux d’un `Uint8ClampedArray` ; 120 images donnent `120|135900051`, en 289 ms sur cette machine. Les sinus sont des tables d’une ligne et d’une colonne, comme s’écrit un plasma, pour que l’image, et non les sinus, soit le travail. À partir de ce commit, il n’est plus changé.
 
-_À venir : les prototypes, les mesures, la proposition._
+### Les versions (2026-11-25)
+
+`bench/frame/` : P2 pour chaque option, `plasma-f0.peras`, `plasma-f1.peras`, `plasma-f2.peras` ; f1 et f2 d’A3, `particles-f1.peras` et `particles-f2.peras`, son f0 celui de la décision 0046 ; la bibliothèque de f2, `framebuffer.peras`, 46 lignes. Chacune donne la ligne de son TypeScript, deux fois sur une même instance. Les exécutions de `perasc check` sont dans [`bench/frame/ease`](../../../bench/frame/ease) : le f0 de P2 a rencontré 21 erreurs en six exécutions, puis un résultat changé en silence, `.toU8()` tronquant là où un `Uint8ClampedArray` arrondit, et une somme qui déborde ; f2 en a rencontré une, et le f2 d’A3 un bogue de perasc, F126, corrigé. Un écart au protocole : f1 et f2 ont été écrits depuis f0 tel qu’il se construit, par son auteur, donc leurs erreurs ne sont pas comparées à celles de f0, seulement ce que chacun demande d’écrire à un utilisateur.
+
+### Ce que montre le plancher de P2 (2026-11-25, avant la mesure)
+
+Mesuré comme celui d’A3, une chose retirée à travail égal, 11 tours de 60 images dans un seul processus, face à TypeScript : f1 tel qu’écrit, 3,52 ; son arrondi par `Math.round`, 6,43 (constat F127, un appel à JavaScript chaque fois) ; le même arrondi écrit avec `floor` et une branche, 3,18 ; écrit sans branche, `Math.floor(v + 0.5)`, 1,87 (constat F128, aucun `select`) ; tronqué, un autre résultat, 1,58. L’image de P2 n’est pas son coût : son arrondi l’est, trois fois par pixel, une branche que le processeur prédit mal là où un `Uint8ClampedArray` arrondit en une instruction. Le `rgba` de f3, abaissé en `f64.nearest` de WebAssembly, qui arrondit une moitié au pair comme un `Uint8ClampedArray`, en une instruction, a le plancher de la troncature : f3 est construit, comme enregistré, si f2 manque les critères.
+
+_À venir : la mesure, f3 s’il est construit, P3, la proposition._

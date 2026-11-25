@@ -1,0 +1,79 @@
+// Decision 0047, P2, a full frame, f2: the frame a `Framebuffer` imported
+// from framebuffer.peras.
+import { Framebuffer, framebuffer, rgba, setPixel, byteAt } from "./framebuffer.peras";
+
+struct Plasma {
+  frame: Framebuffer;
+  palette: Array<f64>;
+  columns: Array<f64>;
+  rows: Array<f64>;
+}
+
+impl Plasma {
+  fn new(width: i32, height: i32): Self {
+    let palette: Array<f64> = [];
+    for (let i = 0; i < 256; i++) {
+      const a = (i.toF64() / 256.0) * Math.PI * 2;
+      const c = rgba(
+        128 + 127 * Math.sin(a),
+        128 + 127 * Math.sin(a + 2.094),
+        128 + 127 * Math.sin(a + 4.188),
+        255,
+      );
+      palette.push(c.r.toF64());
+      palette.push(c.g.toF64());
+      palette.push(c.b.toF64());
+    }
+    let columns: Array<f64> = [];
+    for (let i = 0; i < width; i++) {
+      columns.push(0);
+    }
+    let rows: Array<f64> = [];
+    for (let i = 0; i < height; i++) {
+      rows.push(0);
+    }
+    return Plasma(framebuffer(width, height), palette, columns, rows);
+  }
+
+  fn draw(inout self, t: f64) {
+    const width = self.frame.width;
+    const height = self.frame.height;
+    for (let x = 0; x < width; x++) {
+      self.columns[x] = Math.sin(x.toF64() * 0.031 + t) + Math.sin(x.toF64() * 0.013 - t * 0.5);
+    }
+    for (let y = 0; y < height; y++) {
+      self.rows[y] = Math.sin(y.toF64() * 0.047 - t * 0.7) + Math.cos(y.toF64() * 0.019 + t * 0.3);
+    }
+    for (let y = 0; y < height; y++) {
+      const row = self.rows[y];
+      const shade = 0.75 + 0.25 * Math.sin(y.toF64() * 0.1 + t);
+      for (let x = 0; x < width; x++) {
+        const v = self.columns[x] + row;
+        const c = Math.floor(v * 32 + 512).toI32() & 255;
+        setPixel(
+          & self.frame,
+          x,
+          y,
+          rgba(
+            self.palette[c * 3] * shade,
+            self.palette[c * 3 + 1] * shade,
+            self.palette[c * 3 + 2] * shade,
+            255,
+          ),
+        );
+      }
+    }
+  }
+}
+
+export fn run(frames: i32): String {
+  let plasma = Plasma.new(640, 400);
+  for (let f = 0; f < frames; f++) {
+    plasma.draw(f.toF64() * 0.05);
+  }
+  let sum = 0.0;
+  for (let i = 0; i < plasma.frame.pixels.length * 4; i++) {
+    sum = (sum * 31 + byteAt(plasma.frame, i).toF64()) % 1000000007;
+  }
+  return `${frames}|${sum}`;
+}

@@ -50,4 +50,12 @@ The programs are the project's, and a framebuffer's worth depends on what a user
 
 `bench/frame/plasma.ts`, type-checked at TypeScript's strictest (`bench/frame/tsconfig.json`): a plasma of 640 by 400, a sine per column and per row computed each frame, a palette of 256 colours, a shade per row whose products round as a `Uint8ClampedArray` rounds; 120 frames give `120|135900051`, in 289 ms on this machine. The sines are tables of a row and a column, as a plasma is written, so that the frame, not the sines, is the work. From this commit on, it is not changed.
 
-_To come: the prototypes, the measures, the proposal._
+### The versions (2026-11-25)
+
+`bench/frame/`: P2 for each option, `plasma-f0.peras`, `plasma-f1.peras`, `plasma-f2.peras`; A3's f1 and f2, `particles-f1.peras` and `particles-f2.peras`, its f0 decision 0046's; f2's library, `framebuffer.peras`, 46 lines. Each gives its TypeScript's line, twice on one instance. The runs of `perasc check` are in [`bench/frame/ease`](../../../bench/frame/ease): P2's f0 met 21 errors in six runs, then a result changed in silence, `.toU8()` truncating where a `Uint8ClampedArray` rounds, and a sum that wraps; f2 met one, and A3's f2 a bug of perasc, F126, fixed. A departure from the protocol: f1 and f2 were written from f0 as it builds, by its author, so their errors are not compared with f0's, only what each asks a user to write.
+
+### What P2's floor shows (2026-11-25, before the measure)
+
+Measured as A3's was, one thing removed with the same work, 11 rounds of 60 frames in one process, against TypeScript: f1 as written, 3.52; its rounding by `Math.round`, 6.43 (finding F127, a call into JavaScript each time); the same rounding written with `floor` and a branch, 3.18; written without a branch, `Math.floor(v + 0.5)`, 1.87 (finding F128, no `select`); truncated, a different result, 1.58. P2's frame is not its cost: its rounding is, three times a pixel, a branch the processor mispredicts where a `Uint8ClampedArray` rounds in one instruction. f3's `rgba`, lowered to WebAssembly's `f64.nearest`, which rounds a half to the even as a `Uint8ClampedArray` does, in one instruction, has the truncation's floor: f3 is built, as registered, if f2 misses the criteria.
+
+_To come: the measure, f3 if it is built, P3, the proposal._
