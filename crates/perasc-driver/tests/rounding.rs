@@ -10,7 +10,8 @@ use wasmi::{Caller, Engine, Instance, Linker, Module, Store, Val};
 
 const SOURCE: &str = "export fn even64(x: f64): f64 {\n  return x.roundEven();\n}\n\
 export fn even32(x: f32): f32 {\n  return x.roundEven();\n}\n\
-export fn channel(v: f64): u8 {\n  return v.clamp(0.0, 255.0).roundEven().toU8();\n}\n";
+export fn channel(v: f64): u8 {\n  return v.clamp(0.0, 255.0).roundEven().toU8();\n}\n\
+export fn round64(x: f64): f64 {\n  return Math.round(x);\n}\n";
 
 fn instance() -> (Store<()>, Instance) {
     let module = perasc_driver::compile_ir(SOURCE)
@@ -165,4 +166,60 @@ fn a_channel_is_stored_as_a_uint8_clamped_array_stores_it() {
         };
         assert_eq!(got, i32::from(clamped(v)), "channel({v:e})");
     }
+}
+
+/// `Math.round` computed in the module, with no call into JavaScript
+/// (finding F127): a half up, and a zero keeps its sign, `Math.round(-0.4)`
+/// being `-0` (finding F129). The values are JavaScript's own.
+#[test]
+fn math_round_is_javascripts_bit_for_bit() {
+    let (mut store, instance) = instance();
+    let cases: [(f64, f64); 18] = [
+        (0.0, 0.0),
+        (-0.0, -0.0),
+        (0.4, 0.0),
+        (-0.4, -0.0),
+        (0.5, 1.0),
+        (-0.5, -0.0),
+        (1.5, 2.0),
+        (-1.5, -1.0),
+        (2.5, 3.0),
+        (-2.5, -2.0),
+        (0.499_999_999_999_999_94, 0.0),
+        (-0.499_999_999_999_999_94, -0.0),
+        (4_503_599_627_370_495.5, 4_503_599_627_370_496.0),
+        (-4_503_599_627_370_495.5, -4_503_599_627_370_495.0),
+        (f64::INFINITY, f64::INFINITY),
+        (f64::NEG_INFINITY, f64::NEG_INFINITY),
+        (f64::MAX, f64::MAX),
+        (-0.6, -1.0),
+    ];
+    for (x, want) in cases {
+        let got = call(
+            &mut store,
+            instance,
+            "round64",
+            Val::F64(x.into()),
+            Val::F64(0.0.into()),
+        );
+        let Val::F64(got) = got else {
+            unreachable!("round64 gives {got:?}")
+        };
+        assert_eq!(
+            f64::from(got).to_bits(),
+            want.to_bits(),
+            "Math.round({x:e})"
+        );
+    }
+    let got = call(
+        &mut store,
+        instance,
+        "round64",
+        Val::F64(f64::NAN.into()),
+        Val::F64(0.0.into()),
+    );
+    let Val::F64(got) = got else {
+        unreachable!("round64 gives {got:?}")
+    };
+    assert!(f64::from(got).is_nan(), "Math.round(NaN)");
 }

@@ -1812,7 +1812,8 @@ fn math(op: MathOp, v: Value) -> Value {
 /// `Math.round`: the nearest integer, halves toward positive infinity.
 fn js_round(x: f64) -> f64 {
     let down = x.floor();
-    if x - down >= 0.5 { down + 1.0 } else { down }
+    // A zero keeps the operand's sign: `Math.round(-0.4)` is `-0` (F129).
+    (if x - down >= 0.5 { down + 1.0 } else { down }).copysign(x)
 }
 
 /// The mode of `fmt_float`: 0, 1, or `2 + d` for `toFixed(d)`, whose `d` is
@@ -1826,5 +1827,27 @@ fn float_mode(operand: Option<&Value>) -> Result<i32, Trap> {
         Ok(mode)
     } else {
         Err(Trap::Unreachable)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::js_round;
+
+    /// The interpreter's `Math.round` is JavaScript's, the sign of a zero
+    /// included (finding F129): the oracle of the differential test must not
+    /// disagree with the module it checks.
+    #[test]
+    fn js_round_keeps_the_sign_of_a_zero() {
+        for (x, want) in [
+            (-0.4, -0.0),
+            (-0.5, -0.0),
+            (-0.0, -0.0),
+            (0.4, 0.0),
+            (2.5, 3.0),
+            (-2.5, -2.0),
+        ] {
+            assert_eq!(js_round(x).to_bits(), f64::to_bits(want), "Math.round({x})");
+        }
     }
 }

@@ -1412,6 +1412,12 @@ impl<'a> FnEncoder<'a> {
             return;
         }
         let instruction = match (op, operand.ty) {
+            (MathOp::Round, Ty::F32) => {
+                self.emit(&I::F64PromoteF32);
+                self.js_round();
+                I::F32DemoteF64
+            }
+            (MathOp::Round, _) => return self.js_round(),
             (MathOp::Abs, Ty::I32) => return self.int_abs(false),
             (MathOp::Abs, Ty::I64) => return self.int_abs(true),
             (MathOp::Abs, Ty::F32) => I::F32Abs,
@@ -1450,6 +1456,35 @@ impl<'a> FnEncoder<'a> {
     }
 
     /// `x < 0 ? 0 - x : x`, wrapping for the smallest value, with a scratch local.
+    /// JavaScript's `Math.round` of the `f64` on the stack, in the module
+    /// (finding F127): the floor, one more where what is left is at least a
+    /// half, chosen with no branch, and the operand's sign kept, so that
+    /// `Math.round(-0.4)` is `-0` (finding F129). `x - floor(x)` is exact
+    /// for every finite `x`; NaN and the infinities give themselves.
+    fn js_round(&mut self) {
+        let x = self.temp_f64;
+        self.emit(&I::LocalSet(x));
+        for i in [
+            I::LocalGet(x),
+            I::F64Floor,
+            I::F64Const(1.0.into()),
+            I::F64Add,
+            I::LocalGet(x),
+            I::F64Floor,
+            I::LocalGet(x),
+            I::LocalGet(x),
+            I::F64Floor,
+            I::F64Sub,
+            I::F64Const(0.5.into()),
+            I::F64Ge,
+            I::Select,
+            I::LocalGet(x),
+            I::F64Copysign,
+        ] {
+            self.emit(&i);
+        }
+    }
+
     fn int_abs(&mut self, wide: bool) {
         let (temp, zero, sub, lt) = if wide {
             (self.temp_i64, I::I64Const(0), I::I64Sub, I::I64LtS)

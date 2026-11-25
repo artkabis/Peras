@@ -1490,7 +1490,6 @@ impl MathOp {
             Self::Sin => HostMath::Sin,
             Self::Cos => HostMath::Cos,
             Self::Tan => HostMath::Tan,
-            Self::Round => HostMath::Round,
             _ => return None,
         })
     }
@@ -1510,8 +1509,6 @@ pub enum HostMath {
     Cos,
     /// `Math.tan`
     Tan,
-    /// `Math.round`
-    Round,
     /// `Math.pow`, with two operands.
     Pow,
     /// `Math.atan2`, with two operands.
@@ -1528,7 +1525,6 @@ impl HostMath {
             Self::Sin => "sin",
             Self::Cos => "cos",
             Self::Tan => "tan",
-            Self::Round => "round",
             Self::Pow => "pow",
             Self::Atan2 => "atan2",
         }
