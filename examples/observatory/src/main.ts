@@ -41,6 +41,8 @@ const T = fr
       differ: "les pixels diffèrent",
       perFrame: (ms: number) => `${ms.toFixed(2)} ms par image`,
       spent: (s: number) => `${s.toFixed(1)} s de calcul`,
+      candleNote: (r: number) =>
+        `La cire fond comme le temps de calcul : la bougie la plus haute a dépensé le moins. Ici, Peras a dépensé ${r.toFixed(2)} fois le temps de TypeScript.`,
       sceneNote:
         "Les temps de la scène comprennent le dessin des deux canvas par la page : ce sont une image, pas une mesure. La mesure est ci-dessous.",
       measureTitle: "Mesurer sur votre machine",
@@ -89,6 +91,8 @@ const T = fr
       differ: "the pixels differ",
       perFrame: (ms: number) => `${ms.toFixed(2)} ms a frame`,
       spent: (s: number) => `${s.toFixed(1)} s computing`,
+      candleNote: (r: number) =>
+        `The wax burns as the time spent computing: the taller candle spent the least. Here, Peras spent ${r.toFixed(2)} times TypeScript's time.`,
       sceneNote:
         "The scene's times include the page drawing both canvases: they are a picture, not a measure. The measure is below.",
       measureTitle: "Measure on your machine",
@@ -226,6 +230,7 @@ function show() {
     $(`${who}-wax`).style.height = `${String(wax)}%`;
     $(`${who}-flame`).style.bottom = `${String(wax)}%`;
   }
+  if (spent.ts > 0) text("candle-note", T.candleNote(spent.peras / spent.ts));
   const same = $("same");
   same.textContent = differ ? T.differ : T.same(checks);
   same.className = `same ${differ ? "ko" : "ok"}`;
