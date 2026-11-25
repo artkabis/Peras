@@ -58,4 +58,19 @@ Les programmes sont ceux du projet, et ce que vaut un framebuffer dépend de ce 
 
 Mesuré comme celui d’A3, une chose retirée à travail égal, 11 tours de 60 images dans un seul processus, face à TypeScript : f1 tel qu’écrit, 3,52 ; son arrondi par `Math.round`, 6,43 (constat F127, un appel à JavaScript chaque fois) ; le même arrondi écrit avec `floor` et une branche, 3,18 ; écrit sans branche, `Math.floor(v + 0.5)`, 1,87 (constat F128, aucun `select`) ; tronqué, un autre résultat, 1,58. L’image de P2 n’est pas son coût : son arrondi l’est, trois fois par pixel, une branche que le processeur prédit mal là où un `Uint8ClampedArray` arrondit en une instruction. Le `rgba` de f3, abaissé en `f64.nearest` de WebAssembly, qui arrondit une moitié au pair comme un `Uint8ClampedArray`, en une instruction, a le plancher de la troncature : f3 est construit, comme enregistré, si f2 manque les critères.
 
-_À venir : la mesure, f3 s’il est construit, P3, la proposition._
+### La mesure (2026-11-25)
+
+`node scripts/bench-frame.mjs`, 21 tours dans un seul processus, chaque version construite pour la production, à `1d3d627` ; [`bench/frame/RESULTS.md`](../../../bench/frame/RESULTS.md). Le temps face à f0, médiane :
+
+| Option |    A3 |    P2 | Lignes, A3 et P2 | Octets, gzip, A3 et P2 |
+| ------ | ----: | ----: | ---------------- | ---------------------- |
+| f0     |     1 |     1 | 120, 77          | 4 970, 3 209           |
+| f1     | 0,760 | 1,029 | 123, 80          | 4 982, 3 220           |
+| f2     | 0,746 | 0,884 | 106, 73          | 5 168, 3 389           |
+| f3     | 0,698 | 0,499 | 106, 73          | 5 125, 3 340           |
+
+Les contrôles A/A sont dans la bande enregistrée : le TypeScript face à lui-même 1,001 et 1,003, f0 face à lui-même 0,986 et 0,990. La mémoire est la même pour chaque option, 640 Kio et 2 112 Kio. Face à TypeScript, f3 porte A3 de 3,08 à 2,14 fois son temps et P2 de 3,57 à 1,80.
+
+Selon les critères : f1 et f2 manquent le 0,85 de P2 ; f3 le tient sur les deux programmes, écrit moins de lignes que f0, garde la mémoire ; face à f2, son temps est 0,94 sur A3 et 0,56 sur P2, donc f3 plutôt que f2 tient sur P2, où l’arrondi est le travail. Le critère de P3, l’image donnée à un canvas sans copie, reste à mesurer.
+
+_À venir : P3, la proposition._

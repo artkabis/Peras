@@ -58,4 +58,19 @@ The programs are the project's, and a framebuffer's worth depends on what a user
 
 Measured as A3's was, one thing removed with the same work, 11 rounds of 60 frames in one process, against TypeScript: f1 as written, 3.52; its rounding by `Math.round`, 6.43 (finding F127, a call into JavaScript each time); the same rounding written with `floor` and a branch, 3.18; written without a branch, `Math.floor(v + 0.5)`, 1.87 (finding F128, no `select`); truncated, a different result, 1.58. P2's frame is not its cost: its rounding is, three times a pixel, a branch the processor mispredicts where a `Uint8ClampedArray` rounds in one instruction. f3's `rgba`, lowered to WebAssembly's `f64.nearest`, which rounds a half to the even as a `Uint8ClampedArray` does, in one instruction, has the truncation's floor: f3 is built, as registered, if f2 misses the criteria.
 
-_To come: the measure, f3 if it is built, P3, the proposal._
+### The measure (2026-11-25)
+
+`node scripts/bench-frame.mjs`, 21 rounds in one process, every version built for production, at `1d3d627`; [`bench/frame/RESULTS.md`](../../../bench/frame/RESULTS.md). Time against f0, median:
+
+| Option |    A3 |    P2 | Lines, A3 and P2 | Bytes, gzip, A3 and P2 |
+| ------ | ----: | ----: | ---------------- | ---------------------- |
+| f0     |     1 |     1 | 120, 77          | 4,970, 3,209           |
+| f1     | 0.760 | 1.029 | 123, 80          | 4,982, 3,220           |
+| f2     | 0.746 | 0.884 | 106, 73          | 5,168, 3,389           |
+| f3     | 0.698 | 0.499 | 106, 73          | 5,125, 3,340           |
+
+The A/A controls lie within the band registered: the TypeScript against itself 1.001 and 1.003, f0 against itself 0.986 and 0.990. Memory is the same for every option, 640 KiB and 2,112 KiB. Against TypeScript, f3 brings A3 from 3.08 to 2.14 times its time and P2 from 3.57 to 1.80.
+
+By the criteria: f1 and f2 miss P2's 0.85; f3 meets it on both programs, writes fewer lines than f0, keeps the memory; against f2, its time is 0.94 on A3 and 0.56 on P2, so f3 over f2 holds on P2, where the rounding is the work. The criterion of P3, the frame given to a canvas with no copy, is still to be measured.
+
+_To come: P3, the proposal._
