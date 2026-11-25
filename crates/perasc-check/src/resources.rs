@@ -217,7 +217,20 @@ impl<'c, 'a> Resources<'c, 'a> {
                 if let Some(otherwise) = otherwise {
                     self.stmt(otherwise);
                 }
-                self.join(&after_then);
+                // A branch that leaves, by `return`, `break` or `continue`,
+                // is not a path to what follows: what it gave away is still
+                // held there (F123).
+                let leaves =
+                    |s: &Stmt| crate::never_ends(self.checker.ast, std::slice::from_ref(s));
+                let then_leaves = leaves(then);
+                let otherwise_leaves = otherwise.as_deref().is_some_and(leaves);
+                if then_leaves {
+                    // What follows comes from the `else`, or from before.
+                } else if otherwise_leaves {
+                    self.held = after_then;
+                } else {
+                    self.join(&after_then);
+                }
             }
             StmtKind::While { cond, body } => {
                 self.expr(*cond, Position::Use);

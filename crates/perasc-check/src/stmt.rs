@@ -299,6 +299,19 @@ impl Checker<'_> {
             keyword: local.keyword,
         };
         self.declare(local.name.symbol, Some(local.name.span), kind, ty);
+        // A `const` read from an element: a copy of it (F122).
+        if !local.mutable
+            && let Some(init) = local.init
+            && self.reads_element(init)
+            && let Some(index) = self.scopes.lookup(local.name.symbol)
+        {
+            let span = self.ast.expr(init).span;
+            let text = self
+                .source
+                .get(span.start as usize..span.end as usize)
+                .unwrap_or("");
+            self.element_copies.insert(index, text.to_owned());
+        }
         // A `const` an integer division initialised (decision 0034, d1).
         if !local.mutable
             && let Some(division) = local.init.and_then(|init| self.int_division(init))
@@ -621,6 +634,19 @@ impl Checker<'_> {
         }
     }
 
+    /// Whether an expression reads an element of an array, or a field of one:
+    /// `ps[i]`, `self.ps[i]`, `ps[i].pos`.
+    fn reads_element(&self, mut expr: ExprId) -> bool {
+        loop {
+            match &self.ast.expr(expr).kind {
+                ExprKind::Index { .. } => return true,
+                ExprKind::Field { base, .. } => expr = *base,
+                ExprKind::Paren(inner) => expr = *inner,
+                _ => return false,
+            }
+        }
+    }
+
     /// `E0205` when the binding cannot be modified.
     pub(crate) fn check_mutable(&mut self, index: usize, span: Span) {
         self.mutations.push((index, span));
@@ -635,7 +661,10 @@ impl Checker<'_> {
             | Kind::Global {
                 mutable: false,
                 keyword,
-            } => Immutable::Const(keyword),
+            } => match self.element_copies.get(&index) {
+                Some(place) => Immutable::Copy(place.clone()),
+                None => Immutable::Const(keyword),
+            },
             Kind::Param {
                 convention: Convention::Let,
                 type_start,

@@ -129,6 +129,24 @@ fn a_copied_structure_is_its_own() {
     );
 }
 
+/// A copy is written for its type, not serialized: `structuredClone` made
+/// decision 0046's notes 186 times TypeScript's time (finding F124). The copy
+/// is still its own, down to an array a structure of an element holds.
+#[test]
+fn a_copy_is_written_for_its_type() {
+    let source = "struct Note {\n  id: i32;\n  tags: Array<String>;\n  at: Option<Note2>;\n}\n\
+         struct Note2 {\n  n: i32;\n}\n\
+         export fn main(): Array<i32> {\n  \
+           const a = [Note(1, [\"x\"], Some(Note2(1)))];\n  \
+           let b = a.copy();\n  \
+           b[0].tags.push(\"y\");\n  \
+           b[0].id = 2;\n  \
+           return [a[0].tags.length, b[0].tags.length, a[0].id, b[0].id];\n\
+         }\n";
+    assert!(!js(source).contains("structuredClone"), "{}", js(source));
+    gives(source, "[1,2,1,2]");
+}
+
 #[test]
 fn integers_wrap_as_in_owned_modules() {
     gives(

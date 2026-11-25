@@ -22,6 +22,9 @@ export default defineConfig(
       "bench/garden/**",
       // The pond's versions, measured as written (scripts/bench-lanterns.mjs).
       "bench/lanterns/**",
+      // Decision 0046's specifications, written as a developer from TypeScript
+      // writes them and kept as written; checked by bench/next/tsconfig.json.
+      "bench/next/**",
       // The versions of decision 0031, measured as written (scripts/bench-parallel.mjs).
       "bench/parallel/**",
       // The versions of decision 0014, measured as written (scripts/bench-data.mjs).

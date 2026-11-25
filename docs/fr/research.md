@@ -140,6 +140,74 @@ Becker, Denny, Pettit, Bouchard, Bouvier, Harrington, Kamil, Karkare, McDonald, 
 - **Montre** : une revue de plus de 300 travaux sur les messages d’erreur de programmation, depuis 1965. Son titre en donne la conclusion.
 - **Dans Peras** : chaque diagnostic donne sa cause et sa correction, en anglais et en français. Chaque code a une page dont l’exemple et la correction sont vérifiés par les tests ([codes d’erreur](errors/index.md)).
 
+## Ce que le projet n’a pas encore mesuré
+
+Des travaux trouvés par une revue de l’état de l’art le 2026-11-25, demandée par le propriétaire : chacun touche un choix que Peras a fait ou s’apprête à faire, et aucun n’a encore été mesuré dans Peras. Chacun est une hypothèse pour une décision, mesurée comme le demandent les règles du projet (son plancher d’abord, constat M041), jamais un gain supposé (constat M001).
+
+### Les allocateurs depuis TLSF
+
+**Des listes libres partagées en morceaux.** Leijen, Zorn et de Moura, _Mimalloc: Free List Sharding in Action_, APLAS 2019, LNCS 11893 ([DOI 10.1007/978-3-030-34175-6_13](https://doi.org/10.1007/978-3-030-34175-6_13)).
+
+- **Montre** : un allocateur qui garde plusieurs listes libres par page, une où allouer, une pour les blocs libérés par le même fil et une pour ceux libérés par d’autres, pour la localité et un chemin court vers l’allocation ; il a fait mieux que les principaux allocateurs auxquels il a été comparé.
+- **Ne montre pas** : un temps borné, raison pour laquelle la [décision 0002](decisions/0002-tlsf-allocator.md) a choisi TLSF ; ni rien en WebAssembly. Une mesure de praticien en WebAssembly, hors relecture par des pairs, l’a trouvé environ deux fois plus rapide que dlmalloc sur un programme qui alloue beaucoup ([web.dev, 2025](https://web.dev/articles/scaling-multithreaded-webassembly-applications)).
+- **Dans Peras** : pas mesuré. TLSF n’a jamais été mesuré face à un allocateur plus récent dans les modules de Peras.
+
+**Des blocs libérés par un autre fil.** Liétar, Butler, Clebsch, Drossopoulou, Franco, Parkinson, Shamis, Wintersteiger et Chisnall, _snmalloc: A Message Passing Allocator_, ISMM 2019, p. 122–135 ([DOI 10.1145/3315573.3329980](https://doi.org/10.1145/3315573.3329980)).
+
+- **Montre** : un allocateur qui rend les blocs libérés par un autre fil à celui qui les a alloués, par lots et sans verrou ; sur des charges où un fil alloue et un autre libère, il a fait mieux que les allocateurs auxquels il a été comparé.
+- **Dans Peras** : pas mesuré. Un `parallel for` n’alloue rien dans un tour aujourd’hui ([décision 0031](decisions/0031-useful-parallel-loops.md)) ; c’est le travail à lire avant qu’il le fasse.
+
+**La fragmentation retirée.** Powers, Tench, Berger et McGregor, _Mesh: Compacting Memory Management for C/C++ Applications_, PLDI 2019 ([DOI 10.1145/3314221.3314582](https://doi.org/10.1145/3314221.3314582)).
+
+- **Montre** : un allocateur qui fusionne les pages dont les blocs vivants ne se chevauchent pas, avec des algorithmes aléatoires et la mémoire virtuelle du système, retirant la fragmentation de programmes non modifiés ; la mémoire de Firefox a baissé de 16 % et celle de Redis de 39 %, à peu près à la vitesse des principaux allocateurs.
+- **Ne montre pas** : ce que WebAssembly peut faire aujourd’hui : un module n’a pas de mémoire virtuelle à réorganiser, et sa mémoire ne rétrécit jamais ([spécification](spec.md)).
+- **Dans Peras** : pas mesuré. La mémoire qu’une page qui dure garde après son pic, et la proposition ci-dessous qui permettrait à un module de la rendre, comptent surtout pour l’étude de la mémoire chargée par proximité.
+
+### Mesurer sans se tromper soi-même
+
+**Un biais venu du dispositif.** Mytkowicz, Diwan, Hauswirth et Sweeney, _Producing Wrong Data Without Doing Anything Obviously Wrong!_, ASPLOS 2009, p. 265–276 ([DOI 10.1145/1508244.1508275](https://doi.org/10.1145/1508244.1508275)).
+
+- **Montre** : un changement du dispositif qui semble anodin, comme la taille de l’environnement ou l’ordre dans lequel un programme est lié, peut mener à des conclusions fausses ; le biais a été trouvé sur plusieurs architectures et compilateurs, et aucun de 133 articles examinés ne le traitait. Les auteurs proposent de rendre le dispositif aléatoire, et une analyse causale pour détecter le biais.
+- **Dans Peras** : le contrôle A/A (constat M042) mesure le bruit, pas le biais ; un protocole qui rend son dispositif aléatoire, l’ordre des modules chargés, leurs adresses, le mesurerait aussi.
+
+**Assez de répétitions.** Kalibera et Jones, _Rigorous Benchmarking in Reasonable Time_, ISMM 2013, p. 63–74 ([DOI 10.1145/2464157.2464160](https://doi.org/10.1145/2464157.2464160)).
+
+- **Montre** : combien de répétitions, à quel niveau, demande un résumé statistique rigoureux, et qu’on peut l’obtenir en un temps raisonnable, sur DaCapo et SPEC CPU sur trois plateformes.
+- **Dans Peras** : la décision 0015 répète à deux niveaux, des processus de navigateur et des tours, avec un bootstrap hiérarchique ; les autres protocoles prennent 21 tours dans un seul processus. Combien chacun en demande n’est pas mesuré.
+
+**La disposition rendue aléatoire.** Curtsinger et Berger, _Stabilizer: Statistically Sound Performance Evaluation_, ASPLOS 2013 ([DOI 10.1145/2451116.2451141](https://doi.org/10.1145/2451116.2451141)).
+
+- **Montre** : un compilateur et un runtime qui rendent aléatoire la disposition du code, de la pile et du tas pendant qu’un programme s’exécute, pour distinguer une différence de vitesse d’un effet de disposition.
+- **Dans Peras** : pas fait ; un changement du compilateur qui déplace des fonctions dans un module peut changer sa vitesse pour des seules raisons de disposition.
+
+### Des données disposées pour le cache
+
+**Les champs chauds et froids séparés.** Chilimbi, Davidson et Larus, _Cache-Conscious Structure Definition_, PLDI 1999 ([DOI 10.1145/301618.301635](https://doi.org/10.1145/301618.301635)).
+
+- **Montre** : découper une structure plus grande qu’une ligne de cache entre les champs souvent utilisés et les autres, et réordonner les champs ; dans cinq programmes Java, le découpage a baissé les défauts de cache de 10 à 27 % et accru la vitesse de 6 à 18 %.
+- **Dans Peras** : un tableau de structures est déjà une colonne par champ ; les pools de la [décision 0044](decisions/0044-pools.md) coûtent surtout par leur disposition, une poignée de deux nombres et deux colonnes de plus. Regrouper les colonnes qu’une boucle lit ensemble est la prochaine question de disposition.
+
+### Changer un élément sur place
+
+**Les projections.** Le langage Hylo, _subscripts_ ([visite du langage](https://docs.hylo-lang.org/language-tour/subscripts)) ; pas un article, un langage bâti sur la sémantique de valeurs mutables, dont l’article cité [plus haut](#la-sûreté-mémoire-sans-ramasse-miettes) étudie la compilation.
+
+- **Montre** : un subscript qui projette une valeur le temps d’un accès, lue ou écrite sur place, plutôt que de rendre une copie ; une sémantique de valeurs mutables sans références.
+- **Dans Peras** : un élément est une valeur ([guide](guide/collections.md#un-élément-est-une-valeur)) ; `const p = ps[i]` est une copie, et la décision 0046 a mesuré ce que cela coûte à un développeur venu de TypeScript (constat F122). Une projection, `inout p = &ps[i]` ou approchant, est l’option à mesurer.
+
+### L’optimiseur
+
+**Les e-graphes.** Willsey, Nandi, Wang, Flatt, Tatlock et Panchekha, _egg: Fast and Extensible Equality Saturation_, POPL 2021 ([DOI 10.1145/3434304](https://doi.org/10.1145/3434304)).
+
+- **Montre** : la saturation d’égalités rendue rapide par la reconstruction, qui rétablit les invariants de l’e-graphe seulement entre les phases, avec une bibliothèque et ses usages dans plusieurs domaines.
+- **Dans Peras** : l’optimiseur applique ses passes dans un ordre fixe ([décision 0016](decisions/0016-faster-from-the-literature.md), [décision 0036](decisions/0036-inlining-and-invariants.md)) ; un ordre trouvé par saturation n’est pas mesuré.
+
+### Des propositions de WebAssembly
+
+Pas des articles : des propositions du groupe communautaire WebAssembly, dont l’état dans les navigateurs se lit dans leurs registres et change ; vérifié le 2026-11-25.
+
+- **Les « string builtins » de JavaScript** : un module appelle les opérations de chaînes de JavaScript lui-même et tient ses chaînes, sans copier de texte à travers la frontière. Livrés dans Chrome 130 (octobre 2024) et Safari 26.2 ; Firefox non confirmé ([web features](https://web-platform-dx.github.io/web-features-explorer/features/wasm-string-builtins), [MDN](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_builtins)). Dans Peras : la [décision 0004](decisions/0004-strings-without-allocation.md) a trouvé le texte qui entre dans un module plus de la moitié de ce qui restait de son coût ; pas mesuré.
+- **Le contrôle de la mémoire**, `memory.discard` : un module rend des pages de sa mémoire sans la rétrécir. Dans Firefox depuis la version 112, pas dans le standard en mars 2026 ([Mozilla](https://bugzilla.mozilla.org/show_bug.cgi?id=1804310), [propositions](https://github.com/WebAssembly/proposals)). Dans Peras : la mémoire ne rétrécit jamais ([spécification](spec.md)) ; l’étude de la mémoire chargée par proximité en dépend.
+
 ## L’adoption et ses risques
 
 Ces travaux vont contre certaines parties du projet, ou bornent là où il convient.

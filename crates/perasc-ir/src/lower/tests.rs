@@ -75,6 +75,12 @@ fn every_unsupported_construct_is_reported_with_its_name() {
             "export fn f(s: inout String): void { s += \"a\"; }",
             "inout-string",
         ),
+        // A whole array given to a field of an `inout` structure: the field
+        // is lent, its old value the caller's (decision 0046, A3, F121).
+        (
+            "struct S {\n  ps: Array<i32>;\n}\nfn f(s: inout S): void {\n  s.ps = [];\n}\nexport fn g(): i32 {\n  let s = S([1]);\n  f(&s);\n  return s.ps.length;\n}\n",
+            "inout-replace",
+        ),
     ] {
         let errors = lowered(source).err().unwrap_or_default();
         assert!(!errors.is_empty(), "{source}: no error");

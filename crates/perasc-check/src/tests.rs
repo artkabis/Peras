@@ -356,3 +356,47 @@ fn narrowing_through_conditions_is_sound() {
         assert_eq!(codes.is_empty(), through || before, "{accepted}: {codes:?}");
     }
 }
+
+/// A variant takes its data as a constructor does: a parameter that only
+/// borrows its value cannot be moved into one (decision 0046, A4, where the
+/// release verifier refused what the checker let through).
+#[test]
+fn a_variant_takes_its_data() {
+    let lent = "enum R { A(i32), B(String), }\n\
+                fn f(s: String): R { return R.B(s); }\n\
+                export fn run(): i32 { match (f(\"x\")) { R.A(n) => { return n; } R.B(t) => { return t.length; } } }\n";
+    assert_eq!(codes_of(lent), [codes::MOVE_OUT_OF_BORROW]);
+    let wrapped = "enum R { A(i32), B(String), }\n\
+                   fn f(s: String): Option<R> { return Some(R.B(s)); }\n\
+                   export fn run(): i32 { if (f(\"x\").isSome()) { return 1; } return 0; }\n";
+    assert_eq!(codes_of(wrapped), [codes::MOVE_OUT_OF_BORROW]);
+    let copied = "enum R { A(i32), B(String), }\n\
+                  fn f(s: String): R { return R.B(s.copy()); }\n\
+                  export fn run(): i32 { match (f(\"x\")) { R.A(n) => { return n; } R.B(t) => { return t.length; } } }\n";
+    assert_eq!(codes_of(copied), []);
+}
+
+/// A constant read from an element is a copy: E0205's fix must not offer
+/// `let`, which builds a program that changes the copy and leaves the element
+/// as it was; it says to write to the element (decision 0046, A3, F122).
+#[test]
+fn a_copy_of_an_element_is_not_offered_let() {
+    let source = "struct P { x: f64; }\n\
+                  export fn f(): f64 { let ps = [P(1.0)]; const p = ps[0]; p.x = 2.0; return ps[0].x; }\n";
+    let found = diagnostics(source);
+    let copy = found.iter().find(|d| d.code == codes::ASSIGN_TO_IMMUTABLE);
+    assert!(copy.is_some(), "no E0205: {found:?}");
+    let Some(d) = copy else { return };
+    assert!(
+        d.fix.edits.is_empty(),
+        "an edit is offered: {:?}",
+        d.fix.edits
+    );
+    assert_eq!(d.fix.message.id, "check-immutable-fix-copy");
+    // A constant of its own keeps the fix `let`.
+    let own = diagnostics("export fn f(): i32 { const n = 1; n = 2; return n; }\n");
+    let constant = own.iter().find(|d| d.code == codes::ASSIGN_TO_IMMUTABLE);
+    assert!(constant.is_some(), "no E0205: {own:?}");
+    let Some(d) = constant else { return };
+    assert_eq!(d.fix.message.id, "check-immutable-fix-const");
+}

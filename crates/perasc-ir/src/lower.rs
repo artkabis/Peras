@@ -1672,6 +1672,15 @@ impl Lowering<'_> {
         let Some(locals) = self.place(state, target) else {
             return;
         };
+        // A field of an `inout` structure that holds an array, a string, a
+        // map or a set is lent: its contents change in place, but a whole new
+        // value would need the old one released and the new one given back to
+        // the caller, which is not compiled yet (F121).
+        if op == AssignOp::Assign && locals.iter().any(|l| state.is_borrowed(*l)) {
+            let span = self.ast.expr(target).span;
+            self.unsupported(span, "inout-replace");
+            return;
+        }
         let values = self.value(state, value);
         state.flush(out);
         match (assign_op(op), locals.as_slice(), values.as_slice()) {

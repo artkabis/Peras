@@ -50,3 +50,15 @@ export fn early(button: Element): void {
   const listener = button.on("keydown", (e) => log(e.key.unwrapOr("?")));
   listener.release();
 }
+
+// A resource returned in an `if` that leaves is still held after it
+// (decision 0046, A1, F123).
+export fn mountOrNot(ok: bool): Group {
+  let group = Group.new();
+  if (!ok) {
+    return group;
+  }
+  const pending = group.slot();
+  pending.clear();
+  return group;
+}

@@ -1,0 +1,101 @@
+// Decision 0046, A2, a ledger, translated from ledger.ts as a developer from
+// TypeScript would, then fixed until it builds.
+
+struct Entry {
+  date: String;
+  category: String;
+  cents: i64;
+  label: String;
+}
+
+fn parse(csv: String): Array<Entry> {
+  let entries: Array<Entry> = [];
+  const lines = csv.split("\n");
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].copy();
+    if (line.trim() == "") {
+      continue;
+    }
+    const parts = line.split(",");
+    if (parts.length < 3) {
+      continue;
+    }
+    const value = parts[2].parseF64();
+    if (value.isNone()) {
+      continue;
+    }
+    let label = "";
+    if (parts.length > 3) {
+      label = parts[3].copy();
+    }
+    entries.push(Entry(parts[0].copy(), parts[1].copy(), Math.round(value * 100).toI64(), label));
+  }
+  return entries;
+}
+
+struct Report {
+  months: Map<String, i64>;
+  categories: Map<String, i64>;
+  lowest: i64;
+  largest: Array<Entry>;
+}
+
+fn report(entries: Array<Entry>): Report {
+  let months: Map<String, i64> = Map.new();
+  let categories: Map<String, i64> = Map.new();
+  let balance: i64 = 0;
+  let lowest: i64 = 0;
+  let sorted = entries.copy();
+  sorted.sortBy((e) => e.date);
+  for (const e of sorted) {
+    const month = e.date.slice(0, 7);
+    months.set(month, months.get(month).unwrapOr(0) + e.cents);
+    categories.set(e.category.copy(), categories.get(e.category).unwrapOr(0) + e.cents);
+    balance += e.cents;
+    lowest = Math.min(lowest, balance);
+  }
+  let byAmount = entries.copy();
+  byAmount.sortByDescending((e) => Math.abs(e.cents));
+  const largest = byAmount.slice(0, 5);
+  return Report(months, categories, lowest, largest);
+}
+
+fn money(cents: i64): String {
+  let sign = "";
+  if (cents < 0) {
+    sign = "-";
+  }
+  return `${sign}${(Math.abs(cents).toF64() / 100.0).toFixed(2)}`;
+}
+
+fn pad2(n: f64): String {
+  if (n < 10) {
+    return `0${n}`;
+  }
+  return `${n}`;
+}
+
+export fn run(n: i32): String {
+  const categories = ["food", "rent", "salary", "travel", "books"];
+  let csv = "date,category,amount,label\n";
+  let seed = 17.0;
+  for (let i = 0; i < n; i++) {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    const r = Math.floor(seed / 256);
+    const month = 1 + (r % 12);
+    const day = 1 + (Math.floor(r / 12) % 28);
+    const category = categories[(Math.floor(r / 336) % 5).toI32()].copy();
+    let amount = -((Math.floor(r / 1680) % 200) + (r % 100) / 100);
+    if (category == "salary") {
+      amount = 300;
+    }
+    csv += `2026-${pad2(month)}-${pad2(day)},${category},${amount.toFixed(2)},item ${i}\n`;
+  }
+  const r = report(parse(csv));
+  let months: Array<String> = [];
+  for (const e of r.months) {
+    months.push(`${e.0}:${money(e.1)}`);
+  }
+  months.sortBy((m) => m);
+  return `${months.join(",")}|${money(r.lowest)}|${r.largest.map((e) => e.label.copy()).join(",")}`;
+}

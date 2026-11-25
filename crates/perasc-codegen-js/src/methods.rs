@@ -12,7 +12,80 @@ fn shallow(element: &Ty) -> bool {
     matches!(element, Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::String)
 }
 
+/// How deep a copy is written out; deeper, a recursive type, it is cloned.
+const COPY_DEPTH: usize = 8;
+
+/// A name that can be read twice without evaluating anything again.
+fn plain(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
 impl Module<'_> {
+    /// A copy of `value`, written for its type (finding F124): each array made
+    /// again, each structure as a new object, the numbers, booleans and
+    /// strings shared as they cannot change. `structuredClone` serialized the
+    /// value; it stays for what this does not write, a map or set of
+    /// structures, an enumeration, a shared value, a type deeper than
+    /// `COPY_DEPTH`.
+    pub(crate) fn copy_of(&self, ty: &Ty, value: &str, depth: usize) -> String {
+        let clone = || format!("structuredClone({value})");
+        if depth > COPY_DEPTH {
+            return clone();
+        }
+        let v = format!("$c{depth}");
+        // `value` read once: bound to `v` unless it is a name already.
+        let bind = |body: &dyn Fn(&str) -> String| {
+            if plain(value) {
+                body(value)
+            } else {
+                format!("(({v}) => {})({value})", body(&v))
+            }
+        };
+        match ty {
+            _ if shallow(ty) => value.to_owned(),
+            Ty::Array(t) if shallow(t) => format!("{value}.slice()"),
+            Ty::Array(t) => format!("{value}.map(({v}) => {})", self.copy_of(t, &v, depth + 1)),
+            Ty::Option(t) if shallow(t) => value.to_owned(),
+            Ty::Option(t) => bind(&|x| {
+                format!(
+                    "{x} === undefined ? {x} : {}",
+                    self.copy_of(t, x, depth + 1)
+                )
+            }),
+            Ty::Map(_, t) if shallow(t) => format!("new Map({value})"),
+            Ty::Set(t) if shallow(t) => format!("new Set({value})"),
+            Ty::Struct(id, _) => {
+                let Some((_, fields)) = self.analysis.structs.get(id.0) else {
+                    return clone();
+                };
+                let tuple = self.is_tuple(ty);
+                bind(&|x| {
+                    let items: Vec<String> = fields
+                        .iter()
+                        .map(|(n, t)| {
+                            let read = if tuple {
+                                format!("{x}[{n}]")
+                            } else {
+                                format!("{x}.{n}")
+                            };
+                            let copy = self.copy_of(t, &read, depth + 1);
+                            if tuple { copy } else { format!("{n}: {copy}") }
+                        })
+                        .collect();
+                    if tuple {
+                        format!("[{}]", items.join(", "))
+                    } else {
+                        format!("({{ {} }})", items.join(", "))
+                    }
+                })
+            }
+            _ => clone(),
+        }
+    }
+
     /// A built-in method or member: `xs.push(x)`, `s.trim()`, `n.toF64()`.
     pub(crate) fn builtin(
         &mut self,
@@ -61,7 +134,7 @@ impl Module<'_> {
             Ty::Array(element) => self.array_method(element, name, &me, rest),
             // A structure's copy: plain data, its arrays, maps and sets made
             // again (decision 0021, finding F102).
-            Ty::Struct(..) if name == "copy" => Some(format!("structuredClone({me})")),
+            Ty::Struct(..) if name == "copy" => Some(self.copy_of(&receiver, &me, 0)),
             Ty::String => self.string_method(name, &me, rest),
             Ty::Map(_, value) => match name {
                 "copy" if shallow(value) => Some(format!("new Map({me})")),
@@ -272,7 +345,7 @@ impl Module<'_> {
             "push" => format!("{me}.push({})", arg(0)),
             "pop" => format!("{me}.pop()"),
             "copy" if shallow(element) => format!("{me}.slice()"),
-            "copy" => format!("structuredClone({me})"),
+            "copy" => self.copy_of(&Ty::Array(Box::new(element.clone())), me, 0),
             "slice" => format!("{me}.slice({}, {})", arg(0), arg(1)),
             "concat" | "join" => format!("{me}.{name}({})", arg(0)),
             "reverse" => format!("{me}.reverse()"),

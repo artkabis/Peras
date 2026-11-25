@@ -1,0 +1,25 @@
+// Decision 0044, p4's own stale read: in the body of a walk, a handle whose
+// value is removed and whose slot is given to another, then read through.
+// p4 must stop the program there; with its check made once and never again,
+// it would read the other value in silence.
+
+export fn run(): i32 {
+  let pool: Pool<i32> = Pool.new();
+  for (let i = 0; i < 4; i++) {
+    const kept = pool.insert(i * 10);
+    if (!pool.has(kept)) {
+      return -2;
+    }
+  }
+  let total = 0;
+  for (const h of pool) {
+    total += pool[h];
+    pool.remove(h);
+    const other = pool.insert(99);
+    total += pool[h];
+    if (!pool.has(other)) {
+      return -3;
+    }
+  }
+  return total;
+}
