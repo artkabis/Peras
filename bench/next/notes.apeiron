@@ -1,0 +1,128 @@
+// Decision 0046, A1, notes, translated from notes.ts as a developer from
+// TypeScript would, then fixed until it builds.
+
+struct Note {
+  id: i32;
+  title: String;
+  body: String;
+  tags: Array<String>;
+  updated: f64;
+}
+
+struct Stored {
+  notes: Array<Note>;
+}
+
+export fn load(text: Option<String>): Array<Note> {
+  if (text.isNone()) {
+    return [];
+  }
+  match (Stored.fromJson(text)) {
+    Ok(parsed) => {
+      return parsed.notes;
+    }
+    Err(e) => {
+      return [];
+    }
+  }
+}
+
+export fn save(notes: Array<Note>): String {
+  return Stored(notes).toJson();
+}
+
+export fn search(notes: Array<Note>, query: String): Array<Note> {
+  const words = query.toLowerCase().split(" ").filter((w) => w.length > 0);
+  let found = notes.filter((n) => {
+    const text = `${n.title} ${n.body} ${n.tags.join(" ")}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+  found.sortByDescending((n) => n.updated);
+  return found;
+}
+
+export fn tagCounts(notes: Array<Note>): Array<(String, i32)> {
+  let counts: Map<String, i32> = Map.new();
+  for (const n of notes) {
+    for (const t of n.tags) {
+      counts.set(t, counts.get(t).unwrapOr(0) + 1);
+    }
+  }
+  let out: Array<(String, i32)> = [];
+  for (const e of counts) {
+    out.push((e.0, e.1));
+  }
+  out.sortBy((e) => e.0);
+  out.sortByDescending((e) => e.1);
+  return out;
+}
+
+export fn add(
+  notes: Array<Note>,
+  title: String,
+  body: String,
+  tags: Array<String>,
+  now: f64,
+): Array<Note> {
+  const id = notes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
+  let out = notes.copy();
+  out.push(Note(id, title, body, tags, now));
+  return out;
+}
+
+export fn run(n: i32): String {
+  let notes: Array<Note> = [];
+  const topics = ["work", "home", "ideas", "books", "travel"];
+  for (let i = 0; i < n; i++) {
+    const tags = [topics[i % 5], topics[(i * 3) % 5]];
+    notes = add(
+      notes,
+      `Note ${i}`,
+      `remember item ${i % 97} for ${topics[i % 5]}`,
+      tags,
+      (1000 + i).toF64(),
+    );
+  }
+  const again = load(Some(save(notes)));
+  const hits = search(again, "item 4 work");
+  const counts = tagCounts(again);
+  let first = -1;
+  if (hits.length > 0) {
+    first = hits[0].id;
+  }
+  return `${again.length}|${hits.length}|${first}|${counts.map((e) => `${e.0}:${e.1}`).join(",")}`;
+}
+
+// The browser is typed with Peras's own names: `storage` for
+// localStorage, `now()` for Date.now(), `on` giving a resource for
+// addEventListener, a `Group` released at once for the cleanup function.
+export fn mount(root: Element): Group {
+  let group = Group.new();
+  let notes = load(storage.get("notes"));
+  const field = document.createElement("input");
+  const list = document.createElement("ul");
+  root.append(field);
+  root.append(list);
+  const input = field.asInput();
+  if (input.isNone()) {
+    return group;
+  }
+  const show = () => {
+    list.textContent = "";
+    for (const n of search(notes, input.value)) {
+      const li = document.createElement("li");
+      li.textContent = `${n.title} (${n.tags.join(", ")})`;
+      list.append(li);
+    }
+  };
+  const pending = group.slot();
+  group.add(
+    input.on("input", (_e) => {
+      pending.set(setTimeout(Duration.ms(150), () => show()));
+    }),
+  );
+  notes = add(notes, "Welcome", "first note", ["home"], now());
+  storage.set("notes", save(notes));
+  show();
+  return group;
+}
