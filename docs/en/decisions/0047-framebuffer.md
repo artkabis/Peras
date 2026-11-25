@@ -46,4 +46,8 @@ The programs are the project's, and a framebuffer's worth depends on what a user
 
 ## Record
 
-_To come: the programs in TypeScript, the prototypes, the measures, the proposal._
+### The specification of P2 (2026-11-25, before any Peras)
+
+`bench/frame/plasma.ts`, type-checked at TypeScript's strictest (`bench/frame/tsconfig.json`): a plasma of 640 by 400, a sine per column and per row computed each frame, a palette of 256 colours, a shade per row whose products round as a `Uint8ClampedArray` rounds; 120 frames give `120|135900051`, in 289 ms on this machine. The sines are tables of a row and a column, as a plasma is written, so that the frame, not the sines, is the work. From this commit on, it is not changed.
+
+_To come: the prototypes, the measures, the proposal._

@@ -46,4 +46,8 @@ Les programmes sont ceux du projet, et ce que vaut un framebuffer dépend de ce 
 
 ## Enregistrement
 
-_À venir : les programmes en TypeScript, les prototypes, les mesures, la proposition._
+### La spécification de P2 (2026-11-25, avant tout Peras)
+
+`bench/frame/plasma.ts`, vérifié au plus strict de TypeScript (`bench/frame/tsconfig.json`) : un plasma de 640 sur 400, un sinus par colonne et par ligne calculé à chaque image, une palette de 256 couleurs, une ombre par ligne dont les produits s’arrondissent comme ceux d’un `Uint8ClampedArray` ; 120 images donnent `120|135900051`, en 289 ms sur cette machine. Les sinus sont des tables d’une ligne et d’une colonne, comme s’écrit un plasma, pour que l’image, et non les sinus, soit le travail. À partir de ce commit, il n’est plus changé.
+
+_À venir : les prototypes, les mesures, la proposition._
