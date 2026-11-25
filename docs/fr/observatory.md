@@ -2,7 +2,7 @@
 
 _Original anglais : [../en/observatory.md](../en/observatory.md)._
 
-Une page qui montre ce que Peras fait bien et ce qu’il ne fait pas encore, en un seul lieu : des scènes dessinées en direct par TypeScript et par Peras côte à côte, une mesure que le visiteur lance sur sa propre machine, et chaque chiffre que le dépôt a consigné, lu dans ses fichiers de résultats quand la page est construite (sa source à venir, `examples/observatory`). Elle suit le jardin d’Apeiron ([décision 0013](decisions/0013-garden-of-apeiron.md)) : une mesure qui compte est aussi une scène, le même parcours pour chaque version, les chiffres en dessous ; la poésie montre ce que mesurent les sondes et ne décide jamais.
+Une page qui montre ce que Peras fait bien et ce qu’il ne fait pas encore, en un seul lieu : des scènes dessinées en direct par TypeScript et par Peras côte à côte, une mesure que le visiteur lance sur sa propre machine, et chaque chiffre que le dépôt a consigné, lu dans ses fichiers de résultats quand la page est construite ([source](../../examples/observatory)). Elle suit le jardin d’Apeiron ([décision 0013](decisions/0013-garden-of-apeiron.md)) : une mesure qui compte est aussi une scène, le même parcours pour chaque version, les chiffres en dessous ; la poésie montre ce que mesurent les sondes et ne décide jamais.
 
 Ce protocole a été écrit avant la page, et avant toute mesure qu’elle fait.
 

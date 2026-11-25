@@ -1,0 +1,17 @@
+{
+  "name": "peras-example-observatory",
+  "version": "0.0.1",
+  "private": true,
+  "description": "TypeScript and Peras drawing the same frame side by side, measured on the visitor's machine, beside every figure the repository has recorded.",
+  "license": "0BSD",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5",
+    "vite-plugin-peras": "workspace:*"
+  }
+}

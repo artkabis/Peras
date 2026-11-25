@@ -2,7 +2,7 @@
 
 _French translation: [../fr/observatory.md](../fr/observatory.md)._
 
-A page that shows what Peras does well and what it does not yet, in one place: scenes drawn live by TypeScript and by Peras side by side, a measure the visitor runs on their own machine, and every figure the repository has recorded, read from its results files when the page is built (its source to be `examples/observatory`). It follows the garden of Apeiron ([decision 0013](decisions/0013-garden-of-apeiron.md)): a measure that matters is also a scene, the same journey for each version, the figures beneath it; the poetry shows what the probes measure and never decides.
+A page that shows what Peras does well and what it does not yet, in one place: scenes drawn live by TypeScript and by Peras side by side, a measure the visitor runs on their own machine, and every figure the repository has recorded, read from its results files when the page is built ([source](../../examples/observatory)). It follows the garden of Apeiron ([decision 0013](decisions/0013-garden-of-apeiron.md)): a measure that matters is also a scene, the same journey for each version, the figures beneath it; the poetry shows what the probes measure and never decides.
 
 This protocol was written before the page was, and before any measure it makes.
 
