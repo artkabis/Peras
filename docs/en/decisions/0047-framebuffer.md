@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0047-framebuffer.md](../../fr/decisions/0047-framebuffer.md)._
 
-_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks; the floors of two options measured first (finding M041). Ranked first, tied, by [decision 0046](0046-what-to-build-next-again.md), whose particle scene, A3, could not write a framebuffer; asked by the owner on 2026-11-25 as the first step of a lot with packages, `create-peras` and `@frame`._
+_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks; the floors of two options measured first (finding M041); versions, measures and the proposal recorded the same day, the owner's decision awaited. Ranked first, tied, by [decision 0046](0046-what-to-build-next-again.md), whose particle scene, A3, could not write a framebuffer; asked by the owner on 2026-11-25 as the first step of a lot with packages, `create-peras` and `@frame`._
 
 ## Context
 
@@ -73,4 +73,32 @@ The A/A controls lie within the band registered: the TypeScript against itself 1
 
 By the criteria: f1 and f2 miss P2's 0.85; f3 meets it on both programs, writes fewer lines than f0, keeps the memory; against f2, its time is 0.94 on A3 and 0.56 on P2, so f3 over f2 holds on P2, where the rounding is the work. The criterion of P3, the frame given to a canvas with no copy, is still to be measured.
 
-_To come: P3, the proposal._
+### P3, the frame to a canvas (2026-11-25)
+
+`node scripts/bench-canvas.mjs`, in Chromium 153, at `0b48f54`: P2's plasma with f3's channel, 640 by 400, 7 rounds of 120 frames after one to warm up, the order alternating; [`bench/frame/CANVAS.md`](../../../bench/frame/CANVAS.md). The canvas holds the same pixels for every version.
+
+| Version                              | Drawing, ms a frame | Showing, ms a frame | Showing against TypeScript's |
+| ------------------------------------ | ------------------: | ------------------: | ---------------------------: |
+| TypeScript, its `Uint8ClampedArray`  |               2.464 |               0.101 |                        1.000 |
+| Peras, a view of the module's memory |               4.463 |               0.137 |                        1.355 |
+| Peras, the array given back, a copy  |               5.892 |               1.650 |                       16.364 |
+
+The view copies no pixel: the frame is drawn into an array the page made in the module (`__perasHeap.array`), and shown through four lines of JavaScript, a `Uint8ClampedArray` over its bytes and an `ImageData`. Its 0.036 ms more a frame than TypeScript's are the `ImageData` made again each frame, where TypeScript keeps its own; a copy costs sixteen times TypeScript's showing. The drawing, 1.81 times TypeScript's time, is P2's.
+
+## Proposal (2026-11-25, for the owner)
+
+**f3, by the criteria registered.** It alone meets the time on both programs (0.698 of f0's on A3, 0.499 on P2), writes fewer lines than f0 (106 against 120, 73 against 77), keeps the memory, and gives a frame to a canvas with no copy. Against f2, it holds where the rounding is the work, P2 (0.56).
+
+What lands, if the owner agrees:
+
+1. **`roundEven()`** stays in the compiler, as it is: a half to the even in one instruction, in both modes, documented in [the methods](../reference/methods.md).
+2. **The framebuffer, `Framebuffer`, `Rgba8`, `rgba`, `setPixel`, `clear`, `word`**, stays a file of Peras, `bench/frame/framebuffer-f3.peras`, until packages, the lot's next decision but one, give it a home a program imports.
+3. **f1 and f2** are files of the benchmark, nothing in the compiler: they stay with their figures, as decision 0046's versions do.
+
+What this leaves, recorded:
+
+- **Showing a frame**: four lines of JavaScript, and an `ImageData` made each frame. A `PerasArray` that gives an `ImageData` kept across frames, made again only when the module's memory grows, would cost what TypeScript's does; a measure of its own, later.
+- **What still separates the drawing from TypeScript's**: P2 at 1.80 times, the branches of `clamp` and of the loop (finding F128); A3 at 2.14, the copies of its grid (finding F125, the next decision).
+- **The methods of an imported structure** cannot be called (decision 0022): the framebuffer is free functions, `setPixel(&frame, …)`, where TypeScript writes `frame.set(…)`.
+
+_The owner's decision is awaited._

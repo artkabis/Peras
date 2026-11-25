@@ -2,7 +2,7 @@
 
 _Original anglais : [../../en/decisions/0047-framebuffer.md](../../en/decisions/0047-framebuffer.md)._
 
-_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet ; les planchers de deux options mesurés d’abord (constat M041). Classée première, à égalité, par la [décision 0046](0046-what-to-build-next-again.md), dont la scène de particules, A3, ne pouvait pas écrire de framebuffer ; demandée par le propriétaire le 2026-11-25 comme première étape d’un lot avec les paquets, `create-peras` et `@frame`._
+_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet ; les planchers de deux options mesurés d’abord (constat M041) ; versions, mesures et proposition consignées le même jour, la décision du propriétaire attendue. Classée première, à égalité, par la [décision 0046](0046-what-to-build-next-again.md), dont la scène de particules, A3, ne pouvait pas écrire de framebuffer ; demandée par le propriétaire le 2026-11-25 comme première étape d’un lot avec les paquets, `create-peras` et `@frame`._
 
 ## Contexte
 
@@ -73,4 +73,32 @@ Les contrôles A/A sont dans la bande enregistrée : le TypeScript face à lui-m
 
 Selon les critères : f1 et f2 manquent le 0,85 de P2 ; f3 le tient sur les deux programmes, écrit moins de lignes que f0, garde la mémoire ; face à f2, son temps est 0,94 sur A3 et 0,56 sur P2, donc f3 plutôt que f2 tient sur P2, où l’arrondi est le travail. Le critère de P3, l’image donnée à un canvas sans copie, reste à mesurer.
 
-_À venir : P3, la proposition._
+### P3, l’image vers un canvas (2026-11-25)
+
+`node scripts/bench-canvas.mjs`, sous Chromium 153, à `0b48f54` : le plasma de P2 avec le canal de f3, 640 sur 400, 7 tours de 120 images après un tour d’échauffement, l’ordre alterné ; [`bench/frame/CANVAS.md`](../../../bench/frame/CANVAS.md). Le canvas contient les mêmes pixels pour chaque version.
+
+| Version                                | Dessin, ms par image | Affichage, ms par image | Affichage face à celui de TypeScript |
+| -------------------------------------- | -------------------: | ----------------------: | -----------------------------------: |
+| TypeScript, son `Uint8ClampedArray`    |                2,464 |                   0,101 |                                1,000 |
+| Peras, une vue de la mémoire du module |                4,463 |                   0,137 |                                1,355 |
+| Peras, le tableau rendu, une copie     |                5,892 |                   1,650 |                               16,364 |
+
+La vue ne copie aucun pixel : l’image est dessinée dans un tableau que la page a créé dans le module (`__perasHeap.array`), et montrée par quatre lignes de JavaScript, un `Uint8ClampedArray` sur ses octets et une `ImageData`. Ses 0,036 ms de plus par image que TypeScript sont l’`ImageData` refaite à chaque image, là où TypeScript garde la sienne ; une copie coûte seize fois l’affichage de TypeScript. Le dessin, 1,81 fois le temps de TypeScript, est celui de P2.
+
+## Proposition (2026-11-25, pour le propriétaire)
+
+**f3, selon les critères enregistrés.** Elle seule tient le temps sur les deux programmes (0,698 de celui de f0 sur A3, 0,499 sur P2), écrit moins de lignes que f0 (106 contre 120, 73 contre 77), garde la mémoire, et donne une image à un canvas sans copie. Face à f2, elle tient là où l’arrondi est le travail, P2 (0,56).
+
+Ce qui est adopté, si le propriétaire l’accepte :
+
+1. **`roundEven()`** reste dans le compilateur, tel quel : une moitié au pair en une instruction, dans les deux modes, documenté dans [les méthodes](../reference/methods.md).
+2. **Le framebuffer, `Framebuffer`, `Rgba8`, `rgba`, `setPixel`, `clear`, `word`**, reste un fichier Peras, `bench/frame/framebuffer-f3.peras`, jusqu’à ce que les paquets, l’avant-prochaine décision du lot, lui donnent un lieu qu’un programme importe.
+3. **f1 et f2** sont des fichiers du banc, rien dans le compilateur : ils restent avec leurs chiffres, comme les versions de la décision 0046.
+
+Ce qui reste, consigné :
+
+- **Montrer une image** : quatre lignes de JavaScript, et une `ImageData` refaite à chaque image. Un `PerasArray` qui donne une `ImageData` gardée d’une image à l’autre, refaite seulement quand la mémoire du module grandit, coûterait ce que coûte celle de TypeScript ; une mesure à part, plus tard.
+- **Ce qui sépare encore le dessin de celui de TypeScript** : P2 à 1,80 fois, les branches de `clamp` et de la boucle (constat F128) ; A3 à 2,14, les copies de sa grille (constat F125, la décision suivante).
+- **Les méthodes d’une structure importée** ne peuvent être appelées (décision 0022) : le framebuffer est fait de fonctions libres, `setPixel(&frame, …)`, là où TypeScript écrit `frame.set(…)`.
+
+_La décision du propriétaire est attendue._
