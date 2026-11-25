@@ -137,6 +137,10 @@ jobs:
         run: pnpm --filter peras-example-garden build
       - name: The stream app builds for production
         run: pnpm --filter peras-example-stream build
+      - name: The observatory builds for production
+        run: pnpm --filter peras-example-observatory build
+      - name: The observatory's map in the READMEs says what the results say
+        run: node scripts/observatory-map.mjs --check
       - name: Peras and JavaScript agree in the browser benchmark
         run: node scripts/bench-browser.mjs --check
       - name: Split across Web Workers, the kernels give what they give directly

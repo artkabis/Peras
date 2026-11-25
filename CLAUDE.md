@@ -25,7 +25,7 @@ Read at the start of every session. It holds the rules of the project and the tr
 - A linker that dies on `signal 7 [Bus error]` means a full disk: `df -h .`, then remove `target/debug` (M023).
 - A filter on the output of `cargo test` keeps `^error` lines: a test that does not compile prints no failed result (M023).
 - `pnpm audit` ignores only what `auditConfig.ignoreGhsas` in `pnpm-workspace.yaml` lists, each entry decided by the owner with the condition to remove it: GHSA-fc5q-39xc-vjpf (picomatch, development tools only, no patched version on 2026-11-17) goes once a patched picomatch is 24 hours old.
-- GitHub Pages must be enabled by the owner (Settings, Pages, Source: GitHub Actions); until it is, nothing is online.
+- GitHub Pages is enabled: `docs.yml` deploys the site from `main` at each merge, `/playground/`, `/stream/` and `/observatory/` with it. This container cannot reach `github.io`: read the workflow's run before saying a page is online (M005).
 
 ## Studies: the traps already fallen into
 

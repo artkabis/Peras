@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Peras observatory</title>
+    <meta
+      name="description"
+      content="TypeScript and Peras drawing the same frame side by side, measured on your machine, and every figure the repository has recorded, the good and the less good."
+    />
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0e0f14;
+        --surface: #161821;
+        --fg: #eeeae0;
+        --muted: #a9a59a;
+        --line: #2b2e3a;
+        --peras: #6fb3ff;
+        --typescript: #ff9a62;
+        --good: #7fd6a0;
+        --bad: #ff7d7d;
+        --run: #f2c86b;
+        --flame: #ffd27a;
+        font-family: system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:where(:not([data-theme="dark"])) {
+          color-scheme: light;
+          --bg: #f6f4ee;
+          --surface: #fdfcf8;
+          --fg: #14140f;
+          --muted: #55534c;
+          --line: #dcd9cf;
+          --peras: #1f6fd0;
+          --typescript: #d2561c;
+          --good: #1f7a3a;
+          --bad: #b3261e;
+          --run: #9a6b00;
+          --flame: #e39b16;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.5;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1 {
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 1.3rem;
+        margin: 48px 0 8px;
+      }
+      p.lead {
+        color: var(--muted);
+        max-width: 68ch;
+        margin: 0 0 24px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--peras);
+      }
+      .scene {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 720px) {
+        .scene {
+          grid-template-columns: 1fr;
+        }
+      }
+      figure {
+        margin: 0;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      figure canvas {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 8px;
+      }
+      figcaption {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        margin-top: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .who {
+        font-weight: 600;
+      }
+      .who.ts {
+        color: var(--typescript);
+      }
+      .who.peras {
+        color: var(--peras);
+      }
+      .candle {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        height: 120px;
+        padding-top: 28px;
+        margin-top: 10px;
+      }
+      .candle .stick {
+        position: relative;
+        width: 30px;
+        height: 100%;
+        display: flex;
+        align-items: flex-end;
+      }
+      .candle .wax {
+        width: 100%;
+        background: linear-gradient(90deg, #e9e1cf, #fffaf0 45%, #d8ceb8);
+        border-radius: 6px 6px 3px 3px;
+        box-shadow: 0 0 18px color-mix(in srgb, var(--flame) 35%, transparent);
+        transition: height 0.4s linear;
+      }
+      .candle .flame {
+        position: absolute;
+        left: 50%;
+        width: 14px;
+        height: 24px;
+        margin-left: -7px;
+        margin-bottom: 2px;
+        transition: bottom 0.4s linear;
+        border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        background: radial-gradient(circle at 50% 70%, #fff6d8, var(--flame) 60%, transparent 72%);
+        animation: flicker 0.18s infinite alternate;
+      }
+      @keyframes flicker {
+        from {
+          transform: scale(1, 1);
+        }
+        to {
+          transform: scale(0.9, 1.08) translateY(-1px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .candle .flame {
+          animation: none;
+        }
+      }
+      .stats {
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+      .bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin: 16px 0;
+      }
+      button {
+        font: inherit;
+        padding: 8px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--peras);
+        color: #08111d;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .same {
+        font-variant-numeric: tabular-nums;
+      }
+      .same.ok {
+        color: var(--good);
+      }
+      .same.ko {
+        color: var(--bad);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-variant-numeric: tabular-nums;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      td.n {
+        text-align: right;
+      }
+      .scroll {
+        overflow-x: auto;
+      }
+      svg text {
+        fill: var(--fg);
+        font-size: 12px;
+      }
+      svg .axis {
+        stroke: var(--line);
+      }
+      svg .one {
+        stroke: var(--muted);
+        stroke-dasharray: 3 3;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        font-size: 0.9rem;
+        color: var(--muted);
+        margin: 8px 0;
+      }
+      .dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .bugs {
+        display: grid;
+        grid-template-columns: minmax(160px, 1fr) 90px 90px;
+        gap: 4px 8px;
+        align-items: center;
+        font-size: 0.92rem;
+      }
+      .cell {
+        height: 22px;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 0.8rem;
+        line-height: 22px;
+        color: #0b0b0b;
+        opacity: 0;
+        transform: scale(0.8);
+        transition:
+          opacity 0.4s,
+          transform 0.4s;
+      }
+      .cell.shown {
+        opacity: 1;
+        transform: none;
+      }
+      .cell.compile {
+        background: var(--good);
+      }
+      .cell.run {
+        background: var(--run);
+      }
+      .cell.silent {
+        background: var(--bad);
+      }
+      .cell.none {
+        background: var(--line);
+        color: var(--fg);
+      }
+      footer {
+        margin-top: 56px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title"></h1>
+      <p class="lead" id="lead"></p>
+
+      <section class="scene" aria-live="off">
+        <figure>
+          <canvas id="ts" width="640" height="400"></canvas>
+          <figcaption>
+            <span class="who ts">TypeScript</span>
+            <span class="stats" id="ts-stats"></span>
+          </figcaption>
+          <div class="candle">
+            <div class="stick">
+              <div class="wax" id="ts-wax"></div>
+              <div class="flame" id="ts-flame"></div>
+            </div>
+            <span class="stats" id="ts-spent"></span>
+          </div>
+        </figure>
+        <figure>
+          <canvas id="peras" width="640" height="400"></canvas>
+          <figcaption>
+            <span class="who peras">Peras</span>
+            <span class="stats" id="peras-stats"></span>
+          </figcaption>
+          <div class="candle">
+            <div class="stick">
+              <div class="wax" id="peras-wax"></div>
+              <div class="flame" id="peras-flame"></div>
+            </div>
+            <span class="stats" id="peras-spent"></span>
+          </div>
+        </figure>
+      </section>
+      <div class="bar">
+        <button id="pause"></button>
+        <span class="same" id="same"></span>
+      </div>
+      <p class="muted" id="candle-note"></p>
+      <p class="muted" id="scene-note"></p>
+
+      <h2 id="measure-title"></h2>
+      <p class="muted" id="measure-lead"></p>
+      <div class="bar">
+        <button class="primary" id="measure"></button>
+        <button id="save" disabled></button>
+        <span class="stats" id="progress"></span>
+      </div>
+      <div class="scroll"><table id="measured" hidden></table></div>
+
+      <h2 id="map-title"></h2>
+      <p class="muted" id="map-lead"></p>
+      <div class="legend" id="map-legend"></div>
+      <div class="scroll"><svg id="map" role="img"></svg></div>
+      <p class="muted" id="map-source"></p>
+
+      <h2 id="bugs-title"></h2>
+      <p class="muted" id="bugs-lead"></p>
+      <div class="legend" id="bugs-legend"></div>
+      <div class="bugs" id="bugs"></div>
+      <p class="muted" id="bugs-tally"></p>
+
+      <footer id="footer"></footer>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
