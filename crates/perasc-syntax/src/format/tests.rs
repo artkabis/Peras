@@ -86,3 +86,12 @@ fn a_declaration_keeps_its_blank_lines() {
     let source = "struct P {\n  x: i32,\n\n  // The second.\n  y: i32,\n\n  z: i32,\n}\n";
     assert_eq!(fmt(source), source);
 }
+
+/// An `inout` argument's `&` is a prefix, `bump(&k)`, as the guide writes it
+/// and E0206's fix offers; a bitwise `&` between two operands keeps its
+/// spaces (finding F130).
+#[test]
+fn an_inout_marker_is_a_prefix() {
+    let source = "fn f(n: inout i32, m: i32): i32 {\n  g(&n, &self.frame);\n  return m & 255;\n}\n";
+    assert_eq!(fmt(source), source);
+}

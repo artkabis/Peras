@@ -51,7 +51,7 @@ impl Plasma {
         const v = self.columns[x] + row;
         const c = Math.floor(v * 32 + 512).toI32() & 255;
         setPixel(
-          & self.frame,
+          &self.frame,
           x,
           y,
           rgba(

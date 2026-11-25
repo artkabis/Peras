@@ -89,7 +89,7 @@ impl Scene {
   }
 
   fn draw(inout self) {
-    clear(& self.frame, rgba(0, 0, 0, 0));
+    clear(&self.frame, rgba(0, 0, 0, 0));
     for (const p of self.particles) {
       const x = Math.floor(p.x);
       const y = Math.floor(p.y);
@@ -98,7 +98,7 @@ impl Scene {
       }
       const bright = Math.min(1.0, p.life.toF64() / 60.0);
       setPixel(
-        & self.frame,
+        &self.frame,
         x.toI32(),
         y.toI32(),
         rgba(255 * bright, 160 * p.hue * bright, 60, 255),

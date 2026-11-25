@@ -276,7 +276,8 @@ impl Builder<'_, '_> {
         }
         docs.push(Doc::Text(item.text.to_owned()));
         self.prefix = match item.kind {
-            K::Minus | K::Plus | K::PlusPlus | K::MinusMinus => unary_after(self.prev),
+            // A sign, a prefix step, or an `inout` argument's `&` (F130).
+            K::Minus | K::Plus | K::PlusPlus | K::MinusMinus | K::Amp => unary_after(self.prev),
             _ => false,
         };
         self.prev = Some(item.kind);
