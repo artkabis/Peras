@@ -140,6 +140,74 @@ Becker, Denny, Pettit, Bouchard, Bouvier, Harrington, Kamil, Karkare, McDonald, 
 - **Shows**: a review of more than 300 works on programming error messages, from 1965 on. Its title gives its finding.
 - **In Peras**: every diagnostic gives its cause and its fix, in English and in French. Every code has a page whose example and fix are checked by the tests ([error codes](errors/index.md)).
 
+## What the project has not measured yet
+
+Work found by a review of the state of the art on 2026-11-25, asked by the owner: each bears on a choice Peras made or is about to make, and none has been measured in Peras yet. Each is a hypothesis for a decision, measured as the project's rules ask (its floor first, finding M041), never a gain assumed (finding M001).
+
+### Allocators since TLSF
+
+**Free lists sharded.** Leijen, Zorn and de Moura, _Mimalloc: Free List Sharding in Action_, APLAS 2019, LNCS 11893 ([DOI 10.1007/978-3-030-34175-6_13](https://doi.org/10.1007/978-3-030-34175-6_13)).
+
+- **Shows**: an allocator that keeps several free lists for each page, one to allocate from, one for the blocks freed by the same thread and one for those freed by others, for locality and a short path to allocate; it performed better than the leading allocators it was compared with.
+- **Does not show**: anything bounded in time, which is why [decision 0002](decisions/0002-tlsf-allocator.md) chose TLSF; nor anything in WebAssembly. A practitioner's measure in WebAssembly, outside peer review, found it about twice as fast as dlmalloc on a program that allocates much ([web.dev, 2025](https://web.dev/articles/scaling-multithreaded-webassembly-applications)).
+- **In Peras**: not measured. TLSF has never been measured against a later allocator in Peras's modules.
+
+**Blocks freed by another thread.** Liétar, Butler, Clebsch, Drossopoulou, Franco, Parkinson, Shamis, Wintersteiger and Chisnall, _snmalloc: A Message Passing Allocator_, ISMM 2019, pp. 122–135 ([DOI 10.1145/3315573.3329980](https://doi.org/10.1145/3315573.3329980)).
+
+- **Shows**: an allocator that returns the blocks freed by another thread to the one that allocated them, in batches and without a lock; on workloads where one thread allocates and another frees, it performed better than the allocators it was compared with.
+- **In Peras**: not measured. A `parallel for` allocates nothing in a turn today ([decision 0031](decisions/0031-useful-parallel-loops.md)); this is the work to read before it does.
+
+**Fragmentation removed.** Powers, Tench, Berger and McGregor, _Mesh: Compacting Memory Management for C/C++ Applications_, PLDI 2019 ([DOI 10.1145/3314221.3314582](https://doi.org/10.1145/3314221.3314582)).
+
+- **Shows**: an allocator that merges pages whose live blocks do not overlap, with randomized algorithms and the operating system's virtual memory, removing fragmentation in unmodified programs; Firefox's memory fell by 16 % and Redis's by 39 %, at about the speed of the leading allocators.
+- **Does not show**: anything WebAssembly can do today: a module has no virtual memory to remap, and its memory never shrinks ([spec](spec.md)).
+- **In Peras**: not measured. The memory a long-running page keeps after its peak, and the proposal below that would let a module give it back, matter most for the study of memory streamed by proximity.
+
+### Measuring without fooling ourselves
+
+**Bias from the setup.** Mytkowicz, Diwan, Hauswirth and Sweeney, _Producing Wrong Data Without Doing Anything Obviously Wrong!_, ASPLOS 2009, pp. 265–276 ([DOI 10.1145/1508244.1508275](https://doi.org/10.1145/1508244.1508275)).
+
+- **Shows**: a change to the setup that looks harmless, such as the size of the environment or the order in which a program is linked, can lead to wrong conclusions; the bias was found across architectures and compilers, and none of 133 papers surveyed addressed it. The authors propose randomizing the setup, and a causal analysis to detect the bias.
+- **In Peras**: the A/A control (finding M042) measures noise, not bias; a protocol that randomizes its setup, the order of the modules loaded, their addresses, would measure it too.
+
+**Repetitions that are enough.** Kalibera and Jones, _Rigorous Benchmarking in Reasonable Time_, ISMM 2013, pp. 63–74 ([DOI 10.1145/2464157.2464160](https://doi.org/10.1145/2464157.2464160)).
+
+- **Shows**: how many repetitions, at which level, a rigorous statistical summary needs, and that it can be had in reasonable time, on DaCapo and SPEC CPU on three platforms.
+- **In Peras**: decision 0015 repeats at two levels, browser processes and rounds, with a hierarchical bootstrap; other protocols take 21 rounds in one process. How many each needs is not measured.
+
+**Layout randomized.** Curtsinger and Berger, _Stabilizer: Statistically Sound Performance Evaluation_, ASPLOS 2013 ([DOI 10.1145/2451116.2451141](https://doi.org/10.1145/2451116.2451141)).
+
+- **Shows**: a compiler and runtime that randomize the layout of code, stack and heap while a program runs, so that a difference in speed can be told apart from an effect of layout.
+- **In Peras**: not done; a change of the compiler that moves functions in a module can change its speed for reasons of layout alone.
+
+### Data laid out for the cache
+
+**Hot and cold fields apart.** Chilimbi, Davidson and Larus, _Cache-Conscious Structure Definition_, PLDI 1999 ([DOI 10.1145/301618.301635](https://doi.org/10.1145/301618.301635)).
+
+- **Shows**: splitting a structure larger than a cache block into the fields used often and the others, and reordering fields; in five Java programs, splitting lowered cache misses by 10 to 27 % and raised speed by 6 to 18 %.
+- **In Peras**: an array of structures is already a column per field; the pools of [decision 0044](decisions/0044-pools.md) cost most by their layout, a handle of two numbers and two columns more. Grouping the columns a loop reads together is the next question of layout.
+
+### Changing an element in place
+
+**Projections.** The Hylo language, _subscripts_ ([language tour](https://docs.hylo-lang.org/language-tour/subscripts)); not a paper, a language built on mutable value semantics, whose compilation the paper cited [above](#memory-safety-without-a-garbage-collector) studies.
+
+- **Shows**: a subscript that projects a value for the time of an access, read or written in place, rather than returning a copy; mutable value semantics without references.
+- **In Peras**: an element is a value ([guide](guide/collections.md#an-element-is-a-value)); `const p = ps[i]` is a copy, and decision 0046 measured what that costs a developer from TypeScript (finding F122). A projection, `inout p = &ps[i]` or the like, is the option to measure.
+
+### The optimizer
+
+**E-graphs.** Willsey, Nandi, Wang, Flatt, Tatlock and Panchekha, _egg: Fast and Extensible Equality Saturation_, POPL 2021 ([DOI 10.1145/3434304](https://doi.org/10.1145/3434304)).
+
+- **Shows**: equality saturation made fast by rebuilding, which restores the e-graph's invariants only between phases, with a library and its uses in several domains.
+- **In Peras**: the optimizer applies its passes in a fixed order ([decision 0016](decisions/0016-faster-from-the-literature.md), [decision 0036](decisions/0036-inlining-and-invariants.md)); an order found by saturation is not measured.
+
+### Proposals of WebAssembly
+
+Not papers: proposals of the WebAssembly Community Group, whose state in browsers is read from their records and changes; checked on 2026-11-25.
+
+- **JavaScript string builtins**: a module calls JavaScript's own string operations and holds its strings, without copying text across the boundary. Shipped in Chrome 130 (October 2024) and Safari 26.2; Firefox not confirmed ([web features](https://web-platform-dx.github.io/web-features-explorer/features/wasm-string-builtins), [MDN](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_builtins)). In Peras: [decision 0004](decisions/0004-strings-without-allocation.md) found the text crossing into a module more than half of what remained of its cost; not measured.
+- **Memory control**, `memory.discard`: a module gives pages of its memory back without shrinking it. In Firefox since version 112, not in the standard in March 2026 ([Mozilla](https://bugzilla.mozilla.org/show_bug.cgi?id=1804310), [proposals](https://github.com/WebAssembly/proposals)). In Peras: memory never shrinks ([spec](spec.md)); the study of memory streamed by proximity depends on it.
+
 ## Adoption and its risks
 
 This research argues against parts of the project, or bounds where it fits.
