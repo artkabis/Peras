@@ -36,7 +36,7 @@ export fn rgba(r: f64, g: f64, b: f64, a: f64): Rgba8 {
   return Rgba8(channel(r), channel(g), channel(b), channel(a));
 }
 
-fn word(c: Rgba8): u32 {
+export fn word(c: Rgba8): u32 {
   return c.r.toU32() | (c.g.toU32() << 8) | (c.b.toU32() << 16) | (c.a.toU32() << 24);
 }
 
