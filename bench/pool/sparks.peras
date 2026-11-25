@@ -1,0 +1,70 @@
+// Decision 0044, W1, the sparks, written for p0: indices by hand. Each
+// frame a thousand sparks are born, each coming from the spark born just
+// before it, whose slot it keeps with the number that spark was born with,
+// so that a slot freed and given to another is not taken for its parent;
+// those older than their life die, and their slots go to the next born.
+
+struct Spark {
+  x: f64;
+  y: f64;
+  vx: f64;
+  vy: f64;
+  age: i32;
+  parent: i32;
+  parentBorn: i32;
+}
+
+export fn run(frames: i32): f64 {
+  let sparks: Array<Spark> = [];
+  let born: Array<i32> = [];
+  let alive: Array<bool> = [];
+  let free: Array<i32> = [];
+  let serial = 0;
+  let last = -1;
+  let seed = 7;
+  let sum = 0.0;
+  for (let f = 0; f < frames; f++) {
+    for (let k = 0; k < 1000; k++) {
+      seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+      let parent = -1;
+      let parentBorn = -1;
+      if (last >= 0) {
+        parent = last;
+        parentBorn = born[last];
+      }
+      const vx = ((seed >> 4) & 255).toF64() / 256.0 - 0.5;
+      const vy = ((seed >> 12) & 255).toF64() / 256.0;
+      const spark = Spark(0.0, 0.0, vx, vy, 0, parent, parentBorn);
+      serial += 1;
+      if (free.length > 0) {
+        const slot = free.pop().unwrapOr(0);
+        sparks[slot] = spark;
+        born[slot] = serial;
+        alive[slot] = true;
+        last = slot;
+      } else {
+        sparks.push(spark);
+        born.push(serial);
+        alive.push(true);
+        last = sparks.length - 1;
+      }
+    }
+    for (let i = 0; i < sparks.length; i++) {
+      if (!alive[i]) {
+        continue;
+      }
+      sparks[i].x += sparks[i].vx;
+      sparks[i].y += sparks[i].vy;
+      const p = sparks[i].parent;
+      if (p >= 0 && alive[p] && born[p] == sparks[i].parentBorn) {
+        sum += sparks[p].x - sparks[i].x;
+      }
+      sparks[i].age += 1;
+      if (sparks[i].age > 30) {
+        alive[i] = false;
+        free.push(i);
+      }
+    }
+  }
+  return sum + serial.toF64();
+}

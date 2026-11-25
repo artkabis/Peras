@@ -8,17 +8,17 @@ Peras a un serveur de langage et une extension VS Code. Tous deux sont **propri�
 
 Dans un fichier `.peras` ou `.apeiron` :
 
-| Fonction                                                                        | État    |
-| ------------------------------------------------------------------------------- | ------- |
-| les erreurs à la frappe, avec leurs codes, comme `perasc check`                 | fait    |
-| le survol : ce qu’est un nom, et son type                                       | fait    |
-| aller à la définition, dans le fichier ou dans un fichier qu’il importe         | fait    |
-| trouver chaque référence                                                        | fait    |
-| le plan d’un fichier : fonctions, structures, énumérations, variables de module | fait    |
-| la complétion : les champs et méthodes après un `.`, les noms visibles          | fait    |
-| formater le document, comme `perasc fmt` ([formatage](formatting.md))           | fait    |
-| les commentaires et crochets des deux langages                                  | fait    |
-| le renommage                                                                    | ensuite |
+| Fonction                                                                                 | État |
+| ---------------------------------------------------------------------------------------- | ---- |
+| les erreurs à la frappe, avec leurs codes, comme `perasc check`                          | fait |
+| le survol : ce qu’est un nom, et son type                                                | fait |
+| aller à la définition, dans le fichier ou dans un fichier qu’il importe                  | fait |
+| trouver chaque référence                                                                 | fait |
+| le plan d’un fichier : fonctions, structures, énumérations, variables de module          | fait |
+| la complétion : les champs et méthodes après un `.`, les noms visibles                   | fait |
+| formater le document, comme `perasc fmt` ([formatage](formatting.md))                    | fait |
+| les commentaires et crochets des deux langages                                           | fait |
+| le renommage, dans tous les fichiers de l’espace de travail ; pas encore un champ (F313) | fait |
 
 Deux réglages, `peras.serverPath` et `peras.perascPath`, nomment le serveur de langage et `perasc` quand ils ne sont pas dans le `PATH`.
 
@@ -48,6 +48,6 @@ Chacun a été choisi par une décision à lui, ses options construites et mesur
 
 ## Ensuite
 
-- Le renommage, à partir des références de `perasc serve`.
+- Le renommage d’un champ, quand `perasc serve` résoudra les lectures d’un champ ([constat F313](../findings.md)).
 - L’analyseur de fuites mémoire, l’autre outil propriétaire que prévoit la [feuille de route](../reference/roadmap.md), bâti sur les contrôles de l’allocateur de débogage, qui restent dans le cœur ouvert.
 - La distribution de l’extension, quand le propriétaire le décidera.

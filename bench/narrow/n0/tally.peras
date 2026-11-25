@@ -1,0 +1,42 @@
+// Decision 0045, N4: the missing values counted in an `else`, and skipped
+// by a negated test, written as Peras asks today (n0).
+
+fn tally(xs: Array<Option<i32>>): i32 {
+  let missing = 0;
+  let total = 0;
+  for (const x of xs) {
+    if (x.isSome()) {
+      total += x;
+    } else {
+      missing += 1;
+    }
+  }
+  return total - missing;
+}
+
+fn present(xs: Array<Option<i32>>): i32 {
+  let total = 0;
+  for (const x of xs) {
+    if (x.isNone()) {
+      continue;
+    }
+    total += x;
+  }
+  return total;
+}
+
+export fn run(n: i32): i32 {
+  let xs: Array<Option<i32>> = [];
+  for (let i = 0; i < n; i++) {
+    if (i % 3 == 0) {
+      xs.push(None);
+    } else {
+      xs.push(Some(i & 255));
+    }
+  }
+  let total = 0;
+  for (let round = 0; round < 20; round++) {
+    total = total.wrappingAdd(tally(xs)).wrappingAdd(present(xs));
+  }
+  return total;
+}

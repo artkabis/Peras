@@ -1,0 +1,37 @@
+// Decision 0045, N5: a field tested and read in one condition, written as
+// in TypeScript.
+
+struct Child {
+  parent: Option<i32>;
+  weight: i32;
+}
+
+fn weigh(cs: Array<Child>, alive: Array<bool>): i32 {
+  let total = 0;
+  for (const c of cs) {
+    if (c.parent.isSome() && alive[c.parent]) {
+      total += c.weight;
+    }
+  }
+  return total;
+}
+
+export fn run(n: i32): i32 {
+  let cs: Array<Child> = [];
+  let alive: Array<bool> = [];
+  let seed = 5;
+  for (let i = 0; i < n; i++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    let parent: Option<i32> = None;
+    if (i % 4 != 0) {
+      parent = Some(((seed >> 8) & 2147483647) % n);
+    }
+    cs.push(Child(parent, i % 7));
+    alive.push(i % 3 != 2);
+  }
+  let total = 0;
+  for (let round = 0; round < 20; round++) {
+    total = total.wrappingAdd(weigh(cs, alive));
+  }
+  return total;
+}

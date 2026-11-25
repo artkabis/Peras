@@ -1,0 +1,14 @@
+// Decision 0044, W4, no pool: a program of arrays that uses none, which
+// every option must leave identical.
+
+export fn run(n: i32): i32 {
+  let xs: Array<i32> = [];
+  for (let i = 0; i < n; i++) {
+    xs.push(i * 7 % 1000);
+  }
+  let sum = 0;
+  for (const x of xs) {
+    sum += x;
+  }
+  return sum;
+}

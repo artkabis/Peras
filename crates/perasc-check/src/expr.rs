@@ -348,6 +348,9 @@ impl Checker<'_> {
             }
             ExprKind::Index { base, index } => {
                 let base_ty = self.infer(*base, None);
+                if let Some(element) = self.pool_index(id, &base_ty, *index) {
+                    return element;
+                }
                 self.expect_integer(*index);
                 match base_ty {
                     Ty::Array(element) => *element,
@@ -391,6 +394,34 @@ impl Checker<'_> {
         if !fits {
             self.report(errors::try_return(span, early, ret.as_ref()));
         }
+    }
+
+    /// Decision 0044, prototypes p1 and p2: a pool indexed by a handle,
+    /// `pool[h]`, is the pool's element; the driver writes it again.
+    fn pool_index(&mut self, e: ExprId, base: &Ty, index: ExprId) -> Option<Ty> {
+        if !std::env::var("PERAS_PROTO_POOL").is_ok_and(|v| v == "p1" || v == "p2") {
+            return None;
+        }
+        let Ty::Struct(id, name) = base else {
+            return None;
+        };
+        if name != "Pool" && !name.starts_with("Pool<") {
+            return None;
+        }
+        let values = self
+            .structs
+            .get(id.0)
+            .and_then(|s| s.fields.iter().find(|(n, _)| n == "values"))
+            .map(|(_, t)| t.clone());
+        let Some(Ty::Array(element)) = values else {
+            return None;
+        };
+        let handle = self.infer(index, None);
+        if !matches!(&handle, Ty::Struct(_, n) if n == "Handle") {
+            return None;
+        }
+        self.pool_indexes.push(e);
+        Some(*element)
     }
 
     /// An index must be an integer.
@@ -570,13 +601,21 @@ impl Checker<'_> {
         expected: Option<&Ty>,
     ) -> Ty {
         if matches!(op, BinaryOp::And | BinaryOp::Or) {
+            let mut narrowed = Vec::new();
             for side in [lhs, rhs] {
                 let ty = self.infer(side, Some(&Ty::Bool));
                 if !matches!(ty, Ty::Bool | Ty::Error) {
                     let side_span = self.ast.expr(side).span;
                     self.report(errors::invalid_operator(side_span, op.symbol(), &ty));
                 }
+                // Decision 0045: the right operand with what the left one
+                // proves, true for `&&`, false for `||`.
+                if side == lhs {
+                    let facts = self.operand_facts(lhs, op == BinaryOp::And);
+                    narrowed = self.narrow_all(facts);
+                }
             }
+            self.undo_all(narrowed);
             return Ty::Bool;
         }
         // Operands of a comparison are guided by each other, not by the `bool` result.

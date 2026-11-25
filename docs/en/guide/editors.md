@@ -18,7 +18,7 @@ In a `.peras` or `.apeiron` file:
 | completion: the fields and methods after a `.`, the names in scope           | done  |
 | format the document, as `perasc fmt` ([formatting](formatting.md))           | done  |
 | comments and brackets of both languages                                      | done  |
-| renaming                                                                     | next  |
+| renaming, across the files of the workspace; a field not yet (F313)          | done  |
 
 Two settings, `peras.serverPath` and `peras.perascPath`, name the language server and `perasc` when they are not on the `PATH`.
 
@@ -48,6 +48,6 @@ Each was chosen by a decision of its own, its options built and measured, as in 
 
 ## Next
 
-- Renaming, through `perasc serve`'s references.
+- Renaming a field, once `perasc serve` resolves the reads of a field ([finding F313](../findings.md)).
 - The memory leak analyzer, the other proprietary tool the [roadmap](../reference/roadmap.md) plans, built on the debug allocator's checks, which stay in the open core.
 - Distribution of the extension, when the owner decides.

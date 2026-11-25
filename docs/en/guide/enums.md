@@ -143,6 +143,29 @@ export fn total(text: String): i32 {
 
 In the block of `if (x.isSome()) { … }`, `x` is its value too. A field of a `const` or of a parameter is narrowed as a variable is, by either test: `if (child.parent.isSome()) { … child.parent.name … }`.
 
+The tests combine as in TypeScript ([decision 0045](../decisions/0045-narrowing.md)): `x` is its value in the right operand of `&&` after `x.isSome()`, of `||` after `x.isNone()`, in the `else` of `if (x.isNone())`, through `!`, after an `if` that leaves wherever its condition, false, proves it, and in the body of a `while`:
+
+```peras build
+export fn add(a: Option<i32>, b: Option<i32>): i32 {
+  if (a.isNone() || b.isNone()) {
+    return -1;
+  }
+  return a + b;
+}
+
+export fn pick(a: Option<i32>, limit: i32): i32 {
+  if (a.isSome() && a < limit) {
+    return a;
+  }
+  if (!a.isSome()) {
+    return 0;
+  }
+  return limit;
+}
+```
+
+A condition that does not prove it narrows nothing: in the block of `if (x.isSome() || ready)`, `x` stays an option, since `ready` alone makes the condition true.
+
 The methods of `Option`, `isSome()`, `isNone()` and `unwrapOr`, still read the option whole, so a program written with them keeps building; so does a narrowed name where its option is expected, `return node;` in a function that returns `Option<Node>`. A `let` is not narrowed: it could be given `None` later. Copy it into a `const` first, `const found = best;`, then test it.
 
 ## Results: errors as values

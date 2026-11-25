@@ -310,3 +310,49 @@ fn a_match_on_a_type_that_contains_itself_ends() {
     );
     assert_eq!(codes_of(&deep_missing), [codes::NON_EXHAUSTIVE_MATCH]);
 }
+
+/// Decision 0045: an option read as its value where no test proves it there
+/// is refused, before decision 0045 and since; where `&&`, `||`, `!`, an
+/// `else` or a `while` proves it, accepted since.
+#[test]
+fn narrowing_through_conditions_is_sound() {
+    let wrap = |stmts: &str| {
+        format!(
+            "fn find(n: i32): Option<i32> {{ if (n > 0) {{ return Some(n); }} return None; }}\n\
+             fn f(n: i32, c: bool, io: inout Option<i32>): i32 {{\n\
+             const x = find(n); let y = find(n + 1); y = find(n + 2); let t = 0;\n{stmts}\n\
+             if (io.isSome() || c) {{ t += 1; }} return t + y.unwrapOr(0);\n}}\n"
+        )
+    };
+    for refused in [
+        "if (x.isSome() || c) { t += x; }",
+        "if (x.isNone() && c) { return 0; } t += x;",
+        "if (x.isSome() && c) { t += 1; } else { t += x; }",
+        "if (x.isSome() || x > 3) { t += 1; }",
+        "if (x.isNone() || x > 3) { t += x; }",
+        "if (!x.isNone() || c) { t += x; }",
+        "if (y.isSome() && y > 3) { t += 1; }",
+        "if (io.isSome() && io > 3) { t += 1; }",
+        "if (!(x.isNone() || c)) { t += 1; } else { t += x; }",
+        "while (x.isSome() || c) { t += x; break; }",
+        "if (x.isSome() || c) { t += 1; } else { return 0; } t += x;",
+    ] {
+        let codes = codes_of(&wrap(refused));
+        assert!(!codes.is_empty(), "accepted, and must not be: {refused}");
+    }
+    let through = crate::narrows_through_conditions();
+    for (accepted, before) in [
+        ("if (x.isSome() && x > 3) { t += x; }", false),
+        ("if (x.isNone() || x > 3) { return 0; } t += x;", false),
+        ("if (c && x.isSome()) { t += x; }", false),
+        ("if (x.isSome()) { t += x; } else { t += 1; }", true),
+        ("if (x.isNone()) { t += 1; } else { t += x; }", false),
+        ("if (!x.isSome()) { return 0; } t += x;", false),
+        ("if (!(x.isSome() && c)) { return 0; } t += x;", false),
+        ("if (x.isNone() || c) { t += 1; } else { t += x; }", false),
+        ("while (x.isSome() && t < 5) { t += x; }", false),
+    ] {
+        let codes = codes_of(&wrap(accepted));
+        assert_eq!(codes.is_empty(), through || before, "{accepted}: {codes:?}");
+    }
+}

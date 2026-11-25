@@ -1,0 +1,35 @@
+// Decision 0045, N2: each point pulled toward its parent when the parent
+// is there and alive, written as in TypeScript.
+
+fn pull(xs: Array<i32>, parents: Array<Option<i32>>, alive: Array<bool>): i32 {
+  let sum = 0;
+  for (let i = 0; i < xs.length; i++) {
+    const p = parents[i];
+    if (p.isSome() && alive[p]) {
+      sum += xs[p] - xs[i];
+    }
+  }
+  return sum;
+}
+
+export fn run(n: i32): i32 {
+  let xs: Array<i32> = [];
+  let parents: Array<Option<i32>> = [];
+  let alive: Array<bool> = [];
+  let seed = 3;
+  for (let i = 0; i < n; i++) {
+    seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+    xs.push((seed >> 16) & 1023);
+    if (i % 4 == 0) {
+      parents.push(None);
+    } else {
+      parents.push(Some(((seed >> 8) & 2147483647) % n));
+    }
+    alive.push(i % 3 != 1);
+  }
+  let total = 0;
+  for (let round = 0; round < 20; round++) {
+    total = total.wrappingAdd(pull(xs, parents, alive));
+  }
+  return total;
+}

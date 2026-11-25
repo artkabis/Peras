@@ -1,0 +1,43 @@
+// Decision 0044, W1, the sparks, written for p1 and p2: a pool of sparks,
+// each holding the handle of the spark born just before it.
+
+struct Spark {
+  x: f64;
+  y: f64;
+  vx: f64;
+  vy: f64;
+  age: i32;
+  parent: Option<Handle>;
+}
+
+export fn run(frames: i32): f64 {
+  let sparks: Pool<Spark> = Pool.new();
+  let last: Option<Handle> = None;
+  let serial = 0;
+  let seed = 7;
+  let sum = 0.0;
+  for (let f = 0; f < frames; f++) {
+    for (let k = 0; k < 1000; k++) {
+      seed = seed.wrappingMul(1103515245).wrappingAdd(12345);
+      const vx = ((seed >> 4) & 255).toF64() / 256.0 - 0.5;
+      const vy = ((seed >> 12) & 255).toF64() / 256.0;
+      last = Some(sparks.insert(Spark(0.0, 0.0, vx, vy, 0, last)));
+      serial += 1;
+    }
+    for (const h of sparks.handles()) {
+      sparks[h].x += sparks[h].vx;
+      sparks[h].y += sparks[h].vy;
+      const p = sparks[h].parent;
+      if (p.isSome()) {
+        if (sparks.has(p)) {
+          sum += sparks[p].x - sparks[h].x;
+        }
+      }
+      sparks[h].age += 1;
+      if (sparks[h].age > 30) {
+        sparks.remove(h);
+      }
+    }
+  }
+  return sum + serial.toF64();
+}
