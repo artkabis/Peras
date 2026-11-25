@@ -2,7 +2,7 @@
 
 _Version anglaise : [../../en/decisions/0044-pools.md](../../en/decisions/0044-pools.md)._
 
-_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; charges amendées deux fois avant toute mesure ; options mesurées au commit `5194fdb` ; proposition : p0 reste ; amendée le 2026-11-25 avec p4, avant son prototype. C’est le pas de la phase 6 de la [feuille de route](../reference/roadmap.md) qui suit les arènes ([décision 0043](0043-arenas.md)), « l’allocateur `Pool<T>` », et il vient avant `@frame` et l’étude de la mémoire chargée selon la proximité, qui a besoin d’un budget fixe de places. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
+_État : protocole enregistré le 2026-11-24, avant tout prototype et toute mesure, comme le demande la règle du projet ; charges amendées deux fois avant toute mesure ; options mesurées au commit `5194fdb` ; proposition : p0 reste ; amendée le 2026-11-25 avec p4, avant son prototype ; p4 mesurée au commit `49c5842` ; proposition : p0 reste, au propriétaire de décider. C’est le pas de la phase 6 de la [feuille de route](../reference/roadmap.md) qui suit les arènes ([décision 0043](0043-arenas.md)), « l’allocateur `Pool<T>` », et il vient avant `@frame` et l’étude de la mémoire chargée selon la proximité, qui a besoin d’un budget fixe de places. Sous la règle du propriétaire du 2026-11-17, l’option retenue doit être une amélioration, jamais une régression ; si aucune ne l’est, la décision le dit et rien n’est installé._
 
 ## Contexte
 
@@ -114,3 +114,30 @@ Demandé par le propriétaire le 2026-11-24, après l’intégration de la déci
 - **Écart, comme pour p1** : construit comme une réécriture de l’arbre du programme et la source Peras du pool que le compilateur ajoute, pas comme un nouveau type de l’abaissement.
 - **Les charges pour p4** (`bench/pool/p4/`) sont celles de p1, chaque `for (const h of pool.handles())` écrit `for (const h of pool)`, et rien d’autre de changé : le parcours des étincelles de W1, la somme des profondeurs de W2 ; W3 garde son `handles()`, qu’il indexe.
 - **La mesure** est relancée en entier, chaque option au même commit après la décision 0045, puisque le compilateur a changé sous p1 et p3 ; les chiffres ci-dessus, au commit `5194fdb`, sont gardés. Le protocole, les charges et les critères sont ceux enregistrés plus haut, inchangés ; les contrôles de justesse aussi, la mutation de p4 étant la vérification faite une fois et jamais refaite après une instruction qui retire. _Corrigé le 2026-11-25, avant le prototype de p4_ : tel qu’enregistré, ceci disait que le test différentiel doit voir cette mutation échouer ; il ne le peut pas, puisqu’il compare le programme réécrit au même programme optimisé, les deux côtés réécrits pareil (constat M026). Ce qui la voit est `scripts/bench-pool.mjs --check`, sur un programme qui retire une poignée dans le corps d’un parcours et lit à travers elle ensuite (`bench/pool/p4/stale-walk.peras`) : sous p4 il s’arrête, et avec la mutation il lit en silence.
+
+### Le prototype de p4, et la mesure de nouveau (2026-11-25)
+
+p4 est prototypée comme le troisième amendement la définit, au commit `49c5842` : le vérificateur type `for (const h of pool)` et note le parcours (`Analysis::pool_loops`) ; le pilote le réécrit en un parcours des places du pool et vérifie la génération de `h` une fois dans son corps, avant la première instruction qui lit à travers elle, et de nouveau après une instruction qui peut insérer ou retirer (`walk` et `changes_pool` dans `crates/perasc-driver/src/pool.rs`). Dans W1 la vérification est faite une fois par étincelle, là où p1 la fait jusqu’à neuf fois ; le `if` qui retire garde la place trouvée dans sa condition. p4 passe `cargo test --workspace`, les tests de bout en bout et le test différentiel avec `PERAS_DIFFERENTIAL_SEEDS=2000` sa variable posée, le test différentiel parcourant un pool qui lit, écrit et retire. Sur `bench/pool/p4/stale-walk.peras` elle s’arrête à la poignée périmée (`index -1 is out of bounds`) ; sa vérification jamais refaite, la mutation enregistrée, elle lit 456 en silence, et `scripts/bench-pool.mjs --check` échoue.
+
+Au commit `49c5842`, chaque option mesurée de nouveau dans un seul processus, 21 tours ([résultats](../../../bench/pool/RESULTS.md)) ; puis `check-regression` contre `aff5431`, la fusion d’avant p4, pour p1, p3 et p4.
+
+|     | W1, les étincelles | W2, la scène         | W3, les blocs | W4               | mémoire, W1 et W2        | lecture périmée ; dans un parcours |
+| --- | ------------------ | -------------------- | ------------- | ---------------- | ------------------------ | ---------------------------------- |
+| p0  | 1,000              | 1,000                | 1,000         | 1,000            | 1 856 Kio, 6 464 Kio     | 99, en silence                     |
+| p1  | 2,156              | 1,522                | 1,293         | module identique | 2 496 Kio, 7 744 Kio     | -1, attrapée                       |
+| p2  | un autre résultat  | ne se termine jamais | 1,151         | module identique |                          | 99, en silence                     |
+| p3  | 1,379              | 1,480                | 1,218         | module identique | 2 496 Kio, 7 744 Kio     | -1, attrapée                       |
+| p4  | **1,246**          | **1,413**            | 1,249         | module identique | **2 240 Kio, 7 232 Kio** | -1, attrapée ; s’arrête, attrapée  |
+
+W3 sous p4 se construit dans le module de p1, octet pour octet (il n’a pas de parcours de pool), donc leurs deux chiffres là, 1,249 et 1,293, mesurent deux fois le même module. Les lignes sont celles de p1 : 39, 51 et 57.
+
+`check-regression` : sur 280 modules, aucun plus grand, aucun changé, sous chaque option. Le temps du compilateur : p3 1,025, mais p1 **1,056** et p4 **1,059**, au-dessus de 1,05, et le script échoue pour les deux. **Écart** : le code de p1 n’a pas changé depuis `5194fdb`, où le même rapport valait 1,025 ; une mesure du temps du compilateur varie ici d’environ 0,03. Elle ne décide pas de p4, que les critères écartent sur ses propres chiffres.
+
+Face aux critères enregistrés :
+
+- **p4 est écartée** : plus sûre que p0, dans les deux lectures, mais de 1,246 à 1,413 fois le temps de p0, au-dessus de 1,05, et sa mémoire 1,21 fois celle de p0 sur W1 et 1,12 sur W2, au-dessus de 1,10 et de plus d’une page. C’est la meilleure des options sûres : vérifier une fois par parcours fait passer W1 de 2,156 sous p1 à 1,246, et ne pas construire le tableau de poignées retire 256 Kio à la mémoire de W1.
+- p1, p2 et p3 sont là où la première mesure les a mises.
+
+### Proposition, après p4
+
+**p0 reste** : aucune option, p4 comprise, ne remplit les critères enregistrés. Ce que p4 apprend : du temps de p1 en plus sur les étincelles, environ quatre cinquièmes sont partis quand le compilateur a vérifié la génération une fois par parcours et n’a construit aucun tableau de poignées, deux changements faits ensemble et non mesurés séparément (constat M013) ; ce qui reste, 25 à 41 % de temps et 12 à 21 % de mémoire, est la disposition elle-même : une poignée de deux nombres dans une option là où p0 en garde un, et les colonnes des générations et des places vivantes. Un pool aussi sûr que p1 coûte cela face à des indices à la main sur ces charges. Les prototypes sont retirés une fois que le propriétaire a décidé, leurs chiffres gardés ici et leur code dans git au commit `49c5842`.

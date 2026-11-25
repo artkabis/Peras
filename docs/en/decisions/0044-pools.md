@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0044-pools.md](../../fr/decisions/0044-pools.md)._
 
-_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; workloads amended twice before any measure; options measured at `5194fdb`; proposal: p0 stays; amended on 2026-11-25 with p4, before its prototype. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
+_Status: protocol registered on 2026-11-24, before any prototype and any measure, as the rule of the project asks; workloads amended twice before any measure; options measured at `5194fdb`; proposal: p0 stays; amended on 2026-11-25 with p4, before its prototype; p4 measured at `49c5842`; proposal: p0 stays, for the owner to decide. It is the step of phase 6 of the [roadmap](../reference/roadmap.md) that follows the arenas ([decision 0043](0043-arenas.md)), "the `Pool<T>` allocator", and comes before `@frame` and the study of memory streamed by proximity, which needs a fixed budget of slots. Under the owner's rule of 2026-11-17, the option chosen must be an improvement, never a regression; if none is, the decision says so and nothing lands._
 
 ## Context
 
@@ -114,3 +114,30 @@ Asked by the owner on 2026-11-24, after decision 0045 landed: the measure above 
 - **Departure, as for p1**: built as a rewriting of the program's tree and the pool's Peras source the compiler adds, not as a new type of the lowering.
 - **The workloads for p4** (`bench/pool/p4/`) are p1's, each `for (const h of pool.handles())` written `for (const h of pool)`, and nothing else changed: W1's walk of the sparks, W2's sum of the depths; W3 keeps its `handles()`, which it indexes.
 - **The measure** is run again whole, every option at one commit after decision 0045, since the compiler changed under p1 and p3; the figures above, at `5194fdb`, are kept. The protocol, the workloads and the criteria are those registered above, unchanged; the correctness checks too, p4's mutation being the check made once and never again after a statement that removes. _Corrected on 2026-11-25, before p4's prototype_: as registered, this said the differential test must see that mutation fail; it cannot, since it compares the program as rewritten with the same program optimized, both sides rewritten alike (finding M026). What sees it is `scripts/bench-pool.mjs --check`, on a program that removes a handle in the body of a walk and reads through it after (`bench/pool/p4/stale-walk.peras`): under p4 it stops, and with the mutation it reads in silence.
+
+### p4's prototype, and the measure again (2026-11-25)
+
+p4 is prototyped as the third amendment defines it, at `49c5842`: the checker types `for (const h of pool)` and records the walk (`Analysis::pool_loops`); the driver writes it again as a walk over the pool's slots and checks `h`'s generation once in its body, before the first statement that reads through it, and again after a statement that may insert or remove (`walk` and `changes_pool` in `crates/perasc-driver/src/pool.rs`). In W1 the check is made once per spark, where p1 makes it up to nine times; the `if` that removes keeps the slot found in its condition. p4 passes `cargo test --workspace`, the end-to-end tests and the differential test with `PERAS_DIFFERENTIAL_SEEDS=2000` with its variable set, the differential test walking a pool that reads, writes and removes. On `bench/pool/p4/stale-walk.peras` it stops at the stale handle (`index -1 is out of bounds`); with its check never made again, the mutation registered, it reads 456 in silence, and `scripts/bench-pool.mjs --check` fails.
+
+At `49c5842`, every option measured again in one process, 21 rounds ([results](../../../bench/pool/RESULTS.md)); then `check-regression` against `aff5431`, the merge before p4, for p1, p3 and p4.
+
+|     | W1, the sparks | W2, the scene | W3, the chunks | W4               | memory, W1 and W2        | stale read; in a walk     |
+| --- | -------------- | ------------- | -------------- | ---------------- | ------------------------ | ------------------------- |
+| p0  | 1.000          | 1.000         | 1.000          | 1.000            | 1,856 KiB, 6,464 KiB     | 99, in silence            |
+| p1  | 2.156          | 1.522         | 1.293          | identical module | 2,496 KiB, 7,744 KiB     | -1, caught                |
+| p2  | another result | never ends    | 1.151          | identical module |                          | 99, in silence            |
+| p3  | 1.379          | 1.480         | 1.218          | identical module | 2,496 KiB, 7,744 KiB     | -1, caught                |
+| p4  | **1.246**      | **1.413**     | 1.249          | identical module | **2,240 KiB, 7,232 KiB** | -1, caught; stops, caught |
+
+p4's W3 builds into p1's module, byte for byte (it has no walk over a pool), so their two figures there, 1.249 and 1.293, measure the same module twice. Lines are p1's: 39, 51 and 57.
+
+`check-regression`: of 280 modules, none larger, none changed, under each option. The compiler's time: p3 1.025, but p1 **1.056** and p4 **1.059**, above 1.05, and the script fails for both. **Departure**: p1's code did not change since `5194fdb`, where the same ratio was 1.025; one measure of the compiler's time varies by about 0.03 here. It does not decide p4, which the criteria rule out on its own figures.
+
+Against the criteria registered:
+
+- **p4 is out**: safer than p0, in both reads, but 1.246 to 1.413 times p0's time, above 1.05, and its memory 1.21 times p0's on W1 and 1.12 on W2, above 1.10 and more than a page. It is the best of the safe options: checking once per walk takes W1 from p1's 2.156 to 1.246, and not building the array of handles takes 256 KiB from W1's memory.
+- p1, p2 and p3 are where the first measure put them.
+
+### Proposal, after p4
+
+**p0 stays**: no option, p4 included, meets the criteria registered. What p4 teaches: of p1's extra time on the sparks, about four fifths went once the compiler checked the generation once per walk and built no array of handles, two changes made together and not measured apart (finding M013); what is left, 25 to 41 % of time and 12 to 21 % of memory, is the layout itself: a handle of two numbers in an option where p0 keeps one, and the columns of generations and of live slots. A pool as safe as p1 costs that much over indices by hand on these workloads. The prototypes are removed once the owner decides, their figures kept here and their code in git at `49c5842`.

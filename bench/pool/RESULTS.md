@@ -6,45 +6,51 @@ Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores; Node v24.22.1; 21 rounds
 
 ### W1, the sparks: a thousand born each frame, 600 frames
 
-| Option                             |                                       Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
-| ---------------------------------- | -------------------------------------------: | ---------------------- | ---------: | -------: | -----------: |
-| p0, indices by hand                |                                     378.7 ms | 1.000 (1.000 to 1.000) |       0.99 | 1856 KiB |  6168 (2711) |
-| p1, built in, generational handles |                                     848.9 ms | 2.237 (1.976 to 2.686) |       0.99 | 2496 KiB |  7457 (3245) |
-| p2, built in, plain handles        | computes 633712.71484375, not 633646.9296875 |                        |            |          |  6699 (2997) |
-| p3, written in Peras, imported     |                                     564.5 ms | 1.441 (1.258 to 2.072) |       0.99 | 2496 KiB |  7236 (3162) |
+| Option                               |                                       Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
+| ------------------------------------ | -------------------------------------------: | ---------------------- | ---------: | -------: | -----------: |
+| p0, indices by hand                  |                                     352.8 ms | 1.000 (1.000 to 1.000) |       0.99 | 1856 KiB |  6168 (2711) |
+| p1, built in, generational handles   |                                     752.7 ms | 2.156 (1.646 to 2.433) |       1.00 | 2496 KiB |  7457 (3245) |
+| p2, built in, plain handles          | computes 633712.71484375, not 633646.9296875 |                        |            |          |  6699 (2997) |
+| p3, written in Peras, imported       |                                     487.6 ms | 1.379 (1.001 to 1.962) |       0.99 | 2496 KiB |  7236 (3162) |
+| p4, p1 walked in place, checked once |                                     448.4 ms | 1.246 (0.914 to 1.519) |       0.99 | 2240 KiB |  6909 (3013) |
 
 ### W2, a scene graph of 100,000 nodes, a third removed and inserted again
 
-| Option                             |       Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
-| ---------------------------------- | -----------: | ---------------------- | ---------: | -------: | -----------: |
-| p0, indices by hand                |       8.1 ms | 1.000 (1.000 to 1.000) |       1.02 | 6464 KiB |  5412 (2490) |
-| p1, built in, generational handles |      11.3 ms | 1.421 (1.242 to 1.834) |       1.02 | 7744 KiB |  6388 (2911) |
-| p2, built in, plain handles        | does not end |                        |            |          |  5514 (2609) |
-| p3, written in Peras, imported     |      11.3 ms | 1.424 (1.108 to 1.900) |       1.01 | 7744 KiB |  6438 (2936) |
+| Option                               |       Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
+| ------------------------------------ | -----------: | ---------------------- | ---------: | -------: | -----------: |
+| p0, indices by hand                  |       8.4 ms | 1.000 (1.000 to 1.000) |       1.01 | 6464 KiB |  5412 (2490) |
+| p1, built in, generational handles   |      12.7 ms | 1.522 (1.325 to 1.867) |       1.00 | 7744 KiB |  6388 (2911) |
+| p2, built in, plain handles          | does not end |                        |            |          |  5514 (2609) |
+| p3, written in Peras, imported       |      12.0 ms | 1.480 (1.183 to 2.452) |       0.97 | 7744 KiB |  6438 (2936) |
+| p4, p1 walked in place, checked once |      11.5 ms | 1.413 (0.988 to 3.617) |       0.95 | 7232 KiB |  6090 (2789) |
 
 ### W3, a budget of 256 chunks of 4 KiB, 100,000 steps
 
-| Option                             |  Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
-| ---------------------------------- | ------: | ---------------------- | ---------: | -------: | -----------: |
-| p0, indices by hand                | 13.1 ms | 1.000 (1.000 to 1.000) |       1.04 | 1472 KiB |  6905 (3178) |
-| p1, built in, generational handles | 15.7 ms | 1.215 (1.152 to 1.389) |       1.04 | 1472 KiB |  8760 (3891) |
-| p2, built in, plain handles        | 14.2 ms | 1.084 (0.970 to 1.589) |       1.04 | 1472 KiB |  8229 (3701) |
-| p3, written in Peras, imported     | 14.6 ms | 1.126 (1.013 to 1.378) |       1.06 | 1472 KiB |  8694 (3932) |
+| Option                               |  Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
+| ------------------------------------ | ------: | ---------------------- | ---------: | -------: | -----------: |
+| p0, indices by hand                  | 12.3 ms | 1.000 (1.000 to 1.000) |       1.03 | 1472 KiB |  6905 (3178) |
+| p1, built in, generational handles   | 16.0 ms | 1.293 (1.087 to 1.496) |       1.03 | 1472 KiB |  8760 (3891) |
+| p2, built in, plain handles          | 14.0 ms | 1.151 (0.982 to 1.301) |       1.04 | 1472 KiB |  8229 (3701) |
+| p3, written in Peras, imported       | 15.1 ms | 1.218 (0.981 to 1.502) |       1.04 | 1472 KiB |  8694 (3932) |
+| p4, p1 walked in place, checked once | 15.3 ms | 1.249 (0.862 to 1.495) |       1.02 | 1472 KiB |  8760 (3891) |
 
 ### W4, no pool, 100,000 numbers
 
-| Option                             |                   Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
-| ---------------------------------- | -----------------------: | ---------------------- | ---------: | -------: | -----------: |
-| p0, indices by hand                |                   0.3 ms | 1.000 (1.000 to 1.000) |       1.08 | 1088 KiB |  3537 (1841) |
-| p1, built in, generational handles | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
-| p2, built in, plain handles        | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
-| p3, written in Peras, imported     | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
+| Option                               |                   Median | / p0, median (range)   | CPU / wall |   Memory | Bytes (gzip) |
+| ------------------------------------ | -----------------------: | ---------------------- | ---------: | -------: | -----------: |
+| p0, indices by hand                  |                   0.3 ms | 1.000 (1.000 to 1.000) |       0.97 | 1088 KiB |  3537 (1841) |
+| p1, built in, generational handles   | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
+| p2, built in, plain handles          | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
+| p3, written in Peras, imported       | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
+| p4, p1 walked in place, checked once | identical to p0's module | 1.000                  |            | 1088 KiB |  3537 (1841) |
 
 ### Safety: a handle kept after its value was removed, then read
 
-| Option                             | Read | Caught                       |
-| ---------------------------------- | ---: | ---------------------------- |
-| p0, indices by hand                |   99 | no, another value in silence |
-| p1, built in, generational handles |   -1 | yes                          |
-| p2, built in, plain handles        |   99 | no, another value in silence |
-| p3, written in Peras, imported     |   -1 | yes                          |
+| Option                                                                                                                                               | Read | Caught                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---: | ---------------------------- |
+| p0, indices by hand                                                                                                                                  |   99 | no, another value in silence |
+| p1, built in, generational handles                                                                                                                   |   -1 | yes                          |
+| p2, built in, plain handles                                                                                                                          |   99 | no, another value in silence |
+| p3, written in Peras, imported                                                                                                                       |   -1 | yes                          |
+| p4, p1 walked in place, checked once                                                                                                                 |   -1 | yes                          |
+| p4, a handle removed in the body of a walk, its slot given again, then read: fails: RangeError: index -1 is out of bounds: the length is 4 (caught). |
