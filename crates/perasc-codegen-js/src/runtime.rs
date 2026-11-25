@@ -12,6 +12,14 @@ const HELPERS: &[(&str, &[&str], &str)] = &[
         &[],
         "const $bounds = (index, length) => { throw new RangeError(BOUNDS.replace(\"{index}\", String(index)).replace(\"{length}\", String(length))); };",
     ),
+    // A half to the even, as a `Uint8ClampedArray` stores a number
+    // (decision 0047, f3): `Math.round` takes a half up, and is moved down
+    // where that made it odd.
+    (
+        "$roundEven",
+        &[],
+        "const $roundEven = (x) => { const r = Math.round(x); return r - x === 0.5 && r % 2 !== 0 ? r - 1 : r; };",
+    ),
     (
         "$trap",
         &[],

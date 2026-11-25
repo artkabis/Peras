@@ -2,7 +2,9 @@
 // TypeScript (the specification) and in Peras for each option:
 //   f0, the frame an Array<u8> as decision 0046 wrote it;
 //   f1, the frame an Array<u32>, one word a pixel, as a guide would say;
-//   f2, a Framebuffer written in Peras, imported (bench/frame/framebuffer.peras).
+//   f2, a Framebuffer written in Peras, imported (bench/frame/framebuffer.peras);
+//   f3, f2 with its channel rounded by roundEven, one instruction
+//       (bench/frame/framebuffer-f3.peras).
 // A3 is decision 0046's particle scene (bench/next/particles.*), P2 a full
 // frame (bench/frame/plasma.*).
 //
@@ -101,6 +103,7 @@ const programs = [
       f0: "bench/next/particles.peras",
       f1: "bench/frame/particles-f1.peras",
       f2: "bench/frame/particles-f2.peras",
+      f3: "bench/frame/particles-f3.peras",
     },
   },
   {
@@ -112,6 +115,7 @@ const programs = [
       f0: "bench/frame/plasma-f0.peras",
       f1: "bench/frame/plasma-f1.peras",
       f2: "bench/frame/plasma-f2.peras",
+      f3: "bench/frame/plasma-f3.peras",
     },
   },
 ];
@@ -130,6 +134,7 @@ for (const p of programs) {
     "f0 again": build(p.peras.f0, `${p.label.slice(0, 2)}-f0b`),
     f1: build(p.peras.f1, `${p.label.slice(0, 2)}-f1`),
     f2: build(p.peras.f2, `${p.label.slice(0, 2)}-f2`),
+    f3: build(p.peras.f3, `${p.label.slice(0, 2)}-f3`),
   };
   const names = Object.keys(built);
   /** @type {Record<string, Program>} */
@@ -164,7 +169,7 @@ for (const p of programs) {
   for (const k of names) {
     const source = k.startsWith("ts")
       ? p.ts
-      : p.peras[/** @type {"f0"|"f1"|"f2"} */ (k.slice(0, 2))];
+      : p.peras[/** @type {"f0"|"f1"|"f2"|"f3"} */ (k.slice(0, 2))];
     const memory = modules[k]?.__perasHeap?.memory();
     const bytes = built[k]?.bytes;
     out.push(

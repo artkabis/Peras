@@ -290,6 +290,9 @@ impl Module<'_> {
                 round(&ty, format!("Math.{name}({me}, {})", arg(0)))
             }
             "clamp" => format!("Math.min(Math.max({me}, {}), {})", arg(0), arg(1)),
+            // A half to the even, as a `Uint8ClampedArray` stores it
+            // (decision 0047, f3).
+            "roundEven" => round(&ty, format!("{}({me})", self.helper("$roundEven"))),
             _ => return self.conversion(&ty, name, me, result),
         })
     }

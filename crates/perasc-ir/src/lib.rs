@@ -1456,6 +1456,9 @@ pub enum MathOp {
     Tan,
     /// Rounds to the nearest; halves up, as JavaScript's `Math.round`.
     Round,
+    /// Rounds to the nearest; halves to the even, as a `Uint8ClampedArray`
+    /// stores a number (decision 0047, f3). One instruction, `f64.nearest`.
+    RoundEven,
 }
 
 impl MathOp {
@@ -1473,6 +1476,7 @@ impl MathOp {
             Self::Cos => "cos",
             Self::Tan => "tan",
             Self::Round => "round",
+            Self::RoundEven => "roundEven",
         }
     }
 

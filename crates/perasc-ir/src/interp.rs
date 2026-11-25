@@ -1791,6 +1791,8 @@ fn math(op: MathOp, v: Value) -> Value {
         (MathOp::Floor, Value::F64(x)) => Value::F64(x.floor()),
         (MathOp::Ceil, Value::F32(x)) => Value::F32(x.ceil()),
         (MathOp::Ceil, Value::F64(x)) => Value::F64(x.ceil()),
+        (MathOp::RoundEven, Value::F32(x)) => Value::F32(x.round_ties_even()),
+        (MathOp::RoundEven, Value::F64(x)) => Value::F64(x.round_ties_even()),
         // The functions of `Math`, on `f64`, an `f32` widened then narrowed.
         #[allow(clippy::cast_possible_truncation)]
         (op, Value::F32(x)) => match math(op, Value::F64(f64::from(x))) {

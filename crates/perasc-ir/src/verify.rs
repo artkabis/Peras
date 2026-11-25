@@ -744,7 +744,8 @@ impl<'a> Verifier<'a> {
                     | MathOp::Sin
                     | MathOp::Cos
                     | MathOp::Tan
-                    | MathOp::Round => operand.ty.is_float(),
+                    | MathOp::Round
+                    | MathOp::RoundEven => operand.ty.is_float(),
                 };
                 if !valid || e.ty != operand.ty {
                     self.problem(&format!("{} on {}", op.name(), operand.ty.name()));

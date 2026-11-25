@@ -1330,8 +1330,10 @@ impl Checker<'_> {
     ) -> Option<Ty> {
         let method = self.name(name.symbol).to_owned();
         let me = receiver.clone().defaulted();
-        if !matches!(method.as_str(), "floor" | "round" | "ceil" | "trunc")
-            || !args.is_empty()
+        if !matches!(
+            method.as_str(),
+            "floor" | "round" | "roundEven" | "ceil" | "trunc"
+        ) || !args.is_empty()
             || !matches!(me, Ty::Int(_))
         {
             return None;

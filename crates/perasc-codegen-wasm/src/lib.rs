@@ -1418,10 +1418,12 @@ impl<'a> FnEncoder<'a> {
             (MathOp::Sqrt, Ty::F32) => I::F32Sqrt,
             (MathOp::Floor, Ty::F32) => I::F32Floor,
             (MathOp::Ceil, Ty::F32) => I::F32Ceil,
+            (MathOp::RoundEven, Ty::F32) => I::F32Nearest,
             (MathOp::Abs, _) => I::F64Abs,
             (MathOp::Sqrt, _) => I::F64Sqrt,
             (MathOp::Floor, _) => I::F64Floor,
             (MathOp::Ceil, _) => I::F64Ceil,
+            (MathOp::RoundEven, _) => I::F64Nearest,
             // Computed by `Math`, above.
             _ => I::Unreachable,
         };

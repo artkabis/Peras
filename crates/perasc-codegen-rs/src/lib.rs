@@ -450,6 +450,7 @@ impl<'a> Emitter<'a> {
                     (MathOp::Round, _) => format!(
                         "{{ let v = ({x}) as f64; let d = v.floor(); (if v - d >= 0.5 {{ d + 1.0 }} else {{ d }}) as {wide} }}"
                     ),
+                    (MathOp::RoundEven, _) => format!("({x}).round_ties_even()"),
                     (MathOp::Log, _) => format!("((({x}) as f64).ln() as {wide})"),
                     (MathOp::Exp | MathOp::Sin | MathOp::Cos | MathOp::Tan, _) => {
                         format!("((({x}) as f64).{}() as {wide})", op.name())

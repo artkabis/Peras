@@ -2156,6 +2156,7 @@ impl Lowering<'_> {
             "cos" => Some(MathOp::Cos),
             "tan" => Some(MathOp::Tan),
             "round" => Some(MathOp::Round),
+            "roundEven" => Some(MathOp::RoundEven),
             _ => None,
         };
         if let (Some(op), Some(&arg)) = (
