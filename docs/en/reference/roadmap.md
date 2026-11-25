@@ -93,7 +93,7 @@ export async fn render(canvas: HTMLCanvasElement): Promise<void> {
 
 What the spec calls rasterization ([spec](../spec.md#rasterization)).
 
-- `Framebuffer<Rgba8>` and pixel types, shared with the canvas without copying.
+- `Framebuffer<Rgba8>` and pixel types, shared with the canvas without copying: measured ([decision 0047](../decisions/0047-framebuffer.md)), f3 kept. A float's `roundEven()` rounds a half to the even in one instruction, as a `Uint8ClampedArray` stores a number; the framebuffer is a file of Peras, `bench/frame/framebuffer-f3.peras`, until packages give it a home; a frame drawn into an array kept in the module's memory is shown through a view, no pixel copied. The particle scene from 3.08 to 2.14 times TypeScript's time, a full frame from 3.57 to 1.80.
 - SIMD types and operations.
 - The `@frame` rule: a function that renders a frame may not allocate, and the compiler proves it.
 - ~~The `Pool<T>` allocator~~: measured and not kept ([decision 0044](../decisions/0044-pools.md)): a pool whose handles carry a generation catches every stale read, and costs 25 to 41 % of time and 12 to 21 % of memory over indices by hand even when the compiler checks it once per walk; most of that cost is the layout of its handles, which a later decision on the layout of arrays of structures could take up. Arenas were measured and not kept ([decision 0043](../decisions/0043-arenas.md)): a written arena gains 6 to 7 % on a frame's temporaries, and costs more memory than the rules allow; they may come back with `@frame`, as an arena whose size is a declared budget.

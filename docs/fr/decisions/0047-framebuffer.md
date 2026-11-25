@@ -2,7 +2,7 @@
 
 _Original anglais : [../../en/decisions/0047-framebuffer.md](../../en/decisions/0047-framebuffer.md)._
 
-_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet ; les planchers de deux options mesurés d’abord (constat M041) ; versions, mesures et proposition consignées le même jour, la décision du propriétaire attendue. Classée première, à égalité, par la [décision 0046](0046-what-to-build-next-again.md), dont la scène de particules, A3, ne pouvait pas écrire de framebuffer ; demandée par le propriétaire le 2026-11-25 comme première étape d’un lot avec les paquets, `create-peras` et `@frame`._
+_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet ; les planchers de deux options mesurés d’abord (constat M041) ; versions, mesures et proposition consignées le même jour, le propriétaire a choisi f3 le même jour ; adoptée. Classée première, à égalité, par la [décision 0046](0046-what-to-build-next-again.md), dont la scène de particules, A3, ne pouvait pas écrire de framebuffer ; demandée par le propriétaire le 2026-11-25 comme première étape d’un lot avec les paquets, `create-peras` et `@frame`._
 
 ## Contexte
 
@@ -101,4 +101,6 @@ Ce qui reste, consigné :
 - **Ce qui sépare encore le dessin de celui de TypeScript** : P2 à 1,80 fois, les branches de `clamp` et de la boucle (constat F128) ; A3 à 2,14, les copies de sa grille (constat F125, la décision suivante).
 - **Les méthodes d’une structure importée** ne peuvent être appelées (décision 0022) : le framebuffer est fait de fonctions libres, `setPixel(&frame, …)`, là où TypeScript écrit `frame.set(…)`.
 
-_La décision du propriétaire est attendue._
+## La décision du propriétaire (2026-11-25)
+
+f3, comme proposé : `roundEven()` reste dans le compilateur ; le framebuffer reste un fichier Peras jusqu’à ce que les paquets lui donnent un lieu ; f1 et f2 restent des fichiers du banc, avec leurs chiffres. Adoptée.

@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0047-framebuffer.md](../../fr/decisions/0047-framebuffer.md)._
 
-_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks; the floors of two options measured first (finding M041); versions, measures and the proposal recorded the same day, the owner's decision awaited. Ranked first, tied, by [decision 0046](0046-what-to-build-next-again.md), whose particle scene, A3, could not write a framebuffer; asked by the owner on 2026-11-25 as the first step of a lot with packages, `create-peras` and `@frame`._
+_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks; the floors of two options measured first (finding M041); versions, measures and the proposal recorded the same day, the owner chose f3 the same day; landed. Ranked first, tied, by [decision 0046](0046-what-to-build-next-again.md), whose particle scene, A3, could not write a framebuffer; asked by the owner on 2026-11-25 as the first step of a lot with packages, `create-peras` and `@frame`._
 
 ## Context
 
@@ -101,4 +101,6 @@ What this leaves, recorded:
 - **What still separates the drawing from TypeScript's**: P2 at 1.80 times, the branches of `clamp` and of the loop (finding F128); A3 at 2.14, the copies of its grid (finding F125, the next decision).
 - **The methods of an imported structure** cannot be called (decision 0022): the framebuffer is free functions, `setPixel(&frame, …)`, where TypeScript writes `frame.set(…)`.
 
-_The owner's decision is awaited._
+## The owner's decision (2026-11-25)
+
+f3, as proposed: `roundEven()` stays in the compiler; the framebuffer stays a file of Peras until packages give it a home; f1 and f2 stay files of the benchmark, with their figures. Landed.
