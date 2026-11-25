@@ -7,12 +7,20 @@ import { __perasHeap, draw } from "../../../bench/frame/canvas-f3.peras";
 import nextResults from "../../../bench/next/RESULTS.md?raw";
 import frameResults from "../../../bench/frame/RESULTS.md?raw";
 import bugResults from "../../../bench/web-bugs/RESULTS.md?raw";
+import streamResults from "../../../bench/stream/RESULTS.md?raw";
+import candleResults from "../../../bench/candle/RESULTS.md?raw";
+import demoResults from "../../../bench/demo/RESULTS.md?raw";
+import browserResults from "../../../bench/browser/RESULTS.md?raw";
 import { measure, summary, type Rounds } from "./measure.ts";
 import {
   applications,
   bugs,
+  candle,
+  demo,
   frames,
+  kernels,
   machine,
+  stream,
   tally,
   type Measured,
   type Stop,
@@ -48,9 +56,12 @@ const T = fr
       quiet: "contrôle dans 0,95 à 1,05",
       againName: "TypeScript, de nouveau (A/A)",
       mapTitle: "Tout ce qui a été mesuré, d’un seul regard",
+      againstUsual: "Face au TypeScript tel qu’on l’écrit d’habitude",
+      againstTuned: "Face au TypeScript optimisé à la main, ou écrit par un expert",
       mapLead:
         "Le temps de Peras sur celui de TypeScript, échelle logarithmique. À gauche de 1, Peras est plus rapide ; à droite, plus lent. Lu dans les fichiers de résultats du dépôt quand cette page a été construite.",
       faster: "Peras plus rapide",
+      equal: "égal, dans le bruit (0,95 à 1,05)",
       slower: "Peras plus lent",
       before: "avant la décision 0047",
       band: "bande du contrôle A/A",
@@ -93,9 +104,12 @@ const T = fr
       quiet: "control within 0.95 to 1.05",
       againName: "TypeScript, again (A/A)",
       mapTitle: "Everything measured, at one glance",
+      againstUsual: "Against TypeScript as it is usually written",
+      againstTuned: "Against TypeScript tuned by hand, or written by an expert",
       mapLead:
         "Peras's time over TypeScript's, on a scale of logarithms. Left of 1, Peras is faster; right of it, slower. Read from the repository's results files when this page was built.",
       faster: "Peras faster",
+      equal: "equal, within the noise (0.95 to 1.05)",
       slower: "Peras slower",
       before: "before decision 0047",
       band: "the A/A control's band",
@@ -328,9 +342,25 @@ save.addEventListener("click", () => {
 
 // --- The recorded figures ---------------------------------------------------
 
-const measured: Measured[] = [
+// Each figure against the TypeScript it was measured against: as it is
+// usually written, then tuned by hand, since they are not the same rival.
+const recorded: Measured[] = [
+  ...stream(streamResults).map((m) => ({ ...m, label: `${m.label} · 0015` })),
+  ...candle(candleResults).map((m) => ({ ...m, label: `${m.label} · 0013` })),
+  ...demo(demoResults),
   ...frames(frameResults).map((m) => ({ ...m, label: `${m.label} · 0047` })),
-  ...applications(nextResults).map((m) => ({ ...m, label: `${m.label} · 0046` })),
+  // A3 is decision 0047's row, its figure before 0047 drawn on it.
+  ...applications(nextResults)
+    .filter((m) => !m.label.startsWith("A3"))
+    .map((m) => ({ ...m, label: `${m.label} · 0046` })),
+  ...kernels(browserResults),
+];
+type Row = Measured | { heading: string };
+const rows: Row[] = [
+  { heading: T.againstUsual },
+  ...recorded.filter((m) => (m.against ?? "usual") === "usual"),
+  { heading: T.againstTuned },
+  ...recorded.filter((m) => m.against === "tuned"),
 ];
 const svgNs = "http://www.w3.org/2000/svg";
 function mapChart() {
@@ -338,11 +368,11 @@ function mapChart() {
   const rowH = 34;
   const left = 260;
   const width = 860;
-  const height = 40 + measured.length * rowH + 30;
+  const height = 40 + rows.length * rowH + 30;
   svg.setAttribute("viewBox", `0 0 ${String(width)} ${String(height)}`);
   svg.setAttribute("width", String(width));
   svg.setAttribute("aria-label", T.mapTitle);
-  const lo = Math.log(0.25);
+  const lo = Math.log(0.0625);
   const hi = Math.log(8);
   const x = (v: number) => left + ((Math.log(v) - lo) / (hi - lo)) * (width - left - 20);
   const el = (name: string, attrs: Record<string, string | number>, body?: string) => {
@@ -352,23 +382,29 @@ function mapChart() {
     svg.append(e);
     return e;
   };
-  for (const v of [0.25, 0.5, 1, 2, 4, 8]) {
+  for (const v of [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8]) {
     el("line", { x1: x(v), x2: x(v), y1: 24, y2: height - 24, class: v === 1 ? "one" : "axis" });
-    el("text", { x: x(v), y: 16, "text-anchor": "middle" }, String(v));
+    const tick = v < 0.2 ? `1/${String(1 / v)}` : String(v);
+    el("text", { x: x(v), y: 16, "text-anchor": "middle" }, tick);
   }
-  el("text", { x: x(0.25), y: height - 6, fill: "var(--good)" }, `← ${T.faster}`);
+  el("text", { x: x(0.0625), y: height - 6 }, `← ${T.faster}`);
   el("text", { x: x(8), y: height - 6, "text-anchor": "end" }, `${T.slower} →`);
-  measured.forEach((m, i) => {
+  rows.forEach((row, i) => {
     const y = 40 + i * rowH;
+    if ("heading" in row) {
+      el("text", { x: 0, y: y + 4, "font-weight": 600 }, row.heading);
+      return;
+    }
+    const m = row;
     el("text", { x: 0, y: y + 4 }, m.label);
     const c = m.control;
     if (c !== undefined) {
       const a = Math.min(c.low ?? c.median, c.median);
       const b = Math.max(c.high ?? c.median, c.median);
       el("rect", {
-        x: x(Math.max(a, 0.25)),
+        x: x(Math.max(a, 0.0625)),
         y: y - 9,
-        width: Math.max(2, x(Math.min(b, 8)) - x(Math.max(a, 0.25))),
+        width: Math.max(2, x(Math.min(b, 8)) - x(Math.max(a, 0.0625))),
         height: 18,
         rx: 4,
         fill: "var(--line)",
@@ -378,7 +414,7 @@ function mapChart() {
     const p = m.peras;
     if (p.low !== undefined && p.high !== undefined) {
       el("line", {
-        x1: x(Math.max(p.low, 0.25)),
+        x1: x(Math.max(p.low, 0.0625)),
         x2: x(Math.min(p.high, 8)),
         y1: y,
         y2: y,
@@ -401,7 +437,8 @@ function mapChart() {
       cx: x(p.median),
       cy: y,
       r: 7,
-      fill: p.median < 1 ? "var(--good)" : "var(--bad)",
+      // Within 0.95 to 1.05, the noise an A/A control measures (M042): equal.
+      fill: p.median < 0.95 ? "var(--good)" : p.median > 1.05 ? "var(--bad)" : "var(--muted)",
     });
     // The figure to the right of everything drawn on the row.
     const right = Math.max(p.median, p.high ?? 0, Math.min(m.before?.median ?? 0, 8));
@@ -411,6 +448,7 @@ function mapChart() {
   for (const [color, label] of [
     ["var(--good)", T.faster],
     ["var(--bad)", T.slower],
+    ["var(--muted)", T.equal],
     ["var(--muted)", T.before],
     ["var(--line)", T.band],
   ] as const) {

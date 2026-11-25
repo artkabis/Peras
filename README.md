@@ -12,7 +12,7 @@ _**Before, after.** The same corner of the garden of Apeiron, zoomed 8 then 64 t
 
 **[Watch a stream of data read live](https://artkabis.github.io/Peras/stream/)**: sensor readings as CSV text, read by Peras in a Web Worker beside the same code in plain TypeScript, the same numbers checked in every batch, the speed, percentiles and leaks measured as it runs, and exported as JSON or CSV ([how it works](docs/en/stream.md), [source](examples/stream)).
 
-**The observatory**: TypeScript and Peras drawing the same frame side by side in your browser, the same pixels checked as it runs, a measure you run on your own machine with its A/A control, and every figure the repository has recorded on one axis, where Peras is faster and where it is slower, read from the results files when the page is built ([how it is measured](docs/en/observatory.md), [source](examples/observatory)); at `/observatory/` on the site once GitHub Pages is enabled.
+**The observatory**: TypeScript and Peras drawing the same frame side by side in your browser, the same pixels checked as it runs, a measure you run on your own machine with its A/A control, and every figure the repository has recorded on one axis, where Peras is faster and where it is slower, read from the results files when the page is built ([how it is measured](docs/en/observatory.md), [source](examples/observatory)); served at `/observatory/` on the documentation site.
 
 ![How many times faster Peras reads the stream than TypeScript, run after run, at 100,000 rows: over TypeScript as written from 1.70 to 4.04, over TypeScript written for speed from 0.96 to 2.27, each with its 95 % interval](docs/assets/stream-history.svg)
 

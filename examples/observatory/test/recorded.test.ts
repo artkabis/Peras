@@ -46,3 +46,26 @@ describe("the recorded figures", () => {
     expect(peras.compile + peras.run + peras.silent + peras.none).toBe(17);
   });
 });
+
+describe("the strengths recorded", () => {
+  it("reads the stream's speed-ups as ratios of times, at 100,000 rows", async () => {
+    const { stream } = await import("../src/recorded.ts");
+    const s = stream(read("bench/stream/RESULTS.md"));
+    expect(s.map((m) => m.against)).toEqual(["usual", "tuned"]);
+    for (const m of s) expect(m.peras.median).toBeLessThan(1);
+  });
+
+  it("reads the candle, the demo and the kernels", async () => {
+    const { candle, demo, kernels } = await import("../src/recorded.ts");
+    expect(candle(read("bench/candle/RESULTS.md"))).toHaveLength(2);
+    expect(demo(read("bench/demo/RESULTS.md"))).toHaveLength(2);
+    const k = kernels(read("bench/browser/RESULTS.md"));
+    expect(k.length).toBeGreaterThanOrEqual(5);
+    for (const m of k) expect(m.peras.median).toBeGreaterThan(0);
+  });
+
+  it("writes a power of two as it is written", async () => {
+    const { bugs } = await import("../src/recorded.ts");
+    expect(bugs(read("bench/web-bugs/RESULTS.md")).some((b) => b.name.endsWith("2⁵³"))).toBe(true);
+  });
+});

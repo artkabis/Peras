@@ -21,6 +21,11 @@ export interface Measured {
   source: string;
   /** Before a decision, when the file gives it: the same program then. */
   before?: Ratio;
+  /**
+   * The TypeScript it is measured against: as it is usually written, or
+   * tuned by hand (typed arrays, an expert's code). Usual when not said.
+   */
+  against?: "usual" | "tuned";
 }
 
 /** Where each toolchain first stops a bug: at compile time, at run time, never, or no bug. */
@@ -134,7 +139,11 @@ export function bugs(text: string): Bug[] {
     const m = /^(w\d+)-([\w-]+) \(([\w ]+)\)$/.exec(c[0] ?? "");
     if (c.length !== 3 || m === null) continue;
     out.push({
-      name: `${m[1] ?? ""} ${(m[2] ?? "").replaceAll("-", " ")}`,
+      // `w06-id-above-2-53`: a power of two as it is written, 2⁵³.
+      name: `${m[1] ?? ""} ${(m[2] ?? "").replaceAll("-", " ")}`.replace(
+        /\b2 (\d+)$/,
+        (_, e: string) => `2${e.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[Number(d)] ?? d)}`,
+      ),
       kind: m[3] ?? "",
       typescript: stop(c[1] ?? ""),
       peras: stop(c[2] ?? ""),
@@ -148,4 +157,122 @@ export function tally(list: readonly Bug[], who: "typescript" | "peras"): Record
   const t: Record<Stop, number> = { compile: 0, run: 0, silent: 0, none: 0 };
   for (const b of list) t[b[who]] += 1;
   return t;
+}
+
+/** `4.04 [4.00, 4.08]`: a speed-up, Peras's against TypeScript's, as a ratio of times. */
+function speedup(cell: string): Ratio | undefined {
+  const m = /([\d.]+)\s*\[([\d.]+),\s*([\d.]+)\]/.exec(cell);
+  if (m === null) return undefined;
+  // A speed-up of x is a time of 1 / x; its interval turns over.
+  return {
+    median: 1 / number(m[1] ?? ""),
+    low: 1 / number(m[3] ?? ""),
+    high: 1 / number(m[2] ?? ""),
+  };
+}
+
+/**
+ * Decision 0015's stream (`bench/stream/RESULTS.md`): its hypotheses H1 and
+ * H2 give Peras's speed-up at 100,000 rows, the second of their two values,
+ * against TypeScript as usually written and as optimized by hand.
+ */
+export function stream(text: string): Measured[] {
+  const out: Measured[] = [];
+  for (const line of text.split("\n")) {
+    const c = cells(line);
+    const against = c[0] === "H1" ? "usual" : c[0] === "H2" ? "tuned" : undefined;
+    if (against === undefined || c.length !== 4) continue;
+    const r = speedup((c[2] ?? "").split(";")[1] ?? "");
+    if (r === undefined) continue;
+    out.push({
+      label: `stream, 100,000 rows`,
+      against,
+      peras: r,
+      source: "bench/stream/RESULTS.md",
+    });
+  }
+  return out;
+}
+
+/** The candle (`bench/candle/RESULTS.md`): the processor time of the garden's zoom. */
+export function candle(text: string): Measured[] {
+  const times: Record<string, number> = {};
+  for (const line of text.split("\n")) {
+    const c = cells(line);
+    const m = /^([ABC])\./.exec(c[0] ?? "");
+    const t = /([\d.]+) ms/.exec(c[1] ?? "");
+    if (m !== null && t !== null) times[m[1] ?? ""] = number(t[1] ?? "");
+  }
+  const { A, B, C } = times;
+  if (A === undefined || B === undefined || C === undefined) return [];
+  return [
+    {
+      label: "the garden's zoom, processor time",
+      against: "usual",
+      peras: { median: C / A },
+      source: "bench/candle/RESULTS.md",
+    },
+    {
+      label: "the garden's zoom, processor time",
+      against: "tuned",
+      peras: { median: C / B },
+      source: "bench/candle/RESULTS.md",
+    },
+  ];
+}
+
+/** The demo (`bench/demo/RESULTS.md`): 1,500,000 particles, a frame's median time. */
+export function demo(text: string): Measured[] {
+  const frame: Record<string, number> = {};
+  for (const line of text.split("\n")) {
+    const c = cells(line);
+    const t = /^([\d.]+) ms/.exec(c[2] ?? "");
+    if (t === null) continue;
+    const who = (c[0] ?? "").startsWith("Peras")
+      ? "peras"
+      : (c[0] ?? "").includes("immutable")
+        ? "usual"
+        : "tuned";
+    frame[who] = number(t[1] ?? "");
+  }
+  const p = frame.peras;
+  if (p === undefined || frame.usual === undefined || frame.tuned === undefined) return [];
+  return [
+    {
+      label: "1,500,000 particles, a frame",
+      against: "usual",
+      peras: { median: p / frame.usual },
+      source: "bench/demo/RESULTS.md",
+    },
+    {
+      label: "1,500,000 particles, a frame",
+      against: "tuned",
+      peras: { median: p / frame.tuned },
+      source: "bench/demo/RESULTS.md",
+    },
+  ];
+}
+
+/**
+ * The kernels in Chromium (`bench/browser/RESULTS.md`): each kernel's Peras
+ * with no copy against the fastest JavaScript, its median time.
+ */
+export function kernels(text: string): Measured[] {
+  const out: Measured[] = [];
+  let kernel = "";
+  for (const line of text.split("\n")) {
+    const c = cells(line);
+    if (c.length !== 8) continue;
+    if ((c[0] ?? "") !== "") kernel = c[0] ?? "";
+    if (!(c[2] ?? "").startsWith("Peras") || (c[2] ?? "").includes("copied")) continue;
+    const x = Number(c[7]);
+    if (!Number.isFinite(x) || x <= 0 || kernel === "Kernel") continue;
+    out.push({
+      label: `kernel: ${kernel}`,
+      against: "tuned",
+      peras: { median: 1 / x },
+      source: "bench/browser/RESULTS.md",
+    });
+  }
+  return out;
 }
