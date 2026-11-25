@@ -929,6 +929,17 @@ impl<'c, 'a> Owner<'c, 'a> {
         self.arguments(text, &all, &conventions, span, path, receiver);
     }
 
+    /// Whether an expression is the name of an enumeration, `R` in `R.B(x)`.
+    fn names_enum(&self, base: ExprId) -> bool {
+        matches!(self.checker.ast.expr(base).kind, ExprKind::Name(_))
+            && self
+                .checker
+                .resolved
+                .get(&base)
+                .and_then(|&i| self.checker.scopes.bindings.get(i))
+                .is_some_and(|b| matches!(b.kind, Kind::Enum(_)))
+    }
+
     fn call(&mut self, id: ExprId, callee: ExprId, args: &[ExprId], span: Span, path: &mut Path) {
         let callee_expr = self.checker.ast.expr(callee);
         if let ExprKind::Field { base, name } = &callee_expr.kind
@@ -968,6 +979,11 @@ impl<'c, 'a> Owner<'c, 'a> {
                         self.ordered_arguments(&items, path);
                     }
                 }
+            }
+            // `Enum.Variant(args)` takes its data, as a constructor does.
+            ExprKind::Field { base, .. } if self.names_enum(*base) => {
+                let items: Vec<(ExprId, Use)> = args.iter().map(|&a| (a, Use::Consume)).collect();
+                self.ordered_arguments(&items, path);
             }
             ExprKind::Field { base, name } => {
                 self.expr(*base, Use::Read, path);

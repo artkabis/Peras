@@ -356,3 +356,22 @@ fn narrowing_through_conditions_is_sound() {
         assert_eq!(codes.is_empty(), through || before, "{accepted}: {codes:?}");
     }
 }
+
+/// A variant takes its data as a constructor does: a parameter that only
+/// borrows its value cannot be moved into one (decision 0046, A4, where the
+/// release verifier refused what the checker let through).
+#[test]
+fn a_variant_takes_its_data() {
+    let lent = "enum R { A(i32), B(String), }\n\
+                fn f(s: String): R { return R.B(s); }\n\
+                export fn run(): i32 { match (f(\"x\")) { R.A(n) => { return n; } R.B(t) => { return t.length; } } }\n";
+    assert_eq!(codes_of(lent), [codes::MOVE_OUT_OF_BORROW]);
+    let wrapped = "enum R { A(i32), B(String), }\n\
+                   fn f(s: String): Option<R> { return Some(R.B(s)); }\n\
+                   export fn run(): i32 { if (f(\"x\").isSome()) { return 1; } return 0; }\n";
+    assert_eq!(codes_of(wrapped), [codes::MOVE_OUT_OF_BORROW]);
+    let copied = "enum R { A(i32), B(String), }\n\
+                  fn f(s: String): R { return R.B(s.copy()); }\n\
+                  export fn run(): i32 { match (f(\"x\")) { R.A(n) => { return n; } R.B(t) => { return t.length; } } }\n";
+    assert_eq!(codes_of(copied), []);
+}

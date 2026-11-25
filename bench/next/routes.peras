@@ -1,0 +1,179 @@
+// Decision 0046, A4, a route finder, translated from routes.ts as a developer
+// from TypeScript would, then fixed until it builds.
+
+struct Link {
+  from: String;
+  to: String;
+  minutes: i32;
+}
+
+struct Network {
+  stops: Array<String>;
+  links: Array<Link>;
+}
+
+struct Edge {
+  to: i32;
+  minutes: i32;
+}
+
+struct Queue {
+  items: Array<(i32, i32)>;
+}
+
+impl Queue {
+  fn push(inout self, minutes: i32, stop: i32) {
+    self.items.push((minutes, stop));
+    let i = self.items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (self.items[parent].0 <= self.items[i].0) {
+        break;
+      }
+      const swap = self.items[parent];
+      self.items[parent] = self.items[i];
+      self.items[i] = swap;
+      i = parent;
+    }
+  }
+
+  fn pop(inout self): Option<(i32, i32)> {
+    if (self.items.length == 0) {
+      return None;
+    }
+    const top = self.items[0];
+    const last = self.items.pop().unwrapOr((0, 0));
+    if (self.items.length > 0) {
+      self.items[0] = last;
+      let i = 0;
+      while (true) {
+        const l = i * 2 + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < self.items.length && self.items[l].0 < self.items[m].0) {
+          m = l;
+        }
+        if (r < self.items.length && self.items[r].0 < self.items[m].0) {
+          m = r;
+        }
+        if (m == i) {
+          break;
+        }
+        const swap = self.items[m];
+        self.items[m] = self.items[i];
+        self.items[i] = swap;
+        i = m;
+      }
+    }
+    return Some(top);
+  }
+}
+
+enum Route {
+  Found(i32, Array<String>),
+  Missing(String),
+}
+
+fn route(network: Network, from: sink String, to: sink String): Option<Route> {
+  let index: Map<String, i32> = Map.new();
+  for (let i = 0; i < network.stops.length; i++) {
+    index.set(network.stops[i].copy(), i);
+  }
+  const start = index.get(from);
+  if (start.isNone()) {
+    return Some(Route.Missing(from));
+  }
+  const end = index.get(to);
+  if (end.isNone()) {
+    return Some(Route.Missing(to));
+  }
+  let edges: Array<Array<Edge>> = [];
+  for (let i = 0; i < network.stops.length; i++) {
+    edges.push([]);
+  }
+  for (const l of network.links) {
+    const a = index.get(l.from);
+    const b = index.get(l.to);
+    if (a.isNone() || b.isNone()) {
+      continue;
+    }
+    edges[a].push(Edge(b, l.minutes));
+    edges[b].push(Edge(a, l.minutes));
+  }
+  let best: Array<i32> = network.stops.map((s) => 2147483647);
+  let previous: Array<Option<i32>> = [];
+  for (let i = 0; i < network.stops.length; i++) {
+    previous.push(None);
+  }
+  let queue = Queue([]);
+  best[start] = 0;
+  queue.push(0, start);
+  while (true) {
+    const next = queue.pop();
+    if (next.isNone()) {
+      break;
+    }
+    const minutes = next.0;
+    const stop = next.1;
+    if (minutes > best[stop]) {
+      continue;
+    }
+    if (stop == end) {
+      break;
+    }
+    for (const e of edges[stop]) {
+      const m = minutes + e.minutes;
+      if (m < best[e.to]) {
+        best[e.to] = m;
+        previous[e.to] = Some(stop);
+        queue.push(m, e.to);
+      }
+    }
+  }
+  if (best[end] == 2147483647) {
+    return None;
+  }
+  let stops: Array<String> = [];
+  let at: Option<i32> = Some(end);
+  while (true) {
+    const here = at.unwrapOr(-1);
+    if (here < 0) {
+      break;
+    }
+    stops.push(network.stops[here].copy());
+    at = previous[here];
+  }
+  stops.reverse();
+  return Some(Route.Found(best[end], stops));
+}
+
+export fn run(n: i32): String {
+  let stops: Array<String> = [];
+  let links: Array<Link> = [];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      stops.push(`s${x}-${y}`);
+      if (x > 0) {
+        links.push(Link(`s${x - 1}-${y}`, `s${x}-${y}`, 1 + ((x * 7 + y * 3) % 9)));
+      }
+      if (y > 0) {
+        links.push(Link(`s${x}-${y - 1}`, `s${x}-${y}`, 1 + ((x * 5 + y * 11) % 9)));
+      }
+    }
+  }
+  // `Network.fromJson(…)` is valid Peras, not compiled in an owned module
+  // (E0900 at build): the network is used as it was made.
+  const network = Network(stops, links);
+  let out: Array<String> = [];
+  const froms = ["s0-0", `s${n - 1}-0`, "s0-0"];
+  const tos = [`s${n - 1}-${n - 1}`, `s0-${n - 1}`, "nowhere"];
+  for (let k = 0; k < 3; k++) {
+    const r = route(network, froms[k].copy(), tos[k].copy());
+    match (r) {
+      None => out.push("none"),
+      Some(Route.Missing(stop)) => out.push(`missing ${stop}`),
+      Some(Route.Found(minutes, path)) => out.push(`${minutes}:${path.length}`),
+    }
+  }
+  return out.join("|");
+}
