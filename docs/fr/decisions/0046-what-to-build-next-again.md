@@ -39,4 +39,8 @@ Les programmes sont écrits par les auteurs de Peras, qui savent ce qu’il refu
 
 ## Journal
 
-_À venir : les programmes, les mesures, le classement._
+### Les spécifications (2026-11-25, avant tout Peras)
+
+Les quatre programmes en TypeScript, `bench/next/{notes,ledger,particles,routes}.ts`, vérifiés au plus strict de TypeScript (`bench/next/tsconfig.json` : `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), chacun avec un `run` qui fait sa propre entrée et donne une ligne de texte à comparer : A1 pour 2 000 notes donne `2000|139|1986|books:800,…` ; A2 pour 20 000 lignes, douze mois et un plus bas solde de -382 191,29 ; A3 après 300 images, 1 792 particules et une empreinte des pixels, 694335550 ; A4 sur une grille de 60 par 60 arrêts, `298:119|330:121|missing nowhere`. Écrit avant ce commit, le générateur du livre de comptes a été corrigé deux fois, avant toute ligne de Peras : ses bits de poids faible laissaient cinq mois vides, et un salaire de 2 500 empêchait le solde de jamais passer sous zéro ; il prend les bits de poids fort du générateur, et un salaire de 300. À partir de ce commit, ils ne changent plus.
+
+_À venir : les versions Peras, les mesures, le classement._

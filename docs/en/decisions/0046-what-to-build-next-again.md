@@ -39,4 +39,8 @@ The programs are written by the authors of Peras, who know what it refuses: they
 
 ## Record
 
-_To come: the programs, the measures, the ranking._
+### The specifications (2026-11-25, before any Peras)
+
+The four programs in TypeScript, `bench/next/{notes,ledger,particles,routes}.ts`, type-checked at TypeScript's strictest (`bench/next/tsconfig.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), each with a `run` that makes its own input and gives a line of text to compare: A1 for 2,000 notes gives `2000|139|1986|books:800,…`; A2 for 20,000 rows, twelve months and a lowest balance of -382,191.29; A3 after 300 frames, 1,792 particles and a digest of the pixels, 694335550; A4 on a grid of 60 by 60 stops, `298:119|330:121|missing nowhere`. Written before this commit, the ledger's generator was corrected twice, before any line of Peras: its low bits made five months empty, and a salary of 2,500 kept the balance from ever falling below zero; it takes the generator's high bits, and a salary of 300. From this commit on, they are not changed.
+
+_To come: the Peras versions, the measures, the ranking._
