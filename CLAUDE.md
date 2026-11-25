@@ -60,6 +60,8 @@ Each line is a finding of [docs/en/findings.md](docs/en/findings.md).
 
 ## Code: the traps already fallen into
 
+- **No bug is left aside** (the owner, 2026-11-25): every bug found, even beside other work, is recorded the same day as a finding with its reduced case, then fixed with a test that failed before; a bug that cannot be fixed at once stays an open finding, and the work under way names it (F119, F120).
+
 - **A lowering never drops a statement in silence**: a path it cannot build reports E0900. A write through an `Rc` returned with nothing written and nothing said, `w()` gave 3 (F016); then a step and a field of an `Rc` an element holds (F018). When a new kind of place is added, read every `else { return; }` of the paths that write: assignment, step, element, method.
 - **Edit by exact, unique replacements.** Never replace a slice between two markers: one script deleted every function between `keep_before` and the end of a file. After a scripted edit, `git diff --stat` and a build.
 - **The release verifier is right until proven otherwise.** When it refuses code, reduce the case to a few lines, add it as a test that fails, then fix the lowering (F001, F002).

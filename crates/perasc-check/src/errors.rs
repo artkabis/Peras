@@ -196,6 +196,9 @@ pub enum Immutable {
     Const(Span),
     /// A parameter without `inout`: where to insert it.
     Parameter(u32),
+    /// A `const` read from an element, `const p = ps[i]`: a copy, which
+    /// `let` would let change while the element stays as it was (F122).
+    Copy(String),
 }
 
 /// `E0205`
@@ -213,6 +216,15 @@ pub fn assign_to_immutable(span: Span, name: &str, declared: Span, why: &Immutab
             Fix {
                 message: Message::new("check-immutable-fix-parameter").text("name", name),
                 edits: vec![insert(*at, "inout ")],
+            },
+        ),
+        Immutable::Copy(place) => (
+            "const",
+            Fix {
+                message: Message::new("check-immutable-fix-copy")
+                    .text("name", name)
+                    .text("place", place.as_str()),
+                edits: Vec::new(),
             },
         ),
     };

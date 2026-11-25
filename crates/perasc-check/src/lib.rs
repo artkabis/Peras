@@ -769,6 +769,10 @@ struct Checker<'a> {
     /// The `const`s an integer division initialised, by binding: that
     /// division (decision 0034, option d1, prototype).
     int_divisions: HashMap<usize, ExprId>,
+    /// The `const` bindings read from an element of an array, with the text
+    /// of that element: a copy, which changing would leave the element as it
+    /// was (F122).
+    element_copies: HashMap<usize, String>,
     /// The binding each variable or parameter declares, by the start of its name.
     declared: HashMap<u32, usize>,
     /// See [`Analysis::moves`].
@@ -883,6 +887,7 @@ impl<'a> Checker<'a> {
             json_calls: HashMap::new(),
             time_calls: HashMap::new(),
             int_divisions: HashMap::new(),
+            element_copies: HashMap::new(),
             declared: HashMap::new(),
             moves: HashSet::new(),
             enums: Vec::new(),

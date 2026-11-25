@@ -380,6 +380,7 @@ check-immutable-declared-label = { $kind ->
 check-immutable-why = Un `const` ne change jamais, et un paramètre est en lecture seule sauf s’il est passé `inout`, ce qui montre à l’appelant que la fonction le modifie.
 check-immutable-fix-const = déclare `{ $name }` avec `let`
 check-immutable-fix-parameter = passe `{ $name }` en `inout`
+check-immutable-fix-copy = `{ $name }` est une copie de `{ $place }` : modifiée, elle laisserait `{ $place }` tel quel ; écris dans `{ $place }` lui-même, comme `{ $place }.x = …`
 
 # E0206
 check-inout-marker = { $kind ->
@@ -878,6 +879,7 @@ gen-unsupported = la génération de code ne prend pas encore en charge { $featu
     [heap-option] les options qui contiennent un tableau ou une chaîne
     [inout-string] les chaînes `inout` des fonctions exportées, que JavaScript ne peut pas modifier
     [inout-export] les nombres et options `inout` des fonctions exportées : JavaScript les passe par valeur
+    [inout-replace] un nouveau tableau, une nouvelle chaîne, table ou ensemble entier donné à un champ d’un paramètre `inout` (son contenu peut changer sur place)
     [deep-equality] `==` sur des tableaux de tables, d’ensembles, ou d’options qui contiennent des chaînes ou des tableaux
     [field] les champs
     [index] l’indexation
