@@ -322,7 +322,6 @@ fn quiet_expr(e: &Expr) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => quiet_expr(x),
         ExprKind::Binary(_, a, b) => quiet_expr(a) && quiet_expr(b),
-        ExprKind::Select(c, a, b) => quiet_expr(c) && quiet_expr(a) && quiet_expr(b),
         ExprKind::Buf(_, args) | ExprKind::Env(_, args) => args.iter().all(quiet_expr),
     }
 }

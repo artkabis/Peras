@@ -418,13 +418,6 @@ impl<'a> Emitter<'a> {
                 let (a, b) = (self.expr(lhs), self.expr(rhs));
                 binary(*op, lhs.ty, &a, &b)
             }
-            // Both values evaluated, as WebAssembly's `select` evaluates them.
-            ExprKind::Select(c, a, b) => format!(
-                "{{ let (c, a, b) = ({}, {}, {}); if c {{ a }} else {{ b }} }}",
-                self.expr(c),
-                self.expr(a),
-                self.expr(b)
-            ),
             ExprKind::CallIndirect(callee, args) => {
                 let results = if e.ty == Ty::Void {
                     Vec::new()

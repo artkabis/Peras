@@ -657,24 +657,6 @@ impl<'a> Verifier<'a> {
         self.buffer(Some(callee));
     }
 
-    /// A `select`: a `bool`, then two values of the result's type, a number
-    /// or a `bool`, all three evaluated (decision 0048, s1).
-    fn select(&mut self, c: &Expr, a: &Expr, b: &Expr, ty: Ty) {
-        self.expr(c);
-        self.expr(a);
-        self.expr(b);
-        let scalar = !matches!(ty, Ty::Owned | Ty::Borrowed | Ty::Void);
-        if c.ty != Ty::Bool || a.ty != ty || b.ty != ty || !scalar {
-            self.problem(&format!(
-                "select of {} and {} on {}, as {}",
-                a.ty.name(),
-                b.ty.name(),
-                c.ty.name(),
-                ty.name()
-            ));
-        }
-    }
-
     fn expr(&mut self, e: &Expr) {
         match &e.kind {
             ExprKind::Const(c) => {
@@ -735,7 +717,6 @@ impl<'a> Verifier<'a> {
                 }
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs, e.ty),
-            ExprKind::Select(c, a, b) => self.select(c, a, b, e.ty),
             ExprKind::Buf(op, args) => self.buf_expr(*op, args, e.ty),
             ExprKind::Env(op, args) => self.env_expr(*op, args, e.ty),
             ExprKind::CallIndirect(..) => self.function_expr(e),

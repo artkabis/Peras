@@ -591,11 +591,6 @@ pub enum ExprKind {
     Buf(BufOp, Vec<Expr>),
     /// A function value, its environment (decision 0026): see [`EnvOp`].
     Env(EnvOp, Vec<Expr>),
-    /// The second operand when the first, a `bool`, is true, else the third:
-    /// all three evaluated, no branch taken, WebAssembly's `select`
-    /// (decision 0048, prototype s1). Built only from operands that cannot
-    /// trap or change anything (`is_simple`).
-    Select(Box<Expr>, Box<Expr>, Box<Expr>),
     /// A call to the function a value names, with one result or none: the
     /// arguments given here, then its environment, lent, the function's last
     /// argument, evaluated after the others. The signature is that of the
@@ -1771,11 +1766,6 @@ fn each_in(e: &Expr, visit: &mut impl FnMut(&Expr)) {
         | ExprKind::Alloc(x) => {
             each_in(x, visit);
         }
-        ExprKind::Select(c, a, b) => {
-            each_in(c, visit);
-            each_in(a, visit);
-            each_in(b, visit);
-        }
         ExprKind::Binary(_, a, b) => {
             each_in(a, visit);
             each_in(b, visit);
@@ -1979,9 +1969,6 @@ fn expr(e: &Expr) -> String {
                 UnOp::Bits => "bits",
             };
             format!("({ty}.{op} {})", expr(operand))
-        }
-        ExprKind::Select(c, a, b) => {
-            format!("({ty}.select {} {} {})", expr(c), expr(a), expr(b))
         }
         ExprKind::Binary(op, lhs, rhs) => {
             format!(

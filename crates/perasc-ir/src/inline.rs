@@ -235,11 +235,6 @@ impl Copy {
             ExprKind::Binary(op, a, b) => {
                 ExprKind::Binary(*op, Box::new(self.expr(a)), Box::new(self.expr(b)))
             }
-            ExprKind::Select(c, a, b) => ExprKind::Select(
-                Box::new(self.expr(c)),
-                Box::new(self.expr(a)),
-                Box::new(self.expr(b)),
-            ),
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
@@ -280,7 +275,6 @@ fn hoistable(e: &Expr, id: FnId) -> bool {
         | ExprKind::Borrow(_)
         | ExprKind::Env(..)
         | ExprKind::CallIndirect(..)
-        | ExprKind::Select(..)
         | ExprKind::Buf(..) => false,
         ExprKind::Binary(_, a, b) => {
             (hoistable(a, id) && is_simple(b)) || (is_simple(a) && hoistable(b, id))
@@ -351,9 +345,6 @@ fn reads_only(e: &Expr, assigned: &HashSet<u32>) -> bool {
             reads_only(x, assigned)
         }
         ExprKind::Binary(_, a, b) => reads_only(a, assigned) && reads_only(b, assigned),
-        ExprKind::Select(c, a, b) => {
-            reads_only(c, assigned) && reads_only(a, assigned) && reads_only(b, assigned)
-        }
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().all(|a| reads_only(a, assigned))
         }
@@ -408,7 +399,6 @@ fn expr_size(e: &Expr) -> usize {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => expr_size(x),
         ExprKind::Binary(_, a, b) => expr_size(a) + expr_size(b),
-        ExprKind::Select(c, a, b) => expr_size(c) + expr_size(a) + expr_size(b),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().map(expr_size).sum()
         }

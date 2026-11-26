@@ -2,7 +2,7 @@
 
 _Original anglais : [../../en/decisions/0048-choices-and-small-structures.md](../../en/decisions/0048-choices-and-small-structures.md)._
 
-_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet, après que les planchers de ses options ont été mesurés (constat M041) ; s1 construite et mesurée à `b56cab7`, s2 et s3 mesurées par leur plancher ; proposition : c0 reste, aucune option ne remplissant les critères enregistrés ; au propriétaire de décider. Demandée par le propriétaire le 2026-11-25 : travailler le langage pour qu’il rattrape TypeScript là où il est en retard, et P2 est le programme que le propriétaire a mesuré sur un téléphone, Peras à 1,35 fois le temps de TypeScript._
+_Statut : protocole enregistré le 2026-11-25, avant tout prototype, comme le demande la règle du projet, après que les planchers de ses options ont été mesurés (constat M041) ; s1 construite et mesurée à `b56cab7`, s2 et s3 mesurées par leur plancher ; proposition : c0 reste, aucune option ne remplissant les critères enregistrés ; le propriétaire a choisi c0 le 2026-11-26, et s1 a quitté le compilateur. Demandée par le propriétaire le 2026-11-25 : travailler le langage pour qu’il rattrape TypeScript là où il est en retard, et P2 est le programme que le propriétaire a mesuré sur un téléphone, Peras à 1,35 fois le temps de TypeScript._
 
 ## Contexte
 
@@ -80,3 +80,7 @@ Selon les critères enregistrés, **aucune option n’est retenue, et c0 reste**
 - **s2** ne peut atteindre 0,95 par son plancher, 1,009 ; **s3** combine deux options qui ne gagnent rien.
 
 Ce qui reste de l’écart de P2 à TypeScript n’est ni dans ses choix ni dans une petite fonction qui rend une structure : retirer le `clamp` donnait 1,59 à 1,69, et écrire tout le pixel dans la boucle 1,46, le travail des trois fonctions qui rendent un nombre ensemble, que seule une insertion générale atteint, et la décision 0036 l’a mesurée ralentissant le jardin de 5 %. Une fois que le propriétaire a décidé, le code de s1 et `PERAS_PROTO_CHOICE` sont retirés du compilateur, le code gardé dans git à `ec62b13`, l’extension du test différentiel gardée. Le constat F128 reste ouvert avec ce que ceci a mesuré : une conversion des conditions jointes par `&&` et `||` serait une autre décision, sans programme du projet, pour l’instant, qu’elle rendrait plus rapide.
+
+### Décision (2026-11-26)
+
+Le propriétaire a choisi **c0**. s1 est retirée du compilateur : `ExprKind::Select`, la passe `branchless_choices` et `PERAS_PROTO_CHOICE`, leur code gardé dans git à `ec62b13` ; le test différentiel garde son extension, que c0 passe. `check-regression` face au commit d’avant : sur 307 modules, chacun identique ; le compilateur plus petit de 10 960 octets, ce que s1 avait ajouté, et à 0,965 fois son temps (0,945 à 1,049).

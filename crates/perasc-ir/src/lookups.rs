@@ -147,7 +147,6 @@ fn children(e: &Expr) -> Vec<&Expr> {
             vec![a]
         }
         ExprKind::Binary(_, a, b) => vec![a, b],
-        ExprKind::Select(c, a, b) => vec![c, a, b],
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().collect()
         }
@@ -225,11 +224,6 @@ fn reuse(e: &mut Expr, known: &[Known]) {
             reuse(a, known);
             reuse(b, known);
         }
-        ExprKind::Select(c, a, b) => {
-            reuse(c, known);
-            reuse(a, known);
-            reuse(b, known);
-        }
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             for arg in args {
                 reuse(arg, known);
@@ -272,9 +266,6 @@ fn take_lookup(e: &mut Expr, holder: LocalId) -> Option<(Expr, u32, Key)> {
         | ExprKind::Math(_, a)
         | ExprKind::Alloc(a) => take_lookup(a, holder),
         ExprKind::Binary(_, a, b) => take_lookup(a, holder).or_else(|| take_lookup(b, holder)),
-        ExprKind::Select(c, a, b) => take_lookup(c, holder)
-            .or_else(|| take_lookup(a, holder))
-            .or_else(|| take_lookup(b, holder)),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter_mut().find_map(|arg| take_lookup(arg, holder))
         }

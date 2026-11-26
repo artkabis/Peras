@@ -343,18 +343,6 @@ pub fn proto_div() -> String {
     }
 }
 
-/// Decision 0048's prototype: `c0`, the compiler before it, unless
-/// `PERAS_PROTO_CHOICE` names `s1` (choices without branches), `s2` (small
-/// functions that give a structure, inlined) or `s3` (both), for the measure
-/// script only.
-#[must_use]
-pub fn proto_choice() -> String {
-    match std::env::var("PERAS_PROTO_CHOICE").as_deref() {
-        Ok(v @ ("s1" | "s2" | "s3")) => v.to_owned(),
-        _ => "c0".to_owned(),
-    }
-}
-
 /// The options of decision 0035 a build follows: `a2`, chosen, `Math` as
 /// JavaScript writes it; `b3`, chosen, `floor` or `round` on an integer
 /// division shown and converted, removed on any other integer. Unless

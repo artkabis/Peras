@@ -1558,7 +1558,6 @@ fn reads(e: &Expr, local: LocalId) -> bool {
         | ExprKind::Math(_, x)
         | ExprKind::Alloc(x) => reads(x, local),
         ExprKind::Binary(_, a, b) => reads(a, local) || reads(b, local),
-        ExprKind::Select(c, a, b) => reads(c, local) || reads(a, local) || reads(b, local),
         ExprKind::Call(_, args) | ExprKind::Buf(_, args) | ExprKind::Env(_, args) => {
             args.iter().any(|a| reads(a, local))
         }

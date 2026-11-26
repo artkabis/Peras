@@ -107,11 +107,6 @@ fn map_expr(e: Expr, f: &mut impl FnMut(Expr) -> Expr) -> Expr {
         ExprKind::Binary(op, a, b) => {
             ExprKind::Binary(op, Box::new(map_expr(*a, f)), Box::new(map_expr(*b, f)))
         }
-        ExprKind::Select(cond, yes, no) => ExprKind::Select(
-            Box::new(map_expr(*cond, f)),
-            Box::new(map_expr(*yes, f)),
-            Box::new(map_expr(*no, f)),
-        ),
         ExprKind::Call(id, args) => {
             ExprKind::Call(id, args.into_iter().map(|a| map_expr(a, f)).collect())
         }
@@ -301,11 +296,6 @@ fn count_expr_reads(e: &Expr, out: &mut HashMap<u32, usize>) {
         ExprKind::Alloc(x) => count_expr_reads(x, out),
         ExprKind::Unary(_, x) | ExprKind::Convert(x) | ExprKind::Math(_, x) => {
             count_expr_reads(x, out);
-        }
-        ExprKind::Select(c, a, b) => {
-            count_expr_reads(c, out);
-            count_expr_reads(a, out);
-            count_expr_reads(b, out);
         }
         ExprKind::Binary(_, a, b) => {
             count_expr_reads(a, out);

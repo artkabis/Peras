@@ -2,7 +2,7 @@
 
 _French translation: [../../fr/decisions/0048-choices-and-small-structures.md](../../fr/decisions/0048-choices-and-small-structures.md)._
 
-_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks, after the floors of its options were measured (finding M041); s1 built and measured at `b56cab7`, s2 and s3 measured by their floor; proposal: c0 stays, no option meeting the criteria registered; for the owner to decide. Asked by the owner on 2026-11-25: work the language so that it catches up with TypeScript where it is behind, and P2 is the program the owner measured on a phone, Peras at 1.35 times TypeScript's time._
+_Status: protocol registered on 2026-11-25, before any prototype, as the rule of the project asks, after the floors of its options were measured (finding M041); s1 built and measured at `b56cab7`, s2 and s3 measured by their floor; proposal: c0 stays, no option meeting the criteria registered; the owner chose c0 on 2026-11-26, and s1 left the compiler. Asked by the owner on 2026-11-25: work the language so that it catches up with TypeScript where it is behind, and P2 is the program the owner measured on a phone, Peras at 1.35 times TypeScript's time._
 
 ## Context
 
@@ -80,3 +80,7 @@ By the criteria registered, **no option is kept, and c0 stays**:
 - **s2** cannot meet 0.95 by its floor, 1.009; **s3** combines two options that gain nothing.
 
 What remains of P2's gap to TypeScript is not in its choices nor in a small function that gives a structure: removing the clamp gave 1.59 to 1.69 and writing the whole pixel inline 1.46, the work of the three functions that give a number together, which only a general inlining reaches, and decision 0036 measured that slowing the garden by 5 %. Once the owner decides, s1's code and `PERAS_PROTO_CHOICE` are removed from the compiler, the code kept in git at `ec62b13`, the differential test's extension kept. Finding F128 stays open with what this measured: an if-conversion of conditions joined by `&&` and `||` would be another decision, with no program of the project yet that it would make faster.
+
+### Decision (2026-11-26)
+
+The owner chose **c0**. s1 is removed from the compiler: `ExprKind::Select`, the pass `branchless_choices` and `PERAS_PROTO_CHOICE`, their code kept in git at `ec62b13`; the differential test keeps its extension, which c0 passes. `check-regression` against the commit before: of 307 modules, every one identical; the compiler 10,960 bytes smaller, what s1 had added, and 0.965 times its time (0.945 to 1.049).

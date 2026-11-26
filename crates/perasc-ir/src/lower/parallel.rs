@@ -642,11 +642,6 @@ impl Rename {
             ExprKind::Binary(op, a, b) => {
                 ExprKind::Binary(*op, Box::new(self.expr(a)), Box::new(self.expr(b)))
             }
-            ExprKind::Select(c, a, b) => ExprKind::Select(
-                Box::new(self.expr(c)),
-                Box::new(self.expr(a)),
-                Box::new(self.expr(b)),
-            ),
             ExprKind::Call(id, args) => {
                 ExprKind::Call(*id, args.iter().map(|a| self.expr(a)).collect())
             }
